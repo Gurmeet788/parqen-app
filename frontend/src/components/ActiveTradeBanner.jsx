@@ -73,16 +73,25 @@ function TradeCard({ trade, user, onClose }) {
     : `$${fmt(trade.amount_usd || 0)} USD`;
   const btcAmt   = parseFloat(trade.amount_btc || 0).toFixed(8);
 
-  // Live countdown
-  const minsLimit = parseInt(trade.time_limit || 30);
-  const deadline  = new Date(new Date(trade.created_at).getTime() + minsLimit * 60000);
+  // Live countdown — sanitize limit, prefer expires_at with validation
+  const rawLimit  = parseInt(trade.listing?.time_limit || trade.time_limit || 30);
+  const minsLimit = rawLimit > 1440 ? Math.min(480, Math.round(rawLimit / 60)) : Math.min(480, Math.max(5, rawLimit));
+  const computedMs = new Date(trade.created_at).getTime() + minsLimit * 60000;
+  // Use expires_at only if it's within 2× the limit of computed, otherwise use computed
+  const deadlineMs = (() => {
+    if (!trade.expires_at) return computedMs;
+    const srv = new Date(trade.expires_at).getTime();
+    const diff = Math.abs(srv - computedMs);
+    return diff <= minsLimit * 60 * 2000 ? srv : computedMs;
+  })();
+
   const [timeLeft, setTimeLeft] = useState('');
   const [isUrgent, setIsUrgent] = useState(false);
 
   useEffect(() => {
     const tick = () => {
-      const diff = deadline - Date.now();
-      if (diff <= 0) { setTimeLeft('Expired'); setIsUrgent(false); return; }
+      const diff = deadlineMs - Date.now();
+      if (diff <= 0) { setTimeLeft(''); setIsUrgent(false); return; }
       const m = Math.floor(diff / 60000);
       const s = Math.floor((diff % 60000) / 1000);
       setTimeLeft(`${m}:${String(s).padStart(2, '0')}`);
@@ -91,7 +100,7 @@ function TradeCard({ trade, user, onClose }) {
     tick();
     const iv = setInterval(tick, 1000);
     return () => clearInterval(iv);
-  }, []);
+  }, [deadlineMs]);
 
   const isPaid      = ['PAYMENT_SENT','PAID'].includes(trade.status?.toUpperCase());
   const borderColor = isUrgent ? C.danger : st.color;

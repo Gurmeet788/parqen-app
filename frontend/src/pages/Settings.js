@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import {
   User, Lock, Mail, Phone, CreditCard, Bell,
@@ -64,7 +64,16 @@ function Toggle({ checked, onChange }) {
 
 export default function Settings({ user, setUser }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState('account');
+
+  // Read ?tab= URL param so Profile can deep-link to a specific tab
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tabParam = params.get('tab');
+    const validTabs = ['account', 'verification', 'security', 'preferences', 'payment', 'notifications'];
+    if (tabParam && validTabs.includes(tabParam)) setActiveTab(tabParam);
+  }, [location.search]);
   const [loading, setLoading] = useState(false);
 
   // Account info
@@ -108,6 +117,12 @@ export default function Settings({ user, setUser }) {
   const [kycLoading,   setKycLoading]   = useState(false);
   const [kycSubmitted, setKycSubmitted] = useState(false);
 
+  // Verification status — own state so it updates without depending on parent re-rendering
+  const [emailVerified, setEmailVerified] = useState(!!(user?.is_email_verified || user?.email_verified));
+  const [phoneVerified, setPhoneVerified] = useState(!!(user?.is_phone_verified || user?.phone_verified));
+  const [kycVerified,   setKycVerified]   = useState(!!(user?.kyc_verified || user?.is_id_verified));
+  const verLevel = kycVerified ? 3 : phoneVerified ? 2 : emailVerified ? 1 : 0;
+
   useEffect(() => {
     if (!user) { navigate('/login'); return; }
     setAccountForm({ username: user.username || '', fullName: user.full_name || '', email: user.email || '', phone: user.phone || '', bio: user.bio || '' });
@@ -123,13 +138,30 @@ export default function Settings({ user, setUser }) {
     } else if (user.hide_full_name !== undefined) {
       setHideFullName(!!user.hide_full_name);
     }
+    // Sync verification state whenever user prop changes
+    setEmailVerified(!!(user.is_email_verified || user.email_verified));
+    setPhoneVerified(!!(user.is_phone_verified || user.phone_verified));
+    setKycVerified(!!(user.kyc_verified || user.is_id_verified));
   }, [user]);
 
-  // Derived verification status — only true when explicitly verified, NOT just because value exists
-  const emailVerified = !!(user?.is_email_verified || user?.email_verified);
-  const phoneVerified = !!(user?.is_phone_verified || user?.phone_verified);
-  const kycVerified   = !!(user?.kyc_verified || user?.is_id_verified);
-  const verLevel = kycVerified ? 3 : phoneVerified ? 2 : emailVerified ? 1 : 0;
+  // On mount, fetch fresh profile from API and update verification state directly.
+  // This ensures status is correct even when the user prop is stale from localStorage.
+  useEffect(() => {
+    const tk = localStorage.getItem('token');
+    if (!tk) return;
+    axios.get(`${API_URL}/users/profile`, { headers: authH() })
+      .then(r => {
+        const fresh = r.data.user || r.data;
+        if (!fresh?.id) return;
+        setEmailVerified(!!(fresh.is_email_verified || fresh.email_verified));
+        setPhoneVerified(!!(fresh.is_phone_verified || fresh.phone_verified));
+        setKycVerified(!!(fresh.kyc_verified || fresh.is_id_verified));
+        if (setUser) setUser(u => ({ ...u, ...fresh }));
+        const stored = JSON.parse(localStorage.getItem('user') || '{}');
+        localStorage.setItem('user', JSON.stringify({ ...stored, ...fresh }));
+      })
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAccountUpdate = async (e) => {
     e.preventDefault(); setLoading(true);
@@ -199,6 +231,7 @@ export default function Settings({ user, setUser }) {
     try {
       await axios.post(`${API_URL}/users/verify-email-code`, { code: emailCode }, { headers: authH() });
       toast.success('Email verified! ✅');
+      setEmailVerified(true); // update local state immediately — no prop dependency
       if (setUser) setUser(u => ({ ...u, is_email_verified: true, email_verified: true }));
       const stored = JSON.parse(localStorage.getItem('user') || '{}');
       localStorage.setItem('user', JSON.stringify({ ...stored, is_email_verified: true, email_verified: true }));
@@ -225,6 +258,7 @@ export default function Settings({ user, setUser }) {
     try {
       await axios.post(`${API_URL}/users/verify-phone-otp`, { phone: accountForm.phone.trim(), otp: phoneOtp }, { headers: authH() });
       toast.success('Phone verified! ✅');
+      setPhoneVerified(true); // update local state immediately — no prop dependency
       setPhoneStep('done');
       if (setUser) setUser(u => ({ ...u, is_phone_verified: true, phone_verified: true, phone: accountForm.phone.trim() }));
       const stored = JSON.parse(localStorage.getItem('user') || '{}');
@@ -568,7 +602,7 @@ export default function Settings({ user, setUser }) {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className={`font-bold text-sm ${emailVerified ? 'text-green-800' : 'text-blue-800'}`}>Email Verification</p>
-                            <span className={`text-xs font-black px-2 py-0.5 rounded-full ${emailVerified ? 'bg-green-200 text-green-800' : 'bg-blue-200 text-blue-800'}`}>Basic</span>
+                            <span className={`text-xs font-black px-2 py-0.5 rounded-full ${emailVerified ? 'bg-green-200 text-green-800' : 'bg-blue-200 text-blue-800'}`}>{emailVerified ? '✓ Verified' : 'Basic'}</span>
                           </div>
                           <p className={`text-xs mt-0.5 ${emailVerified ? 'text-green-600' : 'text-blue-600'}`}>
                             {emailVerified ? `${maskEmail(accountForm.email)} is verified ✓` : 'Verify your email address to start trading'}
@@ -620,7 +654,7 @@ export default function Settings({ user, setUser }) {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className={`font-bold text-sm ${phoneVerified||phoneStep==='done' ? 'text-green-800' : emailVerified ? 'text-blue-800' : 'text-gray-600'}`}>Phone Number</p>
-                            <span className={`text-xs font-black px-2 py-0.5 rounded-full ${phoneVerified||phoneStep==='done' ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-600'}`}>Standard</span>
+                            <span className={`text-xs font-black px-2 py-0.5 rounded-full ${phoneVerified||phoneStep==='done' ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-600'}`}>{phoneVerified||phoneStep==='done' ? '✓ Verified' : 'Standard'}</span>
                           </div>
                           <p className={`text-xs mt-0.5 ${phoneVerified||phoneStep==='done' ? 'text-green-600' : emailVerified ? 'text-blue-600' : 'text-gray-400'}`}>
                             {phoneVerified||phoneStep==='done' ? `${accountForm.phone||'Phone'} verified ✓` : 'Verify your phone number to unlock $2,000 trade limit'}
@@ -672,7 +706,7 @@ export default function Settings({ user, setUser }) {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className={`font-bold text-sm ${kycVerified ? 'text-green-800' : phoneVerified ? 'text-blue-800' : 'text-gray-600'}`}>Identity (KYC)</p>
-                            <span className={`text-xs font-black px-2 py-0.5 rounded-full ${kycVerified ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-600'}`}>Advanced</span>
+                            <span className={`text-xs font-black px-2 py-0.5 rounded-full ${kycVerified ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-600'}`}>{kycVerified ? '✓ Verified' : 'Advanced'}</span>
                           </div>
                           <p className={`text-xs mt-0.5 ${kycVerified ? 'text-green-600' : phoneVerified ? 'text-blue-600' : 'text-gray-400'}`}>
                             {kycVerified ? 'Identity verified — unlimited trading unlocked ✓' : 'Upload your government ID + selfie for unlimited trading'}

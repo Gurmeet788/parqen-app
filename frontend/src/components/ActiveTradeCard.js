@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ThumbsUp, ThumbsDown, Clock, ArrowRight, X } from 'lucide-react';
+import { ThumbsUp, ThumbsDown, Clock, ArrowRight, X, Repeat2 } from 'lucide-react';
 import axios from 'axios';
 import CountryFlag from './CountryFlag';
 import { deriveBadge } from '../lib/badge';
@@ -31,11 +31,26 @@ function getMyId() {
   } catch { return null; }
 }
 
-// Returns effective expires_at — uses server value or derives from created_at
+// Sanitize time limit: if > 1440 (24h in minutes) it was stored as seconds — convert
+function sanitizeLimitMins(raw) {
+  const n = parseInt(raw) || 30;
+  if (n > 1440) return Math.min(480, Math.round(n / 60)); // seconds → minutes, cap 8h
+  return Math.min(480, Math.max(5, n));
+}
+
+// Returns effective expires_at — validates server value against expected deadline
 function resolveExpiresAt(expiresAt, createdAt, limitMins) {
-  if (expiresAt) return expiresAt;
-  if (createdAt) return new Date(new Date(createdAt).getTime() + (limitMins || 30) * 60 * 1000).toISOString();
-  return null;
+  const computed = createdAt
+    ? new Date(new Date(createdAt).getTime() + (limitMins || 30) * 60 * 1000).toISOString()
+    : null;
+  if (!expiresAt) return computed;
+  // If server expires_at differs from computed by more than 2× the limit, the stored value
+  // has bad data (e.g. seconds stored as minutes). Fall back to computed.
+  if (computed) {
+    const diffMs = Math.abs(new Date(expiresAt) - new Date(computed));
+    if (diffMs > (limitMins || 30) * 60 * 2000) return computed;
+  }
+  return expiresAt;
 }
 
 // MM:SS countdown
@@ -47,7 +62,7 @@ function TradeTimer({ expiresAt, timeLimitMins = 30, onExpire }) {
   const calcRemaining = () => {
     if (expiresAt) {
       const diff = Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000);
-      return Math.min(limitSecs, Math.max(0, diff));
+      return Math.max(0, diff);
     }
     // No server expiry — count down from mount time so the timer always moves
     const elapsed = Math.floor((Date.now() - mountTime.current) / 1000);
@@ -74,25 +89,26 @@ function TradeTimer({ expiresAt, timeLimitMins = 30, onExpire }) {
 
   const expired = secs === 0;
   const urgent  = !expired && secs < 300;
-  const pct     = Math.round((secs / limitSecs) * 100);
+  const pct     = Math.min(100, Math.round((secs / limitSecs) * 100));
   const mm      = String(Math.floor(secs / 60)).padStart(2, '0');
   const ss      = String(secs % 60).padStart(2, '0');
-  const color   = expired ? '#DC2626' : urgent ? '#D97706' : '#16A34A';
-  const bg      = expired ? '#FEE2E2' : urgent ? '#FEF3C7' : '#DCFCE7';
+  const color   = urgent ? '#D97706' : '#16A34A';
+  const bg      = urgent ? '#FEF3C7' : '#DCFCE7';
+
+  // When expired, remove the timer entirely (leave space clean)
+  if (expired) return null;
 
   return (
     <div className="flex flex-col items-end gap-1 flex-shrink-0">
-      <span className="inline-flex items-center gap-1 text-xs font-mono font-black px-2.5 py-1 rounded-full"
+      <span className={`inline-flex items-center gap-1 text-xs font-mono font-black px-2.5 py-1 rounded-full ${urgent ? 'animate-pulse' : ''}`}
         style={{ backgroundColor: bg, color }}>
         <Clock size={10} />
-        {expired ? 'Expired' : `${mm}:${ss}`}
+        {mm}:{ss}
       </span>
-      {!expired && (
-        <div className="w-20 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: '#E5E7EB' }}>
-          <div className="h-full rounded-full transition-all duration-1000"
-            style={{ width: `${pct}%`, backgroundColor: color }} />
-        </div>
-      )}
+      <div className="w-20 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: '#E5E7EB' }}>
+        <div className="h-full rounded-full transition-all duration-1000"
+          style={{ width: `${pct}%`, backgroundColor: color }} />
+      </div>
     </div>
   );
 }
@@ -228,10 +244,12 @@ export default function ActiveTradeCard({ trade, onExpire, pageColor }) {
   const cfg      = STATUS_CFG[trade.status] || STATUS_CFG.CREATED;
   const btnColor = pageColor || '#1B4332';
 
-  // Listing type — check nested join AND direct field
+  // Listing type — check nested join AND direct field; fall back to role when unknown
   const listingType   = trade.listing?.listing_type || trade.listing_type || trade.trade_type || '';
-  const market        = getMarketInfo(listingType);
-  const timeLimitMins = trade.listing?.time_limit || trade.time_limit || 30;
+  const market        = listingType
+    ? getMarketInfo(listingType)
+    : { label: isBuyer ? 'BUY TRADE' : 'SELL TRADE', color: isBuyer ? '#1B4332' : '#D97706', bg: isBuyer ? '#DCFCE7' : '#FEF3C7' };
+  const timeLimitMins = sanitizeLimitMins(trade.listing?.time_limit || trade.time_limit || 30);
 
   // Timer: use server expires_at, fall back to created_at + limit
   const effectiveExpiresAt = resolveExpiresAt(trade.expires_at, trade.created_at, timeLimitMins);
@@ -250,9 +268,10 @@ export default function ActiveTradeCard({ trade, onExpire, pageColor }) {
   const youRecvNote = isBuyer ? 'Bitcoin' : `via ${trade.payment_method || trade.listing?.payment_method || '—'}`;
   const roleLabel   = isBuyer ? 'You are the Buyer' : 'You are the Seller';
 
-  const pos = parseInt(cp.positive_feedback || 0);
-  const neg = parseInt(cp.negative_feedback || 0);
-  const cc  = (cp.country || 'GH').toLowerCase();
+  const pos    = parseInt(cp.positive_feedback || 0);
+  const neg    = parseInt(cp.negative_feedback || 0);
+  const cpTrades = parseInt(cp.total_trades || cp.trade_count || 0);
+  const cc     = (cp.country || 'GH').toLowerCase();
 
   return (
     <>
@@ -313,6 +332,9 @@ export default function ActiveTradeCard({ trade, onExpire, pageColor }) {
             </span>
           </div>
           <div className="flex items-center gap-2.5 flex-shrink-0">
+            <span className="flex items-center gap-0.5 text-xs font-bold" style={{ color: '#64748B' }}>
+              <Repeat2 size={10} />{cpTrades}
+            </span>
             <span className="flex items-center gap-0.5 text-xs font-bold" style={{ color: '#16A34A' }}>
               <ThumbsUp size={10} />{pos}
             </span>

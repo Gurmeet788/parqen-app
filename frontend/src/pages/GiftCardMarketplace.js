@@ -5,7 +5,7 @@ import axios from 'axios';
 import {
   CheckCircle, RefreshCw, AlertTriangle,
   BadgeCheck, Timer, X, Info, Shield,
-  ArrowRight, PlusCircle, Filter,
+  ArrowRight, PlusCircle, Filter, MapPin, Heart,
   Home, Wallet, User, Gift, Bitcoin,
   ChevronDown, CreditCard, ThumbsUp, ThumbsDown, Repeat2,
   Phone, Mail, Ban
@@ -389,167 +389,390 @@ function GCCard({listing, btcPriceUSD, onViewSeller, onTrade}) {
 
 // ── Seller Modal ──────────────────────────────────────────────────────────────
 function SellerModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
-  const [tab, setTab] = useState('rules');
+  const [tab,     setTab]     = useState('overview');
+  const [reviews, setReviews] = useState([]);
+  const [rvLoad,  setRvLoad]  = useState(false);
   const {rates:USD_RATES} = useRates();
-  if(!seller) return null;
+
   const u      = getUser(seller);
   const badge  = deriveBadge(u);
   const seen   = getLastSeen(u);
   const trades = getTrades(u);
-  const rating = parseFloat(u.average_rating||0);
-  const fb     = parseInt(u.total_feedback_count??u.feedback_count??0);
-  const brand  = getBrand(listing||{});
-  const fv     = getFaceVal(listing||{});
-  const cur    = listing?.currency||'USD';
-  const sym    = listing?.currency_symbol||CUR_SYM[cur]||'$';
-  const usdRate= USD_RATES[cur]||1;
-  const rate   = getRateUSD(listing||{},btcPriceUSD||68000)*usdRate;
-  const margin = parseFloat(listing?.margin||0);
-  const ccCode = (u?.country_code||u?.country||'gh').toLowerCase();
+  const rating = parseFloat(u.average_rating || 0);
+  const brand  = getBrand(listing || {});
+  const fv     = getFaceVal(listing || {});
+  const cur    = listing?.currency || 'USD';
+  const sym    = listing?.currency_symbol || CUR_SYM[cur] || '$';
+  const usdRate = USD_RATES[cur] || 1;
+  const rate    = getRateUSD(listing || {}, btcPriceUSD || 68000) * usdRate;
+  const margin  = parseFloat(listing?.margin || 0);
+
+  const phoneOk  = !!(u.is_phone_verified || u.phone_verified);
+  const emailOk  = !!(u.is_email_verified || u.email_verified);
+  const kycOk    = !!(u.is_id_verified || u.kyc_verified);
+  const pos      = parseInt(u.positive_feedback || 0);
+  const neg      = parseInt(u.negative_feedback || 0);
+  const total    = pos + neg;
+  const trust    = total > 0 ? Math.round(pos / total * 100) : trades > 0 ? 100 : 0;
+  const compRate = parseFloat(u.completion_rate || 0);
+  const blocks   = parseInt(u.blocks_received || u.blocks_count || 0);
+  const ccCode   = (u.country || 'gh').slice(0, 2).toLowerCase();
+  const avgReply = u.avg_response_time || u.avg_reply_minutes;
+  const payMins  = parseFloat(u.avg_payment_time || u.avg_response_time || u.avg_reply_minutes || 0);
+  const avgPayDisplay = payMins > 0 ? (() => { const m=Math.floor(payMins),s=Math.round((payMins-m)*60); return s>0?`${m}m ${s}s`:m>0?`${m}m`:`${s}s`; })() : '—';
+  const locCC    = (u.country || '').slice(0,2).toUpperCase() || ccCode.toUpperCase();
+  const locEmoji = locCC.length===2 ? locCC.replace(/./g,c=>String.fromCodePoint(0x1F1E0+c.charCodeAt(0)-65)) : '🌍';
+
+  useEffect(() => {
+    if (tab !== 'feedback' || !u.id || reviews.length) return;
+    setRvLoad(true);
+    axios.get(`${API_URL}/users/${u.id}/reviews`)
+      .then(r => setReviews(r.data.reviews || []))
+      .catch(() => {})
+      .finally(() => setRvLoad(false));
+  }, [tab, u.id]);
+
+  if (!seller) return null;
+
+  const TABS = [
+    { id:'overview', label:'👤 Profile'           },
+    { id:'feedback', label:`💬 Reviews (${total})`},
+    { id:'rules',    label:'📋 Rules'              },
+    { id:'offer',    label:'📊 Offer'              },
+  ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4 overflow-hidden"
-      style={{backgroundColor:'rgba(0,0,0,0.55)',backdropFilter:'blur(4px)'}}>
-      <div className="bg-white w-full md:max-w-md rounded-t-2xl md:rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
-        style={{border:`1px solid ${C.g200}`,animation:'slideUp .25s ease'}}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+      style={{backgroundColor:'rgba(0,0,0,0.6)', backdropFilter:'blur(6px)'}}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+
+      <div className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl shadow-2xl flex flex-col mb-16 sm:mb-0"
+        style={{maxHeight:'92dvh', border:`1px solid ${C.g200}`, animation:'slideUp .28s cubic-bezier(0.34,1.56,0.64,1)'}}>
+        <style>{`@keyframes slideUp{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}`}</style>
+
+        {/* Drag handle */}
+        <div className="flex justify-center pt-2.5 pb-1 flex-shrink-0 sm:hidden">
+          <div className="w-10 h-1 rounded-full" style={{backgroundColor:C.g200}}/>
+        </div>
 
         {/* Header */}
-        <div className="relative p-5 text-white flex-shrink-0"
-          style={{background:`linear-gradient(135deg,${C.forest},${C.mint})`}}>
+        <div className="relative px-4 pt-3 pb-4 flex-shrink-0"
+          style={{background:`linear-gradient(135deg,${C.forest} 0%,${C.mint} 100%)`}}>
           <button onClick={onClose}
-            className="absolute top-3 right-3 w-7 h-7 rounded-full bg-white/20 flex items-center justify-center">
-            <X size={14} className="text-white"/>
+            className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center"
+            style={{backgroundColor:'rgba(255,255,255,0.18)'}}>
+            <X size={15} className="text-white"/>
           </button>
-          {/* Brand tag */}
+
+          {/* Gift card brand tag */}
           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg mb-3"
             style={{backgroundColor:'rgba(255,255,255,0.15)'}}>
             <CreditCard size={11} className="text-white/70"/>
             <span className="text-xs font-black text-white">{brand}</span>
-            {fv&&<span className="text-xs font-black text-white/70">${fv}</span>}
+            {fv && <span className="text-xs font-black text-white/70">${fv}</span>}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 mb-4">
             <div className="relative flex-shrink-0">
-              <Avatar user={u} size={52} radius="rounded-xl"/>
-              <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white"
-                style={{backgroundColor:seen.online?C.online:C.g400}}/>
+              <Avatar user={u} size={56} radius="rounded-2xl"/>
+              <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white"
+                style={{backgroundColor: seen.online ? C.online : C.g400}}/>
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <h3 className="font-black text-base leading-tight">{u.username||'Seller'}</h3>
-                {isVerified(u)&&<BadgeCheck size={14} style={{color:'#99F6E4'}}/>}
+              <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                <span className="font-black text-white text-base leading-tight truncate">{u.username || 'Seller'}</span>
+                {kycOk && <BadgeCheck size={15} style={{color:'#93C5FD', flexShrink:0}}/>}
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
                 <CountryFlag countryCode={ccCode} className="w-4 h-3 rounded-sm"/>
+                <span className="text-white/60 text-xs">{seen.online ? '🟢 Active now' : seen.label}</span>
               </div>
-              <div className="flex items-center gap-1.5 mt-1">
-                <span className={`inline-flex items-center gap-px font-medium px-1 py-0 rounded-full border ${badge.animate ? 'shadow-md' : ''}`}
-                  style={{background:badge.bg, borderColor:badge.borderColor, fontSize:'8px', boxShadow: badge.glow ? `0 0 8px ${badge.glow}` : undefined}}>
-                  <span style={{color:badge.iconColor||badge.textColor}}>{badge.icon}</span>
-                  <span style={{color:badge.textColor}}>{badge.label}</span>
-                </span>
-                <span className="text-xs text-white/60">{seen.label}</span>
-              </div>
-              <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-bold"
-                  style={{backgroundColor:'rgba(255,255,255,0.12)', color:'rgba(255,255,255,0.85)'}}>
-                  <Repeat2 size={9} strokeWidth={2.5}/>{fmt(trades)} Trades
-                </span>
-              </div>
+              <span className={`inline-flex items-center gap-px px-2 py-0.5 rounded-full border text-xs font-black ${badge.animate ? 'shadow' : ''}`}
+                style={{background:badge.bg, borderColor:badge.borderColor, boxShadow:badge.glow?`0 0 6px ${badge.glow}`:undefined}}>
+                <span style={{color:badge.iconColor||badge.textColor}}>{badge.icon}</span>
+                <span style={{color:badge.textColor}}>{badge.label}</span>
+              </span>
             </div>
           </div>
 
-          {(()=>{
-            const phoneOk = !!(u.is_phone_verified||u.phone_verified||u.phone);
-            const emailOk = !!(u.is_email_verified||u.email_verified||u.email);
-            const pos = parseInt(u.positive_feedback||0);
-            const neg = parseInt(u.negative_feedback||0);
-            const total = pos + neg;
-            const trust = total > 0 ? Math.round(pos/total*100) : trades > 0 ? 100 : 0;
-            const blocks = parseInt(u.blocks_count||u.blocked_count||0);
-            const trustColor = trust>=80?'#86EFAC':trust>=50?'#FDE68A':'#FCA5A5';
-            const items = [
-              {icon:Phone,  value:phoneOk?'✓ Verified':'✗ Not set', label:'Phone',       color:phoneOk?'#86EFAC':'#FCA5A5'},
-              {icon:Mail,   value:emailOk?'✓ Verified':'✗ Not set', label:'Email',       color:emailOk?'#86EFAC':'#FCA5A5'},
-              {icon:Shield, value:`${trust}%`,                       label:'Trust Score', color:trustColor},
-              {icon:Ban,    value:fmt(blocks),                       label:'Blocks',      color:blocks>0?'#FCA5A5':'rgba(255,255,255,0.65)'},
-            ];
-            return (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 pt-4 border-t border-white/20">
-                {items.map(({icon:Icon,value,label,color})=>(
-                  <div key={label} className="flex items-center gap-2 bg-white/10 rounded-xl px-2.5 py-2.5 min-w-0 overflow-hidden">
-                    <Icon size={13} style={{color,flexShrink:0}}/>
-                    <div className="min-w-0">
-                      <p className="text-white font-black text-xs leading-tight truncate">{value}</p>
-                      <p className="text-white/50 text-xs mt-0.5 leading-tight truncate">{label}</p>
-                    </div>
-                  </div>
-                ))}
+          {/* Stats 2×2 grid */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
+              <span className="text-sm flex-shrink-0">{seen.online ? '🟢' : '🕐'}</span>
+              <div className="min-w-0">
+                <p className="text-white font-black text-xs leading-tight truncate">{seen.online ? 'Active now' : seen.label}</p>
+                <p className="text-white/50 text-xs leading-tight">Activity</p>
               </div>
-            );
-          })()}
+            </div>
+            <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
+              <MapPin size={14} style={{color:'rgba(255,255,255,0.7)', flexShrink:0}}/>
+              <div className="min-w-0">
+                <p className="text-white font-black text-xs leading-tight truncate">{locEmoji} {locCC || '—'}</p>
+                <p className="text-white/50 text-xs leading-tight">Location</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
+              <Timer size={14} style={{color:'#FDE68A', flexShrink:0}}/>
+              <div className="min-w-0">
+                <p className="text-white font-black text-xs leading-tight">{avgPayDisplay}</p>
+                <p className="text-white/50 text-xs leading-tight">Avg. payment</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
+              <Heart size={14} style={{color: pos > 0 ? '#86EFAC' : 'rgba(255,255,255,0.5)', flexShrink:0}}/>
+              <div className="min-w-0">
+                <p className="text-white font-black text-xs leading-tight">{fmt(pos)} users</p>
+                <p className="text-white/50 text-xs leading-tight">Trusted by</p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b flex-shrink-0" style={{borderColor:C.g200}}>
-          {[['rules','📋 Trade Rules'],['offer','📊 Offer Details']].map(([t,l])=>(
-            <button key={t} onClick={()=>setTab(t)}
-              className="flex-1 py-2.5 text-xs font-bold transition"
+        <div className="flex border-b flex-shrink-0 overflow-x-auto" style={{borderColor:C.g200}}>
+          {TABS.map(({id, label}) => (
+            <button key={id} onClick={() => setTab(id)}
+              className="flex-shrink-0 px-3 py-2.5 text-xs font-bold whitespace-nowrap transition"
               style={{
-                color:tab===t?C.green:C.g500,
-                borderBottom:tab===t?`2px solid ${C.green}`:'2px solid transparent',
-                backgroundColor:tab===t?`${C.green}08`:'transparent'
+                color: tab===id ? C.green : C.g500,
+                borderBottom: tab===id ? `2px solid ${C.green}` : '2px solid transparent',
+                backgroundColor: tab===id ? `${C.green}08` : 'transparent',
               }}>
-              {l}
+              {label}
             </button>
           ))}
         </div>
 
-        <div className="p-4 overflow-y-auto flex-1">
-          {tab==='rules'?(
+        {/* Tab content */}
+        <div className="flex-1 overflow-y-auto p-4" style={{WebkitOverflowScrolling:'touch', minHeight:0}}>
+
+          {/* OVERVIEW */}
+          {tab==='overview' && (
             <div className="space-y-3">
-              <div className="p-3 rounded-xl text-xs leading-relaxed whitespace-pre-wrap"
-                style={{backgroundColor:C.mist,color:C.g700,border:`1px solid ${C.g200}`}}>
-                {listing?.trade_instructions||listing?.description||
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  {label:'Trades',     value:fmt(trades),               sub:'completed'},
+                  {label:'Rating',     value:`⭐ ${rating.toFixed(1)}`, sub:'of 5.0'},
+                  {label:'Completion', value:`${compRate.toFixed(0)}%`, sub:'rate'},
+                ].map(({label,value,sub}) => (
+                  <div key={label} className="rounded-xl p-3 text-center"
+                    style={{backgroundColor:C.mist, border:`1px solid ${C.g200}`}}>
+                    <p className="font-black text-sm" style={{color:C.forest}}>{value}</p>
+                    <p className="text-xs font-semibold mt-0.5" style={{color:C.g500}}>{label}</p>
+                    <p className="text-xs" style={{color:C.g400}}>{sub}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1 flex items-center gap-2 rounded-xl px-3 py-2.5"
+                  style={{backgroundColor:'#F0FDF4', border:'1px solid #86EFAC'}}>
+                  <ThumbsUp size={14} style={{color:'#16A34A', flexShrink:0}}/>
+                  <div>
+                    <p className="font-black text-sm" style={{color:'#16A34A'}}>{fmt(pos)}</p>
+                    <p className="text-xs" style={{color:'#166534'}}>Positive</p>
+                  </div>
+                </div>
+                <div className="flex-1 flex items-center gap-2 rounded-xl px-3 py-2.5"
+                  style={{backgroundColor:'#FEF2F2', border:'1px solid #FCA5A5'}}>
+                  <ThumbsDown size={14} style={{color:'#DC2626', flexShrink:0}}/>
+                  <div>
+                    <p className="font-black text-sm" style={{color:'#DC2626'}}>{fmt(neg)}</p>
+                    <p className="text-xs" style={{color:'#991B1B'}}>Negative</p>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl overflow-hidden" style={{border:`1px solid ${C.g200}`}}>
+                <p className="text-xs font-black px-3 py-2 uppercase tracking-wider"
+                  style={{color:C.g500, backgroundColor:C.g50}}>Verification</p>
+                {[
+                  {label:'Phone Number', ok:phoneOk, icon:'📱'},
+                  {label:'Email Address',ok:emailOk, icon:'📧'},
+                  {label:'ID / KYC',     ok:kycOk,   icon:'🪪'},
+                ].map(({label,ok,icon}) => (
+                  <div key={label} className="flex items-center justify-between px-3 py-2.5 border-t"
+                    style={{borderColor:C.g100}}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">{icon}</span>
+                      <span className="text-xs font-semibold" style={{color:C.g700}}>{label}</span>
+                    </div>
+                    <span className="text-xs font-black px-2.5 py-1 rounded-full"
+                      style={{backgroundColor: ok ? '#F0FDF4' : '#FEF2F2', color: ok ? '#16A34A' : '#DC2626'}}>
+                      {ok ? '✓ Verified' : '✗ Not verified'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {u.bio && (
+                <div className="rounded-xl p-3" style={{backgroundColor:C.g50, border:`1px solid ${C.g200}`}}>
+                  <p className="text-xs font-bold mb-1" style={{color:C.g500}}>About</p>
+                  <p className="text-xs leading-relaxed" style={{color:C.g700}}>{u.bio}</p>
+                </div>
+              )}
+              <div className="rounded-xl overflow-hidden" style={{border:`1px solid ${C.g200}`}}>
+                {[
+                  avgReply ? {label:'Avg. Response', value:`~${Math.round(avgReply)} min`} : null,
+                  {label:'Country', value: (() => {
+                    const cc = (u.country||'').slice(0,2).toUpperCase();
+                    if (!cc) return '—';
+                    const flag = cc.replace(/./g,c=>String.fromCodePoint(0x1F1E0+c.charCodeAt(0)-65));
+                    return `${flag} ${u.country || cc}`;
+                  })()},
+                  {label:'Member since', value: u.created_at ? new Date(u.created_at).toLocaleDateString('en-US',{month:'short',year:'numeric'}) : '—'},
+                ].filter(Boolean).map(({label,value}) => (
+                  <div key={label} className="flex items-center justify-between px-3 py-2.5 border-b last:border-0"
+                    style={{borderColor:C.g100}}>
+                    <span className="text-xs font-semibold" style={{color:C.g500}}>{label}</span>
+                    <span className="text-xs font-black" style={{color:C.g800}}>{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* FEEDBACK */}
+          {tab==='feedback' && (
+            <div className="space-y-3">
+              <div className="flex gap-2 p-3 rounded-xl"
+                style={{backgroundColor:C.mist, border:`1px solid ${C.g200}`}}>
+                <div className="text-center px-3">
+                  <p className="text-2xl font-black" style={{color:C.forest}}>{rating.toFixed(1)}</p>
+                  <p className="text-xs" style={{color:C.g400}}>Rating</p>
+                </div>
+                <div className="w-px" style={{backgroundColor:C.g200}}/>
+                <div className="flex-1 flex items-center gap-3 px-2">
+                  <div className="text-center flex-1">
+                    <p className="font-black text-sm" style={{color:'#16A34A'}}>{fmt(pos)}</p>
+                    <p className="text-xs" style={{color:C.g400}}>👍 Positive</p>
+                  </div>
+                  <div className="text-center flex-1">
+                    <p className="font-black text-sm" style={{color:'#DC2626'}}>{fmt(neg)}</p>
+                    <p className="text-xs" style={{color:C.g400}}>👎 Negative</p>
+                  </div>
+                  <div className="text-center flex-1">
+                    <p className="font-black text-sm" style={{color:C.forest}}>{trust}%</p>
+                    <p className="text-xs" style={{color:C.g400}}>Trust</p>
+                  </div>
+                </div>
+              </div>
+              {rvLoad ? (
+                <div className="space-y-2">
+                  {[1,2,3].map(i=>(
+                    <div key={i} className="rounded-xl p-3 border animate-pulse" style={{borderColor:C.g200}}>
+                      <div className="flex gap-2 mb-2">
+                        <div className="w-7 h-7 rounded-full" style={{backgroundColor:C.g200}}/>
+                        <div className="flex-1 space-y-1.5">
+                          <div className="h-2.5 rounded w-1/3" style={{backgroundColor:C.g200}}/>
+                          <div className="h-2 rounded w-1/4" style={{backgroundColor:C.g100}}/>
+                        </div>
+                      </div>
+                      <div className="h-2.5 rounded w-4/5" style={{backgroundColor:C.g100}}/>
+                    </div>
+                  ))}
+                </div>
+              ) : reviews.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-3xl mb-2">💬</p>
+                  <p className="font-bold text-sm" style={{color:C.g700}}>No reviews yet</p>
+                  <p className="text-xs mt-1" style={{color:C.g400}}>Be the first to trade with this seller</p>
+                </div>
+              ) : (
+                reviews.slice(0, 20).map((rv, i) => {
+                  const isPos = rv.rating >= 4;
+                  const ago = rv.created_at ? (() => {
+                    const s = (Date.now()-new Date(rv.created_at))/1000;
+                    if(s<3600) return `${~~(s/60)}m ago`;
+                    if(s<86400) return `${~~(s/3600)}h ago`;
+                    return `${~~(s/86400)}d ago`;
+                  })() : '';
+                  return (
+                    <div key={i} className="rounded-xl border p-3"
+                      style={{borderColor: isPos ? '#86EFAC' : '#FCA5A5', backgroundColor: isPos ? '#F0FDF4' : '#FEF2F2'}}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-black text-white flex-shrink-0"
+                            style={{backgroundColor: isPos ? '#16A34A' : '#DC2626'}}>
+                            {isPos ? '👍' : '👎'}
+                          </div>
+                          <span className="text-xs font-black" style={{color: isPos ? '#166534' : '#991B1B'}}>
+                            {rv.reviewer?.username || 'Anonymous'}
+                          </span>
+                        </div>
+                        <span className="text-xs" style={{color:C.g400}}>{ago}</span>
+                      </div>
+                      {rv.comment && (
+                        <p className="text-xs leading-relaxed pl-8" style={{color: isPos ? '#14532D' : '#7F1D1D'}}>
+                          "{rv.comment}"
+                        </p>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+
+          {/* TRADE RULES */}
+          {tab==='rules' && (
+            <div className="space-y-3">
+              <div className="p-3.5 rounded-xl text-sm leading-relaxed whitespace-pre-wrap"
+                style={{backgroundColor:C.mist, color:C.g700, border:`1px solid ${C.g200}`}}>
+                {listing?.trade_instructions || listing?.listing_terms || listing?.description ||
                   'Send the gift card code and PIN in the trade chat. Wait for buyer confirmation before release.'}
               </div>
-              <div className="flex items-center gap-2 p-2.5 rounded-xl"
-                style={{backgroundColor:'#FFFBEB',border:'1px solid #FDE68A'}}>
-                <Timer size={12} style={{color:C.warn,flexShrink:0}}/>
+              <div className="flex items-center gap-2.5 p-3 rounded-xl"
+                style={{backgroundColor:'#FFFBEB', border:'1px solid #FDE68A'}}>
+                <Timer size={14} style={{color:C.warn, flexShrink:0}}/>
                 <p className="text-xs font-bold" style={{color:'#92400E'}}>
                   Time limit: {listing?.time_limit||30} min — auto-cancels if not completed
                 </p>
               </div>
-              <div className="flex items-start gap-2 p-2.5 rounded-xl" style={{backgroundColor:'#FEF2F2'}}>
-                <AlertTriangle size={11} className="flex-shrink-0 mt-0.5" style={{color:C.danger}}/>
-                <p className="text-xs text-red-600">Only share card codes inside the active trade chat. Escrow protects both parties.</p>
+              <div className="flex items-start gap-2.5 p-3 rounded-xl"
+                style={{backgroundColor:'#FEF2F2', border:'1px solid #FCA5A5'}}>
+                <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" style={{color:C.danger}}/>
+                <p className="text-xs leading-relaxed" style={{color:'#991B1B'}}>
+                  Only share card codes inside the active trade chat. Escrow protects both parties.
+                </p>
               </div>
             </div>
-          ):(
-            <div className="space-y-1.5">
+          )}
+
+          {/* OFFER DETAILS */}
+          {tab==='offer' && (
+            <div className="rounded-xl overflow-hidden" style={{border:`1px solid ${C.g200}`}}>
               {[
-                {label:'Card Brand', value:brand},
-                {label:'Face Value', value:fv?`$${fv} USD`:'Varies'},
-                {label:'Payment',    value:listing?.payment_method||'—'},
-                {label:'Rate / BTC', value:`${sym}${fmt(rate)} ${cur}`},
-                {label:'Margin',     value:margin===0?'Market rate':margin>0?`+${margin}% above market`:`${margin}% below market`},
-                {label:'Time limit', value:`${listing?.time_limit||30} minutes`},
-                {label:'Country',    value:listing?.country_name||u.country||'—'},
-              ].map(({label,value})=>(
-                <div key={label} className="flex justify-between text-xs py-1.5 border-b last:border-0"
+                {label:'Card Brand',     value:brand},
+                {label:'Face Value',     value:fv ? `$${fv} USD` : 'Varies'},
+                {label:'Payment Method', value:listing?.payment_method||'—'},
+                {label:'Rate / BTC',     value:`${sym}${fmt(rate,0)} ${cur}`},
+                {label:'Margin',         value:margin===0?'At market':margin>0?`+${margin}% above market`:`${margin}% below market`},
+                {label:'Time Limit',     value:`${listing?.time_limit||30} minutes`},
+                {label:'Country',        value: (() => {
+                  const raw = listing?.country_name || u.country || '';
+                  if (!raw) return '—';
+                  const cc = raw.slice(0,2).toUpperCase();
+                  const flag = cc.replace(/./g,c=>String.fromCodePoint(0x1F1E0+c.charCodeAt(0)-65));
+                  return `${flag} ${raw}`;
+                })()},
+              ].map(({label,value}) => (
+                <div key={label} className="flex items-center justify-between px-3.5 py-3 border-b last:border-0"
                   style={{borderColor:C.g100}}>
-                  <span className="font-semibold" style={{color:C.g500}}>{label}</span>
-                  <span className="font-black" style={{color:C.g800}}>{value}</span>
+                  <span className="text-xs font-semibold" style={{color:C.g500}}>{label}</span>
+                  <span className="text-xs font-black text-right ml-4" style={{color:C.g800, maxWidth:'60%'}}>{value}</span>
                 </div>
               ))}
             </div>
           )}
         </div>
 
-        <div className="p-4 pt-0 flex gap-2 flex-shrink-0">
+        {/* Footer actions */}
+        <div className="p-4 flex gap-3 flex-shrink-0 border-t" style={{borderColor:C.g200}}>
           <button onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl border text-sm font-semibold hover:bg-gray-50"
-            style={{borderColor:C.g200,color:C.g600}}>Close</button>
-          <button onClick={()=>{onClose();onTrade();}}
-            className="flex-1 py-2.5 rounded-xl text-white text-sm font-black flex items-center justify-center gap-1.5 active:scale-[0.98] transition"
+            className="flex-1 py-3 rounded-2xl border text-sm font-bold hover:bg-gray-50 transition"
+            style={{borderColor:C.g200, color:C.g600}}>
+            Close
+          </button>
+          <button onClick={() => { onClose(); onTrade(); }}
+            className="flex-1 py-3 rounded-2xl text-white text-sm font-black flex items-center justify-center gap-2 shadow-md active:scale-[0.98] transition"
             style={{backgroundColor:C.forest}}>
             Trade Now <ArrowRight size={14}/>
           </button>

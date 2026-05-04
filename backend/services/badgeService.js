@@ -43,7 +43,7 @@ const ACHIEVEMENT_BADGES = [
 ];
 
 // Trust badge tier thresholds (auto-upgrade only, never downgrade)
-const TRUST_TIERS = ['BEGINNER', 'PRO', 'EXPERT', 'AMBASSADOR', 'LEGEND'];
+const TRUST_TIERS = ['BEGINNER', 'ACTIVE', 'PRO', 'EXPERT', 'AMBASSADOR', 'LEGEND'];
 
 function computeTrustTier(trades) {
   const n = parseInt(trades || 0);
@@ -51,6 +51,7 @@ function computeTrustTier(trades) {
   if (n >= 200) return 'AMBASSADOR';
   if (n >= 100) return 'EXPERT';
   if (n >= 25)  return 'PRO';
+  if (n >= 5)   return 'ACTIVE';
   return 'BEGINNER';
 }
 

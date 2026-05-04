@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useParams, useNavigate } from 'react-router-dom';
 import { RatesProvider } from './contexts/RatesContext';
 import axios from 'axios';
 import { ToastContainer, toast } from 'react-toastify';
@@ -64,6 +64,25 @@ function PageLoader() {
 
 // API Base URL
 export const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+
+// Resolves /ref/:username → /signup?ref=CODE by looking up the real referral code
+function RefRedirect() {
+  const { username } = useParams();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    axios.get(`${API_URL}/ref/${encodeURIComponent(username)}`)
+      .then(({ data }) => {
+        const code = data.referral_code || username;
+        navigate(`/signup?ref=${encodeURIComponent(code)}`, { replace: true });
+      })
+      .catch(() => {
+        navigate(`/signup?ref=${encodeURIComponent(username)}`, { replace: true });
+      });
+  }, [username, navigate]);
+
+  return <PageLoader />;
+}
 
 function AppShell({ children }) {
   const location = useLocation();
@@ -252,6 +271,9 @@ function App() {
           <Route path="/admin" element={user?.is_admin ? <AdminDashboard user={user} /> : <Navigate to="/" />} />
           <Route path="/moderator" element={<ModeratorDashboard user={user} />} />
           <Route path="/escrow/:id" element={user ? <EscrowVerification user={user} /> : <Navigate to="/login" />} />
+
+          {/* Referral short-links — /ref/username → /signup?ref=CODE */}
+          <Route path="/ref/:username" element={<RefRedirect />} />
 
           {/* Catch all - redirect to home */}
           <Route path="*" element={<Navigate to="/" />} />

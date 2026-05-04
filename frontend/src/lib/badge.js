@@ -16,11 +16,11 @@ export function deriveBadge(u) {
     if (TRUST_MAP[b]) return TRUST_MAP[b];
   }
   const t = parseInt(u?.total_trades ?? u?.trade_count ?? 0);
-  const r = parseFloat(u?.average_rating ?? 0);
-  if (t >= 500 && r >= 4.8) return TRUST_MAP.LEGEND;
-  if (t >= 200 && r >= 4.5) return TRUST_MAP.EXPERT;
-  if (t >= 50  && r >= 4.0) return TRUST_MAP.PRO;
-  if (t >= 5)               return TRUST_MAP.ACTIVE;
+  if (t >= 500) return TRUST_MAP.LEGEND;
+  if (t >= 200) return TRUST_MAP.AMBASSADOR;
+  if (t >= 100) return TRUST_MAP.EXPERT;
+  if (t >= 25)  return TRUST_MAP.PRO;
+  if (t >= 5)   return TRUST_MAP.ACTIVE;
   return TRUST_MAP.BEGINNER;
 }
 

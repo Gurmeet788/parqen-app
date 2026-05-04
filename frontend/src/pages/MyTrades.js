@@ -84,12 +84,14 @@ function ActiveAlert({trade, userId, onDismiss, onExpire}) {
   const typeColor  = isDisputed ? C.danger : isGift ? C.purple : isBuyer ? C.amber : C.green;
   const cpFlag     = flag(cp?.country_code||trade.listing?.country_code||'');
 
-  // Countdown — hard 30-minute limit
+  // Countdown — use expires_at from DB (authoritative). Fallback to created_at + 30 min.
   const [timeLeft, setTimeLeft] = React.useState(null);
   const expiredRef = React.useRef(false);
   React.useEffect(()=>{
     if(!trade.created_at) return;
-    const deadline = new Date(trade.created_at).getTime() + 30*60*1000;
+    const deadline = trade.expires_at
+      ? new Date(trade.expires_at).getTime()
+      : new Date(trade.created_at).getTime() + 30*60*1000;
     const tick = ()=>{
       const rem = Math.max(0, Math.floor((deadline - Date.now())/1000));
       setTimeLeft(rem);
@@ -105,7 +107,7 @@ function ActiveAlert({trade, userId, onDismiss, onExpire}) {
     tick();
     const iv = setInterval(tick,1000);
     return()=>clearInterval(iv);
-  },[trade.created_at, trade.id]);
+  },[trade.expires_at, trade.created_at, trade.id]);
 
   const fmtTimer = s=>{
     if(s===null||s===undefined)return'--:--';
@@ -418,12 +420,15 @@ function ActiveTradeModal({ trades, userId, onClose }) {
 export default function MyTrades({user}) {
   const navigate  = useNavigate();
   const _cache = () => { try{const c=JSON.parse(sessionStorage.getItem('praqen_trades')||'null');return c&&Date.now()-c.ts<60000?c.data:null;}catch{return null;} };
-  const [trades,   setTrades]   = useState(()=>_cache()||[]);
-  const [loading,  setLoading]  = useState(()=>!_cache());
-  const [filter,   setFilter]   = useState('all');
-  const [search,   setSearch]   = useState('');
-  const [dismissed,setDismissed]= useState(new Set());
-  const [showModal, setShowModal]= useState(false);
+  const [trades,    setTrades]    = useState(()=>_cache()||[]);
+  const [loading,   setLoading]   = useState(()=>!_cache());
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page,      setPage]      = useState(1);
+  const [hasMore,   setHasMore]   = useState(false);
+  const [filter,    setFilter]    = useState('all');
+  const [search,    setSearch]    = useState('');
+  const [dismissed, setDismissed] = useState(new Set());
+  const [showModal, setShowModal] = useState(false);
   const timerRef = useRef(null);
 
   // sessionStorage helpers — same key as ActiveTradeBanner so both share seen state
@@ -456,22 +461,44 @@ export default function MyTrades({user}) {
     }
   },[trades]);
 
+  const LIMIT = 30;
+
   const load = async(showSpinner = false)=>{
     if (showSpinner) setLoading(true);
     try{
-      const r = await axios.get(`${API_URL}/my-trades`,{headers:authH()});
+      const r = await axios.get(`${API_URL}/my-trades?page=1&limit=${LIMIT}`,{headers:authH()});
       const data = r.data.trades||[];
+      const total = r.data.total||0;
       setTrades(data);
+      setPage(1);
+      setHasMore(total > LIMIT);
       try { sessionStorage.setItem('praqen_trades', JSON.stringify({data, ts:Date.now()})); } catch {}
     }catch(e){ console.error('Failed to load trades',e); }
     finally{ setLoading(false); }
   };
 
+  const loadMore = async()=>{
+    if (loadingMore) return;
+    setLoadingMore(true);
+    try{
+      const nextPage = page + 1;
+      const r = await axios.get(`${API_URL}/my-trades?page=${nextPage}&limit=${LIMIT}`,{headers:authH()});
+      const more = r.data.trades||[];
+      const total = r.data.total||0;
+      setTrades(prev => [...prev, ...more]);
+      setPage(nextPage);
+      setHasMore(nextPage * LIMIT < total);
+    }catch{}
+    finally{ setLoadingMore(false); }
+  };
+
   const silentRefresh = async()=>{
     try{
-      const r = await axios.get(`${API_URL}/my-trades`,{headers:authH()});
+      const r = await axios.get(`${API_URL}/my-trades?page=1&limit=${LIMIT}`,{headers:authH()});
       const data = r.data.trades||[];
+      const total = r.data.total||0;
       setTrades(data);
+      setHasMore(total > LIMIT);
       try { sessionStorage.setItem('praqen_trades', JSON.stringify({data, ts:Date.now()})); } catch {}
     }catch{}
   };
@@ -692,6 +719,19 @@ export default function MyTrades({user}) {
                   </React.Fragment>
                 );
               })}
+          </div>
+        )}
+
+        {/* Load More */}
+        {hasMore&&filter==='all'&&!search&&(
+          <div className="flex justify-center mt-3">
+            <button onClick={loadMore} disabled={loadingMore}
+              className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-sm border-2 transition hover:opacity-80"
+              style={{borderColor:C.green,color:C.green,backgroundColor:'#fff'}}>
+              {loadingMore
+                ? <><RefreshCw size={14} className="animate-spin"/> Loading…</>
+                : <><Activity size={14}/> Load More Trades</>}
+            </button>
           </div>
         )}
 

@@ -21,13 +21,17 @@ const C = {
 /* ─── live trades ─────────────────────────────────────────────────────── */
 const LIVE = [
   { user:'Samuel K.',  flag:'🇬🇭', method:'MTN MoMo',     amount:'₵12,500',   type:'buy'  },
+  { user:'Wei L.',     flag:'🇨🇳', method:'WeChat Pay',    amount:'¥8,400',     type:'buy'  },
   { user:'Amina T.',   flag:'🇳🇬', method:'OPay',          amount:'₦850,000',  type:'buy'  },
-  { user:'Kofi B.',    flag:'🇬🇭', method:'Vodafone Cash', amount:'₵4,200',    type:'sell' },
-  { user:'Fatima S.',  flag:'🇸🇳', method:'Wave',          amount:'CFA 45k',   type:'buy'  },
+  { user:'Lars B.',    flag:'🇩🇪', method:'SEPA Transfer', amount:'€320',       type:'sell' },
   { user:'James O.',   flag:'🇰🇪', method:'M-Pesa',        amount:'KSh 8,200', type:'buy'  },
-  { user:'Ama D.',     flag:'🇬🇭', method:'Bank Transfer', amount:'₵22,000',   type:'sell' },
+  { user:'Mei X.',     flag:'🇨🇳', method:'Alipay',        amount:'¥15,200',   type:'sell' },
+  { user:'Priya R.',   flag:'🇮🇳', method:'UPI / PhonePe', amount:'₹42,000',   type:'buy'  },
+  { user:'Sophie M.',  flag:'🇬🇧', method:'Revolut',       amount:'£290',       type:'buy'  },
+  { user:'Fatima S.',  flag:'🇸🇳', method:'Wave',          amount:'CFA 45k',   type:'buy'  },
+  { user:'Carlos V.',  flag:'🇦🇪', method:'Bank Transfer', amount:'AED 1,200', type:'sell' },
   { user:'Emeka N.',   flag:'🇳🇬', method:'PalmPay',       amount:'₦340,000',  type:'buy'  },
-  { user:'Lena M.',    flag:'🇰🇪', method:'M-Pesa',        amount:'KSh 15k',   type:'buy'  },
+  { user:'Yuki T.',    flag:'🇯🇵', method:'Bank Transfer', amount:'¥52,000',   type:'buy'  },
 ];
 
 /* ─── scroll-reveal hook ──────────────────────────────────────────────── */
@@ -163,15 +167,15 @@ export default function LandingPage({ user }) {
                 The Safest Way to<br/>
                 <span className="grad-text">Buy &amp; Sell Bitcoin</span><br/>
                 <span className="text-sm sm:text-xl font-bold" style={{color:'rgba(255,255,255,.65)'}}>
-                  Peer-to-Peer · Africa &amp; Beyond
+                  Peer-to-Peer · Worldwide
                 </span>
               </h1>
 
               {/* sub */}
               <p className={`text-sm md:text-base mb-7 leading-relaxed max-w-lg ${heroOn?'anim-up':''}`}
                 style={{opacity:heroOn?1:0,color:'rgba(255,255,255,.62)',animationDelay:'.18s'}}>
-                Trade Bitcoin directly with verified sellers using MTN MoMo, M-Pesa, Bank Transfer
-                and 50+ local payment methods. Every trade is escrow-protected.
+                Trade Bitcoin directly with verified peers using WeChat Pay, M-Pesa, SEPA, UPI, Bank Transfer
+                and 100+ local payment methods across 180+ countries. Every trade is escrow-protected.
               </p>
 
               {/* CTAs */}
@@ -473,7 +477,7 @@ export default function LandingPage({ user }) {
             <h2 className="text-2xl md:text-4xl font-black mb-3"
               style={{fontFamily:"'Syne',sans-serif",color:C.forest}}>
               Built for Trust. Designed for Speed.<br/>
-              <span className="green-text">Made for African Traders.</span>
+              <span className="green-text">Made for Global Traders.</span>
             </h2>
             <p className="text-base max-w-xl mx-auto" style={{color:C.g500}}>
               Everything you need to trade safely, quickly and confidently — no compromises.
@@ -482,7 +486,7 @@ export default function LandingPage({ user }) {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
             {[
               {icon:Shield,        title:'Smart Escrow Protection',  desc:'Bitcoin locks automatically the moment a trade starts. Released only when both parties confirm. Zero fraud possible.',   color:C.green  },
-              {icon:Globe,         title:'50+ Payment Methods',      desc:'MTN MoMo, M-Pesa, OPay, Bank Transfer, PayPal, Wave, Zelle, Wise and more — local and international, all in one place.', color:C.paid   },
+              {icon:Globe,         title:'100+ Payment Methods',     desc:'WeChat Pay, Alipay, M-Pesa, MTN MoMo, SEPA, UPI, PayPal, Revolut, Bank Transfer and more — local and global, all in one place.', color:C.paid   },
               {icon:Zap,           title:'Trades Under 15 Minutes',  desc:'No intermediaries. No complicated requirements. Match with a trader and complete your transaction in minutes.',           color:C.gold   },
               {icon:MessageCircle, title:'Fast Dispute Resolution',  desc:'Our neutral team reviews both sides and resolves every dispute within 24 hours. Your funds stay safe throughout.',        color:C.success},
               {icon:HeadphonesIcon,title:'24/7 Human Support',       desc:'Real people. Real solutions. Our global team is always online via in-app chat, WhatsApp and Discord — any time.',        color:C.purple },
@@ -597,14 +601,15 @@ export default function LandingPage({ user }) {
               Trade With Your Local Currency &amp; Method
             </h2>
             <p className="text-sm" style={{color:C.g500}}>
-              Over 50 payment methods across Africa, Europe, Asia and the Americas.
+              Over 100 payment methods across Africa, Asia, Europe and the Americas.
             </p>
           </div>
-          <div className="grid md:grid-cols-3 gap-4 md:gap-5">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
             {[
               {cat:'📱 Mobile Money',  color:C.green,  items:['MTN MoMo','Vodafone Cash','M-Pesa','Wave','Orange Money','Airtel Money','Tigo Cash']},
               {cat:'🏦 Bank Transfer', color:C.paid,   items:['Bank Transfer','SEPA','SWIFT','ACH','CHAPS','Faster Payments','Wire Transfer']},
-              {cat:'💳 E-Wallets',     color:C.purple, items:['PayPal','Wise','Revolut','Zelle','OPay','PalmPay','Cash App','Venmo']},
+              {cat:'💳 E-Wallets',     color:C.purple, items:['WeChat Pay','Alipay','PayPal','Wise','Revolut','Zelle','OPay','PalmPay','Cash App','Venmo']},
+              {cat:'🎁 Gift Cards',    color:C.gold,   items:['Amazon','iTunes / App Store','Google Play','Steam','eBay','Visa Gift Card','PlayStation','Xbox']},
             ].map(({cat,color,items},gi)=>(
               <div key={cat}
                 className={`bg-white rounded-2xl p-5 border ${paymentsOn?'anim-up':''}`}
@@ -631,22 +636,22 @@ export default function LandingPage({ user }) {
             <Label>Global Reach</Label>
             <h2 className="text-2xl md:text-3xl font-black mb-3"
               style={{fontFamily:"'Syne',sans-serif",color:C.forest}}>
-              Available Across Africa &amp; Beyond
+              Available Worldwide
             </h2>
             <p className="text-sm max-w-lg mx-auto" style={{color:C.g500}}>
-              180+ countries supported. PRAQEN specialises in African markets with deep local payment support.
+              180+ countries supported. Trade in your local currency with local payment methods — wherever you are.
             </p>
           </div>
 
           <div className={`grid grid-cols-3 sm:grid-cols-6 gap-2 sm:gap-4 mb-8 md:mb-10 ${countriesOn?'anim-up':''}`}
             style={{opacity:countriesOn?1:0,animationDelay:'.1s'}}>
             {[
-              {flag:'🇬🇭',name:'Ghana'},    {flag:'🇳🇬',name:'Nigeria'},
-              {flag:'🇰🇪',name:'Kenya'},    {flag:'🇿🇦',name:'S. Africa'},
-              {flag:'🇸🇳',name:'Senegal'},  {flag:'🇨🇲',name:'Cameroon'},
-              {flag:'🇹🇿',name:'Tanzania'}, {flag:'🇺🇬',name:'Uganda'},
-              {flag:'🇨🇮',name:'Ivory Coast'},{flag:'🇪🇹',name:'Ethiopia'},
+              {flag:'🇨🇳',name:'China'},    {flag:'🇩🇪',name:'Germany'},
               {flag:'🇬🇧',name:'UK'},       {flag:'🇺🇸',name:'USA'},
+              {flag:'🇯🇵',name:'Japan'},    {flag:'🇮🇳',name:'India'},
+              {flag:'🇦🇪',name:'UAE'},      {flag:'🇳🇬',name:'Nigeria'},
+              {flag:'🇬🇭',name:'Ghana'},    {flag:'🇰🇪',name:'Kenya'},
+              {flag:'🇿🇦',name:'S. Africa'},{flag:'🇸🇳',name:'Senegal'},
             ].map(({flag,name})=>(
               <div key={name} className="card-up bg-white rounded-2xl p-3 border text-center"
                 style={{borderColor:C.g200}}>
@@ -685,7 +690,7 @@ export default function LandingPage({ user }) {
             <Label>Real Traders</Label>
             <h2 className="text-2xl md:text-4xl font-black mb-2"
               style={{fontFamily:"'Syne',sans-serif",color:C.forest}}>
-              Loved Across Africa &amp; the World
+              Loved Around the World
             </h2>
             <p className="text-sm" style={{color:C.g500}}>
               Join millions of traders who trust PRAQEN every day.
@@ -693,12 +698,12 @@ export default function LandingPage({ user }) {
           </div>
           <div className="grid md:grid-cols-3 gap-4 md:gap-5">
             {[
-              {name:'Kwame A.',  loc:'Accra, Ghana',    flag:'🇬🇭',color:C.green,  av:'K',badge:'Power Trader',  trades:'52 trades',
-               text:'"PRAQEN is the best P2P platform I have ever used. Escrow works perfectly every single time. I have done over 50 trades with zero issues. 100% recommended!"'},
-              {name:'Ngozi O.',  loc:'Lagos, Nigeria',  flag:'🇳🇬',color:C.purple, av:'N',badge:'Verified',       trades:'28 trades',
-               text:'"Fast, easy and totally secure. I converted my gift cards to Bitcoin in minutes. The support team responds instantly. PRAQEN has changed how I move money."'},
-              {name:'James M.',  loc:'Nairobi, Kenya',  flag:'🇰🇪',color:C.paid,   av:'J',badge:'Top Seller',     trades:'94 trades',
-               text:'"Best Bitcoin rates in Kenya. M-Pesa integration is flawless — I receive payment within 5 minutes every time. Already referred 20+ people to PRAQEN!"'},
+              {name:'Wei L.',    loc:'Shanghai, China', flag:'🇨🇳',color:C.paid,   av:'W',badge:'Power Trader',  trades:'78 trades',
+               text:'"通过PRAQEN交易比特币非常安全方便！微信支付和支付宝都支持，整个流程透明清晰。托管系统让我完全放心，强烈推荐给每一位交易者！" (Excellent — WePay & Alipay work perfectly!)'},
+              {name:'Lars B.',   loc:'Berlin, Germany', flag:'🇩🇪',color:C.green,  av:'L',badge:'Verified',       trades:'41 trades',
+               text:'"PRAQEN ist die beste P2P-Plattform, die ich je genutzt habe. SEPA-Überweisungen funktionieren reibungslos, der Escrow-Schutz gibt mir totale Sicherheit. Perfekt für europäische Händler!"'},
+              {name:'James M.',  loc:'Nairobi, Kenya',  flag:'🇰🇪',color:C.purple, av:'J',badge:'Top Seller',     trades:'94 trades',
+               text:'"Best Bitcoin rates around. M-Pesa integration is flawless — I receive payment within 5 minutes every time. The escrow never fails. Already referred 20+ people to PRAQEN!"'},
             ].map(({name,loc,flag,color,av,badge,trades,text},i)=>(
               <div key={name}
                 className={`card-up bg-white rounded-2xl p-6 border ${testimonialsOn?'anim-up':''}`}
@@ -748,7 +753,7 @@ export default function LandingPage({ user }) {
           </h2>
           <p className="text-white/60 mb-7 max-w-md mx-auto text-sm md:text-base">
             {user
-              ?'Explore new offers, create listings and grow your trade volume on Africa\'s most trusted P2P platform.'
+              ?'Explore new offers, create listings and grow your trade volume on the world\'s most trusted P2P platform.'
               :'No bank account needed. Create your free account, choose a seller and make your first trade today.'}
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center mb-8">
@@ -815,7 +820,7 @@ export default function LandingPage({ user }) {
               {q:'What are the fees?',                    a:'We charge a flat 0.5% fee on completed trades only. No listing fees, no withdrawal fees, no monthly subscriptions. You pay absolutely nothing until a trade succeeds.'},
               {q:'How long does a trade take?',           a:'Mobile money trades (MTN, M-Pesa, OPay) typically complete in 5–15 minutes. Bank transfers take 15–30 minutes. We average under 8 minutes across all payment methods.'},
               {q:'What happens if there is a dispute?',   a:'Open a dispute inside the trade chat with evidence. Our neutral support team reviews both sides and resolves it quickly — your Bitcoin stays locked safe in escrow throughout the entire process.'},
-              {q:'Which countries are supported?',        a:'180+ countries worldwide. We specialise in Africa with deep support for Ghana, Nigeria, Kenya, South Africa, Senegal, Cameroon, Tanzania, Uganda and more. International traders from Europe, USA and Asia also trade daily.'},
+              {q:'Which countries are supported?',        a:'180+ countries worldwide. We have deep local payment support in Africa (Ghana, Nigeria, Kenya, South Africa), Asia (China, India, Japan, UAE), Europe (Germany, UK, France) and the Americas (USA, Canada, Brazil) — with more regions added regularly.'},
               {q:'Can I create my own trading offers?',   a:'Yes! As a verified trader you can post your own offers with your preferred rate, payment method, trade limits and terms. Your offer, your rules. Thousands of traders will see it instantly.'},
             ].map(({q,a},i)=>(
               <div key={i} className="bg-white rounded-2xl border overflow-hidden transition-colors"
@@ -865,7 +870,7 @@ export default function LandingPage({ user }) {
               style={{background:'#EF4444',color:'#fff'}}>BETA</span>
           </div>
           <p className="text-xs mb-5" style={{color:'rgba(255,255,255,.45)'}}>
-            Africa's most trusted P2P Bitcoin platform · Escrow-protected · 0.5% flat fee
+            The world's most trusted P2P Bitcoin platform · Escrow-protected · 0.5% flat fee
           </p>
 
           {/* key links */}

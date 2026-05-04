@@ -82,386 +82,6 @@ function getTier(u){
   if(e&&p&&k&&t>=50)return 3;if(e&&p&&k)return 2;if(e&&p)return 1;return 0;
 }
 
-function VerifRow({icon:Icon,label,desc,status,color,onVerify}){
-  const cfg={verified:{text:'Verified',bg:'#ECFDF5',tc:C.success,Ic:CheckCircle},pending:{text:'Pending',bg:'#FFFBEB',tc:C.warn,Ic:Clock},not_submitted:{text:'Not Submitted',bg:'#FEF2F2',tc:C.danger,Ic:AlertTriangle}};
-  const c=cfg[status]||cfg.not_submitted; const Ic=c.Ic;
-  return(
-    <div className="flex items-center gap-3 p-3 rounded-xl border" style={{borderColor:C.g100}}>
-      <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{backgroundColor:`${color}15`}}>
-        <Icon size={16} style={{color}}/>
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-xs font-black" style={{color:C.forest}}>{label}</p>
-        <p className="text-xs" style={{color:C.g400}}>{desc}</p>
-      </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <span className="flex items-center gap-1 text-xs font-black px-2 py-1 rounded-full" style={{backgroundColor:c.bg,color:c.tc}}>
-          <Ic size={10}/>{c.text}
-        </span>
-        {status!=='verified'&&onVerify&&<button onClick={onVerify} className="text-xs font-black px-2.5 py-1 rounded-xl text-white" style={{backgroundColor:C.green}}>Verify</button>}
-      </div>
-    </div>
-  );
-}
-
-function EmailVerifyModal({userEmail,onClose,onSuccess}){
-  const [step,setStep]=useState(1);
-  const [code,setCode]=useState('');
-  const [loading,setLoading]=useState(false);
-  const [sendErr,setSendErr]=useState('');
-
-  const sendCode=async()=>{
-    setLoading(true); setSendErr('');
-    try{
-      const tk=localStorage.getItem('token');
-      await axios.post(`${API_URL}/users/resend-verification`,{},{headers:{Authorization:`Bearer ${tk}`}});
-      setStep(2);
-    }catch(e){
-      const msg=e?.response?.data?.error||'Failed to send code. Please try again.';
-      setSendErr(msg);
-      toast.error(msg);
-    }
-    finally{setLoading(false);}
-  };
-
-  const verify=async()=>{
-    if(code.length<6){toast.error('Enter the full 6-digit code');return;}
-    setLoading(true);
-    try{
-      const tk=localStorage.getItem('token');
-      await axios.post(`${API_URL}/users/verify-email-code`,{code},{headers:{Authorization:`Bearer ${tk}`}});
-      toast.success('Email verified successfully!');
-      onSuccess();
-    }catch(e){toast.error(e?.response?.data?.error||'Incorrect or expired code. Try again.');}
-    finally{setLoading(false);}
-  };
-
-  return(
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{backgroundColor:'rgba(0,0,0,0.55)',backdropFilter:'blur(4px)'}}>
-      <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl" style={{maxHeight:'90vh',overflowY:'auto'}}>
-        <div className="flex items-center justify-between px-5 py-4 border-b" style={{borderColor:C.g100}}>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{backgroundColor:`${C.paid}15`}}><Mail size={16} style={{color:C.paid}}/></div>
-            <p className="font-black text-sm" style={{color:C.forest}}>Email Verification</p>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center" style={{backgroundColor:C.g100}}><X size={14}/></button>
-        </div>
-        <div className="p-5 sm:p-6">
-          {step===1?(
-            <>
-              <div className="text-center mb-5">
-                <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-3" style={{backgroundColor:`${C.paid}10`}}><Mail size={28} style={{color:C.paid}}/></div>
-                <p className="font-black text-base mb-1" style={{color:C.forest}}>Verify Your Email</p>
-                <p className="text-xs leading-relaxed" style={{color:C.g400}}>
-                  We'll send a 6-digit code to:<br/>
-                  <strong style={{color:C.forest,fontSize:13}}>{userEmail}</strong>
-                </p>
-              </div>
-              {sendErr&&(
-                <div className="p-3 mb-3 rounded-xl text-xs font-bold flex items-center gap-2" style={{backgroundColor:'#FEF2F2',color:'#DC2626',border:'1px solid #FECACA'}}>
-                  <AlertTriangle size={12}/>{sendErr}
-                </div>
-              )}
-              <button onClick={sendCode} disabled={loading} className="w-full py-3 rounded-2xl text-white font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50" style={{backgroundColor:C.paid}}>
-                {loading?<RefreshCw size={14} className="animate-spin"/>:<Mail size={14}/>}
-                {loading?'Sending…':'Send Verification Code'}
-              </button>
-              <p className="text-center text-xs mt-3" style={{color:C.g400}}>Check your spam/junk folder if you don't see it.</p>
-            </>
-          ):(
-            <>
-              <div className="text-center mb-5">
-                <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-3" style={{backgroundColor:`${C.success}10`}}><CheckCircle size={28} style={{color:C.success}}/></div>
-                <p className="font-black text-base mb-1" style={{color:C.forest}}>Enter the Code</p>
-                <p className="text-xs" style={{color:C.g400}}>
-                  Code sent to <strong style={{color:C.g700}}>{userEmail}</strong>.<br/>
-                  Check your inbox and spam folder. Expires in 10 minutes.
-                </p>
-              </div>
-              <input type="text" inputMode="numeric" maxLength={6} value={code}
-                onChange={e=>setCode(e.target.value.replace(/\D/g,'').slice(0,6))}
-                placeholder="000000"
-                className="w-full text-center text-3xl font-black px-4 py-4 border-2 rounded-2xl focus:outline-none mb-4"
-                style={{borderColor:code.length===6?C.success:C.g200,color:C.forest,letterSpacing:'0.35em'}}
-              />
-              <button onClick={verify} disabled={loading||code.length<6} className="w-full py-3 rounded-2xl text-white font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50" style={{backgroundColor:C.success}}>
-                {loading?<RefreshCw size={14} className="animate-spin"/>:<CheckCircle size={14}/>}
-                {loading?'Verifying…':'Verify Email'}
-              </button>
-              <button onClick={()=>{setStep(1);setCode('');setSendErr('');}} className="w-full py-2 mt-2 text-xs font-bold" style={{color:C.g400}}>
-                Didn't receive it? Send code again
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PhoneVerifyModal({onClose,onSuccess}){
-  const [step,setStep]=useState(1);
-  const [cc,setCc]=useState('+233');
-  const [phone,setPhone]=useState('');
-  const [code,setCode]=useState('');
-  const [loading,setLoading]=useState(false);
-  const CCODES=[
-    {label:'🇬🇭 Ghana',v:'+233'},{label:'🇳🇬 Nigeria',v:'+234'},{label:'🇰🇪 Kenya',v:'+254'},
-    {label:'🇿🇦 S. Africa',v:'+27'},{label:'🇺🇬 Uganda',v:'+256'},{label:'🇹🇿 Tanzania',v:'+255'},
-    {label:'🇨🇲 Cameroon',v:'+237'},{label:'🇸🇳 Senegal',v:'+221'},
-    {label:'🇺🇸 USA',v:'+1'},{label:'🇬🇧 UK',v:'+44'},
-  ];
-  const fullPhone=`${cc}${phone.replace(/^0/,'')}`;
-  const sendOTP=async()=>{
-    if(phone.length<6){toast.error('Enter a valid phone number');return;}
-    setLoading(true);
-    try{
-      const tk=localStorage.getItem('token');
-      await axios.post(`${API_URL}/users/send-phone-otp`,{phone:fullPhone},{headers:{Authorization:`Bearer ${tk}`}});
-      toast.success('OTP sent!');
-      setStep(2);
-    }catch(e){toast.error(e.response?.data?.error||'Failed to send OTP');}
-    finally{setLoading(false);}
-  };
-  const verifyOTP=async()=>{
-    if(code.length<6){toast.error('Enter the 6-digit OTP');return;}
-    setLoading(true);
-    try{
-      const tk=localStorage.getItem('token');
-      await axios.post(`${API_URL}/users/verify-phone-otp`,{phone:fullPhone,otp:code},{headers:{Authorization:`Bearer ${tk}`}});
-      toast.success('Phone verified!');
-      onSuccess();
-    }catch(e){toast.error(e.response?.data?.error||'Invalid or expired OTP');}
-    finally{setLoading(false);}
-  };
-  return(
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{backgroundColor:'rgba(0,0,0,0.55)',backdropFilter:'blur(4px)'}}>
-      <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl" style={{maxHeight:'90vh',overflowY:'auto'}}>
-        <div className="flex items-center justify-between px-5 py-4 border-b" style={{borderColor:C.g100}}>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{backgroundColor:`${C.success}15`}}><Phone size={16} style={{color:C.success}}/></div>
-            <p className="font-black text-sm" style={{color:C.forest}}>Phone Verification</p>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center" style={{backgroundColor:C.g100}}><X size={14}/></button>
-        </div>
-        <div className="p-5 sm:p-6">
-          {step===1?(
-            <>
-              <div className="text-center mb-5">
-                <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-3" style={{backgroundColor:`${C.success}10`}}><Phone size={28} style={{color:C.success}}/></div>
-                <p className="font-black text-base mb-1" style={{color:C.forest}}>Verify Your Phone</p>
-                <p className="text-xs" style={{color:C.g400}}>Enter your phone number to receive a one-time OTP via SMS</p>
-              </div>
-              <div className="flex gap-2 mb-3">
-                <select value={cc} onChange={e=>setCc(e.target.value)}
-                  className="px-2 py-3 border-2 rounded-xl text-xs font-bold focus:outline-none flex-shrink-0"
-                  style={{borderColor:C.g200,color:C.g800,backgroundColor:'white',maxWidth:130}}>
-                  {CCODES.map(c=><option key={c.v} value={c.v}>{c.label} ({c.v})</option>)}
-                </select>
-                <input type="tel" value={phone} onChange={e=>setPhone(e.target.value.replace(/\D/g,''))}
-                  placeholder="Phone number" className="flex-1 px-3 py-3 border-2 rounded-xl text-sm font-bold focus:outline-none"
-                  style={{borderColor:phone.length>5?C.success:C.g200}}/>
-              </div>
-              {phone.length>5&&<p className="text-xs text-center mb-3 font-bold" style={{color:C.g500}}>Sending to: {fullPhone}</p>}
-              <button onClick={sendOTP} disabled={loading||phone.length<6}
-                className="w-full py-3 rounded-2xl text-white font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-                style={{backgroundColor:C.green}}>
-                {loading?<RefreshCw size={14} className="animate-spin"/>:<Smartphone size={14}/>}
-                {loading?'Sending OTP…':'Send OTP'}
-              </button>
-            </>
-          ):(
-            <>
-              <div className="text-center mb-5">
-                <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-3" style={{backgroundColor:`${C.success}10`}}><CheckCircle size={28} style={{color:C.success}}/></div>
-                <p className="font-black text-base mb-1" style={{color:C.forest}}>Enter OTP</p>
-                <p className="text-xs" style={{color:C.g400}}>OTP sent to <strong style={{color:C.g700}}>{fullPhone}</strong></p>
-              </div>
-              <input type="text" inputMode="numeric" maxLength={6} value={code}
-                onChange={e=>setCode(e.target.value.replace(/\D/g,'').slice(0,6))}
-                placeholder="000000"
-                className="w-full text-center text-3xl font-black px-4 py-4 border-2 rounded-2xl focus:outline-none mb-4"
-                style={{borderColor:code.length===6?C.success:C.g200,color:C.forest,letterSpacing:'0.35em'}}
-              />
-              <button onClick={verifyOTP} disabled={loading||code.length<6}
-                className="w-full py-3 rounded-2xl text-white font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-                style={{backgroundColor:C.green}}>
-                {loading?<RefreshCw size={14} className="animate-spin"/>:<CheckCircle size={14}/>}
-                {loading?'Verifying…':'Verify Phone'}
-              </button>
-              <button onClick={()=>{setStep(1);setCode('');}} className="w-full py-2 mt-2 text-xs font-bold" style={{color:C.g400}}>
-                Wrong number? Go back
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function KycModal({onClose,onSuccess}){
-  const [step,setStep]=useState(1);
-  const [idType,setIdType]=useState('passport');
-  const [idImage,setIdImage]=useState(null);
-  const [selfieImage,setSelfieImage]=useState(null);
-  const [loading,setLoading]=useState(false);
-  const idRef=useRef(null);
-  const selfieRef=useRef(null);
-  const readFile=(f)=>new Promise((res,rej)=>{const rd=new FileReader();rd.onload=()=>res(rd.result);rd.onerror=rej;rd.readAsDataURL(f);});
-  const handleId=async(e)=>{
-    const f=e.target.files[0];
-    if(!f||!f.type.startsWith('image/'))return;
-    if(f.size>5*1024*1024){toast.error('Image must be under 5MB');return;}
-    setIdImage(await readFile(f));
-  };
-  const handleSelfie=async(e)=>{
-    const f=e.target.files[0];
-    if(!f||!f.type.startsWith('image/'))return;
-    if(f.size>5*1024*1024){toast.error('Image must be under 5MB');return;}
-    setSelfieImage(await readFile(f));
-  };
-  const submit=async()=>{
-    setLoading(true);
-    try{
-      const tk=localStorage.getItem('token');
-      await axios.post(`${API_URL}/kyc/upload`,{idImage,selfieImage,idType},{headers:{Authorization:`Bearer ${tk}`}});
-      toast.success('KYC submitted! Review takes 24-48 hours.');
-      onSuccess();
-    }catch(e){toast.error(e.response?.data?.error||'Submission failed');}
-    finally{setLoading(false);}
-  };
-  const ID_TYPES=[
-    {value:'passport',label:'Passport'},{value:'national_id',label:'National ID'},
-    {value:'drivers_license',label:"Driver's License"},{value:'voters_id',label:"Voter's Card"},
-  ];
-  const STEPS=['ID Document','Selfie','Submit'];
-  return(
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{backgroundColor:'rgba(0,0,0,0.55)',backdropFilter:'blur(4px)'}}>
-      <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl" style={{maxHeight:'92vh',overflowY:'auto'}}>
-        <div className="flex items-center justify-between px-5 py-4 border-b" style={{borderColor:C.g100}}>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{backgroundColor:`${C.gold}20`}}><FileText size={16} style={{color:C.gold}}/></div>
-            <p className="font-black text-sm" style={{color:C.forest}}>Identity Verification (KYC)</p>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center" style={{backgroundColor:C.g100}}><X size={14}/></button>
-        </div>
-        <div className="flex items-center gap-1 px-5 pt-4">
-          {STEPS.map((s,i)=>(
-            <React.Fragment key={i}>
-              <div className="flex items-center gap-1 flex-shrink-0">
-                <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-black"
-                  style={{backgroundColor:step>i+1?C.success:step===i+1?C.green:C.g200,color:step>=i+1?'white':C.g400}}>
-                  {step>i+1?'✓':i+1}
-                </div>
-                <span className="text-xs font-bold" style={{color:step===i+1?C.forest:C.g400}}>{s}</span>
-              </div>
-              {i<2&&<div className="flex-1 h-0.5 mx-1" style={{backgroundColor:step>i+1?C.success:C.g200}}/>}
-            </React.Fragment>
-          ))}
-        </div>
-        <div className="p-5 sm:p-6">
-          {step===1&&(
-            <>
-              <p className="font-black text-sm mb-1" style={{color:C.forest}}>Upload Government ID</p>
-              <p className="text-xs mb-4" style={{color:C.g400}}>Take a clear photo of your government-issued ID</p>
-              <div className="mb-4">
-                <label className="text-xs font-bold mb-2 block" style={{color:C.g600}}>ID Type</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {ID_TYPES.map(t=>(
-                    <button key={t.value} onClick={()=>setIdType(t.value)}
-                      className="py-2 px-3 rounded-xl text-xs font-bold border-2 transition"
-                      style={{borderColor:idType===t.value?C.green:C.g200,backgroundColor:idType===t.value?`${C.green}10`:'white',color:idType===t.value?C.forest:C.g500}}>
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <input ref={idRef} type="file" accept="image/*" onChange={handleId} className="hidden"/>
-              <div onClick={()=>idRef.current?.click()}
-                className="border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition mb-4"
-                style={{borderColor:idImage?C.success:C.g200,backgroundColor:idImage?`${C.success}05`:'#FAFAFA'}}>
-                {idImage?(
-                  <><img src={idImage} alt="ID" className="w-32 h-20 object-cover rounded-xl mx-auto mb-2"/><p className="text-xs font-bold" style={{color:C.success}}>✓ ID uploaded — tap to change</p></>
-                ):(
-                  <><div className="w-12 h-12 rounded-xl mx-auto mb-2 flex items-center justify-center" style={{backgroundColor:C.g100}}><FileText size={20} style={{color:C.g400}}/></div>
-                  <p className="text-xs font-bold" style={{color:C.g500}}>Tap to upload {ID_TYPES.find(t=>t.value===idType)?.label}</p>
-                  <p className="text-xs mt-1" style={{color:C.g400}}>JPG, PNG — max 5MB</p></>
-                )}
-              </div>
-              <button onClick={()=>setStep(2)} disabled={!idImage}
-                className="w-full py-3 rounded-2xl text-white font-black text-sm disabled:opacity-40"
-                style={{backgroundColor:C.green}}>
-                Next: Take Selfie →
-              </button>
-            </>
-          )}
-          {step===2&&(
-            <>
-              <p className="font-black text-sm mb-1" style={{color:C.forest}}>Upload Selfie with ID</p>
-              <p className="text-xs mb-3" style={{color:C.g400}}>Take a selfie holding your ID document next to your face</p>
-              <div className="p-3 rounded-xl mb-4 flex items-start gap-2" style={{backgroundColor:'#FFF7ED',border:'1px solid #FDE68A'}}>
-                <AlertTriangle size={13} style={{color:C.warn,flexShrink:0,marginTop:1}}/>
-                <p className="text-xs" style={{color:'#92400E'}}>Your face AND ID must be clearly visible in the same photo.</p>
-              </div>
-              <input ref={selfieRef} type="file" accept="image/*" capture="user" onChange={handleSelfie} className="hidden"/>
-              <div onClick={()=>selfieRef.current?.click()}
-                className="border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition mb-4"
-                style={{borderColor:selfieImage?C.success:C.g200,backgroundColor:selfieImage?`${C.success}05`:'#FAFAFA'}}>
-                {selfieImage?(
-                  <><img src={selfieImage} alt="Selfie" className="w-24 h-24 object-cover rounded-full mx-auto mb-2"/><p className="text-xs font-bold" style={{color:C.success}}>✓ Selfie uploaded — tap to change</p></>
-                ):(
-                  <><div className="w-12 h-12 rounded-xl mx-auto mb-2 flex items-center justify-center" style={{backgroundColor:C.g100}}><Camera size={20} style={{color:C.g400}}/></div>
-                  <p className="text-xs font-bold" style={{color:C.g500}}>Tap to take or upload selfie with ID</p>
-                  <p className="text-xs mt-1" style={{color:C.g400}}>JPG, PNG — max 5MB</p></>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <button onClick={()=>setStep(1)} className="flex-1 py-3 rounded-2xl font-black text-sm border-2" style={{borderColor:C.g200,color:C.g600}}>← Back</button>
-                <button onClick={()=>setStep(3)} disabled={!selfieImage}
-                  className="flex-1 py-3 rounded-2xl text-white font-black text-sm disabled:opacity-40"
-                  style={{backgroundColor:C.green}}>
-                  Review & Submit →
-                </button>
-              </div>
-            </>
-          )}
-          {step===3&&(
-            <>
-              <p className="font-black text-sm mb-4" style={{color:C.forest}}>Review & Submit</p>
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <div className="text-center">
-                  <p className="text-xs font-bold mb-1" style={{color:C.g500}}>ID Document</p>
-                  <img src={idImage} alt="ID" className="w-full h-28 object-cover rounded-xl"/>
-                  <p className="text-xs mt-1" style={{color:C.g400}}>{ID_TYPES.find(t=>t.value===idType)?.label}</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-xs font-bold mb-1" style={{color:C.g500}}>Selfie with ID</p>
-                  <img src={selfieImage} alt="Selfie" className="w-full h-28 object-cover rounded-xl"/>
-                </div>
-              </div>
-              <div className="p-3 rounded-xl mb-4" style={{backgroundColor:`${C.success}08`,border:`1px solid ${C.success}25`}}>
-                <p className="text-xs font-black mb-1.5" style={{color:C.forest}}>What happens next?</p>
-                {['Our team reviews your documents within 24-48 hours.','You\'ll get an email and SMS when approved.','Your trade limits upgrade to Advanced ($10,000) once verified.'].map((t,i)=>(
-                  <p key={i} className="text-xs flex items-start gap-1.5 mb-0.5" style={{color:C.g600}}><span style={{color:C.success}}>•</span>{t}</p>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <button onClick={()=>setStep(2)} className="flex-1 py-3 rounded-2xl font-black text-sm border-2" style={{borderColor:C.g200,color:C.g600}}>← Back</button>
-                <button onClick={submit} disabled={loading}
-                  className="flex-1 py-3 rounded-2xl text-white font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-                  style={{backgroundColor:C.green}}>
-                  {loading&&<RefreshCw size={14} className="animate-spin"/>}
-                  {loading?'Submitting…':'Submit KYC'}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function Profile({userId:propUserId}){
   const {id:urlId}=useParams(); const navigate=useNavigate(); const fileRef=useRef(null);
@@ -472,9 +92,6 @@ export default function Profile({userId:propUserId}){
   const [uploading,setUploading]=useState(false); const [own,setOwn]=useState(false);
   const [editing,setEditing]=useState(false); const [saving,setSaving]=useState(false);
   const [badges,setBadges]=useState([]);
-  const [showEmailModal,setShowEmailModal]=useState(false);
-  const [showPhoneModal,setShowPhoneModal]=useState(false);
-  const [showKycModal,setShowKycModal]=useState(false);
   const [form,setForm]=useState({username:'',full_name:'',bio:'',location:'Ghana',website:''});
   const [userCountry] = useState('GH'); // default country; detected server-side via user.country
 
@@ -606,10 +223,11 @@ export default function Profile({userId:propUserId}){
     </div>
   );
 
-  // Country codes — uppercase for FLAGS lookup
-  const userCC  = (user.country||userCountry||'GH').toUpperCase().slice(0,2);
-  const phoneCC = (user.phone_country||user.country||userCountry||'GH').toUpperCase().slice(0,2);
-  const kycCC   = (user.kyc_country||user.country||userCountry||'GH').toUpperCase().slice(0,2);
+  // Resolve country code — prefer stored 2-letter code, fallback GH
+  const rawCC   = user.country || userCountry || 'GH';
+  const userCC  = (rawCC.length === 2 ? rawCC : (rawCC.slice(0,2))).toUpperCase();
+  const phoneCC = ((user.phone_country||rawCC).slice(0,2)).toUpperCase();
+  const kycCC   = ((user.kyc_country||rawCC).slice(0,2)).toUpperCase();
 
   const score=calcTrust(user,reviews); const trust=trustLvl(score);
   const tierIdx=getTier(user); const tier=TIERS[tierIdx]; const nextTier=TIERS[tierIdx+1];
@@ -631,8 +249,12 @@ export default function Profile({userId:propUserId}){
     ...(own?[{id:'settings',label:'Settings'}]:[]),
   ];
 
-  // Force Ghana flag for demonstration if user is from Ghana
-  const displayFlag = userCC === 'GH' ? '🇬🇭' : (FLAGS[userCC] || '🌍');
+  // Convert ISO-2 code to emoji flag (works for any country)
+  const toEmojiFlag = (cc) => {
+    if (!cc || cc.length !== 2) return '🌍';
+    return cc.toUpperCase().replace(/./g, c => String.fromCodePoint(0x1F1E0 + c.charCodeAt(0) - 65));
+  };
+  const displayFlag = FLAGS[userCC] || toEmojiFlag(userCC) || '🌍';
 
   return(
     <div className="min-h-screen pb-0" style={{backgroundColor:C.mist,fontFamily:"'DM Sans',sans-serif",overflowX:'hidden',width:'100%',maxWidth:'100vw'}}>
@@ -1114,7 +736,7 @@ export default function Profile({userId:propUserId}){
                         );
                       })}
                     </div>
-                    <button onClick={()=>setTab('verification')}
+                    <button onClick={()=>navigate('/settings?tab=verification')}
                       className="w-full py-2 rounded-xl text-white text-xs font-black hover:opacity-90 transition"
                       style={{backgroundColor:C.green}}>
                       Upgrade Account → Increase Trade Limits
@@ -1173,9 +795,17 @@ export default function Profile({userId:propUserId}){
               <div className="h-2.5 rounded-full bg-white/20"><div className="h-2.5 rounded-full" style={{width:`${verifPct}%`,backgroundColor:C.gold}}/></div>
             </div>
 
+            {own&&verifPct<100&&(
+              <div className="flex items-center gap-3 p-3 rounded-xl border" style={{borderColor:'#93C5FD',backgroundColor:'#EFF6FF'}}>
+                <Settings size={14} style={{color:'#3B82F6',flexShrink:0}}/>
+                <p className="text-xs" style={{color:'#1E40AF'}}>
+                  Tap <strong>Verify →</strong> on any step below to complete verification in <strong>Settings</strong>.
+                </p>
+              </div>
+            )}
             <div className="bg-white rounded-2xl border shadow-sm p-4" style={{borderColor:C.g200}}>
-              <p className="font-black text-sm mb-1" style={{color:C.forest}}>Verify Your Account</p>
-              <p className="text-xs mb-4" style={{color:C.g400}}>Choose any step to verify — no set order required.</p>
+              <p className="font-black text-sm mb-1" style={{color:C.forest}}>Verification Status</p>
+              <p className="text-xs mb-4" style={{color:C.g400}}>Complete all steps in Settings to unlock higher trade limits.</p>
               <div className="space-y-3">
                 {/* Email */}
                 <div className="rounded-2xl border-2 p-4 flex items-center gap-3 transition-all"
@@ -1188,7 +818,7 @@ export default function Profile({userId:propUserId}){
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-black" style={{color:C.forest}}>Email</p>
                       <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{backgroundColor:emailOk?`${C.success}15`:'#EFF6FF',color:emailOk?C.success:C.paid}}>
-                        {emailOk?'✓ Verified':'Standard'}
+                        {emailOk?'✓ Verified':'Not Verified'}
                       </span>
                     </div>
                     <p className="text-xs mt-0.5 truncate" style={{color:C.g500}}>
@@ -1196,9 +826,9 @@ export default function Profile({userId:propUserId}){
                     </p>
                   </div>
                   {own&&!emailOk&&(
-                    <button onClick={()=>setShowEmailModal(true)}
+                    <button onClick={()=>navigate('/settings?tab=verification')}
                       className="px-3 py-2 rounded-xl text-white text-xs font-black flex-shrink-0"
-                      style={{backgroundColor:C.paid}}>Verify</button>
+                      style={{backgroundColor:C.paid}}>Verify →</button>
                   )}
                 </div>
 
@@ -1213,7 +843,7 @@ export default function Profile({userId:propUserId}){
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-black" style={{color:C.forest}}>Phone Number</p>
                       <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{backgroundColor:phoneOk?`${C.success}15`:'#F1F5F9',color:phoneOk?C.success:C.g500}}>
-                        {phoneOk?'✓ Verified':'Standard'}
+                        {phoneOk?'✓ Verified':'Not Verified'}
                       </span>
                     </div>
                     <p className="text-xs mt-0.5 truncate" style={{color:C.g500}}>
@@ -1221,9 +851,9 @@ export default function Profile({userId:propUserId}){
                     </p>
                   </div>
                   {own&&!phoneOk&&(
-                    <button onClick={()=>setShowPhoneModal(true)}
+                    <button onClick={()=>navigate('/settings?tab=verification')}
                       className="px-3 py-2 rounded-xl text-white text-xs font-black flex-shrink-0"
-                      style={{backgroundColor:C.success}}>Verify</button>
+                      style={{backgroundColor:C.success}}>Verify →</button>
                   )}
                 </div>
 
@@ -1239,7 +869,7 @@ export default function Profile({userId:propUserId}){
                       <p className="text-sm font-black" style={{color:C.forest}}>Identity (KYC)</p>
                       <span className="text-xs font-bold px-2 py-0.5 rounded-full"
                         style={{backgroundColor:kycOk?`${C.success}15`:user.kyc_status==='pending'?'#FFFBEB':'#FFFBEB',color:kycOk?C.success:C.warn}}>
-                        {kycOk?'✓ Verified':user.kyc_status==='pending'?'Under Review':'Advanced'}
+                        {kycOk?'✓ Verified':user.kyc_status==='pending'?'Under Review':'Not Verified'}
                       </span>
                     </div>
                     <p className="text-xs mt-0.5" style={{color:C.g500}}>
@@ -1247,9 +877,9 @@ export default function Profile({userId:propUserId}){
                     </p>
                   </div>
                   {own&&!kycOk&&user.kyc_status!=='pending'&&(
-                    <button onClick={()=>setShowKycModal(true)}
+                    <button onClick={()=>navigate('/settings?tab=verification')}
                       className="px-3 py-2 rounded-xl text-white text-xs font-black flex-shrink-0"
-                      style={{backgroundColor:C.gold}}>Verify</button>
+                      style={{backgroundColor:C.gold}}>Verify →</button>
                   )}
                   {user.kyc_status==='pending'&&<Clock size={16} style={{color:C.warn,flexShrink:0}}/>}
                 </div>
@@ -1485,7 +1115,7 @@ export default function Profile({userId:propUserId}){
                           <div>
                             <p className="text-xs font-black mb-0.5" style={{color:C.g500}}>HOW TO EARN</p>
                             <p className="text-xs leading-relaxed" style={{color:C.g400}}>
-                              {b.id==='verified_identity'&&<span>Go to the <button onClick={()=>setTab('verification')} style={{color:C.green,fontWeight:700,textDecoration:'underline',background:'none',border:'none',cursor:'pointer',padding:0}}>Verification tab</button> and complete KYC identity check.</span>}
+                              {b.id==='verified_identity'&&<span>Go to <button onClick={()=>navigate('/settings?tab=verification')} style={{color:C.green,fontWeight:700,textDecoration:'underline',background:'none',border:'none',cursor:'pointer',padding:0}}>Settings → Verification</button> and complete KYC identity check.</span>}
                               {b.id==='top_trader'&&`Complete ${Math.max(0,100-trades)} more successful trades to reach 100 total.`}
                               {b.id==='high_volume'&&`Trade $${fmt(Math.max(0,10000-trades*100))} more in total volume across all trades.`}
                               {b.id==='fast_responder'&&'Consistently respond to trade requests within 5 minutes of receiving them.'}
@@ -1621,11 +1251,6 @@ export default function Profile({userId:propUserId}){
         )}
 
       </div>
-
-      {/* ── MODALS ───────────────────────────────────────────────────────── */}
-      {showEmailModal&&<EmailVerifyModal userEmail={user.email} onClose={()=>setShowEmailModal(false)} onSuccess={()=>{setShowEmailModal(false);load();}}/>}
-      {showPhoneModal&&<PhoneVerifyModal onClose={()=>setShowPhoneModal(false)} onSuccess={()=>{setShowPhoneModal(false);load();}}/>}
-      {showKycModal&&<KycModal onClose={()=>setShowKycModal(false)} onSuccess={()=>{setShowKycModal(false);load();}}/>}
 
       {/* ── FOOTER ────────────────────────────────────────────────────────── */}
       <footer className="mt-10" style={{backgroundColor:C.forest}}>

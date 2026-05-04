@@ -6,7 +6,7 @@ import {
   Copy, Bitcoin, RefreshCw, CheckCircle,
   ArrowDownLeft, ArrowUpRight, Shield, AlertTriangle,
   Clock, Eye, EyeOff, QrCode, Zap,
-  ChevronRight, X, Wallet
+  ChevronRight, X, Wallet, Users, Search,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
@@ -33,26 +33,40 @@ const fmtAge = d => {
 };
 
 // ─── Withdraw Modal ────────────────────────────────────────────────────────────
-function WithdrawModal({ balance, onClose, onSend }) {
-  const [address, setAddress] = useState('');
-  const [amount,  setAmount]  = useState('');
-  const [confirm, setConfirm] = useState(false);
-  const [sending, setSending] = useState(false);
+function WithdrawModal({ balance, btcPrice, onClose, onSend }) {
+  const [address,   setAddress]   = useState('');
+  const [amount,    setAmount]    = useState('');   // BTC input
+  const [usdAmount, setUsdAmount] = useState('');   // USD input
+  const [inputMode, setInputMode] = useState('btc'); // 'btc' | 'usd'
+  const [confirm,   setConfirm]   = useState(false);
+  const [sending,   setSending]   = useState(false);
 
-  const btcAmt    = parseFloat(amount || 0);
+  const price  = btcPrice || 88000;
+
+  // Derive btcAmt regardless of which input mode is active
+  const btcAmt = inputMode === 'usd'
+    ? parseFloat((parseFloat(usdAmount || 0) / price).toFixed(8))
+    : parseFloat(amount || 0);
+
   const fee       = btcAmt * 0.001;
   const total     = btcAmt + fee;
+  const totalUsd  = total * price;
   const hasEnough = total <= parseFloat(balance || 0);
 
-  // Only accept mainnet addresses (bc1, 1, 3) — reject testnet (tb1, m, n)
   const isMainnetAddr = (addr) => {
     if (!addr || addr.length < 26) return false;
-    if (/^tb1[a-z0-9]{25,87}$/.test(addr)) return false; // testnet segwit
-    if (/^[mn][a-zA-Z0-9]{25,34}$/.test(addr)) return false; // testnet legacy
+    if (/^tb1[a-z0-9]{25,87}$/.test(addr)) return false;
+    if (/^[mn][a-zA-Z0-9]{25,34}$/.test(addr)) return false;
     return /^(bc1[a-z0-9]{25,87}|[13][a-zA-HJ-NP-Z1-9]{25,34})$/.test(addr);
   };
   const addrOk = isMainnetAddr(address.trim());
   const valid  = addrOk && btcAmt > 0 && hasEnough;
+
+  const switchMode = (mode) => {
+    setInputMode(mode);
+    setAmount('');
+    setUsdAmount('');
+  };
 
   const handleSend = async () => {
     if (!valid) return;
@@ -61,16 +75,23 @@ function WithdrawModal({ balance, onClose, onSend }) {
     finally { setSending(false); }
   };
 
+  const fmtUsdVal = n => `$${parseFloat(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}>
-      <div className="bg-white w-full md:max-w-md rounded-t-2xl md:rounded-2xl overflow-hidden shadow-2xl">
+      <div className="bg-white w-full md:max-w-md rounded-t-2xl md:rounded-2xl overflow-hidden shadow-2xl mb-16 sm:mb-0">
+
+        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: C.g100 }}>
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${C.danger}15` }}>
               <ArrowUpRight size={15} style={{ color: C.danger }} />
             </div>
-            <h2 className="font-black text-sm" style={{ color: C.g800 }}>Send Bitcoin</h2>
+            <div>
+              <h2 className="font-black text-sm" style={{ color: C.g800 }}>Send Bitcoin</h2>
+              <p className="text-xs" style={{ color: C.g400 }}>On-chain · ~10 min · 0.1% fee</p>
+            </div>
           </div>
           <button onClick={onClose} className="w-7 h-7 rounded-xl flex items-center justify-center hover:bg-gray-100">
             <X size={14} style={{ color: C.g500 }} />
@@ -78,13 +99,22 @@ function WithdrawModal({ balance, onClose, onSend }) {
         </div>
 
         <div className="p-5 space-y-4">
-          <div className="p-3 rounded-xl" style={{ backgroundColor: C.g50, border: `1px solid ${C.g200}` }}>
-            <p className="text-xs font-bold text-gray-500 mb-0.5">Available Balance</p>
-            <p className="font-black text-lg" style={{ color: C.green }}>₿ {fmt(balance)}</p>
+
+          {/* Balance */}
+          <div className="flex items-center justify-between p-3 rounded-xl"
+            style={{ backgroundColor: C.g50, border: `1px solid ${C.g200}` }}>
+            <div>
+              <p className="text-xs font-bold mb-0.5" style={{ color: C.g500 }}>Available Balance</p>
+              <p className="font-black text-lg" style={{ color: C.green }}>₿ {fmt(balance)}</p>
+            </div>
+            <p className="text-xs font-bold" style={{ color: C.g400 }}>
+              ≈ {fmtUsdVal(parseFloat(balance) * price)}
+            </p>
           </div>
 
+          {/* Address */}
           <div>
-            <label className="block text-xs font-bold mb-1.5 text-gray-700">Recipient Bitcoin Address</label>
+            <label className="block text-xs font-bold mb-1.5" style={{ color: C.g700 }}>Recipient Bitcoin Address</label>
             <input type="text" value={address} onChange={e => setAddress(e.target.value)}
               placeholder="bc1q… or 1… or 3… (Bitcoin mainnet only)"
               className="w-full px-4 py-3 text-sm border-2 rounded-xl focus:outline-none font-mono"
@@ -96,52 +126,113 @@ function WithdrawModal({ balance, onClose, onSend }) {
             )}
           </div>
 
+          {/* Amount — with BTC / USD toggle */}
           <div>
-            <label className="block text-xs font-bold mb-1.5 text-gray-700">Amount (BTC)</label>
-            <div className="relative">
-              <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
-                placeholder="0.00000000" step="0.00000001"
-                className="w-full px-4 py-3 text-sm border-2 rounded-xl focus:outline-none"
-                style={{ borderColor: !amount ? C.g200 : hasEnough ? C.green : C.danger }} />
-              <button onClick={() => setAmount((parseFloat(balance || 0) * 0.999).toFixed(8))}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black px-2 py-1 rounded-lg"
-                style={{ backgroundColor: `${C.green}15`, color: C.green }}>MAX</button>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-bold" style={{ color: C.g700 }}>Amount</label>
+              {/* Toggle pill */}
+              <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: C.g200 }}>
+                {['btc', 'usd'].map(mode => (
+                  <button key={mode} onClick={() => switchMode(mode)}
+                    className="px-3 py-1 text-xs font-black transition"
+                    style={{
+                      backgroundColor: inputMode === mode ? C.forest : 'transparent',
+                      color: inputMode === mode ? '#fff' : C.g500,
+                    }}>
+                    {mode === 'btc' ? '₿ BTC' : '$ USD'}
+                  </button>
+                ))}
+              </div>
             </div>
-            {amount && !hasEnough && (
+
+            {inputMode === 'btc' ? (
+              /* BTC input */
+              <div>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-black text-sm"
+                    style={{ color: C.g400 }}>₿</span>
+                  <input type="number" value={amount}
+                    onChange={e => setAmount(e.target.value)}
+                    placeholder="0.00000000" step="0.00000001"
+                    className="w-full pl-7 pr-14 py-3 text-sm border-2 rounded-xl focus:outline-none"
+                    style={{ borderColor: !amount ? C.g200 : hasEnough ? C.green : C.danger }} />
+                  <button onClick={() => setAmount((parseFloat(balance || 0) * 0.999).toFixed(8))}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black px-2 py-1 rounded-lg"
+                    style={{ backgroundColor: `${C.green}15`, color: C.green }}>MAX</button>
+                </div>
+                {/* USD preview */}
+                {btcAmt > 0 && (
+                  <p className="text-xs mt-1 font-bold" style={{ color: C.g400 }}>
+                    ≈ {fmtUsdVal(btcAmt * price)} USD
+                  </p>
+                )}
+              </div>
+            ) : (
+              /* USD input */
+              <div>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-black text-sm"
+                    style={{ color: C.g400 }}>$</span>
+                  <input type="number" value={usdAmount}
+                    onChange={e => setUsdAmount(e.target.value)}
+                    placeholder="0.00" min="0"
+                    className="w-full pl-7 pr-4 py-3 text-sm border-2 rounded-xl focus:outline-none"
+                    style={{ borderColor: !usdAmount ? C.g200 : hasEnough ? C.green : C.danger }} />
+                </div>
+                {/* BTC preview */}
+                {parseFloat(usdAmount) > 0 && (
+                  <p className="text-xs mt-1 font-bold" style={{ color: C.green }}>
+                    ≈ ₿ {btcAmt.toFixed(8)}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {btcAmt > 0 && !hasEnough && (
               <p className="text-xs mt-1 font-semibold" style={{ color: C.danger }}>
-                Insufficient balance — need {fmt(total)} BTC incl. fee
+                Insufficient balance — need ₿ {fmt(total)} ({fmtUsdVal(totalUsd)}) incl. fee
               </p>
             )}
           </div>
 
+          {/* Breakdown */}
           {btcAmt > 0 && (
-            <div className="space-y-1.5 p-3 rounded-xl" style={{ backgroundColor: `${C.green}08`, border: `1px solid ${C.green}20` }}>
+            <div className="space-y-2 p-3 rounded-xl" style={{ backgroundColor: `${C.green}08`, border: `1px solid ${C.green}20` }}>
               {[
-                { label: 'Amount',            val: `₿ ${fmt(btcAmt)}` },
-                { label: 'Network fee (~0.1%)', val: `₿ ${fmt(fee)}` },
-                { label: 'Total deducted',    val: `₿ ${fmt(total)}`, bold: true },
-              ].map(({ label, val, bold }) => (
-                <div key={label} className="flex justify-between text-xs">
+                { label: 'Amount',              btc: btcAmt,  usd: btcAmt * price },
+                { label: 'Network fee (~0.1%)', btc: fee,     usd: fee * price    },
+                { label: 'Total deducted',      btc: total,   usd: totalUsd, bold: true },
+              ].map(({ label, btc, usd, bold }) => (
+                <div key={label} className="flex justify-between items-center text-xs">
                   <span style={{ color: C.g500 }}>{label}</span>
-                  <span className={bold ? 'font-black' : 'font-semibold'} style={{ color: bold ? C.forest : C.g700 }}>{val}</span>
+                  <div className="text-right">
+                    <span className={bold ? 'font-black' : 'font-semibold'}
+                      style={{ color: bold ? C.forest : C.g700 }}>₿ {fmt(btc)}</span>
+                    <span className="ml-1.5 font-medium" style={{ color: C.g400 }}>
+                      ({fmtUsdVal(usd)})
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>
           )}
 
+          {/* Confirm checkbox */}
           <label className="flex items-start gap-2 cursor-pointer">
-            <input type="checkbox" checked={confirm} onChange={e => setConfirm(e.target.checked)} className="mt-0.5 accent-green-600" />
+            <input type="checkbox" checked={confirm} onChange={e => setConfirm(e.target.checked)}
+              className="mt-0.5 accent-green-600" />
             <p className="text-xs font-semibold" style={{ color: C.g600 }}>
               I confirm this address is correct. Bitcoin transactions cannot be reversed.
             </p>
           </label>
 
+          {/* Send button */}
           <button onClick={handleSend} disabled={!valid || !confirm || sending}
             className="w-full py-3.5 rounded-xl text-white font-black text-sm flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-40 transition"
             style={{ backgroundColor: C.danger }}>
             {sending
               ? <><RefreshCw size={14} className="animate-spin" /> Sending…</>
-              : <><ArrowUpRight size={14} /> Send {btcAmt > 0 ? `₿ ${fmt(btcAmt)}` : 'Bitcoin'}</>}
+              : <><ArrowUpRight size={14} /> Send {btcAmt > 0 ? `₿ ${fmt(btcAmt)} (${fmtUsdVal(btcAmt * price)})` : 'Bitcoin'}</>}
           </button>
 
           <div className="flex items-start gap-2 p-3 rounded-xl" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
@@ -224,24 +315,36 @@ function ReceiveModal({ address, network, onClose }) {
 
 // ─── Transaction Row ───────────────────────────────────────────────────────────
 function TxRow({ tx }) {
-  const isSend    = tx.type === 'WITHDRAWAL' || tx.type === 'send';
+  const type      = (tx.type || '').toUpperCase();
+  const isSend    = type === 'WITHDRAWAL' || type === 'SEND' || type === 'TRANSFER_OUT';
+  const isInternal = type === 'TRANSFER_IN' || type === 'TRANSFER_OUT';
   const isPending = tx.status === 'PENDING'  || tx.status === 'pending';
   const color     = isSend ? C.danger : C.success;
-  const label     = isSend ? 'Sent' : tx.type === 'DEPOSIT' ? 'Received' : 'Trade';
+  const label     = type === 'TRANSFER_OUT' ? 'PRAQEN Send'
+    : type === 'TRANSFER_IN'  ? 'PRAQEN Received'
+    : isSend                  ? 'Sent'
+    : type === 'DEPOSIT'      ? 'Received'
+    : 'Trade';
   const txHash    = tx.tx_hash || tx.txHash;
   const explorerBase = 'https://mempool.space/tx';
 
   return (
     <div className="flex items-center gap-3 py-3 border-b last:border-0" style={{ borderColor: C.g100 }}>
       <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-        style={{ backgroundColor: `${color}10` }}>
-        {isSend
-          ? <ArrowUpRight size={16} style={{ color }} />
-          : <ArrowDownLeft size={16} style={{ color }} />}
+        style={{ backgroundColor: isInternal ? `${C.paid}15` : `${color}10` }}>
+        {isInternal
+          ? <Users size={15} style={{ color: C.paid }} />
+          : isSend
+            ? <ArrowUpRight size={16} style={{ color }} />
+            : <ArrowDownLeft size={16} style={{ color }} />}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <p className="text-sm font-bold" style={{ color: C.g800 }}>{label}</p>
+          {isInternal && (
+            <span className="text-xs font-black px-1.5 py-0.5 rounded-full"
+              style={{ backgroundColor: `${C.paid}15`, color: C.paid }}>FREE</span>
+          )}
           {isPending && (
             <span className="text-xs font-black px-1.5 py-0.5 rounded-full"
               style={{ backgroundColor: `${C.warn}20`, color: C.warn }}>PENDING</span>
@@ -251,7 +354,7 @@ function TxRow({ tx }) {
           <p className="text-xs truncate" style={{ color: C.g400 }}>
             {tx.notes || (txHash ? `${txHash.slice(0, 14)}…` : fmtAge(tx.created_at))}
           </p>
-          {txHash && (
+          {txHash && !isInternal && (
             <a href={`${explorerBase}/${txHash}`} target="_blank" rel="noopener noreferrer"
               className="text-xs font-bold flex-shrink-0 hover:underline"
               style={{ color: C.paid }}>↗</a>
@@ -270,6 +373,262 @@ function TxRow({ tx }) {
 
 const CURRENCY_SYMBOLS = { USD:'$', GBP:'£', EUR:'€', GHS:'₵', NGN:'₦', KES:'KSh ', ZAR:'R ' };
 
+// ─── Internal Transfer Modal ───────────────────────────────────────────────────
+function InternalTransferModal({ balance, btcPrice, displayCurrency, fxRate, currentUserId, onClose, onDone }) {
+  const [step,        setStep]        = useState('form'); // 'form' | 'confirm' | 'success'
+  const [username,    setUsername]    = useState('');
+  const [recipient,   setRecipient]   = useState(null);
+  const [lookupError, setLookupError] = useState('');
+  const [looking,     setLooking]     = useState(false);
+  const [localAmount, setLocalAmount] = useState('');
+  const [sending,     setSending]     = useState(false);
+
+  const sym         = CURRENCY_SYMBOLS[displayCurrency] || `${displayCurrency} `;
+  const btcPriceLoc = (btcPrice || 88000) * (fxRate || 1);
+  const localNum    = parseFloat(localAmount) || 0;
+  const btcAmount   = localNum > 0 ? parseFloat((localNum / btcPriceLoc).toFixed(8)) : 0;
+  const hasEnough   = btcAmount > 0 && btcAmount <= parseFloat(balance || 0);
+
+  const findUser = async () => {
+    const q = username.trim().replace(/^@/, '');
+    if (!q) return;
+    setLooking(true); setLookupError(''); setRecipient(null);
+    try {
+      const r = await axios.get(`${API_URL}/users/${encodeURIComponent(q)}`, { headers: authH() });
+      const u = r.data?.user || r.data;
+      if (!u?.id) { setLookupError('User not found on PRAQEN.'); return; }
+      if (String(u.id) === String(currentUserId)) { setLookupError('You cannot send to yourself.'); return; }
+      setRecipient(u);
+    } catch {
+      setLookupError('User not found on PRAQEN.');
+    } finally { setLooking(false); }
+  };
+
+  const send = async () => {
+    if (!recipient || btcAmount <= 0 || !hasEnough) return;
+    setSending(true);
+    try {
+      const r = await axios.post(`${API_URL}/wallet/internal-transfer`,
+        { toUsername: recipient.username, amountBtc: btcAmount },
+        { headers: authH() }
+      );
+      toast.success(`₿${btcAmount.toFixed(8)} sent to @${recipient.username} — free & instant!`);
+      onDone(r.data.new_balance);
+      setStep('success');
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Transfer failed. Please try again.');
+    } finally { setSending(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}>
+      <div className="bg-white w-full md:max-w-md rounded-t-2xl md:rounded-2xl overflow-hidden shadow-2xl mb-16 sm:mb-0">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: C.g100 }}>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${C.paid}15` }}>
+              <Users size={15} style={{ color: C.paid }} />
+            </div>
+            <div>
+              <h2 className="font-black text-sm" style={{ color: C.g800 }}>Send to PRAQEN User</h2>
+              <p className="text-xs" style={{ color: C.g400 }}>⚡ Instant · 🎁 Free · No network fees</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-xl flex items-center justify-center hover:bg-gray-100">
+            <X size={14} style={{ color: C.g500 }} />
+          </button>
+        </div>
+
+        {/* ── SUCCESS ── */}
+        {step === 'success' && (
+          <div className="p-8 text-center space-y-5">
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto"
+              style={{ backgroundColor: `${C.success}15` }}>
+              <CheckCircle size={32} style={{ color: C.success }} />
+            </div>
+            <div>
+              <p className="font-black text-xl" style={{ color: C.forest }}>Transfer Complete!</p>
+              <p className="text-sm mt-2" style={{ color: C.g500 }}>
+                ₿{btcAmount.toFixed(8)} sent to <span className="font-black" style={{ color: C.forest }}>@{recipient?.username}</span>
+              </p>
+              <p className="text-xs mt-1 font-bold" style={{ color: C.success }}>Instant &amp; Free — no fees deducted</p>
+            </div>
+            <button onClick={onClose}
+              className="w-full py-3 rounded-xl text-white font-black text-sm hover:opacity-90"
+              style={{ backgroundColor: C.green }}>
+              Done
+            </button>
+          </div>
+        )}
+
+        {/* ── CONFIRM ── */}
+        {step === 'confirm' && (
+          <div className="p-5 space-y-4">
+            <div className="rounded-2xl border p-4 space-y-3" style={{ borderColor: C.g100, backgroundColor: C.g50 }}>
+              <div className="flex items-center gap-3 pb-3 border-b" style={{ borderColor: C.g100 }}>
+                <div className="w-11 h-11 rounded-xl flex items-center justify-center font-black text-white text-base flex-shrink-0"
+                  style={{ backgroundColor: C.green }}>
+                  {(recipient?.username || '?')[0].toUpperCase()}
+                </div>
+                <div>
+                  <p className="font-black text-sm" style={{ color: C.forest }}>@{recipient?.username}</p>
+                  <p className="text-xs" style={{ color: C.g400 }}>
+                    {recipient?.badge ? `${recipient.badge} · ` : ''}{recipient?.total_trades || 0} trades
+                    {recipient?.country ? ` · ${recipient.country}` : ''}
+                  </p>
+                </div>
+              </div>
+              {[
+                { label: 'You send',      val: `${sym}${localNum.toLocaleString()} ${displayCurrency}`, bold: true },
+                { label: '≈ BTC',         val: `₿ ${btcAmount.toFixed(8)}` },
+                { label: 'Network fee',   val: '₿ 0.00000000', green: true, tag: 'FREE' },
+                { label: 'They receive',  val: `₿ ${btcAmount.toFixed(8)}`, bold: true },
+              ].map(({ label, val, bold, green, tag }) => (
+                <div key={label} className="flex justify-between items-center text-xs">
+                  <span style={{ color: C.g500 }}>{label}</span>
+                  <div className="flex items-center gap-1.5">
+                    {tag && <span className="font-black px-1.5 py-0.5 rounded-full" style={{ backgroundColor: `${C.success}15`, color: C.success, fontSize: 9 }}>{tag}</span>}
+                    <span className={bold ? 'font-black' : 'font-semibold'} style={{ color: green ? C.success : bold ? C.forest : C.g700 }}>{val}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={() => setStep('form')}
+                className="flex-1 py-3 rounded-xl border font-bold text-sm hover:bg-gray-50 transition"
+                style={{ borderColor: C.g200, color: C.g600 }}>
+                Back
+              </button>
+              <button onClick={send} disabled={sending}
+                className="flex-1 py-3 rounded-xl text-white font-black text-sm flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-40 transition"
+                style={{ backgroundColor: C.paid }}>
+                {sending
+                  ? <><RefreshCw size={14} className="animate-spin" /> Sending…</>
+                  : <><Zap size={14} /> Confirm Send</>}
+              </button>
+            </div>
+
+            <div className="flex items-start gap-2 p-3 rounded-xl" style={{ backgroundColor: '#EFF6FF', border: `1px solid ${C.paid}20` }}>
+              <Shield size={12} style={{ color: C.paid, flexShrink: 0, marginTop: 1 }} />
+              <p className="text-xs font-semibold text-blue-700">
+                Instant &amp; irreversible. Double-check the username before confirming.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ── FORM ── */}
+        {step === 'form' && (
+          <div className="p-5 space-y-4">
+            {/* Balance */}
+            <div className="p-3 rounded-xl" style={{ backgroundColor: C.g50, border: `1px solid ${C.g200}` }}>
+              <p className="text-xs font-bold mb-0.5" style={{ color: C.g500 }}>Available Balance</p>
+              <p className="font-black text-lg" style={{ color: C.green }}>₿ {fmt(balance)}</p>
+            </div>
+
+            {/* Username */}
+            <div>
+              <label className="block text-xs font-bold mb-1.5" style={{ color: C.g700 }}>
+                Recipient's PRAQEN Username
+              </label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-sm" style={{ color: C.g400 }}>@</span>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={e => { setUsername(e.target.value.replace(/^@/, '')); setRecipient(null); setLookupError(''); }}
+                    onKeyDown={e => e.key === 'Enter' && findUser()}
+                    placeholder="username"
+                    className="w-full pl-7 pr-4 py-3 text-sm border-2 rounded-xl focus:outline-none"
+                    style={{ borderColor: recipient ? C.green : lookupError ? C.danger : C.g200 }}
+                  />
+                </div>
+                <button onClick={findUser} disabled={!username.trim() || looking}
+                  className="px-4 py-3 rounded-xl text-white font-black text-xs flex items-center gap-1.5 hover:opacity-90 disabled:opacity-40 transition"
+                  style={{ backgroundColor: C.green }}>
+                  {looking ? <RefreshCw size={12} className="animate-spin" /> : <><Search size={12} /> Find</>}
+                </button>
+              </div>
+              {lookupError && (
+                <p className="text-xs mt-1 font-semibold" style={{ color: C.danger }}>{lookupError}</p>
+              )}
+            </div>
+
+            {/* Recipient card */}
+            {recipient && (
+              <div className="flex items-center gap-3 p-3 rounded-xl border"
+                style={{ borderColor: `${C.success}30`, backgroundColor: `${C.success}08` }}>
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-white flex-shrink-0"
+                  style={{ backgroundColor: C.green }}>
+                  {recipient.username[0].toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-black text-sm" style={{ color: C.forest }}>@{recipient.username}</p>
+                  <p className="text-xs truncate" style={{ color: C.g400 }}>
+                    {recipient.badge ? `${recipient.badge} · ` : ''}{recipient.total_trades || 0} trades
+                    {recipient.country ? ` · ${recipient.country}` : ''}
+                  </p>
+                </div>
+                <CheckCircle size={16} style={{ color: C.success, flexShrink: 0 }} />
+              </div>
+            )}
+
+            {/* Amount */}
+            <div>
+              <label className="block text-xs font-bold mb-1.5" style={{ color: C.g700 }}>
+                Amount to Send ({displayCurrency})
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-sm" style={{ color: C.g500 }}>{sym}</span>
+                <input
+                  type="number"
+                  value={localAmount}
+                  onChange={e => setLocalAmount(e.target.value)}
+                  placeholder="0.00"
+                  min="0"
+                  className="w-full pl-8 pr-4 py-3 text-sm border-2 rounded-xl focus:outline-none"
+                  style={{ borderColor: !localAmount ? C.g200 : hasEnough ? C.green : C.danger }}
+                />
+              </div>
+              {localNum > 0 && (
+                <p className="text-xs mt-1 font-bold" style={{ color: C.green }}>
+                  ≈ ₿ {btcAmount.toFixed(8)}
+                </p>
+              )}
+              {localNum > 0 && !hasEnough && (
+                <p className="text-xs mt-0.5 font-semibold" style={{ color: C.danger }}>
+                  Insufficient balance — you only have ₿ {fmt(balance)}
+                </p>
+              )}
+            </div>
+
+            {/* Free badge */}
+            <div className="flex items-center gap-2 p-3 rounded-xl"
+              style={{ backgroundColor: `${C.success}08`, border: `1px solid ${C.success}20` }}>
+              <Zap size={12} style={{ color: C.success }} />
+              <p className="text-xs font-bold" style={{ color: C.success }}>
+                ⚡ Instant & FREE — no network fees, no blockchain wait
+              </p>
+            </div>
+
+            <button
+              onClick={() => setStep('confirm')}
+              disabled={!recipient || !hasEnough || btcAmount <= 0}
+              className="w-full py-3.5 rounded-xl text-white font-black text-sm flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-40 transition"
+              style={{ backgroundColor: C.paid }}>
+              <ArrowUpRight size={14} /> Review Transfer
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Wallet Page ──────────────────────────────────────────────────────────
 export default function WalletPage({ user }) {
   const navigate = useNavigate();
@@ -285,6 +644,7 @@ export default function WalletPage({ user }) {
   const [showBal,          setShowBal]          = useState(true);
   const [showSend,         setShowSend]         = useState(false);
   const [showRecv,         setShowRecv]         = useState(false);
+  const [showInternal,     setShowInternal]     = useState(false);
   const [displayCurrency,  setDisplayCurrency]  = useState(localStorage.getItem('praqen_currency') || 'USD');
 
   useEffect(() => {
@@ -493,11 +853,12 @@ export default function WalletPage({ user }) {
             </div>
 
             {/* Action buttons */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-2">
               {[
-                { label: 'Receive', icon: ArrowDownLeft, color: C.success, action: () => setShowRecv(true) },
-                { label: 'Send',    icon: ArrowUpRight,  color: C.danger,  action: () => setShowSend(true) },
-                { label: 'Check',   icon: Zap,           color: C.gold,    action: checkDeposit },
+                { label: 'Receive',  icon: ArrowDownLeft, color: C.success, action: () => setShowRecv(true)     },
+                { label: 'Send',     icon: ArrowUpRight,  color: C.danger,  action: () => setShowSend(true)     },
+                { label: 'Transfer', icon: Users,         color: C.paid,    action: () => setShowInternal(true) },
+                { label: 'Check',    icon: Zap,           color: C.gold,    action: checkDeposit                },
               ].map(({ label, icon: Icon, color, action }) => (
                 <button key={label} onClick={action}
                   className="flex flex-col items-center gap-1.5 py-3 rounded-2xl hover:opacity-90 transition"
@@ -720,8 +1081,23 @@ export default function WalletPage({ user }) {
         </div>
       </footer>
 
-      {showSend && <WithdrawModal balance={availableBal} onClose={() => setShowSend(false)} onSend={sendBitcoin} />}
+      {showSend && <WithdrawModal balance={availableBal} btcPrice={btcPrice} onClose={() => setShowSend(false)} onSend={sendBitcoin} />}
       {showRecv && <ReceiveModal address={walletData?.address} network={network} onClose={() => setShowRecv(false)} />}
+      {showInternal && (
+        <InternalTransferModal
+          balance={availableBal}
+          btcPrice={btcPrice || 88000}
+          displayCurrency={displayCurrency}
+          fxRate={fxRate}
+          currentUserId={user?.id}
+          onClose={() => setShowInternal(false)}
+          onDone={(newBal) => {
+            setWalletData(prev => prev ? { ...prev, available_btc: newBal, balance_btc: newBal } : prev);
+            setShowInternal(false);
+            loadWallet();
+          }}
+        />
+      )}
     </div>
   );
 }

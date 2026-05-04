@@ -78,6 +78,28 @@ const JWT_SECRET = process.env.JWT_SECRET || 'praqen-secret-change-in-production
 const otpStore          = new Map();
 const verificationCodes = new Map();
 
+// Resolve client IP → ISO country code (fire-and-forget, never blocks login)
+async function detectAndSaveCountry(userId, req) {
+  try {
+    if (!userId) return;
+    const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+      || req.headers['x-real-ip']
+      || req.socket?.remoteAddress
+      || '';
+    // Skip loopback / private addresses
+    if (!ip || ip === '::1' || ip.startsWith('127.') || ip.startsWith('192.168.') || ip.startsWith('10.')) return;
+    const geoRes = await fetch(`https://ipapi.co/${ip}/json/`, { signal: AbortSignal.timeout(4000) });
+    const geo    = await geoRes.json();
+    if (geo?.country_code && geo.country_code.length === 2) {
+      await supabaseAdmin.from('users')
+        .update({ country: geo.country_code.toUpperCase(), last_ip: ip })
+        .eq('id', userId)
+        .is('country', null);  // only set if not already chosen by user
+      console.log(`[GeoIP] user ${String(userId).slice(0,8)} → ${geo.country_code} (${ip})`);
+    }
+  } catch (_) { /* geo lookup failure never breaks login */ }
+}
+
 // ── Phone rate limiting (anti-abuse for OTP / phone verification) ────────────
 const phoneRateLimits = new Map();
 
@@ -256,16 +278,45 @@ async function notifyUserEmail(userId, subject, htmlContent) {
     const { data: user, error: dbErr } = await supabaseAdmin.from('users').select('email').eq('id', userId).single();
     if (dbErr) { console.error(`[Email] DB lookup failed for ${userId}:`, dbErr.message); return; }
     if (!user?.email) { console.warn(`[Email] No email on file for user ${userId} — skipping`); return; }
-    if (!transporter) { console.error('[Email] transporter not initialized'); return; }
-    await transporter.sendMail({
-      from: `"PRAQEN" <${process.env.EMAIL_USER}>`,
-      to: user.email,
-      subject,
-      html: htmlContent
-    });
-    console.log(`📧 Email sent to user ${userId} (${user.email})`);
+
+    const from = `"PRAQEN" <${process.env.EMAIL_USER || 'kendevdash@gmail.com'}>`;
+    const mailOpts = { from, to: user.email, subject, html: htmlContent };
+
+    // Try SMTP port 587 first
+    try {
+      await transporter.sendMail(mailOpts);
+      console.log(`📧 Email sent to ${user.email} (user ${userId.slice(0,8)}) via SMTP 587`);
+      return;
+    } catch (e1) {
+      console.warn(`[Email] SMTP 587 failed for ${user.email}:`, e1.message, '— trying 465');
+    }
+
+    // Try SMTP port 465 SSL
+    try {
+      const sslTransporter = require('nodemailer').createTransport({
+        host: 'smtp.gmail.com', port: 465, secure: true,
+        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+      });
+      await sslTransporter.sendMail(mailOpts);
+      console.log(`📧 Email sent to ${user.email} via SMTP 465`);
+      return;
+    } catch (e2) {
+      console.warn(`[Email] SMTP 465 failed for ${user.email}:`, e2.message, '— trying Resend');
+    }
+
+    // Fallback: Resend
+    if (resendClient) {
+      const { error: resendErr } = await resendClient.emails.send({
+        from: process.env.RESEND_FROM || 'PRAQEN <onboarding@resend.dev>',
+        to: user.email, subject, html: htmlContent,
+      });
+      if (!resendErr) { console.log(`📧 Email sent to ${user.email} via Resend`); return; }
+      console.error(`[Email] Resend also failed for ${user.email}:`, resendErr.message);
+    } else {
+      console.error(`[Email] All delivery methods exhausted for user ${userId.slice(0,8)}`);
+    }
   } catch (err) {
-    console.error(`[Email] Failed for user ${userId}:`, err.message);
+    console.error(`[Email] notifyUserEmail error for ${userId}:`, err.message);
   }
 }
 
@@ -390,8 +441,10 @@ async function sendVerificationEmail(email, code) {
 </body>
 </html>`;
 
-    // Primary: Gmail SMTP — works for ALL recipient emails
-    // (Resend with onboarding@resend.dev only delivers to the Resend account owner's email)
+    // Always log the code so admins can verify delivery manually if SMTP is down
+    console.log(`[EMAIL] Verification code for ${email}: ${code}`);
+
+    // Primary: Gmail SMTP port 587 (STARTTLS)
     try {
         await transporter.sendMail({
             from: `"PRAQEN" <${process.env.EMAIL_USER || 'kendevdash@gmail.com'}>`,
@@ -399,10 +452,30 @@ async function sendVerificationEmail(email, code) {
             subject: '🔐 Your PRAQEN verification code',
             html,
         });
-        console.log('✅ Verification email sent via SMTP to:', email);
+        console.log('✅ Verification email sent via SMTP (587) to:', email);
         return;
     } catch (smtpErr) {
-        console.warn('⚠️ SMTP failed:', smtpErr.message, '— trying Resend fallback');
+        console.warn('⚠️ SMTP port 587 failed:', smtpErr.message, '— trying port 465 SSL');
+    }
+
+    // Secondary: Gmail SMTP port 465 (SSL) — more reliable on some networks
+    try {
+        const sslTransporter = require('nodemailer').createTransport({
+            host: 'smtp.gmail.com',
+            port: 465,
+            secure: true,
+            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+        });
+        await sslTransporter.sendMail({
+            from: `"PRAQEN" <${process.env.EMAIL_USER || 'kendevdash@gmail.com'}>`,
+            to: email,
+            subject: '🔐 Your PRAQEN verification code',
+            html,
+        });
+        console.log('✅ Verification email sent via SMTP (465) to:', email);
+        return;
+    } catch (sslErr) {
+        console.warn('⚠️ SMTP port 465 also failed:', sslErr.message, '— trying Resend fallback');
     }
 
     // Fallback: Resend (only if SMTP fails)
@@ -949,6 +1022,7 @@ app.post('/api/auth/login', async (req, res) => {
       if (!data) return res.status(404).json({ error: 'No account found for this phone number. Please register first.' });
       const token = jwt.sign({ userId: data.id, email: data.email }, JWT_SECRET, { expiresIn: '7d' });
       await supabaseAdmin.from('users').update({ last_login: new Date() }).eq('id', data.id);
+      detectAndSaveCountry(data.id, req).catch(() => {});
       let btcAddress = data.bitcoin_wallet_address;
       if (!isRealBtcAddress(btcAddress)) {
         btcAddress = await upgradeToHDAddress(data.id, data.username) || btcAddress;
@@ -974,6 +1048,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (!validPassword) return res.status(401).json({ error: 'Invalid credentials' });
     const token = jwt.sign({ userId: data.id, email }, JWT_SECRET, { expiresIn: '7d' });
     await supabaseAdmin.from('users').update({ last_login: new Date() }).eq('id', data.id);
+    detectAndSaveCountry(data.id, req).catch(() => {});
 
     // ── Auto-upgrade fake mock address to real HD wallet address ──────────
     let btcAddress = data.bitcoin_wallet_address;
@@ -1149,12 +1224,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
     await storeOtp(contact, otp);
 
     if (ch === 'email') {
-      await transporter.sendMail({
-        from: process.env.EMAIL_USER,
-        to: contact,
-        subject: 'Your PRAQEN verification code',
-        html: `<p style="font-family:sans-serif">Your PRAQEN verification code is:<br/><strong style="font-size:28px;letter-spacing:6px">${otp}</strong><br/><small>Valid for 10 minutes. Do not share this code.</small></p>`,
-      });
+      await sendVerificationEmail(contact, otp);
     } else {
       // SMS only for phone verification (one-time per user)
       const limit = checkPhoneRateLimit(contact);
@@ -1252,32 +1322,13 @@ app.post('/api/auth/verify-otp', async (req, res) => {
 
 app.post('/api/auth/send-verification', async (req, res) => {
   try {
-    const { email, username } = req.body;
+    const { email } = req.body;
     if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email is required' });
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = Date.now() + 10 * 60 * 1000;
     verificationCodes.set(email, { code, expiresAt });
     console.log(`📧 Verification code for ${email}: ${code}`);
-    const htmlContent = `<!DOCTYPE html><html><head><style>
-      body{font-family:Arial,sans-serif;background:#f5f5f5;}
-      .container{max-width:600px;margin:20px auto;background:white;border-radius:8px;}
-      .header{background:linear-gradient(135deg,#2D5F4F,#1e4d3d);color:white;padding:30px;text-align:center;border-radius:8px 8px 0 0;}
-      .content{padding:30px;}.code{font-size:36px;font-weight:bold;color:#2D5F4F;letter-spacing:8px;text-align:center;padding:20px;background:#f9f9f9;border-left:4px solid #2D5F4F;}
-      .footer{background:#f5f5f5;padding:15px;text-align:center;font-size:12px;color:#999;border-radius:0 0 8px 8px;}
-    </style></head><body><div class="container">
-      <div class="header"><h1>Welcome to PRAQEN!</h1></div>
-      <div class="content"><p>Hello ${username || 'User'},</p><p>Your verification code is:</p>
-      <div class="code">${code}</div><p>This code expires in 10 minutes.</p></div>
-      <div class="footer"><p>&copy; 2024 PRAQEN. All rights reserved.</p></div>
-    </div></body></html>`;
-    await transporter.sendMail({
-      from: `"PRAQEN" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: 'Verify Your Email - PRAQEN',
-      text: `Your PRAQEN verification code is: ${code}\nExpires in 10 minutes.`,
-      html: htmlContent,
-    });
-    console.log(`✅ Verification email sent to ${email}`);
+    await sendVerificationEmail(email, code);
     res.json({ success: true, message: 'Verification code sent to your email', devCode: process.env.NODE_ENV === 'development' ? code : undefined });
   } catch (error) {
     console.error('❌ Send verification error:', error);
@@ -1384,10 +1435,11 @@ app.post('/api/users/resend-verification', verifyToken, async (req, res) => {
     await sendVerificationEmail(user.email, code);
 
     console.log(`[resend-verification] Code sent to ${user.email}`);
-    res.json({ success: true, message: 'Verification code sent to your email' });
+    res.json({ success: true, message: 'Verification code sent to your email. Check your inbox and spam/junk folder.' });
   } catch (err) {
     console.error('[resend-verification]', err.message);
-    res.status(500).json({ error: 'Failed to send email. Please check your inbox or try again.' });
+    // Code was stored in DB — user can still verify if they got a previous code
+    res.status(500).json({ error: 'We had trouble sending the email. Check your spam folder — the code may already be there. If not, please wait a moment and try again.' });
   }
 });
 
@@ -1453,15 +1505,17 @@ app.post('/api/users/send-phone-otp', verifyToken, async (req, res) => {
     const otp  = Math.floor(100000 + Math.random() * 900000).toString();
     otpStore.set(e164, { otp, expires: Date.now() + 10 * 60 * 1000 });
 
+    console.log(`[send-phone-otp] OTP for ${e164}: ${otp}`);
     await sendSmsOtp(e164, `[PRAQEN] Your verification code is: ${otp}. Valid for 10 minutes. Never share this code.`);
 
     recordPhoneRequest(e164);
-    console.log(`[send-phone-otp] OTP sent to ${e164}`);
+    console.log(`[send-phone-otp] OTP sent successfully to ${e164}`);
     res.json({ success: true, message: 'OTP sent to your phone' });
   } catch (err) {
     console.error('[send-phone-otp] error code:', err.code, 'message:', err.message);
-    let userMsg = 'Failed to send SMS. Please try again.';
-    if (err.code === 21211 || err.code === 21212) userMsg = 'Invalid phone number. Use the full international format, e.g. +233XXXXXXXXX.';
+    let userMsg = 'Could not send SMS to this number. Please check the number is correct and in international format (e.g. +233XXXXXXXXX), then try again.';
+    if (err.code === 21211 || err.code === 21212) userMsg = 'Invalid phone number format. Use international format, e.g. +233XXXXXXXXX for Ghana or +234XXXXXXXXXX for Nigeria.';
+    else if (err.code === 21608) userMsg = 'SMS is temporarily unavailable. Please contact support at support@praqen.com with your phone number and we will verify you manually.';
     else if (err.code === 21614) userMsg = 'This phone number cannot receive SMS messages.';
     else if (err.code === 20003) userMsg = 'SMS service configuration error. Please contact support.';
     else if (err.code === 21610) userMsg = 'This number has opted out of receiving SMS messages.';
@@ -2340,12 +2394,27 @@ app.post('/api/debug/update-feedback/:username', async (req, res) => {
 
 app.get('/api/my-trades', verifyToken, async (req, res) => {
   try {
-    const { data, error } = await supabaseAdmin.from('trades')
-      .select(`*, listing:listing_id(*), buyer:buyer_id(id, username, avatar_url, average_rating, total_trades, completion_rate, badge, positive_feedback, negative_feedback, last_login, country), seller:seller_id(id, username, avatar_url, average_rating, total_trades, completion_rate, badge, positive_feedback, negative_feedback, last_login, country)`)
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(50, parseInt(req.query.limit) || 30);
+    const offset = (page - 1) * limit;
+
+    const { data, error, count } = await supabaseAdmin.from('trades')
+      .select(
+        `id, status, trade_type, trade_ref, amount_btc, amount_usd, amount_local,
+         local_currency, currency_symbol, payment_method, gift_card_brand,
+         buyer_id, seller_id, created_at, expires_at, completed_at, cancelled_at,
+         buyer_confirmed, cancel_reason,
+         listing:listing_id(id, listing_type, gift_card_brand, payment_method, time_limit, currency, currency_symbol),
+         buyer:buyer_id(id, username, avatar_url, badge, total_trades, completion_rate, positive_feedback, negative_feedback, last_login, country),
+         seller:seller_id(id, username, avatar_url, badge, total_trades, completion_rate, positive_feedback, negative_feedback, last_login, country)`,
+        { count: 'exact' }
+      )
       .or(`buyer_id.eq.${req.userId},seller_id.eq.${req.userId}`)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
     if (error) return res.status(400).json({ error: error.message });
-    res.json({ trades: data || [] });
+    res.json({ trades: data || [], total: count || 0, page, limit });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -2578,7 +2647,7 @@ app.post('/api/trades', verifyToken, async (req, res) => {
       payment_method: paymentMethod || listing.payment_method,
       gift_card_brand: listingTypeUpper.includes('GIFT_CARD') ? (listing.gift_card_brand || null) : null,
       trade_ref: tradeRef,
-      expires_at: new Date(Date.now() + (listing.time_limit || 30) * 60 * 1000),
+      expires_at: new Date(Date.now() + Math.max(parseInt(listing.time_limit) || 30, 15) * 60 * 1000),
     }]).select();
     if (error) return res.status(400).json({ error: error.message });
 
@@ -3103,6 +3172,7 @@ app.post('/api/trades/:id/feedback', verifyToken, async (req, res) => {
     if (rating < 1 || rating > 5) return res.status(400).json({ error: 'Rating must be 1–5' });
     const { data: trade } = await supabaseAdmin.from('trades').select('*').eq('id', req.params.id).single();
     if (!trade) return res.status(404).json({ error: 'Trade not found' });
+    if (trade.status !== 'COMPLETED') return res.status(400).json({ error: 'Feedback can only be submitted after a trade is completed' });
     if (req.userId !== trade.buyer_id && req.userId !== trade.seller_id) return res.status(403).json({ error: 'Not a participant in this trade' });
     const { data: existing } = await supabaseAdmin.from('reviews').select('id').eq('trade_id', req.params.id).eq('reviewer_id', req.userId).single();
     if (existing) return res.status(400).json({ error: 'Feedback already submitted for this trade' });
@@ -3111,7 +3181,14 @@ app.post('/api/trades/:id/feedback', verifyToken, async (req, res) => {
     const { data: allReviews } = await supabaseAdmin.from('reviews').select('rating').eq('reviewee_id', toUserId);
     if (allReviews?.length > 0) {
       const avg = allReviews.reduce((s, r) => s + r.rating, 0) / allReviews.length;
-      await supabaseAdmin.from('users').update({ average_rating: parseFloat(avg.toFixed(2)), total_feedback_count: allReviews.length }).eq('id', toUserId);
+      const posCount = allReviews.filter(r => r.rating >= 4).length;
+      const negCount = allReviews.filter(r => r.rating <= 2).length;
+      await supabaseAdmin.from('users').update({
+        average_rating: parseFloat(avg.toFixed(2)),
+        total_feedback_count: allReviews.length,
+        positive_feedback: posCount,
+        negative_feedback: negCount,
+      }).eq('id', toUserId);
     }
     await updateUserTradeStats(trade.seller_id);
     await updateUserTradeStats(trade.buyer_id);
@@ -3364,6 +3441,187 @@ app.get('/api/admin/profits', verifyToken, async (req, res) => {
 });
 
 // ============================================================
+// ADMIN — SEND WELCOME EMAILS
+// ============================================================
+
+app.post('/api/admin/send-welcome-emails', verifyToken, async (req, res) => {
+  try {
+    const { data: admin } = await supabaseAdmin
+      .from('users').select('is_admin').eq('id', req.userId).single();
+    if (!admin?.is_admin) return res.status(403).json({ error: 'Admin access required' });
+
+    const { data: users } = await supabaseAdmin
+      .from('users')
+      .select('id, email, username, referral_code')
+      .is('welcome_email_sent', false)
+      .limit(100);
+
+    if (!users || users.length === 0)
+      return res.json({ success: true, message: 'No users to send to', sent: 0 });
+
+    let sent = 0;
+    let failed = 0;
+
+    for (const user of users) {
+      const referralCode  = user.referral_code || user.username.toLowerCase();
+      const affiliateLink = `https://praqen.com/signup?ref=${referralCode}`;
+      const year          = new Date().getFullYear();
+
+      const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#F0F4F1;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F4F1;padding:40px 16px;">
+    <tr><td align="center">
+      <table width="520" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:20px;overflow:hidden;box-shadow:0 8px 32px rgba(27,67,50,0.10);">
+
+        <tr>
+          <td style="background:linear-gradient(135deg,#1B4332 0%,#2D6A4F 60%,#40916C 100%);padding:36px 32px 28px;text-align:center;">
+            <div style="display:inline-block;background:#F4A422;border-radius:18px;width:60px;height:60px;line-height:60px;text-align:center;margin-bottom:14px;">
+              <span style="font-size:32px;font-weight:900;color:#1B4332;font-family:Georgia,serif;">P</span>
+            </div>
+            <h1 style="color:#FFFFFF;font-size:26px;font-weight:900;margin:0 0 4px 0;">PRAQEN</h1>
+            <p style="color:#95C4AE;font-size:12px;margin:0;letter-spacing:1px;text-transform:uppercase;">Africa's Trusted P2P Bitcoin Platform</p>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:36px 32px 28px;">
+            <h2 style="color:#1B4332;font-size:20px;font-weight:800;margin:0 0 10px 0;">Welcome to PRAQEN, ${user.username}! 🎉</h2>
+            <p style="color:#475569;font-size:14px;line-height:1.7;margin:0 0 20px 0;">
+              Thank you for joining Africa's fastest-growing P2P Bitcoin trading platform. Your account is ready — and so is your personal referral link.
+            </p>
+
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F4F1;border-radius:14px;margin-bottom:24px;">
+              <tr><td style="padding:20px 24px;">
+                <p style="color:#1B4332;font-size:13px;font-weight:700;margin:0 0 8px 0;text-transform:uppercase;letter-spacing:0.5px;">💰 Your Referral Link</p>
+                <p style="color:#475569;font-size:13px;margin:0 0 10px 0;">Share this link — earn commission every time a referral trades.</p>
+                <div style="background:#FFFFFF;border:1px solid #D1E8DA;border-radius:8px;padding:10px 14px;word-break:break-all;">
+                  <a href="${affiliateLink}" style="color:#2D6A4F;font-size:13px;font-weight:600;text-decoration:none;">${affiliateLink}</a>
+                </div>
+              </td></tr>
+            </table>
+
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F4F1;border-radius:14px;margin-bottom:24px;">
+              <tr><td style="padding:20px 24px;">
+                <p style="color:#1B4332;font-size:13px;font-weight:700;margin:0 0 12px 0;text-transform:uppercase;letter-spacing:0.5px;">🏆 Commission Tiers</p>
+                <table width="100%" style="border-collapse:collapse;">
+                  ${[
+                    ['1–9 trades',    '0.10%'],
+                    ['10–24 trades',  '0.15%'],
+                    ['25–49 trades',  '0.20%'],
+                    ['50–99 trades',  '0.25%'],
+                    ['100+ trades',   '0.30%'],
+                  ].map(([tier, rate], i) => `
+                  <tr style="background:${i % 2 === 0 ? '#FFFFFF' : 'transparent'};">
+                    <td style="padding:6px 10px;font-size:13px;color:#475569;">${tier}</td>
+                    <td style="padding:6px 10px;font-size:13px;font-weight:700;color:#1B4332;text-align:right;">${rate}</td>
+                  </tr>`).join('')}
+                </table>
+              </td></tr>
+            </table>
+
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+              <tr><td style="padding:20px 24px;background:#F0F4F1;border-radius:14px;">
+                <p style="color:#1B4332;font-size:13px;font-weight:700;margin:0 0 10px 0;text-transform:uppercase;letter-spacing:0.5px;">🚀 Quick Start</p>
+                <ol style="color:#475569;font-size:13px;line-height:1.9;margin:0;padding-left:20px;">
+                  <li>Verify your email and phone</li>
+                  <li>Deposit Bitcoin to your wallet</li>
+                  <li>Create a sell offer or browse buy listings</li>
+                </ol>
+              </td></tr>
+            </table>
+
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+              <tr><td align="center">
+                <a href="https://praqen.com" style="display:inline-block;background:linear-gradient(135deg,#1B4332,#2D6A4F);color:#FFFFFF;padding:15px 40px;border-radius:12px;text-decoration:none;font-weight:700;font-size:15px;">Start Trading →</a>
+              </td></tr>
+            </table>
+
+            <p style="color:#94A3B8;font-size:11px;margin:0;text-align:center;">
+              Questions? Email <a href="mailto:support@praqen.com" style="color:#2D6A4F;">support@praqen.com</a>
+            </p>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="background:#F0F4F1;padding:18px 32px;text-align:center;">
+            <p style="color:#64748B;font-size:11px;font-weight:700;margin:0 0 4px 0;">PRAQEN — SECURE P2P BITCOIN TRADING</p>
+            <p style="color:#CBD5E1;font-size:10px;margin:0;">© ${year} PRAQEN. All rights reserved. 🔒 Escrow protected.</p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+      const subject = `Welcome to PRAQEN, ${user.username}! 🎉 Start Trading Bitcoin`;
+      const mailOpts = {
+        from: `"PRAQEN" <${process.env.EMAIL_USER || 'kendevdash@gmail.com'}>`,
+        to: user.email, subject, html,
+      };
+
+      let delivered = false;
+
+      // Try SMTP 587
+      try {
+        await transporter.sendMail(mailOpts);
+        delivered = true;
+      } catch (e1) {
+        console.warn(`[Welcome] SMTP 587 failed for ${user.email}:`, e1.message);
+      }
+
+      // Try SMTP 465
+      if (!delivered) {
+        try {
+          const sslT = require('nodemailer').createTransport({
+            host: 'smtp.gmail.com', port: 465, secure: true,
+            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+          });
+          await sslT.sendMail(mailOpts);
+          delivered = true;
+        } catch (e2) {
+          console.warn(`[Welcome] SMTP 465 failed for ${user.email}:`, e2.message);
+        }
+      }
+
+      // Try Resend
+      if (!delivered && resendClient) {
+        try {
+          const { error: resendErr } = await resendClient.emails.send({
+            from: process.env.RESEND_FROM || 'PRAQEN <onboarding@resend.dev>',
+            to: user.email, subject, html,
+          });
+          if (!resendErr) delivered = true;
+          else console.warn(`[Welcome] Resend failed for ${user.email}:`, resendErr.message);
+        } catch (e3) {
+          console.warn(`[Welcome] Resend error for ${user.email}:`, e3.message);
+        }
+      }
+
+      if (delivered) {
+        await supabaseAdmin.from('users').update({ welcome_email_sent: true }).eq('id', user.id);
+        sent++;
+        console.log(`✅ Welcome email sent to ${user.email}`);
+      } else {
+        failed++;
+        console.error(`❌ All delivery methods failed for ${user.email}`);
+      }
+
+      // Small delay to avoid rate limits
+      await new Promise(r => setTimeout(r, 300));
+    }
+
+    res.json({ success: true, sent, failed, total: users.length });
+  } catch (err) {
+    console.error('[send-welcome-emails] error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
 // GIFT CARD CODE
 // ============================================================
 
@@ -3490,14 +3748,15 @@ app.post('/api/wallet/internal-transfer', verifyToken, async (req, res) => {
     }
 
     // ── Find the recipient PRAQEN user ─────────────────────────────────────
-    let recipientId, recipientUsername;
+    let recipientId, recipientUsername, recipientEmail;
 
     if (toUsername) {
       const { data: recipient } = await supabaseAdmin
-        .from('users').select('id, username').eq('username', toUsername.trim()).single();
+        .from('users').select('id, username, email').eq('username', toUsername.trim()).single();
       if (!recipient) return res.status(404).json({ error: `@${toUsername} not found on PRAQEN` });
       recipientId       = recipient.id;
       recipientUsername = recipient.username;
+      recipientEmail    = recipient.email;
 
     } else {
       // Look up BTC address in user_wallets — if found it is an internal PRAQEN address
@@ -3510,8 +3769,9 @@ app.post('/api/wallet/internal-transfer', verifyToken, async (req, res) => {
         });
       }
       recipientId = wallet.user_id;
-      const { data: ru } = await supabaseAdmin.from('users').select('username').eq('id', recipientId).single();
+      const { data: ru } = await supabaseAdmin.from('users').select('username, email').eq('id', recipientId).single();
       recipientUsername = ru?.username || 'PRAQEN User';
+      recipientEmail    = ru?.email;
     }
 
     if (String(recipientId) === String(req.userId)) {
@@ -3577,8 +3837,8 @@ app.post('/api/wallet/internal-transfer', verifyToken, async (req, res) => {
       created_at: new Date().toISOString(),
     });
 
-    // ── Notify recipient ───────────────────────────────────────────────────
-    const { data: senderUser } = await supabaseAdmin.from('users').select('username').eq('id', req.userId).single();
+    // ── Notify recipient (in-app) ──────────────────────────────────────────
+    const { data: senderUser } = await supabaseAdmin.from('users').select('username, email').eq('id', req.userId).single();
     await supabaseAdmin.from('notifications').insert({
       user_id:    recipientId,
       type:       'wallet',
@@ -3588,6 +3848,70 @@ app.post('/api/wallet/internal-transfer', verifyToken, async (req, res) => {
       is_read:    false,
       created_at: new Date().toISOString(),
     });
+
+    // ── Email notifications (fire-and-forget) ──────────────────────────────
+    const senderName = senderUser?.username || 'A PRAQEN user';
+    const txDate     = new Date().toUTCString();
+
+    const recipientHtml = `
+<div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:520px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #E2E8F0">
+  <div style="background:linear-gradient(135deg,#1B4332,#2D6A4F);padding:28px 32px;text-align:center">
+    <h1 style="color:#F4A422;font-size:28px;margin:0;font-weight:900">₿ Bitcoin Received!</h1>
+    <p style="color:rgba(255,255,255,0.7);margin:8px 0 0;font-size:14px">Instant PRAQEN internal transfer</p>
+  </div>
+  <div style="padding:28px 32px">
+    <div style="background:#F0FAF5;border-radius:12px;padding:20px;margin-bottom:20px;text-align:center">
+      <p style="color:#64748B;font-size:12px;margin:0 0 6px">You received</p>
+      <p style="color:#1B4332;font-size:32px;font-weight:900;margin:0">₿ ${amount.toFixed(8)}</p>
+      <p style="color:#10B981;font-size:12px;font-weight:700;margin:6px 0 0">⚡ Instant &amp; FREE — no fees</p>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <tr><td style="color:#64748B;padding:6px 0">From</td><td style="color:#1B4332;font-weight:700;text-align:right">@${senderName}</td></tr>
+      <tr><td style="color:#64748B;padding:6px 0">Network Fee</td><td style="color:#10B981;font-weight:700;text-align:right">₿ 0.00000000 (Free)</td></tr>
+      <tr><td style="color:#64748B;padding:6px 0">Reference</td><td style="color:#1B4332;font-weight:700;text-align:right;font-family:monospace;font-size:11px">${txRef}</td></tr>
+      <tr><td style="color:#64748B;padding:6px 0">Date</td><td style="color:#475569;text-align:right">${txDate}</td></tr>
+    </table>
+    <div style="text-align:center;margin-top:24px">
+      <a href="https://praqen.com/wallet" style="display:inline-block;background:#2D6A4F;color:#fff;font-weight:900;padding:14px 32px;border-radius:12px;text-decoration:none;font-size:14px">View Wallet</a>
+    </div>
+  </div>
+  <div style="background:#F8FAFC;padding:16px 32px;text-align:center">
+    <p style="color:#94A3B8;font-size:11px;margin:0">PRAQEN · The world's most trusted P2P Bitcoin platform · Escrow-protected · 0.5% fee on trades</p>
+  </div>
+</div>`;
+
+    const senderHtml = `
+<div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:520px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #E2E8F0">
+  <div style="background:linear-gradient(135deg,#1B4332,#2D6A4F);padding:28px 32px;text-align:center">
+    <h1 style="color:#fff;font-size:24px;margin:0;font-weight:900">Transfer Sent ✅</h1>
+    <p style="color:rgba(255,255,255,0.7);margin:8px 0 0;font-size:14px">Your PRAQEN internal transfer was delivered</p>
+  </div>
+  <div style="padding:28px 32px">
+    <div style="background:#F8FAFC;border-radius:12px;padding:20px;margin-bottom:20px;text-align:center">
+      <p style="color:#64748B;font-size:12px;margin:0 0 6px">You sent</p>
+      <p style="color:#EF4444;font-size:32px;font-weight:900;margin:0">−₿ ${amount.toFixed(8)}</p>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <tr><td style="color:#64748B;padding:6px 0">To</td><td style="color:#1B4332;font-weight:700;text-align:right">@${recipientUsername}</td></tr>
+      <tr><td style="color:#64748B;padding:6px 0">Fee</td><td style="color:#10B981;font-weight:700;text-align:right">₿ 0.00000000 (Free)</td></tr>
+      <tr><td style="color:#64748B;padding:6px 0">New Balance</td><td style="color:#1B4332;font-weight:700;text-align:right">₿ ${newSenderBalance.toFixed(8)}</td></tr>
+      <tr><td style="color:#64748B;padding:6px 0">Reference</td><td style="color:#1B4332;font-weight:700;text-align:right;font-family:monospace;font-size:11px">${txRef}</td></tr>
+      <tr><td style="color:#64748B;padding:6px 0">Date</td><td style="color:#475569;text-align:right">${txDate}</td></tr>
+    </table>
+    <div style="text-align:center;margin-top:24px">
+      <a href="https://praqen.com/wallet" style="display:inline-block;background:#2D6A4F;color:#fff;font-weight:900;padding:14px 32px;border-radius:12px;text-decoration:none;font-size:14px">View Wallet</a>
+    </div>
+  </div>
+  <div style="background:#F8FAFC;padding:16px 32px;text-align:center">
+    <p style="color:#94A3B8;font-size:11px;margin:0">PRAQEN · The world's most trusted P2P Bitcoin platform · Escrow-protected · 0.5% fee on trades</p>
+  </div>
+</div>`;
+
+    const emailFrom = `"PRAQEN" <${process.env.EMAIL_USER || 'kendevdash@gmail.com'}>`;
+    Promise.all([
+      recipientEmail && transporter.sendMail({ from: emailFrom, to: recipientEmail, subject: `₿ You received ${amount.toFixed(8)} BTC from @${senderName} on PRAQEN`, html: recipientHtml }),
+      senderUser?.email && transporter.sendMail({ from: emailFrom, to: senderUser.email, subject: `✅ Transfer sent: ₿${amount.toFixed(8)} → @${recipientUsername}`, html: senderHtml }),
+    ]).catch(err => console.warn('[InternalTransfer] Email send error (non-fatal):', err.message));
 
     console.log(`[InternalTransfer] @${senderUser?.username} → @${recipientUsername} | ₿${amount} | FREE | ref:${txRef}`);
 
@@ -3799,6 +4123,30 @@ app.get('/api/support/trade/:ref', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('Support trade lookup error:', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// REFERRAL LINK RESOLUTION  GET /api/ref/:username
+// ============================================================
+
+app.get('/api/ref/:username', async (req, res) => {
+  try {
+    const { username } = req.params;
+    if (!username) return res.json({ success: false, referral_code: null });
+
+    const { data: user } = await supabaseAdmin
+      .from('users')
+      .select('referral_code, username')
+      .ilike('username', username)
+      .single();
+
+    if (user?.referral_code) {
+      return res.json({ success: true, referral_code: user.referral_code });
+    }
+    res.json({ success: false, referral_code: null });
+  } catch (err) {
+    res.json({ success: false, referral_code: null });
   }
 });
 

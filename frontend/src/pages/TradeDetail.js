@@ -499,8 +499,10 @@ export default function TradeDetail({user}) {
 
   useEffect(()=>{
     if(!trade?.created_at||!isActive)return;
-    const LIMIT_MINS = trade?.listing?.time_limit || trade?.time_limit || 30;
-    const deadline = new Date(trade.created_at).getTime() + LIMIT_MINS * 60 * 1000;
+    // Use the stored expires_at (authoritative). Fallback to created_at + time_limit for old trades.
+    const deadline = trade.expires_at
+      ? new Date(trade.expires_at).getTime()
+      : new Date(trade.created_at).getTime() + (Math.max(trade?.listing?.time_limit||0, trade?.time_limit||0, 30)) * 60 * 1000;
     const iv=setInterval(()=>{
       const rem=Math.max(0, Math.floor((deadline - Date.now()) / 1000));
       setTimeLeft(rem);
@@ -511,7 +513,7 @@ export default function TradeDetail({user}) {
       }
     },1000);
     return()=>clearInterval(iv);
-  },[trade?.created_at,status]);
+  },[trade?.expires_at,trade?.created_at,status]);
 
   useEffect(()=>{
     if(isCompleted && !trade?.user_gave_feedback && !tradeCompleted){
@@ -1205,14 +1207,39 @@ export default function TradeDetail({user}) {
                   const isSys=!m.sender_id||m.message_type==='SYSTEM'||m.sender_role==='system';
                   const text=m.message_text||m.message||'';
 
-                  if(isSys) return(
-                    <div key={i} className="flex justify-center">
-                      <div className="px-4 py-2 rounded-xl text-xs max-w-[90%] text-center border"
-                        style={{backgroundColor:C.g100,color:C.g500,borderColor:C.g200}}>
-                        {text}
+                  if(isSys){
+                    // Classify the message type for styling
+                    const tl = text.toLowerCase();
+                    const isSuccess = /complet|released|btc.*released|paid.*confirmed|verified|unlock/i.test(text);
+                    const isDanger  = /disput|cancel|expired|refund|failed/i.test(text);
+                    const isWarn    = /warning|urgent|expir|time.*left|5 minute/i.test(text);
+                    const isPmt     = /payment.*sent|paid|mark.*paid|sent.*payment/i.test(text);
+                    const isOpen    = /trade.*open|escrow.*lock|btc.*locked|opened/i.test(text);
+                    const isMod2    = /moderator|support.*review|dispute.*open/i.test(text);
+
+                    let bg, border, color, icon;
+                    if (isSuccess)    { bg='#F0FDF4'; border='#86EFAC'; color='#166534'; icon='✅'; }
+                    else if (isDanger){ bg='#FEF2F2'; border='#FCA5A5'; color='#991B1B'; icon='❌'; }
+                    else if (isWarn)  { bg='#FFFBEB'; border='#FCD34D'; color='#92400E'; icon='⚠️'; }
+                    else if (isPmt)   { bg='#EFF6FF'; border='#93C5FD'; color='#1E40AF'; icon='💳'; }
+                    else if (isOpen)  { bg='#F0FDF4'; border='#6EE7B7'; color='#065F46'; icon='🔒'; }
+                    else if (isMod2)  { bg='#EDE9FE'; border='#C4B5FD'; color='#4C1D95'; icon='👨‍⚖️'; }
+                    else              { bg=C.g50;     border=C.g200;    color=C.g600;    icon='ℹ️'; }
+
+                    return(
+                      <div key={i} className="flex justify-center my-1">
+                        <div className="max-w-[92%] rounded-2xl border px-4 py-2.5 text-center"
+                          style={{backgroundColor:bg, borderColor:border}}>
+                          <p className="text-xs font-semibold leading-relaxed" style={{color}}>
+                            <span className="mr-1">{icon}</span>{text}
+                          </p>
+                          <p className="text-xs mt-1 opacity-60" style={{color}}>
+                            {new Date(m.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  );
+                    );
+                  }
 
                   if(isMod) return(
                     <div key={i} className="flex justify-center">
