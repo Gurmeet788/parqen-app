@@ -732,6 +732,33 @@ app.post('/api/test-notify', async (req, res) => {
 // AUTH ROUTES
 // ============================================================
 
+// Public endpoint — returns referrer info from a referral code (used to show banner on signup page)
+app.get('/api/auth/referrer', async (req, res) => {
+  try {
+    const code = (req.query.code || '').toLowerCase().trim();
+    if (!code) return res.json({ success: false });
+    const { data } = await supabaseAdmin
+      .from('users')
+      .select('username, full_name, avatar_url, total_trades, badge, total_referrals')
+      .eq('referral_code', code)
+      .maybeSingle();
+    if (!data) return res.json({ success: false });
+    res.json({
+      success: true,
+      referrer: {
+        username:       data.username,
+        full_name:      data.full_name,
+        avatar_url:     data.avatar_url || null,
+        total_trades:   data.total_trades || 0,
+        badge:          data.badge || 'BEGINNER',
+        total_referrals: data.total_referrals || 0,
+      },
+    });
+  } catch (e) {
+    res.json({ success: false });
+  }
+});
+
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password, username, fullName, referralCode } = req.body;
@@ -756,9 +783,15 @@ app.post('/api/auth/register', async (req, res) => {
     // ── Referral lookup ────────────────────────────────────────────────────
     let referrerId = null;
     if (referralCode) {
+      const normalized = referralCode.toLowerCase().trim();
       const { data: referrer } = await supabaseAdmin
-        .from('users').select('id').eq('referral_code', referralCode.toUpperCase()).maybeSingle();
-      if (referrer) referrerId = referrer.id;
+        .from('users').select('id').eq('referral_code', normalized).maybeSingle();
+      if (referrer) {
+        referrerId = referrer.id;
+        console.log(`[Register] Referral matched: code=${normalized} → referrer=${referrerId}`);
+      } else {
+        console.log(`[Register] Referral code not found: ${normalized}`);
+      }
     }
 
     // ── Create user ────────────────────────────────────────────────────────
@@ -853,10 +886,18 @@ app.post('/api/auth/register', async (req, res) => {
       }
     });
 
-    // 3. Increment referrer count (non-critical)
+    // 3. Increment referrer's total_referrals count (non-critical, direct update)
     if (referrerId) {
-      supabaseAdmin.rpc('increment_referral_count', { user_id: referrerId })
-        .catch(e => console.error('[Register] Referral increment failed:', e.message));
+      (async () => {
+        try {
+          const { data: ref } = await supabaseAdmin.from('users').select('total_referrals').eq('id', referrerId).single();
+          const newCount = (ref?.total_referrals || 0) + 1;
+          await supabaseAdmin.from('users').update({ total_referrals: newCount }).eq('id', referrerId);
+          console.log(`[Register] Referral count updated for ${referrerId}: ${newCount}`);
+        } catch (e) {
+          console.error('[Register] Referral count update failed:', e.message);
+        }
+      })();
     }
 
     // 4. Coinbase wallet (non-critical, slow external API — fully background)
@@ -918,7 +959,9 @@ app.post('/api/auth/login', async (req, res) => {
           average_rating: data.average_rating || 0, total_trades: data.total_trades || 0,
           avatar_url: data.avatar_url || null, is_admin: data.is_admin || false,
           is_moderator: data.is_moderator || false, referral_code: data.referral_code || null,
-          bitcoin_wallet_address: btcAddress },
+          bitcoin_wallet_address: btcAddress,
+          total_referrals: data.total_referrals || 0,
+          referral_earnings_btc: data.referral_earnings_btc || 0 },
         token,
       });
     }
@@ -945,7 +988,9 @@ app.post('/api/auth/login', async (req, res) => {
         average_rating: data.average_rating || 0, total_trades: data.total_trades || 0,
         avatar_url: data.avatar_url || null, is_admin: data.is_admin || false,
         is_moderator: data.is_moderator || false, referral_code: data.referral_code || null,
-        bitcoin_wallet_address: btcAddress },
+        bitcoin_wallet_address: btcAddress,
+        total_referrals: data.total_referrals || 0,
+        referral_earnings_btc: data.referral_earnings_btc || 0 },
       token,
     });
   } catch (error) {
@@ -3083,13 +3128,27 @@ app.post('/api/trades/:id/feedback', verifyToken, async (req, res) => {
 app.get('/api/affiliate/stats', verifyToken, async (req, res) => {
   try {
     const userId = req.userId;
-    const { data: earnings, error: earningsError } = await supabaseAdmin.from('affiliate_earnings').select('*').eq('referrer_id', userId).order('created_at', { ascending: false });
-    if (earningsError) throw earningsError;
-    const { data: userData, error: userError } = await supabaseAdmin.from('users').select('referral_code, total_referrals, referral_earnings_btc, badge').eq('id', userId).single();
-    if (userError) throw userError;
-    const totalEarnings = (earnings || []).reduce((sum, e) => sum + parseFloat(e.commission_btc || 0), 0);
-    const totalTrades = (earnings || []).length;
-    res.json({ success: true, stats: { totalEarningsBtc: totalEarnings, totalReferrals: userData?.total_referrals || 0, totalReferralTrades: totalTrades, currentBadge: userData?.badge || 'BEGINNER', referralCode: userData?.referral_code || '' }, earnings: earnings || [] });
+    const [earningsResult, userResult] = await Promise.all([
+      supabaseAdmin.from('affiliate_earnings').select('*').eq('referrer_id', userId).order('created_at', { ascending: false }),
+      supabaseAdmin.from('users').select('referral_code, total_referrals, referral_earnings_btc, badge').eq('id', userId).single(),
+    ]);
+    if (earningsResult.error) throw earningsResult.error;
+    const earnings  = earningsResult.data || [];
+    const userData  = userResult.data || {};
+    // Use referral_earnings_btc from users table as authoritative total (updated on each trade)
+    const totalEarnings = parseFloat(userData.referral_earnings_btc || 0) ||
+                          earnings.reduce((sum, e) => sum + parseFloat(e.commission_btc || 0), 0);
+    res.json({
+      success: true,
+      stats: {
+        totalEarningsBtc:    totalEarnings,
+        totalReferrals:      userData.total_referrals || 0,
+        totalReferralTrades: earnings.length,
+        currentBadge:        userData.badge || 'BEGINNER',
+        referralCode:        userData.referral_code || '',
+      },
+      earnings,
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -3109,40 +3168,72 @@ app.get('/api/affiliate/earnings', verifyToken, async (req, res) => {
 
 app.get('/api/referral/earnings', verifyToken, async (req, res) => {
   try {
-    const { data: earnings, error } = await supabaseAdmin
-      .from('referral_earnings')
-      .select(`
-        id, amount_btc, type, created_at,
-        referred_user:referred_user_id(username, avatar_url, created_at, total_trades, badge)
-      `)
-      .eq('referrer_id', req.userId)
-      .order('created_at', { ascending: false });
-    if (error) throw error;
+    const userId = req.userId;
 
-    const totalEarned = (earnings || []).reduce((sum, e) => sum + parseFloat(e.amount_btc || 0), 0);
+    // Run all queries in parallel
+    const [earningsResult, userResult, signupsResult] = await Promise.all([
+      // Trade-based commissions (also source of legacy referred-user data)
+      supabaseAdmin
+        .from('affiliate_earnings')
+        .select(`id, commission_btc, trade_amount_btc, trade_amount_usd, commission_rate, status, created_at, trade_id,
+          referred_user:referred_user_id(id, username, avatar_url, created_at, total_trades, badge)`)
+        .eq('referrer_id', userId)
+        .order('created_at', { ascending: false }),
 
-    const referredMap = {};
-    (earnings || []).forEach(e => {
-      const key = e.referred_user?.username || 'unknown';
-      if (!referredMap[key]) {
-        referredMap[key] = {
-          username: e.referred_user?.username || 'Unknown',
-          avatar_url: e.referred_user?.avatar_url || null,
-          total_trades: e.referred_user?.total_trades || 0,
-          badge: e.referred_user?.badge || 'BEGINNER',
-          joined_at: e.referred_user?.created_at || null,
-          total_earned: 0,
-        };
+      // Referrer's own stats (total_referrals is authoritative signup count)
+      supabaseAdmin
+        .from('users')
+        .select('total_referrals, referral_earnings_btc')
+        .eq('id', userId)
+        .single(),
+
+      // Users who signed up via this referrer's link (referred_by properly set)
+      supabaseAdmin
+        .from('users')
+        .select('id, username, avatar_url, created_at, total_trades, badge')
+        .eq('referred_by', userId)
+        .order('created_at', { ascending: false }),
+    ]);
+
+    if (earningsResult.error) throw earningsResult.error;
+
+    const earnings = earningsResult.data || [];
+    const userData = userResult.data || {};
+    const signups  = signupsResult.data || [];
+
+    const totalEarned = earnings.reduce((sum, e) => sum + parseFloat(e.commission_btc || 0), 0);
+
+    // Map earnings per user for commission totals
+    const earningsPerUser = {};
+    earnings.forEach(e => {
+      if (e.referred_user?.username) {
+        const u = e.referred_user.username;
+        earningsPerUser[u] = (earningsPerUser[u] || 0) + parseFloat(e.commission_btc || 0);
       }
-      referredMap[key].total_earned += parseFloat(e.amount_btc || 0);
+    });
+
+    // Start with signups that have referred_by set (new method)
+    const seenIds = new Set();
+    const referredUsers = signups.map(u => {
+      seenIds.add(u.id);
+      return { username: u.username, avatar_url: u.avatar_url || null, total_trades: u.total_trades || 0, badge: u.badge || 'BEGINNER', joined_at: u.created_at, total_earned: earningsPerUser[u.username] || 0 };
+    });
+
+    // Add users from affiliate_earnings that aren't already in the list (legacy referrals)
+    earnings.forEach(e => {
+      const ru = e.referred_user;
+      if (ru?.id && !seenIds.has(ru.id)) {
+        seenIds.add(ru.id);
+        referredUsers.push({ username: ru.username, avatar_url: ru.avatar_url || null, total_trades: ru.total_trades || 0, badge: ru.badge || 'BEGINNER', joined_at: ru.created_at, total_earned: earningsPerUser[ru.username] || 0 });
+      }
     });
 
     res.json({
       success: true,
       totalEarned,
-      referralCount: Object.keys(referredMap).length,
-      referredUsers: Object.values(referredMap),
-      earnings: earnings || [],
+      referralCount: userData.total_referrals || referredUsers.length,
+      referredUsers,
+      earnings,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -3152,13 +3243,13 @@ app.get('/api/referral/earnings', verifyToken, async (req, res) => {
 app.post('/api/referral/withdraw', verifyToken, async (req, res) => {
   try {
     const { data: earnings, error } = await supabaseAdmin
-      .from('referral_earnings')
-      .select('id, amount_btc')
+      .from('affiliate_earnings')
+      .select('id, commission_btc')
       .eq('referrer_id', req.userId)
-      .neq('type', 'WITHDRAWN');
+      .neq('status', 'WITHDRAWN');
     if (error) throw error;
 
-    const totalEarnings = (earnings || []).reduce((sum, e) => sum + parseFloat(e.amount_btc || 0), 0);
+    const totalEarnings = (earnings || []).reduce((sum, e) => sum + parseFloat(e.commission_btc || 0), 0);
 
     if (totalEarnings <= 0) {
       return res.status(400).json({ error: 'No earnings to withdraw' });
@@ -3188,8 +3279,8 @@ app.post('/api/referral/withdraw', verifyToken, async (req, res) => {
 
     const ids = earnings.map(e => e.id);
     const { error: updErr } = await supabaseAdmin
-      .from('referral_earnings')
-      .update({ type: 'WITHDRAWN' })
+      .from('affiliate_earnings')
+      .update({ status: 'WITHDRAWN' })
       .in('id', ids);
     if (updErr) throw updErr;
 

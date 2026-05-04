@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { API_URL } from '../App';
 import {
@@ -161,6 +161,7 @@ function OTPInput({ value, onChange, hasError }) {
 
 export default function Register({ onLogin }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [mode, setMode]               = useState('register');
   const [step, setStep]               = useState(1);
   const [method, setMethod]           = useState('email');
@@ -183,6 +184,27 @@ export default function Register({ onLogin }) {
   const [confirm, setConfirm]   = useState('');
   const [agreed, setAgreed]     = useState(false);
   const [errs, setErrs]         = useState({});
+  const [referralCode, setReferralCode] = useState('');
+  const [referrerInfo, setReferrerInfo] = useState(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const refCode = params.get('ref');
+    if (refCode) {
+      setReferralCode(refCode);
+      localStorage.setItem('referralCode', refCode);
+    } else {
+      const stored = localStorage.getItem('referralCode');
+      if (stored) setReferralCode(stored);
+    }
+  }, [location.search]);
+
+  useEffect(() => {
+    if (!referralCode) { setReferrerInfo(null); return; }
+    axios.get(`${API_URL}/auth/referrer?code=${encodeURIComponent(referralCode)}`)
+      .then(r => { if (r.data.success) setReferrerInfo(r.data.referrer); })
+      .catch(() => {});
+  }, [referralCode]);
 
   useEffect(() => {
     if (otpTimer <= 0) return;
@@ -275,9 +297,11 @@ export default function Register({ onLogin }) {
         phone: method === 'phone' ? contact : undefined,
         username: username.toLowerCase(),
         fullName, password,
+        referralCode: referralCode || undefined,
       });
       if (res.data.success && res.data.token) {
         localStorage.setItem('token', res.data.token);
+        localStorage.removeItem('referralCode');
         onLogin(res.data.user, res.data.token);
         setStep(4);
         setTimeout(() => navigate('/buy-bitcoin'), 1800);
@@ -1009,12 +1033,63 @@ export default function Register({ onLogin }) {
                   {mode === 'register' ? 'Create Account' : 'Reset Password'}
                 </h1>
                 <p className="card-subtitle">
-                  {mode === 'register' 
-                    ? 'Join the future of P2P trading' 
+                  {mode === 'register'
+                    ? 'Join the future of P2P trading'
                     : "We'll help you get back in"
                   }
                 </p>
               </div>
+
+              {/* ── REFERRAL BANNER ── shown when arriving via an affiliate link */}
+              {referralCode && mode === 'register' && (
+                <div style={{
+                  margin: '0 0 4px',
+                  padding: '12px 16px',
+                  borderRadius: 14,
+                  background: 'linear-gradient(135deg, #1B4332 0%, #2D6A4F 100%)',
+                  border: '1.5px solid #40916C',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                }}>
+                  <div style={{
+                    width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
+                    background: referrerInfo?.avatar_url ? `url(${referrerInfo.avatar_url}) center/cover` : 'linear-gradient(135deg,#F4A422,#E07C0E)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontWeight: 900, fontSize: 15, color: '#1B4332',
+                  }}>
+                    {!referrerInfo?.avatar_url && (referrerInfo?.username?.charAt(0).toUpperCase() || '🎁')}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {referrerInfo ? (
+                      <>
+                        <p style={{ color: '#F4A422', fontWeight: 800, fontSize: 13, margin: 0 }}>
+                          You were invited by <span style={{ color: '#fff' }}>@{referrerInfo.username}</span>!
+                        </p>
+                        <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11, margin: '2px 0 0', fontWeight: 500 }}>
+                          Sign up now and start trading on Africa's #1 P2P Bitcoin platform
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p style={{ color: '#F4A422', fontWeight: 800, fontSize: 13, margin: 0 }}>
+                          You have a referral invitation!
+                        </p>
+                        <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11, margin: '2px 0 0', fontWeight: 500 }}>
+                          Sign up now and start trading on Africa's #1 P2P Bitcoin platform
+                        </p>
+                      </>
+                    )}
+                  </div>
+                  <div style={{
+                    flexShrink: 0, padding: '4px 10px', borderRadius: 20,
+                    background: 'rgba(244,164,34,0.2)', border: '1px solid rgba(244,164,34,0.4)',
+                    fontSize: 10, fontWeight: 800, color: '#F4A422', textTransform: 'uppercase', letterSpacing: '0.5px',
+                  }}>
+                    Referral
+                  </div>
+                </div>
+              )}
 
               <div className="card-body animate-fade" key={step}>
                 {/* REGISTER STEP 1 */}

@@ -213,6 +213,7 @@ function App() {
 
           {/* Auth Routes */}
           <Route path="/register" element={!user ? <Register onLogin={login} /> : <Navigate to="/" />} />
+          <Route path="/signup" element={!user ? <Register onLogin={login} /> : <Navigate to="/" />} />
           <Route path="/login" element={!user ? <Login onLogin={login} /> : <Navigate to="/" />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           
