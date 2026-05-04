@@ -273,7 +273,7 @@ const loadAll = useCallback(async () => {
         trade_type:      (listing.listing_type === 'SELL' || listing.listing_type === 'SELL_GIFT_CARD') ? 'BUY' : 'SELL',
         sellerRateLocal: parseFloat(activeQuote.executableRate.toFixed(2)),
         sellerRateUsd:   parseFloat(sellerRateUSD.toFixed(2)),
-      }, { headers: { Authorization: `Bearer ${token}` }, timeout: 30000 });
+      }, { headers: { Authorization: `Bearer ${token}` }, timeout: 60000 });
 
       const tradeData = r.data.trade || r.data;
       const tradeId   = tradeData?.id || tradeData?.trade?.id;

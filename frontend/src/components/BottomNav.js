@@ -30,6 +30,7 @@ export default function BottomNav({ user }) {
   const location = useLocation();
 
   if (!user) return null;
+  if (location.pathname.startsWith('/trade/')) return null;
 
   const isActive = (to) => {
     return location.pathname.startsWith(to);

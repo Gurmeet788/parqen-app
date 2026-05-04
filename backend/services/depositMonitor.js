@@ -343,20 +343,25 @@ class DepositMonitor {
           // Do NOT continue — user_wallets must still be updated below
         }
 
-        // ── 3. Update user_wallets.balance_btc ───────────────────────────────
-        // Fetch wallet's own current balance so we don't inherit a stale user_balances value
+        // ── 3. Upsert user_wallets.balance_btc ──────────────────────────────
+        // Use upsert (not update) so the row is CREATED if it doesn't exist.
+        // An update on a missing row silently does nothing, leaving user_wallets at 0.
+        // When escrow later locks and sets user_wallets = user_balances - amount,
+        // it would inflate user_wallets from 0 and show fake BTC to the seller.
         const { data: walletRow } = await supabaseAdmin
-          .from('user_wallets').select('balance_btc').eq('user_id', userId).single();
+          .from('user_wallets').select('balance_btc').eq('user_id', userId).maybeSingle();
         const walletBase    = parseFloat(walletRow?.balance_btc || 0);
         const walletBalance = parseFloat((walletBase + depositBTC).toFixed(8));
 
         const { error: walletErr } = await supabaseAdmin
           .from('user_wallets')
-          .update({ balance_btc: walletBalance, updated_at: new Date().toISOString() })
-          .eq('user_id', userId);
+          .upsert(
+            { user_id: userId, btc_address: address, balance_btc: walletBalance, updated_at: new Date().toISOString() },
+            { onConflict: 'user_id' }
+          );
 
         if (walletErr) {
-          console.error(`[DepositMonitor] user_wallets update failed for ${username}:`, walletErr.message);
+          console.error(`[DepositMonitor] user_wallets upsert failed for ${username}:`, walletErr.message);
         }
 
         // ── 4. In-app notification ───────────────────────────────────────────

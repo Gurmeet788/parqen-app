@@ -20,41 +20,48 @@ const PRAQEN = {
 const ADMIN_EMAIL = 'parqen5@gmail.com';
 
 function ModeratorLogin({ onLogin, user }) {
-  const [code, setCode] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const VALID = ['PRAQEN_MOD_2024', 'admin', 'moderator', 'praqen_mod', ADMIN_EMAIL];
+  const [email,    setEmail]    = useState('');
+  const [password, setPassword] = useState('');
+  const [error,    setError]    = useState('');
+  const [loading,  setLoading]  = useState(false);
 
-  // Auto-login for admin email — skip code entry entirely
+  // Auto-login when the already-logged-in user is a moderator/admin
   useEffect(() => {
-    if (user?.email === ADMIN_EMAIL) {
-      localStorage.setItem('mod_token', 'praqen_admin');
-      onLogin('PRAQEN Admin');
+    if (user?.is_moderator || user?.is_admin) {
+      const tok = localStorage.getItem('token');
+      if (tok) { localStorage.setItem('mod_token', tok); onLogin(user.username || 'PRAQEN Moderator'); }
     }
   }, [user]);
 
   const handleLogin = async (e) => {
     e.preventDefault(); setError(''); setLoading(true);
-    if (VALID.includes(code.trim())) {
-      localStorage.setItem('mod_token', 'local_mod');
-      onLogin('PRAQEN Moderator'); setLoading(false); return;
-    }
     try {
-      const token = localStorage.getItem('token');
-      const r = await axios.post(`${API_URL}/admin/moderator-login`, { code }, { headers: { Authorization: `Bearer ${token}` } });
-      if (r.data.success) { localStorage.setItem('mod_token', r.data.token || code); onLogin(r.data.moderator?.username || 'Moderator'); }
-      else setError('Invalid moderator code. Access denied.');
-    } catch { setError('Invalid moderator code. Access denied.'); }
+      const r = await axios.post(`${API_URL}/auth/login`, { email: email.trim(), password });
+      const { token, user: u } = r.data;
+      if (!token || (!u?.is_moderator && !u?.is_admin)) {
+        setError('Access denied. This account does not have moderator privileges.');
+        setLoading(false); return;
+      }
+      // Store the JWT so all dashboard API calls are authenticated
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(u));
+      localStorage.setItem('mod_token', token);
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      onLogin(u.username || u.email || 'Moderator');
+    } catch (err) {
+      const msg = err?.response?.data?.error || err?.response?.data?.message || 'Invalid email or password.';
+      setError(msg);
+    }
     setLoading(false);
   };
 
-  // If admin email is logged in, show a brief loading state while auto-login fires
-  if (user?.email === ADMIN_EMAIL) {
+  // Already logged in as moderator — show spinner while auto-login fires
+  if ((user?.is_moderator || user?.is_admin) && localStorage.getItem('token')) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: PRAQEN.lightBg }}>
         <div className="text-center">
           <div className="w-12 h-12 border-4 rounded-full animate-spin mx-auto mb-4" style={{ borderColor: PRAQEN.purple, borderTopColor: PRAQEN.secondary }} />
-          <p className="font-bold" style={{ color: PRAQEN.primary }}>Authenticating admin…</p>
+          <p className="font-bold" style={{ color: PRAQEN.primary }}>Authenticating…</p>
         </div>
       </div>
     );
@@ -73,29 +80,48 @@ function ModeratorLogin({ onLogin, user }) {
             <span style={{ color: PRAQEN.secondary, fontWeight: 900 }}>QEN</span> Dispute Resolution Center
           </p>
         </div>
+
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2">
-              <Lock size={14} className="inline mr-1" /> Moderator Access Code
-            </label>
-            <input type="password" value={code} onChange={e => { setCode(e.target.value); setError(''); }}
-              placeholder="Enter your access code"
-              className="w-full px-4 py-3 border-2 rounded-xl text-sm focus:outline-none"
-              style={{ borderColor: error ? PRAQEN.danger : code ? PRAQEN.purple : '#e5e7eb' }} autoFocus />
+            <label className="block text-sm font-bold text-gray-700 mb-1.5">Email Address</label>
+            <input
+              type="email" value={email} autoFocus
+              onChange={e => { setEmail(e.target.value); setError(''); }}
+              placeholder="your@email.com"
+              className="w-full px-4 py-3 border-2 rounded-xl text-sm focus:outline-none transition"
+              style={{ borderColor: error ? PRAQEN.danger : email ? PRAQEN.purple : '#e5e7eb' }}
+            />
           </div>
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-1.5">Password</label>
+            <input
+              type="password" value={password}
+              onChange={e => { setPassword(e.target.value); setError(''); }}
+              placeholder="••••••••"
+              className="w-full px-4 py-3 border-2 rounded-xl text-sm focus:outline-none transition"
+              style={{ borderColor: error ? PRAQEN.danger : password ? PRAQEN.purple : '#e5e7eb' }}
+            />
+          </div>
+
           {error && (
-            <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 border border-red-200">
-              <AlertTriangle size={14} className="text-red-600 flex-shrink-0" />
+            <div className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-200">
+              <AlertTriangle size={14} className="text-red-600 flex-shrink-0 mt-0.5" />
               <p className="text-sm font-semibold text-red-700">{error}</p>
             </div>
           )}
-          <button type="submit" disabled={!code.trim() || loading}
+
+          <button type="submit" disabled={!email.trim() || !password || loading}
             className="w-full py-3 rounded-xl text-white font-black text-sm flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-40 transition"
             style={{ backgroundColor: PRAQEN.purple }}>
-            {loading ? <><RefreshCw size={14} className="animate-spin" /> Verifying…</> : <><LogIn size={14} /> Enter Moderator Dashboard</>}
+            {loading
+              ? <><RefreshCw size={14} className="animate-spin" /> Verifying…</>
+              : <><LogIn size={14} /> Enter Moderator Dashboard</>}
           </button>
         </form>
-        <p className="text-center text-xs text-gray-400 mt-5">🔒 Restricted access. All actions are logged.</p>
+
+        <p className="text-center text-xs text-gray-400 mt-6">
+          🔒 Restricted access — moderator accounts only. All actions are logged.
+        </p>
       </div>
     </div>
   );
@@ -129,12 +155,15 @@ export default function ModeratorDashboard({ user }) {
     if (t) { setLoggedIn(true); setModName(user?.username || 'PRAQEN Moderator'); }
   }, []);
 
-  // Admin email always gets instant access
+  // Auto-login when the app-level user is already a moderator/admin
   useEffect(() => {
-    if (user?.email === ADMIN_EMAIL && !loggedIn) {
-      localStorage.setItem('mod_token', 'praqen_admin');
-      setLoggedIn(true);
-      setModName('PRAQEN Admin');
+    if ((user?.is_moderator || user?.is_admin) && !loggedIn) {
+      const tok = localStorage.getItem('token');
+      if (tok) {
+        localStorage.setItem('mod_token', tok);
+        setLoggedIn(true);
+        setModName(user.username || 'PRAQEN Moderator');
+      }
     }
   }, [user]);
   useEffect(() => { if (loggedIn) { loadDisputes(); loadResolved(); } }, [loggedIn]);
@@ -231,7 +260,7 @@ export default function ModeratorDashboard({ user }) {
     return <span className="px-3 py-1 rounded-full text-sm font-bold" style={{ backgroundColor: cfg.bg, color: cfg.c }}>{cfg.l}</span>;
   };
 
-  if (!loggedIn && user?.email !== ADMIN_EMAIL) return <ModeratorLogin user={user} onLogin={name => { setLoggedIn(true); setModName(name); }} />;
+  if (!loggedIn) return <ModeratorLogin user={user} onLogin={name => { setLoggedIn(true); setModName(name); }} />;
 
   const openDisputes = disputes.filter(d => d.status === 'OPEN' || d.status === 'DISPUTED');
   const inReviewDisputes = disputes.filter(d => d.status === 'IN_REVIEW');

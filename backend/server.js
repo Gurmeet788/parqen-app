@@ -25,6 +25,13 @@ const CoinbaseWalletService = require('./services/coinbaseWallet');
 const quoteService          = require('./services/quoteService');
 const { E, S }              = require('./utils/apiErrors');
 
+// In-memory typing state: 'tradeId:userId' -> expiresAt timestamp
+const typingState = {};
+setInterval(() => {
+  const now = Date.now();
+  for (const key of Object.keys(typingState)) { if (typingState[key] < now) delete typingState[key]; }
+}, 10000);
+
 // ── 2. Read & validate env vars immediately after loading ──────────────────
 const SUPABASE_URL              = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY         = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
@@ -383,34 +390,38 @@ async function sendVerificationEmail(email, code) {
 </body>
 </html>`;
 
-    // Try Resend first (more reliable than Gmail SMTP)
-    if (resendClient) {
-        try {
-            const fromAddr = process.env.RESEND_FROM || 'PRAQEN <noreply@praqen.com>';
-            const { error: resendError } = await resendClient.emails.send({
-                from: fromAddr,
-                to: email,
-                subject: '🔐 Your PRAQEN verification code',
-                html,
-            });
-            if (!resendError) {
-                console.log('✅ Verification email sent via Resend to:', email);
-                return;
-            }
-            console.warn('⚠️ Resend error:', resendError.message, '— falling back to SMTP');
-        } catch (resendErr) {
-            console.warn('⚠️ Resend failed:', resendErr.message, '— falling back to SMTP');
-        }
+    // Primary: Gmail SMTP — works for ALL recipient emails
+    // (Resend with onboarding@resend.dev only delivers to the Resend account owner's email)
+    try {
+        await transporter.sendMail({
+            from: `"PRAQEN" <${process.env.EMAIL_USER || 'kendevdash@gmail.com'}>`,
+            to: email,
+            subject: '🔐 Your PRAQEN verification code',
+            html,
+        });
+        console.log('✅ Verification email sent via SMTP to:', email);
+        return;
+    } catch (smtpErr) {
+        console.warn('⚠️ SMTP failed:', smtpErr.message, '— trying Resend fallback');
     }
 
-    // Fallback: Gmail SMTP
-    await transporter.sendMail({
-        from: `"PRAQEN" <${process.env.EMAIL_USER || 'kendevdash@gmail.com'}>`,
-        to: email,
-        subject: '🔐 Your PRAQEN verification code',
-        html,
-    });
-    console.log('✅ Verification email sent via SMTP to:', email);
+    // Fallback: Resend (only if SMTP fails)
+    if (resendClient) {
+        const fromAddr = process.env.RESEND_FROM || 'PRAQEN <onboarding@resend.dev>';
+        const { error: resendError } = await resendClient.emails.send({
+            from: fromAddr,
+            to: email,
+            subject: '🔐 Your PRAQEN verification code',
+            html,
+        });
+        if (!resendError) {
+            console.log('✅ Verification email sent via Resend to:', email);
+            return;
+        }
+        throw new Error(`Email delivery failed: ${resendError.message}`);
+    }
+
+    throw new Error('Email delivery failed — SMTP and Resend both unavailable');
 }
 
 // ============================================================
@@ -1024,23 +1035,45 @@ async function sendSmsOtp(phone, message) {
     }
   }
 
-  // Fallback: Termii (built for African numbers)
+  // Fallback: Termii (African carrier routing)
   if (!process.env.TERMII_API_KEY) throw new Error('SMS delivery failed and no Termii key configured.');
-  const termiiPhone = phone.replace(/^\+/, ''); // Termii prefers no leading +
-  const { data: termiiRes } = await require('axios').post('https://api.ng.termii.com/api/sms/send', {
-    to: termiiPhone,
-    from: 'PRAQEN',
-    sms: message,
-    type: 'plain',
-    channel: 'generic',
-    api_key: process.env.TERMII_API_KEY,
-  });
-  if (termiiRes && termiiRes.code === 'ok') {
-    console.log(`[SMS] Sent via Termii to ${phone}`);
-  } else {
-    console.error('[SMS] Termii response:', JSON.stringify(termiiRes));
-    throw new Error('SMS delivery failed via both providers.');
+  const termiiPhone = phone.replace(/^\+/, ''); // Termii expects no leading +
+  const termiiKey   = process.env.TERMII_API_KEY;
+  const termiiBase  = 'https://api.ng.termii.com/api/sms/send';
+
+  // Try multiple sender/channel combos — 'generic' with registered sender ID is ideal,
+  // but 'generic' with numeric sender works without registration in most African countries.
+  const termiiAttempts = [
+    { from: 'PRAQEN',   channel: 'generic' }, // registered alphanumeric sender
+    { from: '0',        channel: 'generic' }, // numeric sender — no registration needed
+    { from: 'N-Alert',  channel: 'dnd'     }, // DND bypass (works in Ghana via Termii routing)
+  ];
+
+  let lastTermiiErr = 'Unknown Termii error';
+  for (const attempt of termiiAttempts) {
+    try {
+      const { data: tres } = await require('axios').post(termiiBase, {
+        to:      termiiPhone,
+        from:    attempt.from,
+        sms:     message,
+        type:    'plain',
+        channel: attempt.channel,
+        api_key: termiiKey,
+      }, { timeout: 15000 });
+
+      if (tres && tres.code === 'ok') {
+        console.log(`[SMS] Sent via Termii (${attempt.channel}/${attempt.from}) to ${phone}`);
+        return;
+      }
+      lastTermiiErr = tres?.message || JSON.stringify(tres);
+      console.warn(`[SMS] Termii ${attempt.channel}/${attempt.from} failed:`, lastTermiiErr);
+    } catch (e) {
+      lastTermiiErr = e.message;
+      console.warn(`[SMS] Termii ${attempt.channel}/${attempt.from} error:`, e.message);
+    }
   }
+
+  throw new Error(`SMS delivery failed. Last error: ${lastTermiiErr}`);
 }
 
 async function checkOtp(contact, token) {
@@ -1757,17 +1790,10 @@ app.get('/api/user/balance', verifyToken, async (req, res) => {
   }
 });
 
-app.post('/api/user/add-balance', verifyToken, async (req, res) => {
-  try {
-    const { amountBtc } = req.body;
-    if (!amountBtc || amountBtc <= 0) return res.status(400).json({ error: 'Invalid amount' });
-    const { data: current } = await supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', req.userId).single();
-    const newBalance = parseFloat(current?.balance_btc || 0) + parseFloat(amountBtc);
-    await supabaseAdmin.from('user_balances').upsert({ user_id: req.userId, balance_btc: newBalance, updated_at: new Date() });
-    res.json({ success: true, balance_btc: newBalance });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+// DEV ENDPOINT DISABLED — manual balance injection is not allowed in production.
+// All BTC balances must come from real on-chain deposits monitored by depositMonitor.js.
+app.post('/api/user/add-balance', verifyToken, (req, res) => {
+  res.status(403).json({ error: 'This endpoint is disabled. Deposit real Bitcoin to your wallet address.' });
 });
 
 // ============================================================
@@ -2520,7 +2546,7 @@ app.post('/api/trades', verifyToken, async (req, res) => {
 
     let escrowResult;
     try {
-      escrowResult = await tradeEscrowService.lockFundsInEscrow(trade[0].id, btcProviderId, verifiedAmountBtc);
+      escrowResult = await tradeEscrowService.lockFundsInEscrow(trade[0].id, btcProviderId, verifiedAmountBtc, listing.time_limit || 30);
     } catch (lockError) {
       console.error('❌ lockFundsInEscrow failed:', lockError.message);
       await supabaseAdmin.from('trades').update({
@@ -2532,37 +2558,42 @@ app.post('/api/trades', verifyToken, async (req, res) => {
         error: 'Could not lock Bitcoin in escrow. The seller may have insufficient funds. Please try a different offer.'
       });
     }
-    // Notify whichever party needs to act next
-    // Gift card: notify card seller (Kenneth) to send the gift card code
-    // BTC trade: notify BTC seller to await fiat payment
-    // Fetch buyer username for the notification message
-    const { data: buyerUser } = await supabaseAdmin.from('users').select('username').eq('id', buyerId).single();
-    const buyerName  = buyerUser?.username || 'Someone';
-    const fmtLocal   = n => new Intl.NumberFormat('en-US',{maximumFractionDigits:0}).format(n||0);
-    const localDisp  = tradeLocalAmt > 0 && tradeCur
-      ? `${tradeSym||''}${fmtLocal(tradeLocalAmt)} ${tradeCur}`
-      : `$${fmtLocal(tradeAmountUsd)} USD`;
-    const pmDisp     = paymentMethod || listing.payment_method || 'Mobile Money';
-    const assetLabel = listing.gift_card_brand
-      ? `${listing.gift_card_brand} Gift Card`
-      : 'Bitcoin';
-    await createNotification(sellerId, 'trade', '💰 New Trade Request',
-      `${buyerName} wants to buy ${assetLabel} · ${localDisp} via ${pmDisp}`,
-      `/trade/${trade[0].id}`);
-    await notifyTradeParties(
-      trade[0],
-      '⚡ New Trade Opened on PRAQEN!',
-      `Trade #${trade[0].trade_ref} opened! ${trade[0].amount_btc} BTC secured in escrow. Log in to proceed: https://praqen.com/trade/${trade[0].id}`,
-      tradeEmailTemplate(
-        '⚡ New Trade Opened on PRAQEN!',
-        '⚡ Your Trade Is Live!',
-        `A new trade has been successfully created and <strong>${trade[0].amount_btc} BTC</strong> is now locked safely in escrow. Buyer — complete your payment to proceed. Seller — you'll be notified once payment is sent.`,
-        trade[0].trade_ref,
-        trade[0].amount_btc,
-        `https://praqen.com/trade/${trade[0].id}`
-      )
-    );
+    // Respond immediately — escrow is locked, trade is live. Do NOT block on emails.
     res.json({ success: true, trade: trade[0], escrowAddress: escrowResult.escrowAddress, fee });
+
+    // Fire notifications in the background — never let email delay the user
+    setImmediate(async () => {
+      try {
+        const { data: buyerUser } = await supabaseAdmin.from('users').select('username').eq('id', buyerId).single();
+        const buyerName  = buyerUser?.username || 'Someone';
+        const fmtLocalN  = n => new Intl.NumberFormat('en-US',{maximumFractionDigits:0}).format(n||0);
+        const localDisp  = tradeLocalAmt > 0 && tradeCur
+          ? `${tradeSym||''}${fmtLocalN(tradeLocalAmt)} ${tradeCur}`
+          : `$${fmtLocalN(tradeAmountUsd)} USD`;
+        const pmDisp     = paymentMethod || listing.payment_method || 'Mobile Money';
+        const assetLabel = listing.gift_card_brand
+          ? `${listing.gift_card_brand} Gift Card`
+          : 'Bitcoin';
+        await createNotification(sellerId, 'trade', '💰 New Trade Request',
+          `${buyerName} wants to buy ${assetLabel} · ${localDisp} via ${pmDisp}`,
+          `/trade/${trade[0].id}`);
+        await notifyTradeParties(
+          trade[0],
+          '⚡ New Trade Opened on PRAQEN!',
+          `Trade #${trade[0].trade_ref} opened! ${trade[0].amount_btc} BTC secured in escrow. Log in to proceed: https://praqen.com/trade/${trade[0].id}`,
+          tradeEmailTemplate(
+            '⚡ New Trade Opened on PRAQEN!',
+            '⚡ Your Trade Is Live!',
+            `A new trade has been successfully created and <strong>${trade[0].amount_btc} BTC</strong> is now locked safely in escrow. Buyer — complete your payment to proceed. Seller — you'll be notified once payment is sent.`,
+            trade[0].trade_ref,
+            trade[0].amount_btc,
+            `https://praqen.com/trade/${trade[0].id}`
+          )
+        );
+      } catch (notifyErr) {
+        console.error('[Trade Open] Background notification failed:', notifyErr.message);
+      }
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -2625,24 +2656,29 @@ app.post('/api/trades/:id/mark-paid', verifyToken, async (req, res) => {
     const paidCur    = trade.local_currency || 'USD';
     const paidPM     = trade.payment_method || 'Mobile Money';
     const paidDisp   = paidLocal > 0 ? `${fmtN(paidLocal)} ${paidCur}` : `$${fmtN(trade.amount_usd)} USD`;
-    const notifyMsg  = isGiftCardTrade
-      ? `${actorName} sent the gift card code · Verify and release Bitcoin`
-      : `${actorName} sent ${paidDisp} via ${paidPM} · Verify and release Bitcoin`;
-    await createNotification(notifyId, 'payment', '💳 Payment Sent', notifyMsg, `/trade/${req.params.id}`);
-    await notifyTradeParties(
-      trade,
-      '💰 Payment Sent — Release BTC Now',
-      `Trade #${trade.trade_ref}: buyer has marked payment as sent. Seller — verify and release BTC: https://praqen.com/trade/${trade.id}`,
-      tradeEmailTemplate(
-        '💰 Payment Sent — Release BTC Now',
-        '💰 Buyer Has Sent Payment!',
-        `The buyer has confirmed their payment for this trade. <strong>Seller — please verify the payment in your account and release the BTC</strong> to complete the trade. Only release after confirming funds are received.`,
-        trade.trade_ref,
-        trade.amount_btc,
-        `https://praqen.com/trade/${trade.id}`
-      )
-    );
     res.json({ success: true, trade: data });
+
+    setImmediate(async () => {
+      try {
+        const notifyMsg = isGiftCardTrade
+          ? `${actorName} sent the gift card code · Verify and release Bitcoin`
+          : `${actorName} sent ${paidDisp} via ${paidPM} · Verify and release Bitcoin`;
+        await createNotification(notifyId, 'payment', '💳 Payment Sent', notifyMsg, `/trade/${req.params.id}`);
+        await notifyTradeParties(
+          trade,
+          '💰 Payment Sent — Release BTC Now',
+          `Trade #${trade.trade_ref}: buyer has marked payment as sent. Seller — verify and release BTC: https://praqen.com/trade/${trade.id}`,
+          tradeEmailTemplate(
+            '💰 Payment Sent — Release BTC Now',
+            '💰 Buyer Has Sent Payment!',
+            `The buyer has confirmed their payment for this trade. <strong>Seller — please verify the payment in your account and release the BTC</strong> to complete the trade. Only release after confirming funds are received.`,
+            trade.trade_ref,
+            trade.amount_btc,
+            `https://praqen.com/trade/${trade.id}`
+          )
+        );
+      } catch (e) { console.error('[mark-paid] Background notify failed:', e.message); }
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -2652,24 +2688,29 @@ app.post('/api/trades/:id/release', verifyToken, async (req, res) => {
   try {
     const { data: releasedTrade } = await supabaseAdmin.from('trades').select('*').eq('id', req.params.id).single();
     const result = await tradeEscrowService.releaseBitcoinToBuyer(req.params.id, req.userId);
-    if (releasedTrade) {
-      updateUserTradeStats(releasedTrade.seller_id).catch(() => {});
-      updateUserTradeStats(releasedTrade.buyer_id).catch(() => {});
-      await notifyTradeParties(
-        releasedTrade,
-        '✅ Trade Complete — BTC Released!',
-        `Trade #${releasedTrade.trade_ref} complete! ${releasedTrade.amount_btc} BTC released. Check your PRAQEN wallet: https://praqen.com/trade/${releasedTrade.id}`,
-        tradeEmailTemplate(
-          '✅ Trade Complete — BTC Released!',
-          '✅ Trade Successfully Completed!',
-          `Congratulations! The trade has been completed and <strong>${releasedTrade.amount_btc} BTC has been released</strong>. Buyer — check your PRAQEN wallet. Seller — your payment is confirmed. Thank you for trading safely on PRAQEN!`,
-          releasedTrade.trade_ref,
-          releasedTrade.amount_btc,
-          `https://praqen.com/trade/${releasedTrade.id}`
-        )
-      );
-    }
     res.json(result);
+
+    if (releasedTrade) {
+      setImmediate(async () => {
+        try {
+          updateUserTradeStats(releasedTrade.seller_id).catch(() => {});
+          updateUserTradeStats(releasedTrade.buyer_id).catch(() => {});
+          await notifyTradeParties(
+            releasedTrade,
+            '✅ Trade Complete — BTC Released!',
+            `Trade #${releasedTrade.trade_ref} complete! ${releasedTrade.amount_btc} BTC released. Check your PRAQEN wallet: https://praqen.com/trade/${releasedTrade.id}`,
+            tradeEmailTemplate(
+              '✅ Trade Complete — BTC Released!',
+              '✅ Trade Successfully Completed!',
+              `Congratulations! The trade has been completed and <strong>${releasedTrade.amount_btc} BTC has been released</strong>. Buyer — check your PRAQEN wallet. Seller — your payment is confirmed. Thank you for trading safely on PRAQEN!`,
+              releasedTrade.trade_ref,
+              releasedTrade.amount_btc,
+              `https://praqen.com/trade/${releasedTrade.id}`
+            )
+          );
+        } catch (e) { console.error('[release] Background notify failed:', e.message); }
+      });
+    }
   } catch (error) {
     console.error('❌ /api/trades/:id/release error:', error.message);
     res.status(500).json({ error: error.message });
@@ -2710,25 +2751,28 @@ app.post('/api/trades/:id/cancel', verifyToken, async (req, res) => {
     const cDisp  = cLocal > 0 ? `${fmtC(cLocal)} ${cCur}` : `$${fmtC(trade.amount_usd)} USD`;
     const cancelMsg = `${cancellerName} cancelled the trade · ${cDisp} via ${cPM}`;
     const otherId   = req.userId === trade.buyer_id ? trade.seller_id : trade.buyer_id;
-    // Notify the OTHER party
-    await createNotification(otherId, 'cancelled', '❌ Trade Cancelled', cancelMsg, `/trade/${req.params.id}`);
-    // Confirm to the canceller
-    await createNotification(req.userId, 'cancelled', '❌ Trade Cancelled',
-      `You cancelled the trade · ${cDisp} via ${cPM}`, `/trade/${req.params.id}`);
-    await notifyTradeParties(
-      trade,
-      '❌ Trade Cancelled',
-      `Trade #${trade.trade_ref} has been cancelled. ${reason ? `Reason: ${reason}. ` : ''}Any locked BTC has been returned to your wallet.`,
-      tradeEmailTemplate(
-        '❌ Trade Cancelled',
-        '❌ Your Trade Has Been Cancelled',
-        `Trade <strong>#${trade.trade_ref}</strong> has been cancelled${reason ? ` — Reason: <em>${reason}</em>` : ''}. Any BTC that was locked in escrow has been returned to your PRAQEN wallet. If you have concerns, please contact our support team.`,
-        trade.trade_ref,
-        trade.amount_btc,
-        null
-      )
-    );
     res.json({ success: true, trade: data });
+
+    setImmediate(async () => {
+      try {
+        await createNotification(otherId, 'cancelled', '❌ Trade Cancelled', cancelMsg, `/trade/${req.params.id}`);
+        await createNotification(req.userId, 'cancelled', '❌ Trade Cancelled',
+          `You cancelled the trade · ${cDisp} via ${cPM}`, `/trade/${req.params.id}`);
+        await notifyTradeParties(
+          trade,
+          '❌ Trade Cancelled',
+          `Trade #${trade.trade_ref} has been cancelled. ${reason ? `Reason: ${reason}. ` : ''}Any locked BTC has been returned to your wallet.`,
+          tradeEmailTemplate(
+            '❌ Trade Cancelled',
+            '❌ Your Trade Has Been Cancelled',
+            `Trade <strong>#${trade.trade_ref}</strong> has been cancelled${reason ? ` — Reason: <em>${reason}</em>` : ''}. Any BTC that was locked in escrow has been returned to your PRAQEN wallet. If you have concerns, please contact our support team.`,
+            trade.trade_ref,
+            trade.amount_btc,
+            null
+          )
+        );
+      } catch (e) { console.error('[cancel] Background notify failed:', e.message); }
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -2863,6 +2907,23 @@ app.get('/api/trades/:id/images', verifyToken, async (req, res) => {
 });
 
 // ============================================================
+// TYPING INDICATORS
+// ============================================================
+
+app.post('/api/trades/:id/typing', verifyToken, async (req, res) => {
+  typingState[`${req.params.id}:${req.userId}`] = Date.now() + 4000;
+  res.json({ success: true });
+});
+
+app.get('/api/trades/:id/typing', verifyToken, async (req, res) => {
+  const now = Date.now();
+  const isTyping = Object.entries(typingState).some(
+    ([k, v]) => k.startsWith(req.params.id + ':') && !k.endsWith(':' + req.userId) && v > now
+  );
+  res.json({ isTyping });
+});
+
+// ============================================================
 // DISPUTES
 // ============================================================
 
@@ -2875,24 +2936,29 @@ app.post('/api/trades/:id/dispute', verifyToken, async (req, res) => {
       .update({ status: 'DISPUTED', disputed_at: new Date(), dispute_reason: reason || 'User opened a dispute' })
       .eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
-    await createNotification(trade.seller_id, 'support', '⚠️ Dispute Opened', `Dispute opened for trade #${req.params.id.slice(0, 8)}. Moderator will review.`, `/trade/${req.params.id}`);
-    await createNotification(trade.buyer_id, 'support', '⚠️ Dispute Opened', `Dispute opened for trade #${req.params.id.slice(0, 8)}. Please provide evidence.`, `/trade/${req.params.id}`);
-    await notifyModerators(req.params.id, trade, reason || 'User opened a dispute');
-    await supabaseAdmin.from('messages').insert([{ trade_id: req.params.id, sender_id: null, recipient_id: null, message_text: `🚨 DISPUTE OPENED — Reason: ${reason || 'User opened a dispute'}. Moderators notified.`, message_type: 'SYSTEM', sender_role: 'system', created_at: new Date() }]);
-    await notifyTradeParties(
-      trade,
-      '🚨 Dispute Opened — Moderator Notified',
-      `Dispute filed on trade #${trade.trade_ref}. Do NOT release funds. A moderator will contact you shortly: https://praqen.com/trade/${trade.id}`,
-      tradeEmailTemplate(
-        '🚨 Dispute Opened — Moderator Notified',
-        '🚨 A Dispute Has Been Filed',
-        `A dispute has been opened on trade <strong>#${trade.trade_ref}</strong>${reason ? ` — Reason: <em>${reason}</em>` : ''}. A PRAQEN moderator has been notified and will review all evidence. <strong>Do not release or transfer any funds until the dispute is fully resolved.</strong>`,
-        trade.trade_ref,
-        trade.amount_btc,
-        `https://praqen.com/trade/${trade.id}`
-      )
-    );
     res.json({ success: true, trade: data });
+
+    setImmediate(async () => {
+      try {
+        await createNotification(trade.seller_id, 'support', '⚠️ Dispute Opened', `Dispute opened for trade #${req.params.id.slice(0, 8)}. Moderator will review.`, `/trade/${req.params.id}`);
+        await createNotification(trade.buyer_id, 'support', '⚠️ Dispute Opened', `Dispute opened for trade #${req.params.id.slice(0, 8)}. Please provide evidence.`, `/trade/${req.params.id}`);
+        await notifyModerators(req.params.id, trade, reason || 'User opened a dispute');
+        await supabaseAdmin.from('messages').insert([{ trade_id: req.params.id, sender_id: null, recipient_id: null, message_text: `🚨 DISPUTE OPENED — Reason: ${reason || 'User opened a dispute'}. Moderators notified.`, message_type: 'SYSTEM', sender_role: 'system', created_at: new Date() }]);
+        await notifyTradeParties(
+          trade,
+          '🚨 Dispute Opened — Moderator Notified',
+          `Dispute filed on trade #${trade.trade_ref}. Do NOT release funds. A moderator will contact you shortly: https://praqen.com/trade/${trade.id}`,
+          tradeEmailTemplate(
+            '🚨 Dispute Opened — Moderator Notified',
+            '🚨 A Dispute Has Been Filed',
+            `A dispute has been opened on trade <strong>#${trade.trade_ref}</strong>${reason ? ` — Reason: <em>${reason}</em>` : ''}. A PRAQEN moderator has been notified and will review all evidence. <strong>Do not release or transfer any funds until the dispute is fully resolved.</strong>`,
+            trade.trade_ref,
+            trade.amount_btc,
+            `https://praqen.com/trade/${trade.id}`
+          )
+        );
+      } catch (e) { console.error('[dispute] Background notify failed:', e.message); }
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

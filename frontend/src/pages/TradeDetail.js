@@ -82,9 +82,9 @@ function FeedbackModal({name,onClose,onSubmit,submitting}) {
       : 'What went wrong? Your feedback helps others… (optional)';
 
   return(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
       style={{backgroundColor:'rgba(0,0,0,0.65)',backdropFilter:'blur(4px)'}}>
-      <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl animate-bounceIn">
+      <div className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-2xl animate-slideUp sm:animate-bounceIn max-h-[90vh] overflow-y-auto">
 
         {/* Header */}
         <div className="p-5 text-white text-center"
@@ -163,7 +163,7 @@ function FeedbackModal({name,onClose,onSubmit,submitting}) {
           </div>
         </div>
       </div>
-      <style>{`@keyframes bounceIn {0%{transform:scale(0.85) translateY(20px);opacity:0;}60%{transform:scale(1.03) translateY(-8px);opacity:1;}100%{transform:scale(1) translateY(0);opacity:1;}} .animate-bounceIn{animation:bounceIn 0.55s ease-out;}`}</style>
+      <style>{`@keyframes bounceIn {0%{transform:scale(0.85) translateY(20px);opacity:0;}60%{transform:scale(1.03) translateY(-8px);opacity:1;}100%{transform:scale(1) translateY(0);opacity:1;}} .animate-bounceIn{animation:bounceIn 0.55s ease-out;} @keyframes slideUp{from{transform:translateY(100%);opacity:0;}to{transform:translateY(0);opacity:1;}} .animate-slideUp{animation:slideUp 0.3s ease-out;}`}</style>
     </div>
   );
 }
@@ -171,19 +171,17 @@ function FeedbackModal({name,onClose,onSubmit,submitting}) {
 // ─── Confirm action modal (Pay / Release) ────────────────────────────────────
 function ConfirmActionModal({icon:Icon, iconBg, title, lines, confirmLabel, confirmBg, confirmColor='#fff', onClose, onConfirm, submitting}) {
   return(
-    <div style={{
-      position:'fixed',inset:0,zIndex:50,
-      display:'flex',alignItems:'center',justifyContent:'center',
-      padding:'16px',
-      backgroundColor:'rgba(0,0,0,0.6)',backdropFilter:'blur(4px)',
-    }}>
-      <div style={{
-        backgroundColor:'#fff',width:'100%',maxWidth:'360px',
-        borderRadius:'20px',overflow:'hidden',
-        boxShadow:'0 25px 60px rgba(0,0,0,0.3)',
-        animation:'popIn .25s ease',
-        boxSizing:'border-box',
-      }}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
+      style={{backgroundColor:'rgba(0,0,0,0.6)',backdropFilter:'blur(4px)'}}>
+      <div className="w-full sm:max-w-[360px] max-h-[90vh] overflow-y-auto"
+        style={{
+          backgroundColor:'#fff',
+          borderRadius:'20px 20px 0 0',
+          overflow:'hidden',
+          boxShadow:'0 25px 60px rgba(0,0,0,0.3)',
+          animation:'slideUp .3s ease',
+          boxSizing:'border-box',
+        }}>
         {/* Icon + title */}
         <div style={{display:'flex',flexDirection:'column',alignItems:'center',padding:'24px 20px 16px'}}>
           <div style={{
@@ -233,7 +231,7 @@ function ConfirmActionModal({icon:Icon, iconBg, title, lines, confirmLabel, conf
           </button>
         </div>
       </div>
-      <style>{`@keyframes popIn{from{transform:scale(0.9);opacity:0}to{transform:scale(1);opacity:1}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <style>{`@keyframes slideUp{from{transform:translateY(100%);opacity:0;}to{transform:translateY(0);opacity:1;}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 }
@@ -242,17 +240,16 @@ function ConfirmActionModal({icon:Icon, iconBg, title, lines, confirmLabel, conf
 function CancelModal({onClose,onConfirm,submitting}) {
   const [reason,setReason]=useState('');
   return(
-    <div style={{
-      position:'fixed',inset:0,zIndex:50,
-      display:'flex',alignItems:'center',justifyContent:'center',
-      padding:'16px',
-      backgroundColor:'rgba(0,0,0,0.6)',backdropFilter:'blur(4px)',
-    }}>
-      <div style={{
-        backgroundColor:'#fff',width:'100%',maxWidth:'360px',
-        borderRadius:'20px',overflow:'hidden',boxShadow:'0 25px 60px rgba(0,0,0,0.3)',
-        animation:'popIn .25s ease',
-      }}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
+      style={{backgroundColor:'rgba(0,0,0,0.6)',backdropFilter:'blur(4px)'}}>
+      <div className="w-full sm:max-w-[360px] max-h-[90vh] overflow-y-auto"
+        style={{
+          backgroundColor:'#fff',
+          borderRadius:'20px 20px 0 0',
+          overflow:'hidden',
+          boxShadow:'0 25px 60px rgba(0,0,0,0.3)',
+          animation:'slideUp .3s ease',
+        }}>
         {/* Header */}
         <div style={{padding:'20px 20px 16px',borderBottom:'1px solid #F1F5F9',display:'flex',alignItems:'center',gap:'12px'}}>
           <div style={{width:42,height:42,borderRadius:12,backgroundColor:'#FEE2E2',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
@@ -302,7 +299,7 @@ function CancelModal({onClose,onConfirm,submitting}) {
           </div>
         </div>
       </div>
-      <style>{`@keyframes popIn{from{transform:scale(0.9);opacity:0}to{transform:scale(1);opacity:1}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <style>{`@keyframes slideUp{from{transform:translateY(100%);opacity:0;}to{transform:translateY(0);opacity:1;}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 }
@@ -326,9 +323,11 @@ function ProfilePopup({user,label,onClose}) {
   const seen=fmtAge(user.last_login||user.updated_at);
   const online=seen==='Online';
   return(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
       style={{backgroundColor:'rgba(0,0,0,0.6)',backdropFilter:'blur(4px)'}} onClick={onClose}>
-      <div className="bg-white w-full max-w-xs rounded-2xl overflow-hidden shadow-2xl" onClick={e=>e.stopPropagation()}>
+      <div className="bg-white w-full sm:max-w-xs rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto"
+        style={{animation:'slideUp .3s ease'}} onClick={e=>e.stopPropagation()}>
+        <style>{`@keyframes slideUp{from{transform:translateY(100%);opacity:0;}to{transform:translateY(0);opacity:1;}}`}</style>
         <div className="relative p-5 text-white"
           style={{background:`linear-gradient(135deg,${C.forest},${C.mint})`}}>
           <button onClick={onClose}
@@ -438,6 +437,7 @@ export default function TradeDetail({user}) {
   const scrolled        = useRef(false);
   const prevMsgCount    = useRef(0);
   const autoCancelled   = useRef(false);
+  const typingTimer     = useRef(null);
 
   const [trade,     setTrade]     = useState(null);
   const [btcPrice,  setBtcPrice]  = useState(68000); // Default to standard market price during load
@@ -463,6 +463,7 @@ export default function TradeDetail({user}) {
   const [profLabel, setProfLabel] = useState('');
   const [loadErr,   setLoadErr]   = useState(false);
   const [infoOpen,  setInfoOpen]  = useState(false);
+  const [cpTyping,  setCpTyping]  = useState(false);
 
   const status = (trade?.status||'').toUpperCase();
   const isBuyer     = user&&trade&&String(user.id)===String(trade.buyer_id);
@@ -492,12 +493,13 @@ export default function TradeDetail({user}) {
     if(!id)return;
     loadAll();
     const iv=setInterval(()=>{refreshTrade();loadMessages();},5000);
-    return()=>clearInterval(iv);
+    const tv=setInterval(()=>{fetchTyping();},2000);
+    return()=>{clearInterval(iv);clearInterval(tv);};
   },[id,user]);
 
   useEffect(()=>{
     if(!trade?.created_at||!isActive)return;
-    const LIMIT_MINS = 30; // Fixed 30-minute payment window
+    const LIMIT_MINS = trade?.listing?.time_limit || trade?.time_limit || 30;
     const deadline = new Date(trade.created_at).getTime() + LIMIT_MINS * 60 * 1000;
     const iv=setInterval(()=>{
       const rem=Math.max(0, Math.floor((deadline - Date.now()) / 1000));
@@ -577,6 +579,18 @@ export default function TradeDetail({user}) {
     try{const r=await axios.get(`${API_URL}/trades/${id}/images`,{headers:authH()});setImages(r.data.images||[]);}catch{}
   };
 
+  const fetchTyping=async()=>{
+    if(!id)return;
+    try{const r=await axios.get(`${API_URL}/trades/${id}/typing`,{headers:authH()});setCpTyping(!!r.data.isTyping);}catch{}
+  };
+
+  const sendTypingPing=()=>{
+    if(!id)return;
+    clearTimeout(typingTimer.current);
+    axios.post(`${API_URL}/trades/${id}/typing`,{},{headers:authH()}).catch(()=>{});
+    typingTimer.current=setTimeout(()=>{},3000);
+  };
+
   const postSys=async(text)=>{
     try{await axios.post(`${API_URL}/messages`,{tradeId:id,message:text},{headers:authH()});await loadMessages();}catch{}
   };
@@ -600,8 +614,11 @@ export default function TradeDetail({user}) {
     try{
       const b64=await new Promise((res,rej)=>{const rd=new FileReader();rd.onload=()=>res(rd.result);rd.onerror=rej;rd.readAsDataURL(file);});
       await axios.post(`${API_URL}/trades/${id}/upload-image`,{image:b64,type:isBuyer?'payment':'giftcard'},{headers:authH()});
-      await postSys(`📸 ${isBuyer?'Payment proof':'Proof'} uploaded by ${isBuyer?'Buyer':'Seller'}`);
-      toast.success('Uploaded!');await loadImages();await loadMessages();
+      // Send as a real chat message so both users see the image inline
+      await axios.post(`${API_URL}/messages`,{tradeId:id,message:b64},{headers:authH()});
+      toast.success('Uploaded! Image sent in chat.');
+      await loadImages();await loadMessages();
+      setTimeout(()=>{if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight;},100);
     }catch{toast.error('Upload failed');}
     finally{setUploading(false);if(fileRef.current)fileRef.current.value='';}
   };
@@ -733,7 +750,7 @@ export default function TradeDetail({user}) {
 
   const localAmt     = userPays; // map for legacy button logic
   const usdRate      = (USD_RATES && USD_RATES[cur]) ? USD_RATES[cur] : 0;
-  const timeLimit    = 30; // Fixed 30-minute payment window
+  const timeLimit    = trade?.listing?.time_limit || trade?.time_limit || 30;
   const urgent       = timeLeft !== null && timeLeft < 300 && timeLeft > 0;
   const payMethod    = trade.payment_method || 'Mobile Money';
 
@@ -775,7 +792,7 @@ export default function TradeDetail({user}) {
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
 
       {/* ── MAIN CONTENT ─────────────────────────────────────────────────── */}
-      <div className="flex-1 max-w-7xl mx-auto w-full px-3 py-3 pb-36 lg:pb-3">
+      <div className="flex-1 max-w-7xl mx-auto w-full px-3 py-3 pb-4">
 
         <div className="grid lg:grid-cols-12 gap-3 lg:[height:calc(100vh-56px)]">
 
@@ -841,7 +858,7 @@ export default function TradeDetail({user}) {
                 </div>
               )}
 
-              {/* ── MARK PAID / SENT CODE button — desktop only (mobile uses sticky bar) ── */}
+              {/* ── MARK PAID / SENT CODE button — desktop only; mobile uses sticky bar ── */}
               {showMarkPaid&&(
                 <button onClick={()=>setShowPayConfirm(true)} disabled={submitting}
                   className="hidden lg:flex w-full py-4 rounded-xl font-black text-base shadow-lg hover:opacity-90 disabled:opacity-50 items-center justify-center gap-2 transition"
@@ -854,7 +871,7 @@ export default function TradeDetail({user}) {
                 </button>
               )}
 
-              {/* ── RELEASE BITCOIN button — desktop only (mobile uses sticky bar) ── */}
+              {/* ── RELEASE BITCOIN button — desktop only; mobile uses sticky bar ── */}
               {showRelease&&(
                 <button onClick={()=>setShowRelConfirm(true)} disabled={submitting}
                   className="hidden lg:flex w-full py-4 rounded-xl text-white font-black text-base shadow-lg hover:opacity-90 disabled:opacity-50 items-center justify-center gap-2 transition"
@@ -1119,7 +1136,7 @@ export default function TradeDetail({user}) {
                     </span>
                     <div style={{display:'flex',flexDirection:'column',gap:1}}>
                       <span style={{color:'rgba(255,255,255,0.5)',fontSize:10,fontWeight:600,lineHeight:1}}>
-                        {timeLeft===0 ? '⚠️ Trade cancelled' : urgent ? '⚠️ Pay now!' : '30 min limit'}
+                        {timeLeft===0 ? '⚠️ Trade cancelled' : urgent ? '⚠️ Pay now!' : `${timeLimit} min limit`}
                       </span>
                       <span style={{color:'rgba(255,255,255,0.35)',fontSize:9,lineHeight:1}}>
                         {timeLeft===0 ? 'BTC returned to seller' : 'BTC returns to seller on expiry'}
@@ -1162,7 +1179,7 @@ export default function TradeDetail({user}) {
                     {images.map((img,i)=>{
                       const src=img.image_url||img.url;
                       if(!src)return null;
-                      const fullSrc=src.startsWith('http')?src:`${API_URL}${src}`;
+                      const fullSrc=(src.startsWith('http')||src.startsWith('data:')||src.startsWith('blob:'))?src:`${API_URL}${src}`;
                       return(
                         <button key={i} onClick={()=>setImgSrc(fullSrc)}
                           className="w-14 h-14 rounded-xl overflow-hidden border-2 hover:opacity-80 transition"
@@ -1213,6 +1230,7 @@ export default function TradeDetail({user}) {
                     </div>
                   );
 
+                  const isImage = text.startsWith('data:image/');
                   return(
                     <div key={i} className={`flex ${isOwn?'justify-end':'justify-start'}`}>
                       {!isOwn&&(
@@ -1222,19 +1240,34 @@ export default function TradeDetail({user}) {
                           {cp?.username?.charAt(0)?.toUpperCase()||'?'}
                         </button>
                       )}
-                      <div className="max-w-[72%]">
-                        {!isOwn&&<p className="text-xs font-bold mb-0.5 ml-1" style={{color:C.g400}}>{cp?.username}</p>}
-                        <div className="px-4 py-2 text-sm break-words shadow-sm"
-                          style={{
-                            backgroundColor:isOwn?C.green:'#fff',
-                            color:isOwn?'#fff':C.g800,
-                            borderRadius:isOwn?'18px 18px 4px 18px':'4px 18px 18px 18px',
-                            border:isOwn?'none':`1px solid ${C.g200}`,
-                          }}>
-                          {text}
-                        </div>
-                        <div className={`flex items-center gap-0.5 mt-0.5 ${isOwn?'justify-end':'ml-1'}`}>
-                          <span className="text-xs" style={{color:C.g400}}>
+                      <div className="max-w-[75%]">
+                        {!isOwn&&<p className="text-xs font-bold mb-0.5 ml-1" style={{color:C.g500}}>{cp?.username}</p>}
+                        {isImage?(
+                          <button onClick={()=>setImgSrc(text)}
+                            className="block rounded-2xl overflow-hidden border-2 hover:opacity-90 transition shadow-md"
+                            style={{borderColor:isOwn?C.mint:C.g200,maxWidth:220}}>
+                            <img src={text} alt="Shared" className="block w-full h-auto object-cover"
+                              style={{maxHeight:280}}
+                              onError={e=>{e.currentTarget.style.display='none';e.currentTarget.parentElement.innerHTML='<span style="padding:8px;font-size:12px;color:#94A3B8">Image unavailable</span>';}}/>
+                            <p className="text-center text-xs py-1 font-semibold" style={{backgroundColor:isOwn?C.mint:'#F1F5F9',color:isOwn?'#fff':C.g500}}>
+                              📎 Tap to enlarge
+                            </p>
+                          </button>
+                        ):(
+                          <div className="px-3.5 py-2.5 text-sm font-medium break-words shadow-sm"
+                            style={{
+                              backgroundColor:isOwn?C.green:'#fff',
+                              color:isOwn?'#fff':C.g800,
+                              fontWeight:isOwn?600:500,
+                              lineHeight:'1.45',
+                              borderRadius:isOwn?'18px 18px 4px 18px':'4px 18px 18px 18px',
+                              border:isOwn?'none':`1px solid ${C.g200}`,
+                            }}>
+                            {text}
+                          </div>
+                        )}
+                        <div className={`flex items-center gap-1 mt-1 ${isOwn?'justify-end':'ml-1'}`}>
+                          <span className="text-xs font-medium" style={{color:C.g400}}>
                             {new Date(m.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
                           </span>
                           {isOwn&&(
@@ -1247,6 +1280,26 @@ export default function TradeDetail({user}) {
                     </div>
                   );
                 })}
+
+                {/* ── Typing indicator ── */}
+                {cpTyping&&(
+                  <div className="flex justify-start">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-black mr-2 flex-shrink-0"
+                      style={{backgroundColor:C.mint,color:C.white}}>
+                      {cp?.username?.charAt(0)?.toUpperCase()||'?'}
+                    </div>
+                    <div className="px-4 py-3 rounded-2xl rounded-tl shadow-sm flex items-center gap-1"
+                      style={{backgroundColor:'#fff',border:`1px solid ${C.g200}`}}>
+                      <span className="text-xs font-semibold mr-1" style={{color:C.g400}}>{cp?.username||'User'}</span>
+                      {[0,1,2].map(d=>(
+                        <span key={d} className="w-2 h-2 rounded-full inline-block"
+                          style={{backgroundColor:C.g400,animation:`typingDot 1.2s ease-in-out ${d*0.2}s infinite`}}/>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <style>{`@keyframes typingDot{0%,60%,100%{transform:translateY(0);opacity:0.4;}30%{transform:translateY(-4px);opacity:1;}}`}</style>
+
                 {/* ── Congratulations banner ── */}
                 {isCompleted&&(
                   <div className="mx-1 my-2 rounded-xl overflow-hidden shadow-md"
@@ -1280,31 +1333,32 @@ export default function TradeDetail({user}) {
 
               {/* Input */}
               {isActive?(
-                <div className="border-t p-3 flex-shrink-0" style={{borderColor:C.g100}}>
+                <div className="border-t flex-shrink-0" style={{borderColor:C.g200,backgroundColor:'#fff',padding:'10px 12px 8px'}}>
                   <form onSubmit={sendMessage} className="flex items-center gap-2">
                     <button type="button" onClick={()=>fileRef.current?.click()} disabled={uploading}
-                      className="w-9 h-9 rounded-xl flex items-center justify-center border-2 hover:bg-gray-50 disabled:opacity-40 flex-shrink-0 transition"
-                      style={{borderColor:C.g200}}>
-                      {uploading?<RefreshCw size={14} className="animate-spin" style={{color:C.green}}/>
-                        :<Paperclip size={14} style={{color:C.g400}}/>}
+                      className="w-10 h-10 rounded-xl flex items-center justify-center border-2 hover:bg-gray-50 disabled:opacity-40 flex-shrink-0 transition"
+                      style={{borderColor:C.g200,backgroundColor:'#F8FAFC'}}>
+                      {uploading?<RefreshCw size={15} className="animate-spin" style={{color:C.green}}/>
+                        :<Paperclip size={15} style={{color:C.green}}/>}
                     </button>
                     <input ref={fileRef} type="file" accept="image/*" onChange={e=>uploadImage(e.target.files[0])} className="hidden"/>
-                    <input type="text" value={msg} onChange={e=>setMsg(e.target.value)}
+                    <input type="text" value={msg}
+                      onChange={e=>{setMsg(e.target.value);sendTypingPing();}}
                       placeholder={`Message ${cp?.username||'counterparty'}…`}
-                      className="flex-1 px-4 py-2.5 text-sm border-2 rounded-xl focus:outline-none transition"
-                      style={{borderColor:msg?C.green:C.g200}}/>
+                      className="flex-1 px-4 py-3 font-medium border-2 rounded-2xl focus:outline-none transition"
+                      style={{borderColor:msg?C.green:C.g200,fontSize:15,color:C.g800,backgroundColor:'#F8FAFC'}}/>
                     <button type="submit" disabled={!msg.trim()||sending}
-                      className="w-9 h-9 rounded-xl flex items-center justify-center text-white flex-shrink-0 transition disabled:opacity-30"
+                      className="w-10 h-10 rounded-xl flex items-center justify-center text-white flex-shrink-0 transition disabled:opacity-30 shadow-sm"
                       style={{backgroundColor:msg.trim()?C.green:C.g300}}>
-                      {sending?<RefreshCw size={14} className="animate-spin"/>:<Send size={14}/>}
+                      {sending?<RefreshCw size={15} className="animate-spin"/>:<Send size={15}/>}
                     </button>
                   </form>
-                  <p className="text-xs text-center mt-1.5" style={{color:C.g400}}>
-                    📎 Attach payment proof · 🔒 All messages encrypted
+                  <p className="text-xs text-center mt-1.5 font-medium" style={{color:C.g400}}>
+                    📎 Tap the clip to attach payment proof · 🔒 Encrypted
                   </p>
                 </div>
               ):(
-                <div className="border-t p-3 text-center text-sm font-semibold flex-shrink-0"
+                <div className="border-t p-3 text-center text-sm font-bold flex-shrink-0"
                   style={{borderColor:C.g100,color:C.g400}}>
                   Chat closed — trade {isCompleted?'completed successfully ✅':'cancelled ❌'}
                 </div>
@@ -1317,7 +1371,7 @@ export default function TradeDetail({user}) {
       {/* ── MOBILE STICKY ACTION BAR ─────────────────────────────────────── */}
       {(showMarkPaid||showRelease)&&(
         <div className="lg:hidden fixed left-0 right-0 z-40 px-3 py-2.5"
-          style={{bottom:'60px',backgroundColor:'rgba(255,255,255,0.97)',borderTop:`1px solid ${C.g200}`,backdropFilter:'blur(8px)'}}>
+          style={{bottom:0,backgroundColor:'rgba(255,255,255,0.97)',borderTop:`1px solid ${C.g200}`,backdropFilter:'blur(8px)',paddingBottom:'env(safe-area-inset-bottom, 10px)'}}>
           {showMarkPaid&&(
             <button onClick={()=>setShowPayConfirm(true)} disabled={submitting}
               className="w-full py-4 rounded-2xl font-black text-base shadow-lg active:opacity-80 disabled:opacity-50 flex items-center justify-center gap-2"

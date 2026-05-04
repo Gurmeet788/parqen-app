@@ -100,7 +100,7 @@ class TradeEscrowService {
   // Deducts from seller's PRAQEN wallet balance
   // Generates unique escrow address for this trade
   // ============================================================
-  async lockFundsInEscrow(tradeId, btcProviderId, amountBtc) {
+  async lockFundsInEscrow(tradeId, btcProviderId, amountBtc, timeLimitMins = 30) {
     console.log(`\n🔒 lockFundsInEscrow — Trade: ${tradeId.slice(0,8)}, BTC Provider: ${btcProviderId.slice(0,8)}, Amount: ${amountBtc} BTC`);
 
     const amount = parseFloat(amountBtc);
@@ -144,11 +144,22 @@ class TradeEscrowService {
 
     if (deductErr) throw new Error(`Failed to lock funds: ${deductErr.message}`);
 
-    // Sync user_wallets so the wallet page reflects the deduction immediately
-    await supabaseAdmin
+    // Sync user_wallets — subtract from its OWN current value.
+    // DO NOT set it to newBalance from user_balances: if the two tables were out of sync,
+    // that would inflate user_wallets and show fake BTC to the seller.
+    const { data: walletRow } = await supabaseAdmin
       .from('user_wallets')
-      .update({ balance_btc: newBalance, updated_at: new Date().toISOString() })
-      .eq('user_id', btcProviderId);
+      .select('balance_btc')
+      .eq('user_id', btcProviderId)
+      .maybeSingle();
+
+    if (walletRow) {
+      const walletNewBal = Math.max(0, parseFloat((parseFloat(walletRow.balance_btc || 0) - amount).toFixed(8)));
+      await supabaseAdmin
+        .from('user_wallets')
+        .update({ balance_btc: walletNewBal, updated_at: new Date().toISOString() })
+        .eq('user_id', btcProviderId);
+    }
 
     // ── 4. Generate deterministic lock reference ────────────────────────────
     const crypto = require('crypto');
@@ -192,7 +203,7 @@ class TradeEscrowService {
         escrow_amount:         amount,
         platform_fee_btc:      feeBtc,
         escrow_locked_at:      new Date().toISOString(),
-        expires_at:            new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        expires_at:            new Date(Date.now() + timeLimitMins * 60 * 1000).toISOString(),
       })
       .eq('id', tradeId);
 
@@ -211,7 +222,7 @@ class TradeEscrowService {
       amountLocked: amount,
       feeBtc,
       newBalance,
-      expiresAt:    new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      expiresAt:    new Date(Date.now() + timeLimitMins * 60 * 1000).toISOString(),
     };
   }
 

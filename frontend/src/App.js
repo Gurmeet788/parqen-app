@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { RatesProvider } from './contexts/RatesContext';
 import axios from 'axios';
 import { ToastContainer, toast } from 'react-toastify';
@@ -64,6 +64,16 @@ function PageLoader() {
 
 // API Base URL
 export const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+
+function AppShell({ children }) {
+  const location = useLocation();
+  const isTradeRoute = location.pathname.startsWith('/trade/');
+  return (
+    <div className={`min-h-screen bg-gray-50${isTradeRoute ? '' : ' pb-16 md:pb-0'}`}>
+      {children}
+    </div>
+  );
+}
 
 function App() {
   const [user, setUser] = useState(null);
@@ -184,7 +194,7 @@ function App() {
   return (
     <RatesProvider>
     <Router>
-      <div className="min-h-screen bg-gray-50 pb-16 md:pb-0">
+      <AppShell>
         <Navbar user={user} onLogout={logout} />
 
         <Suspense fallback={<PageLoader />}>
@@ -239,7 +249,7 @@ function App() {
 
           {/* Admin/Moderator Routes */}
           <Route path="/admin" element={user?.is_admin ? <AdminDashboard user={user} /> : <Navigate to="/" />} />
-          <Route path="/moderator" element={user?.is_moderator ? <ModeratorDashboard user={user} /> : <Navigate to="/" />} />
+          <Route path="/moderator" element={<ModeratorDashboard user={user} />} />
           <Route path="/escrow/:id" element={user ? <EscrowVerification user={user} /> : <Navigate to="/login" />} />
 
           {/* Catch all - redirect to home */}
@@ -249,7 +259,7 @@ function App() {
 
         <BottomNav user={user} />
         <ToastContainer position="bottom-right" autoClose={3000} />
-      </div>
+      </AppShell>
     </Router>
     </RatesProvider>
   );

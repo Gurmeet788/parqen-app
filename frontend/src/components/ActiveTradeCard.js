@@ -42,17 +42,23 @@ function resolveExpiresAt(expiresAt, createdAt, limitMins) {
 function TradeTimer({ expiresAt, timeLimitMins = 30, onExpire }) {
   const limitSecs    = Math.max(60, timeLimitMins * 60);
   const expiredFired = useRef(false);
+  const mountTime    = useRef(Date.now());
 
   const calcRemaining = () => {
-    if (!expiresAt) return limitSecs;
-    const diff = Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000);
-    return Math.min(limitSecs, Math.max(0, diff));
+    if (expiresAt) {
+      const diff = Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000);
+      return Math.min(limitSecs, Math.max(0, diff));
+    }
+    // No server expiry — count down from mount time so the timer always moves
+    const elapsed = Math.floor((Date.now() - mountTime.current) / 1000);
+    return Math.max(0, limitSecs - elapsed);
   };
 
   const [secs, setSecs] = useState(calcRemaining);
 
   useEffect(() => {
     expiredFired.current = false;
+    mountTime.current = Date.now();
     setSecs(calcRemaining());
     const tick = setInterval(() => {
       const remaining = calcRemaining();
