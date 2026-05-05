@@ -795,11 +795,19 @@ export default function Profile({userId:propUserId}){
               <div className="h-2.5 rounded-full bg-white/20"><div className="h-2.5 rounded-full" style={{width:`${verifPct}%`,backgroundColor:C.gold}}/></div>
             </div>
 
-            {own&&verifPct<100&&(
-              <div className="flex items-center gap-3 p-3 rounded-xl border" style={{borderColor:'#93C5FD',backgroundColor:'#EFF6FF'}}>
-                <Settings size={14} style={{color:'#3B82F6',flexShrink:0}}/>
-                <p className="text-xs" style={{color:'#1E40AF'}}>
-                  Tap <strong>Verify →</strong> on any step below to complete verification in <strong>Settings</strong>.
+            {own&&!emailOk&&(
+              <div className="flex items-center gap-3 p-3 rounded-xl border" style={{borderColor:'#FCA5A5',backgroundColor:'#FEF2F2'}}>
+                <AlertTriangle size={14} style={{color:C.danger,flexShrink:0}}/>
+                <p className="text-xs" style={{color:'#991B1B'}}>
+                  <strong>Email not verified.</strong> You need to verify your email to create offers and open trades.
+                </p>
+              </div>
+            )}
+            {own&&emailOk&&!phoneOk&&(
+              <div className="flex items-center gap-3 p-3 rounded-xl border" style={{borderColor:'#FCD34D',backgroundColor:'#FFFBEB'}}>
+                <Info size={14} style={{color:'#D97706',flexShrink:0}}/>
+                <p className="text-xs" style={{color:'#92400E'}}>
+                  <strong>Phone is optional.</strong> Add your phone number in Settings to unlock higher trade limits and SMS alerts.
                 </p>
               </div>
             )}
@@ -817,44 +825,45 @@ export default function Profile({userId:propUserId}){
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-black" style={{color:C.forest}}>Email</p>
-                      <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{backgroundColor:emailOk?`${C.success}15`:'#EFF6FF',color:emailOk?C.success:C.paid}}>
-                        {emailOk?'✓ Verified':'Not Verified'}
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-full"
+                        style={{backgroundColor:emailOk?`${C.success}15`:'#FEF2F2',color:emailOk?C.success:C.danger}}>
+                        {emailOk?'✅ Email verified':'❌ Email not verified'}
                       </span>
                     </div>
                     <p className="text-xs mt-0.5 truncate" style={{color:C.g500}}>
-                      {emailOk?`${user.email||''}  — verified`:'Verify your email for account security & notifications'}
+                      {emailOk
+                        ?`${user.email||''}  — required to create offers & trade`
+                        :'Verify your email to start trading on PRAQEN'}
                     </p>
                   </div>
                   {own&&!emailOk&&(
                     <button onClick={()=>navigate('/settings?tab=verification')}
                       className="px-3 py-2 rounded-xl text-white text-xs font-black flex-shrink-0"
-                      style={{backgroundColor:C.paid}}>Verify →</button>
+                      style={{backgroundColor:C.danger}}>Verify Email →</button>
                   )}
                 </div>
 
                 {/* Phone */}
                 <div className="rounded-2xl border-2 p-4 flex items-center gap-3 transition-all"
-                  style={{borderColor:phoneOk?C.success:C.g200,backgroundColor:phoneOk?'#ECFDF5':'white'}}>
+                  style={{borderColor:phoneOk?C.success:'#FCD34D',backgroundColor:phoneOk?'#ECFDF5':'#FFFBEB'}}>
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{backgroundColor:phoneOk?`${C.success}15`:`${C.success}15`}}>
-                    {phoneOk?<CheckCircle size={18} style={{color:C.success}}/>:<Phone size={18} style={{color:C.success}}/>}
+                    style={{backgroundColor:phoneOk?`${C.success}15`:'#FEF3C7'}}>
+                    {phoneOk?<CheckCircle size={18} style={{color:C.success}}/>:<Phone size={18} style={{color:'#D97706'}}/>}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-black" style={{color:C.forest}}>Phone Number</p>
-                      <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{backgroundColor:phoneOk?`${C.success}15`:'#F1F5F9',color:phoneOk?C.success:C.g500}}>
-                        {phoneOk?'✓ Verified':'Not Verified'}
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-full"
+                        style={{backgroundColor:phoneOk?`${C.success}15`:'#FEF3C7',color:phoneOk?C.success:'#92400E'}}>
+                        {phoneOk?'✅ Phone verified':'⚠️ Optional'}
                       </span>
                     </div>
                     <p className="text-xs mt-0.5 truncate" style={{color:C.g500}}>
-                      {phoneOk?`${user.phone||''}  — verified`:'Add your phone for SMS alerts & 2-factor security'}
+                      {phoneOk
+                        ?`${user.phone||''}  — verified`
+                        :'Not required to trade. Add phone for higher limits & SMS alerts.'}
                     </p>
                   </div>
-                  {own&&!phoneOk&&(
-                    <button onClick={()=>navigate('/settings?tab=verification')}
-                      className="px-3 py-2 rounded-xl text-white text-xs font-black flex-shrink-0"
-                      style={{backgroundColor:C.success}}>Verify →</button>
-                  )}
                 </div>
 
                 {/* KYC */}

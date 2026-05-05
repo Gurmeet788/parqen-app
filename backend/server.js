@@ -2001,30 +2001,23 @@ app.post('/api/listings', verifyToken, async (req, res) => {
       hasPhone = !!(listingUser?.is_phone_verified || listingUser?.phone);
       hasKyc   = !!(listingUser?.is_id_verified);
     }
+    // Email verification is the only requirement to create offers.
+    // Phone is optional (unlocks higher trade limits when added).
+    if (!hasEmail) {
+      return res.status(403).json({
+        error: 'Please verify your email address to create offers.',
+        requireVerification: 'email',
+      });
+    }
+
+    const isGiftCard = listingType === 'BUY_GIFT_CARD' || listingType === 'SELL_GIFT_CARD' || listingType === 'GIFT_CARD';
     const verifCount = [hasEmail, hasPhone, hasKyc].filter(Boolean).length;
 
-    // Rule 1: Any 1 verification (email OR phone) lets you create buy AND sell offers
-    if (verifCount < 1) {
+    // Very large offers ($10k+) still require KYC (identity) verification
+    if (maxUSD >= 10000 && !hasKyc) {
       return res.status(403).json({
-        error: 'Please verify your email or phone number to create offers. Go to Profile → Verification to get started.',
-        requireVerification: 'any',
-      });
-    }
-
-    // Rule 2: Gift card listings require 2 verifications (higher-risk trades)
-    const isGiftCard = listingType === 'BUY_GIFT_CARD' || listingType === 'SELL_GIFT_CARD' || listingType === 'GIFT_CARD';
-    if (isGiftCard && verifCount < 2) {
-      return res.status(403).json({
-        error: 'Gift card offers require 2 verifications. Please verify your email and phone number.',
-        requireVerification: 'two',
-      });
-    }
-
-    // Rule 3: Very large trades ($10k+) still require all 3
-    if (maxUSD >= 10000 && verifCount < 3) {
-      return res.status(403).json({
-        error: 'Offers over $10,000 require email, phone, and ID verification.',
-        requireVerification: 'all',
+        error: 'Offers over $10,000 require identity (KYC) verification.',
+        requireVerification: 'kyc',
       });
     }
 
@@ -2375,26 +2368,20 @@ app.post('/api/offers', verifyToken, async (req, res) => {
       hasPhone = !!(listingUser?.is_phone_verified || listingUser?.phone);
       hasKyc   = !!(listingUser?.is_id_verified);
     }
-    const verifCount = [hasEmail, hasPhone, hasKyc].filter(Boolean).length;
-
-    if (verifCount < 1) {
+    // Email verification is the only requirement to create offers.
+    // Phone is optional (unlocks higher trade limits when added).
+    if (!hasEmail) {
       return res.status(403).json({
-        error: 'Please verify your email or phone number to create offers.',
-        requireVerification: 'any',
+        error: 'Please verify your email address to create offers.',
+        requireVerification: 'email',
       });
     }
 
     // Determine listing type
     const offerTypeMap = { 'sell': 'SELL', 'buy': 'BUY', 'gc_buy': 'BUY_GIFT_CARD' };
     const mappedType = offerTypeMap[type] || listing_type || 'SELL';
-    
+    const verifCount = [hasEmail, hasPhone, hasKyc].filter(Boolean).length;
     const isGiftCard = mappedType === 'BUY_GIFT_CARD' || mappedType === 'SELL_GIFT_CARD';
-    if (isGiftCard && verifCount < 2) {
-      return res.status(403).json({
-        error: 'Gift card offers require 2 verifications. Please verify your email and phone number.',
-        requireVerification: 'two',
-      });
-    }
 
     // Default gift_card_brand for non-GC offers (column is NOT NULL in schema)
     const brandDefault = mappedType === 'SELL' ? 'Sell Bitcoin' : mappedType === 'BUY' ? 'Buy Bitcoin' : '';
