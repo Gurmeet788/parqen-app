@@ -314,6 +314,88 @@ function ImgModal({src,onClose}) {
   );
 }
 
+// ─── Dispute / report-to-moderator modal ─────────────────────────────────────
+const DISPUTE_REASONS=[
+  'Seller is not responding',
+  'Payment sent but Bitcoin not released',
+  'Wrong payment amount received',
+  'Incorrect payment method used',
+  'Suspected scam or fraud attempt',
+  'Seller / buyer violated trade terms',
+  'Other — describe below',
+];
+function DisputeModal({onClose,onSubmit,submitting}){
+  const [selected,setSelected]=useState('');
+  const [details,setDetails]=useState('');
+  const isOther=selected==='Other — describe below';
+  const canSubmit=selected&&(!isOther||details.trim().length>4);
+  const fullReason=isOther?details.trim():(details.trim()?`${selected} — ${details.trim()}`:selected);
+  return(
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
+      style={{backgroundColor:'rgba(0,0,0,0.65)',backdropFilter:'blur(4px)'}} onClick={onClose}>
+      <div className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto"
+        style={{animation:'slideUp .3s ease'}} onClick={e=>e.stopPropagation()}>
+        {/* Header */}
+        <div className="px-5 pt-5 pb-4 flex items-start justify-between"
+          style={{background:'linear-gradient(135deg,#FEF2F2,#FFF7F7)',borderBottom:'1px solid #FEE2E2'}}>
+          <div>
+            <div className="flex items-center gap-2 mb-0.5">
+              <Flag size={15} style={{color:'#DC2626'}}/>
+              <h3 className="font-black text-sm" style={{color:'#991B1B'}}>Report to Moderator</h3>
+            </div>
+            <p className="text-xs" style={{color:'#B91C1C'}}>A PRAQEN moderator will review your case within <strong>24 hours</strong>. All chats are logged.</p>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ml-3" style={{backgroundColor:'#FEE2E2'}}>
+            <X size={13} style={{color:'#DC2626'}}/>
+          </button>
+        </div>
+        {/* Reason list */}
+        <div className="p-5 space-y-2">
+          <p className="text-xs font-black mb-3" style={{color:'#334155'}}>What is the problem?</p>
+          {DISPUTE_REASONS.map(r=>(
+            <button key={r} onClick={()=>setSelected(r)}
+              className="w-full text-left px-3.5 py-2.5 rounded-xl border text-xs font-semibold transition-all"
+              style={{
+                backgroundColor:selected===r?'#FEF2F2':'#FAFAFA',
+                borderColor:selected===r?'#F87171':'#E2E8F0',
+                color:selected===r?'#B91C1C':'#475569',
+              }}>
+              <span className="mr-2 text-sm">{selected===r?'◉':'○'}</span>{r}
+            </button>
+          ))}
+        </div>
+        {/* Details textarea */}
+        {selected&&(
+          <div className="px-5 pb-4">
+            <p className="text-xs font-bold mb-2" style={{color:'#334155'}}>
+              {isOther?'Describe what happened (required):':'Additional details for the moderator (optional):'}
+            </p>
+            <textarea value={details} onChange={e=>setDetails(e.target.value)}
+              placeholder={isOther?'Please explain in detail what happened…':'Any extra context to help the moderator resolve faster…'}
+              rows={3}
+              className="w-full border rounded-xl px-3.5 py-2.5 text-xs resize-none outline-none"
+              style={{borderColor:'#E2E8F0',color:'#334155'}}/>
+          </div>
+        )}
+        {/* Action buttons */}
+        <div className="px-5 pb-5 flex gap-3">
+          <button onClick={onClose}
+            className="flex-1 py-3 rounded-2xl border text-xs font-bold"
+            style={{borderColor:'#E2E8F0',color:'#64748B'}}>
+            Cancel
+          </button>
+          <button onClick={()=>canSubmit&&!submitting&&onSubmit(fullReason)}
+            disabled={!canSubmit||submitting}
+            className="flex-1 py-3 rounded-2xl text-xs font-black transition"
+            style={{backgroundColor:canSubmit?'#DC2626':'#E2E8F0',color:canSubmit?'#fff':'#94A3B8'}}>
+            {submitting?'Submitting…':'🚨 Submit Report'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── User profile popup ───────────────────────────────────────────────────────
 function ProfilePopup({user,label,onClose}) {
   if(!user) return null;
@@ -463,6 +545,8 @@ export default function TradeDetail({user}) {
   const [profLabel, setProfLabel] = useState('');
   const [loadErr,   setLoadErr]   = useState(false);
   const [infoOpen,  setInfoOpen]  = useState(false);
+  const [showDisputeModal,  setShowDisputeModal]  = useState(false);
+  const [disputeSubmitting, setDisputeSubmitting] = useState(false);
   const [cpTyping,  setCpTyping]  = useState(false);
 
   const status = (trade?.status||'').toUpperCase();
@@ -499,10 +583,12 @@ export default function TradeDetail({user}) {
 
   useEffect(()=>{
     if(!trade?.created_at||!isActive)return;
+    // Parse timestamps as UTC — Supabase returns TIMESTAMP cols without 'Z', causing local-time misparse
+    const toUTC = s => s ? new Date(/[Z+]/.test(s) ? s : s + 'Z') : null;
     // Use the stored expires_at (authoritative). Fallback to created_at + time_limit for old trades.
     const deadline = trade.expires_at
-      ? new Date(trade.expires_at).getTime()
-      : new Date(trade.created_at).getTime() + (Math.max(trade?.listing?.time_limit||0, trade?.time_limit||0, 30)) * 60 * 1000;
+      ? toUTC(trade.expires_at).getTime()
+      : toUTC(trade.created_at).getTime() + (Math.max(trade?.listing?.time_limit||0, trade?.time_limit||0, 30)) * 60 * 1000;
     const iv=setInterval(()=>{
       const rem=Math.max(0, Math.floor((deadline - Date.now()) / 1000));
       setTimeLeft(rem);
@@ -516,11 +602,12 @@ export default function TradeDetail({user}) {
   },[trade?.expires_at,trade?.created_at,status]);
 
   useEffect(()=>{
-    if(isCompleted && !trade?.user_gave_feedback && !tradeCompleted){
+    const alreadyDone = trade?.user_gave_feedback || localStorage.getItem('fb_done_'+id);
+    if(isCompleted && !alreadyDone && !tradeCompleted){
       const t=setTimeout(()=>setShowFb(true),1500);
       return()=>clearTimeout(t);
     }
-  },[isCompleted, trade?.user_gave_feedback, tradeCompleted]);
+  },[isCompleted, trade?.user_gave_feedback, tradeCompleted, id]);
 
   useEffect(()=>{
     if(messages.length===0)return;
@@ -676,15 +763,24 @@ export default function TradeDetail({user}) {
     }catch(e){console.error('Auto cancel error:',e);}
   };
 
-  const openDispute=async()=>{
-    const reason=window.prompt('Please explain why you are opening a dispute:');
-    if(!reason?.trim()){toast.error('Please provide a reason');return;}
-    if(!window.confirm('Open a dispute? A moderator will review within 24h.'))return;
+  const openDispute=()=>setShowDisputeModal(true);
+
+  const submitDispute=async(reason)=>{
+    setDisputeSubmitting(true);
     try{
       await axios.post(`${API_URL}/trades/${id}/dispute`,{reason},{headers:authH()});
-      await postSys(`🚨 DISPUTE OPENED. Reason: ${reason}. Moderator will review within 24 hours.`);
-      toast.warning('Dispute opened.');await loadTrade();
-    }catch{toast.error('Failed');}
+      await postSys(`🚨 DISPUTE OPENED. Reason: ${reason}. A PRAQEN moderator will review within 24 hours.`);
+      toast.warning('Dispute reported. A moderator will review within 24 hours.');
+      setShowDisputeModal(false);
+      await loadTrade();
+    }catch{toast.error('Failed to submit report. Please try again.');}
+    finally{setDisputeSubmitting(false);}
+  };
+
+  const dismissFeedbackModal=()=>{
+    localStorage.setItem('fb_done_'+id,'1');
+    setShowFb(false);
+    setShowSuccessModal(false);
   };
 
   const submitFeedback=async(rating,comment)=>{
@@ -692,8 +788,7 @@ export default function TradeDetail({user}) {
     try{
       await axios.post(`${API_URL}/trades/${id}/feedback`,{rating,comment,toUserId:isBuyer?trade.seller_id:trade.buyer_id},{headers:authH()});
       toast.success('Feedback submitted!');
-      setShowFb(false);
-      setShowSuccessModal(false);
+      dismissFeedbackModal();
       await loadTrade();
     }catch(e){toast.error(e?.response?.data?.error||'Failed');}
     finally{setFbSub(false);}
@@ -903,7 +998,7 @@ export default function TradeDetail({user}) {
                   <CheckCircle size={24} className="mx-auto mb-1"/>
                   <p className="font-black text-sm">Trade Complete 🎉</p>
                   <p className="text-xs text-white/60 mt-0.5">0.5% fee auto-collected by escrow</p>
-                  {!trade?.user_gave_feedback&&(
+                  {!trade?.user_gave_feedback&&!localStorage.getItem('fb_done_'+id)&&(
                     <button onClick={()=>setShowFb(true)} className="mt-2 text-xs underline text-white/80">
                       Leave feedback →
                     </button>
@@ -1161,12 +1256,17 @@ export default function TradeDetail({user}) {
               )}
 
               {/* ── SYSTEM MESSAGE STRIP ── */}
-              <div className="flex-shrink-0 border-b px-3 py-2"
-                style={{borderColor:'rgba(180,160,80,0.2)', backgroundColor:'rgba(250,240,200,0.25)'}}>
-                <div className="flex items-center gap-2">
-                  <Shield size={11} style={{color:'#a08040',flexShrink:0}}/>
-                  <p className="text-xs leading-snug" style={{color:'#8a7040'}}>
-                    🔔 Pay via <span className="font-black">{payMethod}</span>, then tap <span className="font-black">✅ I HAVE PAID</span>. Do not share links or trade outside escrow.
+              <div className="flex-shrink-0 border-b px-3 py-2.5"
+                style={{borderColor:'rgba(34,197,94,0.25)', backgroundColor:'rgba(240,253,244,0.85)'}}>
+                <div className="flex items-start gap-2">
+                  <Shield size={11} style={{color:'#166534',flexShrink:0,marginTop:2}}/>
+                  <p className="text-xs leading-snug font-medium" style={{color:'#166534'}}>
+                    {isBuyer
+                      ? <>🔔 <strong>You are BUYING.</strong> Send payment via <span className="font-black">{payMethod}</span>, then tap <span className="font-black">✅ I HAVE PAID</span>. Only release after the seller confirms.</>
+                      : isSeller
+                        ? <>🔔 <strong>You are SELLING.</strong> Wait for the buyer to pay via <span className="font-black">{payMethod}</span>. Once payment arrives, tap <span className="font-black">✅ RELEASE BITCOIN</span> to complete the trade.</>
+                        : <>🔔 Pay via <span className="font-black">{payMethod}</span>, then tap <span className="font-black">✅ I HAVE PAID</span>. Do not trade outside escrow.</>
+                    }
                   </p>
                 </div>
               </div>
@@ -1226,6 +1326,15 @@ export default function TradeDetail({user}) {
                     else if (isMod2)  { bg='#EDE9FE'; border='#C4B5FD'; color='#4C1D95'; icon='👨‍⚖️'; }
                     else              { bg=C.g50;     border=C.g200;    color=C.g600;    icon='ℹ️'; }
 
+                    // Role-specific next-step hint for payment events
+                    const pmtHint = isPmt ? (
+                      isBuyer
+                        ? '✓ Your payment notification was sent. The seller is now verifying.'
+                        : isSeller
+                          ? '⚠️ Check your account now. If payment is confirmed, tap RELEASE BITCOIN.'
+                          : null
+                    ) : null;
+
                     return(
                       <div key={i} className="flex justify-center my-1">
                         <div className="max-w-[92%] rounded-2xl border px-4 py-2.5 text-center"
@@ -1233,6 +1342,12 @@ export default function TradeDetail({user}) {
                           <p className="text-xs font-semibold leading-relaxed" style={{color}}>
                             <span className="mr-1">{icon}</span>{text}
                           </p>
+                          {pmtHint&&(
+                            <p className="text-xs font-bold mt-1.5 px-2 py-1 rounded-lg"
+                              style={{backgroundColor:isBuyer?'rgba(30,64,175,0.08)':'rgba(180,83,9,0.1)',color:isBuyer?'#1D4ED8':'#92400E'}}>
+                              {pmtHint}
+                            </p>
+                          )}
                           <p className="text-xs mt-1 opacity-60" style={{color}}>
                             {new Date(m.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
                           </p>
@@ -1283,12 +1398,12 @@ export default function TradeDetail({user}) {
                         ):(
                           <div className="px-3.5 py-2.5 text-sm font-medium break-words shadow-sm"
                             style={{
-                              backgroundColor:isOwn?C.green:'#fff',
-                              color:isOwn?'#fff':C.g800,
+                              backgroundColor:isOwn?'#22C55E':'#F1F5F9',
+                              color:isOwn?'#fff':'#1E293B',
                               fontWeight:isOwn?600:500,
                               lineHeight:'1.45',
                               borderRadius:isOwn?'18px 18px 4px 18px':'4px 18px 18px 18px',
-                              border:isOwn?'none':`1px solid ${C.g200}`,
+                              border:isOwn?'none':'1px solid #E2E8F0',
                             }}>
                             {text}
                           </div>
@@ -1424,10 +1539,11 @@ export default function TradeDetail({user}) {
 
       {/* ── MODALS ─────────────────────────────────────────────────────────── */}
       {profUser && <ProfilePopup user={profUser} label={profLabel} onClose={()=>setProfUser(null)}/>}
-      {showSuccessModal && <FeedbackModal name={cp?.username} onClose={()=>setShowSuccessModal(false)} onSubmit={submitFeedback} submitting={fbSub}/>}
-      {showFb && <FeedbackModal name={cp?.username} onClose={()=>setShowFb(false)} onSubmit={submitFeedback} submitting={fbSub}/>}
+      {showSuccessModal && <FeedbackModal name={cp?.username} onClose={dismissFeedbackModal} onSubmit={submitFeedback} submitting={fbSub}/>}
+      {showFb && <FeedbackModal name={cp?.username} onClose={dismissFeedbackModal} onSubmit={submitFeedback} submitting={fbSub}/>}
       {showCancel && <CancelModal onClose={()=>setShowCancel(false)} onConfirm={cancelTrade} submitting={submitting}/>}
       {imgSrc && <ImgModal src={imgSrc} onClose={()=>setImgSrc(null)}/>}
+      {showDisputeModal && <DisputeModal onClose={()=>setShowDisputeModal(false)} onSubmit={submitDispute} submitting={disputeSubmitting}/>}
 
       {/* ── Pay confirmation modal ───────────────────────────────────── */}
       {showPayConfirm && (

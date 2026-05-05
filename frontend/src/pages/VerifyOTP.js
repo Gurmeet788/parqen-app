@@ -103,13 +103,26 @@ export default function VerifyOTP({ onLogin }) {
     if (!canResend || !email) return;
     setResendLoad(true);
     try {
-      await axios.post(`${API_URL}/auth/resend-code`, { email });
+      const r = await axios.post(`${API_URL}/auth/resend-code`, { email });
       toast.success('New code sent — check your email');
       setDigits(['', '', '', '', '', '']);
       inputs.current[0]?.focus();
       startTimer();
+      if (r.data?.devCode) {
+        const d = r.data.devCode.toString().split('');
+        setDigits(d);
+        toast.info(`Dev mode: code auto-filled`, { autoClose: 3000 });
+      }
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Failed to resend code');
+      const errData = error.response?.data;
+      if (errData?.devCode) {
+        const d = errData.devCode.toString().split('');
+        setDigits(d);
+        startTimer();
+        toast.info(`Dev mode: code auto-filled`, { autoClose: 3000 });
+      } else {
+        toast.error(errData?.error || 'Failed to resend code');
+      }
     } finally {
       setResendLoad(false);
     }

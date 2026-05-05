@@ -907,7 +907,10 @@ export default function SellBitcoin({user}) {
   useEffect(()=>{
     const tk = localStorage.getItem('token');
     if (!tk) return;
-    axios.post(`${API_URL}/users/heartbeat`, {}, { headers: { Authorization: `Bearer ${tk}` } }).catch(()=>{});
+    const beat = () => axios.post(`${API_URL}/users/heartbeat`, {}, { headers: { Authorization: `Bearer ${tk}` } }).catch(() => {});
+    beat();
+    const iv = setInterval(beat, 60000);
+    return () => clearInterval(iv);
   },[]);
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -917,7 +920,8 @@ export default function SellBitcoin({user}) {
         const res = await axios.get(`${API_URL}/trades/active`, { headers: { Authorization: `Bearer ${token}` } });
         if (res.data.success) {
           const now = Date.now();
-          const live = (res.data.trades || []).filter(t => !t.expires_at || new Date(t.expires_at).getTime() > now);
+          const toUTC = s => new Date(/[Z+]/.test(s) ? s : s + 'Z');
+          const live = (res.data.trades || []).filter(t => !t.expires_at || toUTC(t.expires_at).getTime() > now);
           setActiveTrades(live);
         }
       } catch {}
@@ -1026,11 +1030,13 @@ export default function SellBitcoin({user}) {
               </p>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-semibold" style={{color:'rgba(255,255,255,0.5)'}}>
-                  1 USD = <span className="font-black" style={{color:'rgba(255,255,255,0.75)'}}>{sym}{fmt(usdRate,2)} {cur}</span>
+                  1 BTC = <span className="font-black" style={{color:'rgba(255,255,255,0.9)'}}>${fmt(btcPrice)} USD</span>
                 </span>
                 <span style={{color:'rgba(255,255,255,0.2)', fontSize:10}}>|</span>
                 <span className="text-xs font-semibold" style={{color:'rgba(255,255,255,0.5)'}}>
-                  1 BTC = <span className="font-black" style={{color:'rgba(255,255,255,0.75)'}}>{sym}{fmt(btcLocal)} {cur}</span>
+                  1 USD = <span className="font-black" style={{color:'rgba(255,255,255,0.75)'}}>
+                    {cur==='USD' ? `₵${fmt(USD_RATES['GHS']||1,2)} GHS` : `${sym}${fmt(usdRate,2)} ${cur}`}
+                  </span>
                 </span>
               </div>
             </div>

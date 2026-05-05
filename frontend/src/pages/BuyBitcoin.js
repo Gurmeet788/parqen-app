@@ -914,6 +914,7 @@ export default function BuyBitcoin({user}) {
   const [activeTrades, setActiveTrades] = useState([]);
   const [showAllTrades, setShowAllTrades] = useState(false);
   const [pausedOffer,  setPausedOffer]  = useState(false);
+  const [userBtcBalance, setUserBtcBalance] = useState(0);
   const [lastSynced,   setLastSynced]   = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [traderSearch,   setTraderSearch]   = useState('');
@@ -957,8 +958,19 @@ export default function BuyBitcoin({user}) {
   useEffect(() => {
     const tk = localStorage.getItem('token');
     if (!tk) return;
-    axios.post(`${API_URL}/users/heartbeat`, {}, { headers: { Authorization: `Bearer ${tk}` } }).catch(() => {});
+    const beat = () => axios.post(`${API_URL}/users/heartbeat`, {}, { headers: { Authorization: `Bearer ${tk}` } }).catch(() => {});
+    beat();
+    const iv = setInterval(beat, 60000);
+    return () => clearInterval(iv);
   }, []);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    axios.get(`${API_URL}/user/balance`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => setUserBtcBalance(parseFloat(r.data?.balance_btc || 0)))
+      .catch(() => {});
+  }, [user]);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -968,7 +980,8 @@ export default function BuyBitcoin({user}) {
         const res = await axios.get(`${API_URL}/trades/active`, { headers: { Authorization: `Bearer ${token}` } });
         if (res.data.success) {
           const now = Date.now();
-          const live = (res.data.trades || []).filter(t => !t.expires_at || new Date(t.expires_at).getTime() > now);
+          const toUTC = s => new Date(/[Z+]/.test(s) ? s : s + 'Z');
+          const live = (res.data.trades || []).filter(t => !t.expires_at || toUTC(t.expires_at).getTime() > now);
           setActiveTrades(live);
         }
       } catch {}
@@ -1044,6 +1057,16 @@ export default function BuyBitcoin({user}) {
 
   const handleTradeExpire = (id) => setActiveTrades(prev => prev.filter(t => t.id !== id));
 
+  const handleCreateOffer = () => {
+    if (!user) { navigate('/login?message=Please log in to create an offer'); return; }
+    const balanceUsd = userBtcBalance * btcPrice;
+    if (balanceUsd < 10) {
+      toast.error(`You need at least $10 in your wallet to create an offer. Your current balance is $${balanceUsd.toFixed(2)}. Please deposit Bitcoin first.`);
+      return;
+    }
+    navigate('/create-offer');
+  };
+
   const handleBuy = (id) => {
     if (!user) {
       navigate('/login?message=Please log in to start trading');
@@ -1089,11 +1112,13 @@ export default function BuyBitcoin({user}) {
               </p>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-semibold" style={{color:'rgba(255,255,255,0.5)'}}>
-                  1 USD = <span className="font-black" style={{color:'rgba(255,255,255,0.75)'}}>{sym}{fmt(usdRate,2)} {cur}</span>
+                  1 BTC = <span className="font-black" style={{color:'rgba(255,255,255,0.9)'}}>${fmt(btcPrice)} USD</span>
                 </span>
                 <span style={{color:'rgba(255,255,255,0.2)', fontSize:10}}>|</span>
                 <span className="text-xs font-semibold" style={{color:'rgba(255,255,255,0.5)'}}>
-                  1 BTC = <span className="font-black" style={{color:'rgba(255,255,255,0.75)'}}>{sym}{fmt(btcLocal)} {cur}</span>
+                  1 USD = <span className="font-black" style={{color:'rgba(255,255,255,0.75)'}}>
+                    {cur==='USD' ? `₵${fmt(USD_RATES['GHS']||1,2)} GHS` : `${sym}${fmt(usdRate,2)} ${cur}`}
+                  </span>
                 </span>
               </div>
             </div>
@@ -1382,7 +1407,7 @@ export default function BuyBitcoin({user}) {
                 </button>
               )}
             </div>
-            <button onClick={()=>navigate('/create-offer')}
+            <button onClick={()=>handleCreateOffer()}
               className="flex-shrink-0 flex items-center gap-1 px-2.5 py-2 rounded-xl text-white font-black text-xs transition hover:opacity-90 active:scale-[0.97]"
               style={{backgroundColor:C.forest, whiteSpace:'nowrap'}}>
               <PlusCircle size={12}/> Create
@@ -1423,7 +1448,7 @@ export default function BuyBitcoin({user}) {
             <span className="font-black text-sm" style={{color:C.g800}}>{filtered.length}</span>{' '}
             offers{selCountry.code!=='ALL' ? ` · ${selCountry.flag} ${selCountry.name}` : ''}
           </p>
-          <button onClick={()=>navigate('/create-offer')}
+          <button onClick={()=>handleCreateOffer()}
             className="flex items-center gap-1 text-xs font-black px-3 py-1.5 rounded-lg transition hover:opacity-80"
             style={{backgroundColor:`${C.forest}12`, color:C.forest}}>
             <PlusCircle size={12}/> Sell BTC
@@ -1439,7 +1464,7 @@ export default function BuyBitcoin({user}) {
             <p className="text-5xl mb-4">🔍</p>
             <p className="font-black text-base mb-1" style={{color:C.g800}}>No offers found</p>
             <p className="text-sm" style={{color:C.g400}}>Adjust your filters or create the first offer</p>
-            <button onClick={()=>navigate('/create-offer')}
+            <button onClick={()=>handleCreateOffer()}
               className="mt-4 px-6 py-2.5 rounded-xl text-white text-sm font-black hover:opacity-90 transition"
               style={{backgroundColor:C.forest}}>
               Create Offer

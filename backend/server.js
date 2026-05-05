@@ -32,6 +32,16 @@ setInterval(() => {
   for (const key of Object.keys(typingState)) { if (typingState[key] < now) delete typingState[key]; }
 }, 10000);
 
+// In-memory market cache — serves offers/listings without hitting DB on every page load
+const _marketCache = new Map(); // key -> { data, ts }
+const MARKET_CACHE_TTL = 25000; // 25 seconds
+function getCached(key) {
+  const c = _marketCache.get(key);
+  return c && Date.now() - c.ts < MARKET_CACHE_TTL ? c.data : null;
+}
+function setCached(key, data) { _marketCache.set(key, { data, ts: Date.now() }); }
+function bustCache() { _marketCache.clear(); } // Call after any listing status change
+
 // ── 2. Read & validate env vars immediately after loading ──────────────────
 const SUPABASE_URL              = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY         = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
@@ -328,173 +338,59 @@ async function notifyTradeParties(trade, subject, _smsMessage, htmlContent) {
 // ────────────────────────────────────────────────────────────────────────────
 
 async function sendVerificationEmail(email, code) {
-    const year = new Date().getFullYear();
-    const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Verify your PRAQEN account</title>
-</head>
-<body style="margin:0;padding:0;background-color:#F0FAF5;font-family:Arial,Helvetica,sans-serif;">
+  console.log(`📧 Sending to ${email}, code: ${code}`);
+  console.log(`RESEND_API_KEY exists: ${!!process.env.RESEND_API_KEY}`);
+  console.log(`RESEND_FROM: ${process.env.RESEND_FROM || 'not set'}`);
 
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#F0FAF5;padding:40px 16px;">
-    <tr>
-      <td align="center">
-
-        <!-- Card -->
-        <table width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;background-color:#FFFFFF;border-radius:20px;overflow:hidden;box-shadow:0 8px 32px rgba(27,67,50,0.10);">
-
-          <!-- Header -->
-          <tr>
-            <td style="background:linear-gradient(135deg,#1B4332 0%,#2D6A4F 60%,#40916C 100%);padding:36px 32px 28px;text-align:center;">
-              <!-- Logo mark -->
-              <div style="display:inline-block;background:rgba(255,255,255,0.12);border-radius:16px;padding:10px 22px;margin-bottom:14px;">
-                <span style="font-size:26px;font-weight:900;color:#FFFFFF;letter-spacing:2px;font-family:Georgia,serif;">PRA</span><span style="font-size:26px;font-weight:900;color:#F4A422;letter-spacing:2px;font-family:Georgia,serif;">QEN</span>
-              </div>
-              <p style="color:#A7C4B5;font-size:13px;margin:0;letter-spacing:0.5px;">Africa's Trusted P2P Bitcoin Platform</p>
-              <!-- Tagline strip -->
-              <table cellpadding="0" cellspacing="0" style="margin:16px auto 0;">
-                <tr>
-                  <td style="background:rgba(244,164,34,0.15);border-radius:20px;padding:5px 16px;">
-                    <span style="color:#F4A422;font-size:11px;font-weight:700;letter-spacing:1px;">🔒 ESCROW PROTECTED &nbsp;·&nbsp; FAST &nbsp;·&nbsp; HONEST</span>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Body -->
-          <tr>
-            <td style="padding:40px 32px 32px;text-align:center;">
-
-              <!-- Icon circle -->
-              <div style="width:68px;height:68px;background:linear-gradient(135deg,#F0FAF5,#D1FAE5);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;margin-bottom:22px;border:3px solid #A7C4B5;">
-                <span style="font-size:30px;line-height:1;">🔐</span>
-              </div>
-
-              <h2 style="color:#1B4332;font-size:22px;font-weight:900;margin:0 0 10px 0;letter-spacing:-0.3px;">
-                Verify Your Email Address
-              </h2>
-              <p style="color:#64748B;font-size:14px;line-height:1.7;margin:0 0 28px 0;max-width:360px;display:inline-block;">
-                Welcome to PRAQEN! Use the verification code below to activate your account and start trading safely.
-              </p>
-
-              <!-- Code box -->
-              <table cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:24px;">
-                <tr>
-                  <td style="background:linear-gradient(135deg,#F0FAF5,#ECFDF5);border:2px dashed #52B788;border-radius:14px;padding:28px 20px;text-align:center;">
-                    <p style="color:#52B788;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:3px;margin:0 0 12px 0;">
-                      Your Verification Code
-                    </p>
-                    <div style="font-size:44px;font-weight:900;letter-spacing:10px;color:#1B4332;font-family:'Courier New',Courier,monospace;line-height:1;">
-                      ${code}
-                    </div>
-                    <p style="color:#94A3B8;font-size:11px;margin:12px 0 0 0;">
-                      ⏱ Expires in <strong>10 minutes</strong>
-                    </p>
-                  </td>
-                </tr>
-              </table>
-
-              <p style="color:#94A3B8;font-size:12px;line-height:1.6;margin:0 0 24px 0;">
-                If you didn't create a PRAQEN account, you can safely ignore this email.
-              </p>
-
-              <!-- Divider -->
-              <table cellpadding="0" cellspacing="0" width="100%">
-                <tr><td style="border-top:1px solid #E2E8F0;padding-top:20px;"></td></tr>
-              </table>
-
-              <!-- Security note -->
-              <table cellpadding="0" cellspacing="0" style="margin-top:16px;background:#FFF7ED;border-radius:10px;border:1px solid #FDE68A;">
-                <tr>
-                  <td style="padding:12px 16px;text-align:left;">
-                    <span style="color:#92400E;font-size:11px;font-weight:700;">🔒 Security reminder:</span>
-                    <span style="color:#A16207;font-size:11px;"> PRAQEN will never ask for your code via chat, phone, or email. Never share it with anyone.</span>
-                  </td>
-                </tr>
-              </table>
-
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td style="background:#F8FAFC;border-top:1px solid #E2E8F0;padding:20px 32px;text-align:center;">
-              <p style="color:#94A3B8;font-size:11px;margin:0 0 4px 0;">
-                © ${year} PRAQEN. All rights reserved.
-              </p>
-              <p style="color:#CBD5E1;font-size:10px;margin:0;">
-                Africa's most trusted P2P Bitcoin platform — trade safely with escrow protection.
-              </p>
-            </td>
-          </tr>
-
-        </table>
-        <!-- End card -->
-
-      </td>
-    </tr>
-  </table>
-
-</body>
-</html>`;
-
-    // Always log the code so admins can verify delivery manually if SMTP is down
-    console.log(`[EMAIL] Verification code for ${email}: ${code}`);
-
-    // Primary: Gmail SMTP port 587 (STARTTLS)
-    try {
-        await transporter.sendMail({
-            from: `"PRAQEN" <${process.env.EMAIL_USER || 'kendevdash@gmail.com'}>`,
-            to: email,
-            subject: '🔐 Your PRAQEN verification code',
-            html,
-        });
-        console.log('✅ Verification email sent via SMTP (587) to:', email);
-        return;
-    } catch (smtpErr) {
-        console.warn('⚠️ SMTP port 587 failed:', smtpErr.message, '— trying port 465 SSL');
+  // ── PRIMARY: Resend API ──────────────────────────────────────────────────
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: process.env.RESEND_FROM || 'PRAQEN <onboarding@resend.dev>',
+        to: email,
+        subject: 'Your PRAQEN Verification Code',
+        html: `<h2>Your code is: ${code}</h2><p>Valid for 10 minutes.</p>`,
+      }),
+    });
+    const data = await response.json();
+    console.log('Resend response:', JSON.stringify(data));
+    if (data.id) {
+      console.log(`✅ Email sent via Resend: ${data.id}`);
+      return true;
     }
+    throw new Error(`Resend error: ${JSON.stringify(data)}`);
+  } catch (resendErr) {
+    console.error('❌ Resend failed:', resendErr.message);
+  }
 
-    // Secondary: Gmail SMTP port 465 (SSL) — more reliable on some networks
-    try {
-        const sslTransporter = require('nodemailer').createTransport({
-            host: 'smtp.gmail.com',
-            port: 465,
-            secure: true,
-            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-        });
-        await sslTransporter.sendMail({
-            from: `"PRAQEN" <${process.env.EMAIL_USER || 'kendevdash@gmail.com'}>`,
-            to: email,
-            subject: '🔐 Your PRAQEN verification code',
-            html,
-        });
-        console.log('✅ Verification email sent via SMTP (465) to:', email);
-        return;
-    } catch (sslErr) {
-        console.warn('⚠️ SMTP port 465 also failed:', sslErr.message, '— trying Resend fallback');
-    }
+  // ── FALLBACK: Gmail SMTP ─────────────────────────────────────────────────
+  console.log(`📧 Attempting Gmail fallback to ${email}`);
+  try {
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+    });
+    await transporter.verify();
+    console.log(`✅ Gmail transporter verified`);
+    const info = await transporter.sendMail({
+      from: `"PRAQEN" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: 'Your PRAQEN Verification Code',
+      html: `<h2>Your code is: ${code}</h2><p>Valid for 10 minutes.</p>`,
+    });
+    console.log(`✅ Email sent via Gmail to ${email}`, info.messageId);
+    return true;
+  } catch (gmailErr) {
+    console.error(`❌ Gmail error:`, gmailErr.message);
+  }
 
-    // Fallback: Resend (only if SMTP fails)
-    if (resendClient) {
-        const fromAddr = process.env.RESEND_FROM || 'PRAQEN <onboarding@resend.dev>';
-        const { error: resendError } = await resendClient.emails.send({
-            from: fromAddr,
-            to: email,
-            subject: '🔐 Your PRAQEN verification code',
-            html,
-        });
-        if (!resendError) {
-            console.log('✅ Verification email sent via Resend to:', email);
-            return;
-        }
-        throw new Error(`Email delivery failed: ${resendError.message}`);
-    }
-
-    throw new Error('Email delivery failed — SMTP and Resend both unavailable');
+  // Both providers failed — throw so the caller knows
+  throw new Error(`All email providers failed for ${email}`);
 }
 
 // ============================================================
@@ -652,11 +548,12 @@ async function createNotification(userId, type, title, message, action) {
 
 async function updateUserTradeStats(userId) {
   try {
-    const { data: all } = await supabaseAdmin.from('trades').select('status').or(`seller_id.eq.${userId},buyer_id.eq.${userId}`);
-    const total = (all || []).filter(t => t.status === 'COMPLETED').length;
-    const rate  = all?.length > 0 ? Math.round((total / all.length) * 100) : 100;
+    const { data: all, error } = await supabaseAdmin.from('trades').select('status').or(`seller_id.eq.${userId},buyer_id.eq.${userId}`);
+    // If the query failed or returned nothing, skip — never overwrite stats with 0
+    if (error || !all || all.length === 0) return;
+    const total = all.filter(t => t.status === 'COMPLETED').length;
+    const rate  = Math.round((total / all.length) * 100);
     await supabaseAdmin.from('users').update({ total_trades: total, completion_rate: rate }).eq('id', userId);
-    // Auto-award any newly earned badges after stats update
     checkAndAwardBadges(userId).catch(() => {});
   } catch (error) {
     console.error('Error updating user stats:', error);
@@ -1216,28 +1113,66 @@ async function checkOtp(contact, token) {
 app.post('/api/auth/send-otp', async (req, res) => {
   try {
     const { phone, email, channel } = req.body;
-    const ch = channel || 'email';
+    const ch      = channel || 'email';
     const contact = ch === 'email' ? email : toE164(phone);
     if (!contact) return res.status(400).json({ error: 'Phone or email required' });
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    await storeOtp(contact, otp);
+    const otp       = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 10 * 60 * 1000;
+
+    const isDev = process.env.NODE_ENV !== 'production';
 
     if (ch === 'email') {
-      await sendVerificationEmail(contact, otp);
+      // Store in all three places — any failure is non-fatal so email always fires
+      verificationCodes.set(contact, { code: otp, expiresAt });
+      storeOtp(contact, otp).catch(e => console.warn('[send-otp] DB store warn:', e.message));
+      try {
+        await supabaseAdmin.from('users').update({
+          verification_code:         otp,
+          verification_code_expires: new Date(expiresAt).toISOString(),
+        }).eq('email', contact);
+      } catch (e) {
+        console.warn('[send-otp] User update warn:', e.message);
+      }
+
+      let emailSent = false;
+      try {
+        await sendVerificationEmail(contact, otp);
+        emailSent = true;
+      } catch (emailErr) {
+        console.error('[send-otp email] failed:', emailErr.message);
+      }
+
+      console.log(`[OTP send] email to=${contact} sent=${emailSent} code=${otp}`);
+      return res.json({
+        success:  true,
+        message:  emailSent ? 'Code sent! Check your inbox and spam folder.' : 'Email delivery issue — check spam, or use the code below if in dev mode.',
+        devCode:  isDev ? otp : undefined,
+        _hint:    isDev && !emailSent ? 'Dev mode: use devCode above to complete verification' : undefined,
+      });
     } else {
-      // SMS only for phone verification (one-time per user)
       const limit = checkPhoneRateLimit(contact);
       if (limit.blocked) return res.status(429).json({ error: limit.error });
-      await sendSmsOtp(contact, `Your PRAQEN code is: ${otp}. Valid 10 min. Do not share.`);
-      recordPhoneRequest(contact);
-    }
 
-    console.log(`[OTP send] channel=${ch} to=${contact}`);
-    res.json({ success: true, message: 'Code sent!' });
+      let smsSent = false;
+      try {
+        await sendSmsOtp(contact, `Your PRAQEN code is: ${otp}. Valid 10 min. Do not share.`);
+        smsSent = true;
+      } catch (smsErr) {
+        console.error('[send-otp sms] failed:', smsErr.message);
+      }
+
+      recordPhoneRequest(contact);
+      console.log(`[OTP send] sms to=${contact} sent=${smsSent} code=${otp}`);
+      return res.json({
+        success: true,
+        message: smsSent ? 'Code sent to your phone!' : 'SMS delivery issue. Check dev console for code.',
+        devCode: isDev ? otp : undefined,
+      });
+    }
   } catch (error) {
-    console.error('[OTP send error]', error.message);
-    res.status(500).json({ error: 'Failed to send code. Please try again.' });
+    console.error('[OTP send error]', error);
+    res.status(500).json({ error: 'Failed to send code. Please try again.', detail: error.message });
   }
 });
 
@@ -1324,12 +1259,36 @@ app.post('/api/auth/send-verification', async (req, res) => {
   try {
     const { email } = req.body;
     if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email is required' });
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const code      = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = Date.now() + 10 * 60 * 1000;
+
+    // Store in memory AND database so server restarts don't lose the code
     verificationCodes.set(email, { code, expiresAt });
-    console.log(`📧 Verification code for ${email}: ${code}`);
-    await sendVerificationEmail(email, code);
-    res.json({ success: true, message: 'Verification code sent to your email', devCode: process.env.NODE_ENV === 'development' ? code : undefined });
+    await supabaseAdmin.from('users').update({
+      verification_code:         code,
+      verification_code_expires: new Date(expiresAt).toISOString(),
+    }).eq('email', email).throwOnError().catch(() => {}); // non-fatal if user not created yet
+
+    let emailSent = false;
+    let emailError = null;
+    try {
+      await sendVerificationEmail(email, code);
+      emailSent = true;
+    } catch (emailErr) {
+      emailError = emailErr.message;
+      console.error('❌ Send verification error:', emailErr.message);
+    }
+
+    const isDev = process.env.NODE_ENV !== 'production';
+    if (emailSent) {
+      return res.json({ success: true, message: 'Verification code sent! Check your inbox (and spam/junk folder).', devCode: isDev ? code : undefined });
+    }
+    // Email failed but code is stored — return it in dev, show helpful message in prod
+    return res.status(emailSent ? 200 : 500).json({
+      success: false,
+      error: 'We could not send the email right now. Please check your spam folder or try again in a moment.',
+      devCode: isDev ? code : undefined, // dev only — never expose in production
+    });
   } catch (error) {
     console.error('❌ Send verification error:', error);
     res.status(500).json({ error: 'Failed to send verification email. Please try again.' });
@@ -1340,35 +1299,53 @@ app.post('/api/auth/verify-code', async (req, res) => {
   try {
     const { email, code } = req.body;
     if (!email || !code) return res.status(400).json({ error: 'Email and code are required' });
+    const codeStr = String(code).trim();
+    if (codeStr.length !== 6) return res.status(400).json({ error: 'Enter the full 6-digit code' });
 
-    // Check in-memory map first, fall back to database (handles server restarts)
-    const stored = verificationCodes.get(email);
-    if (stored) {
-      if (Date.now() > stored.expiresAt) {
+    let verified = false;
+
+    // ── Tier 1: in-memory map ─────────────────────────────────────────────
+    const mem = verificationCodes.get(email);
+    if (mem) {
+      if (Date.now() > mem.expiresAt) {
         verificationCodes.delete(email);
-        return res.status(400).json({ error: 'Verification code expired. Request a new one.' });
-      }
-      if (stored.code !== String(code)) {
+      } else if (mem.code === codeStr) {
+        verificationCodes.delete(email);
+        verified = true;
+      } else {
         return res.status(400).json({ error: 'Invalid verification code.' });
       }
-      verificationCodes.delete(email);
-    } else {
-      // Fallback: check the code saved in the database
+    }
+
+    // ── Tier 2: users table (verification_code column) ────────────────────
+    if (!verified) {
       const { data: dbUser } = await supabaseAdmin
         .from('users')
         .select('verification_code, verification_code_expires, is_email_verified')
-        .eq('email', email)
-        .single();
+        .eq('email', email).single();
 
       if (!dbUser) return res.status(400).json({ error: 'Account not found.' });
       if (dbUser.is_email_verified) return res.json({ success: true, message: 'Already verified. Please login.' });
-      if (!dbUser.verification_code) return res.status(400).json({ error: 'No code found. Please request a new one.' });
-      if (new Date() > new Date(dbUser.verification_code_expires)) {
-        return res.status(400).json({ error: 'Verification code expired. Request a new one.' });
+
+      if (dbUser.verification_code && String(dbUser.verification_code) === codeStr) {
+        if (new Date() <= new Date(dbUser.verification_code_expires)) {
+          verified = true;
+        } else {
+          return res.status(400).json({ error: 'Verification code expired. Request a new one.' });
+        }
       }
-      if (String(dbUser.verification_code) !== String(code)) {
-        return res.status(400).json({ error: 'Invalid verification code.' });
+    }
+
+    // ── Tier 3: otp_codes table (used by send-otp endpoint) ───────────────
+    if (!verified) {
+      const dbOtp = await checkOtp(email, codeStr);
+      if (dbOtp) {
+        verified = true;
       }
+    }
+
+    if (!verified) {
+      return res.status(400).json({ error: 'Invalid or expired code. Request a new one.' });
     }
 
     // Mark user verified and clear the stored code
@@ -1431,15 +1408,30 @@ app.post('/api/users/resend-verification', verifyToken, async (req, res) => {
       verification_code_expires: new Date(expiresAt).toISOString(),
     }).eq('id', req.userId);
 
-    // Await email so we return a real error if SMTP fails
-    await sendVerificationEmail(user.email, code);
+    let emailSent = false;
+    try {
+      await sendVerificationEmail(user.email, code);
+      emailSent = true;
+    } catch (emailErr) {
+      console.error('[resend-verification] email failed:', emailErr.message);
+    }
 
-    console.log(`[resend-verification] Code sent to ${user.email}`);
-    res.json({ success: true, message: 'Verification code sent to your email. Check your inbox and spam/junk folder.' });
+    const isDev = process.env.NODE_ENV !== 'production';
+    console.log(`[resend-verification] Code for ${user.email}: ${code} | sent=${emailSent}`);
+
+    if (emailSent) {
+      return res.json({ success: true, message: 'Code sent! Check your inbox and spam/junk folder.', devCode: isDev ? code : undefined });
+    }
+    // Code stored in DB — user can still verify, and we show code in dev
+    return res.json({
+      success: true,
+      message: 'Email delivery had an issue. If you don\'t see an email within 2 minutes, check your spam folder and try again.',
+      devCode: isDev ? code : undefined,
+      _hint: isDev ? 'Dev mode: use devCode above to bypass email' : undefined,
+    });
   } catch (err) {
     console.error('[resend-verification]', err.message);
-    // Code was stored in DB — user can still verify if they got a previous code
-    res.status(500).json({ error: 'We had trouble sending the email. Check your spam folder — the code may already be there. If not, please wait a moment and try again.' });
+    res.status(500).json({ error: 'Could not send verification email. Please try again.' });
   }
 });
 
@@ -1502,24 +1494,51 @@ app.post('/api/users/send-phone-otp', verifyToken, async (req, res) => {
     const { data: existing } = await supabaseAdmin.from('users').select('id').eq('phone', e164).neq('id', req.userId).maybeSingle();
     if (existing) return res.status(400).json({ error: 'This phone number is already registered to another account.' });
 
-    const otp  = Math.floor(100000 + Math.random() * 900000).toString();
-    otpStore.set(e164, { otp, expires: Date.now() + 10 * 60 * 1000 });
+    const otp       = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    // Store in BOTH memory (fast) and database (survives restarts)
+    otpStore.set(e164, { otp, expires: expiresAt.getTime() });
+    await supabaseAdmin.from('otp_codes').insert({
+      phone: e164, code: otp, expires_at: expiresAt.toISOString(), used: false,
+    }).throwOnError().catch(dbErr => console.warn('[send-phone-otp] DB store warn:', dbErr.message));
 
     console.log(`[send-phone-otp] OTP for ${e164}: ${otp}`);
-    await sendSmsOtp(e164, `[PRAQEN] Your verification code is: ${otp}. Valid for 10 minutes. Never share this code.`);
+
+    let smsSent = false;
+    let smsError = null;
+    try {
+      await sendSmsOtp(e164, `[PRAQEN] Your verification code is: ${otp}. Valid for 10 minutes. Never share this code.`);
+      smsSent = true;
+    } catch (smsErr) {
+      smsError = smsErr;
+      console.error('[send-phone-otp] SMS failed:', smsErr.message, 'code:', smsErr.code);
+    }
 
     recordPhoneRequest(e164);
-    console.log(`[send-phone-otp] OTP sent successfully to ${e164}`);
-    res.json({ success: true, message: 'OTP sent to your phone' });
-  } catch (err) {
-    console.error('[send-phone-otp] error code:', err.code, 'message:', err.message);
+    const isDev = process.env.NODE_ENV !== 'production';
+
+    if (smsSent) {
+      return res.json({ success: true, message: 'OTP sent to your phone', devCode: isDev ? otp : undefined });
+    }
+
+    // SMS failed — give actionable error
     let userMsg = 'Could not send SMS to this number. Please check the number is correct and in international format (e.g. +233XXXXXXXXX), then try again.';
-    if (err.code === 21211 || err.code === 21212) userMsg = 'Invalid phone number format. Use international format, e.g. +233XXXXXXXXX for Ghana or +234XXXXXXXXXX for Nigeria.';
-    else if (err.code === 21608) userMsg = 'SMS is temporarily unavailable. Please contact support at support@praqen.com with your phone number and we will verify you manually.';
-    else if (err.code === 21614) userMsg = 'This phone number cannot receive SMS messages.';
-    else if (err.code === 20003) userMsg = 'SMS service configuration error. Please contact support.';
-    else if (err.code === 21610) userMsg = 'This number has opted out of receiving SMS messages.';
-    res.status(500).json({ error: userMsg, code: err.code || null });
+    if (smsError?.code === 21211 || smsError?.code === 21212) userMsg = 'Invalid phone number. Use international format — e.g. +233XXXXXXXXX for Ghana, +234XXXXXXXXXX for Nigeria.';
+    else if (smsError?.code === 21608) userMsg = 'SMS to this region is unavailable right now. Please email support@praqen.com with your number and we will verify you manually.';
+    else if (smsError?.code === 21614) userMsg = 'This number cannot receive SMS. Try a different number.';
+    else if (smsError?.code === 20003) userMsg = 'SMS configuration error. Please contact support@praqen.com.';
+    else if (smsError?.code === 21610) userMsg = 'This number has opted out of SMS messages.';
+
+    return res.status(500).json({
+      error: userMsg,
+      code: smsError?.code || null,
+      devCode: isDev ? otp : undefined,
+      _hint: isDev ? 'Dev mode: use devCode to bypass SMS and verify directly' : undefined,
+    });
+  } catch (err) {
+    console.error('[send-phone-otp] unexpected error:', err.message);
+    res.status(500).json({ error: 'Could not send OTP. Please try again.' });
   }
 });
 
@@ -1530,18 +1549,34 @@ app.post('/api/users/verify-phone-otp', verifyToken, async (req, res) => {
     if (!phone || !otp) return res.status(400).json({ error: 'Phone and OTP required' });
 
     const e164 = phone.startsWith('+') ? phone : `+${phone.replace(/^0/, '')}`;
+    const code = String(otp).trim();
+
+    if (code.length !== 6) return res.status(400).json({ error: 'Enter the full 6-digit code' });
 
     const limit = checkPhoneRateLimit(e164);
     if (limit.blocked) return res.status(429).json({ error: limit.error });
 
+    // ── Check in-memory first (fast path) ─────────────────────────────────
     const stored = otpStore.get(e164);
+    let verified = false;
 
-    if (!stored || String(stored.otp) !== String(otp) || Date.now() > stored.expires) {
-      recordPhoneFailure(e164);
-      return res.status(400).json({ error: 'Invalid or expired OTP. Request a new one.' });
+    if (stored && String(stored.otp) === code && Date.now() <= stored.expires) {
+      otpStore.delete(e164);
+      verified = true;
     }
 
-    otpStore.delete(e164);
+    // ── DB fallback (handles server restarts) ──────────────────────────────
+    if (!verified) {
+      const dbRecord = await checkOtp(e164, code); // uses otp_codes table
+      if (dbRecord) {
+        verified = true;
+      }
+    }
+
+    if (!verified) {
+      recordPhoneFailure(e164);
+      return res.status(400).json({ error: 'Invalid or expired code. Tap "Resend" to get a new one.' });
+    }
 
     await supabaseAdmin.from('users').update({
       phone:             e164,
@@ -1639,11 +1674,24 @@ app.post('/api/auth/resend-code', async (req, res) => {
     verificationCodes.set(email, { code, expiresAt, userId: user.id });
     await supabaseAdmin.from('users').update({
       verification_code: code,
-      verification_code_expires: new Date(expiresAt),
-    }).eq('email', email);
+      verification_code_expires: new Date(expiresAt).toISOString(),
+    }).eq('email', email).catch(() => {});
 
-    await sendVerificationEmail(email, code);
-    res.json({ success: true, message: 'New verification code sent' });
+    let emailSent = false;
+    try {
+      await sendVerificationEmail(email, code);
+      emailSent = true;
+    } catch (emailErr) {
+      console.error('[resend-code email] failed:', emailErr.message);
+    }
+
+    const isDev = process.env.NODE_ENV !== 'production';
+    console.log(`[resend-code] email=${email} sent=${emailSent} code=${code}`);
+    res.json({
+      success: true,
+      message: emailSent ? 'New verification code sent — check your inbox' : 'Email delivery issue — use devCode if in dev mode',
+      devCode: isDev ? code : undefined,
+    });
   } catch (error) {
     console.error('Resend-code error:', error);
     res.status(500).json({ error: 'Failed to resend code' });
@@ -1981,6 +2029,7 @@ app.post('/api/listings', verifyToken, async (req, res) => {
       face_value:  b.face_value || (Array.isArray(b.card_values) && b.card_values[0] ? parseFloat(b.card_values[0]) : null) || null,
     }]).select();
     if (error) { console.error('[POST /listings]', error.message); return res.status(400).json({ error: error.message }); }
+    bustCache();
     res.json({ success: true, listing: data[0] });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1990,6 +2039,10 @@ app.post('/api/listings', verifyToken, async (req, res) => {
 app.get('/api/listings', async (req, res) => {
   try {
     const { brand, minPrice, maxPrice } = req.query;
+    const cacheKey = `listings|${brand||''}|${minPrice||''}|${maxPrice||''}`;
+    const hit = getCached(cacheKey);
+    if (hit) return res.json({ listings: hit });
+
     let query = supabaseAdmin.from('listings').select(`
       id, seller_id, listing_type, gift_card_brand, status, bitcoin_price, margin, pricing_type,
       currency, currency_symbol, country, country_name, payment_method, payment_methods,
@@ -2034,6 +2087,7 @@ app.get('/api/listings', async (req, res) => {
       });
     }
 
+    setCached(cacheKey, listings);
     res.json({ listings });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -2093,6 +2147,7 @@ app.put('/api/listings/:id', verifyToken, async (req, res) => {
     if (status !== undefined) updateData.status = status;
     const { data, error } = await supabaseAdmin.from('listings').update(updateData).eq('id', id).select().single();
     if (error) return res.status(400).json({ error: error.message });
+    bustCache();
     res.json({ success: true, listing: data });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -2107,6 +2162,7 @@ app.delete('/api/listings/:id', verifyToken, async (req, res) => {
     if (listing.seller_id !== req.userId) return res.status(403).json({ error: 'You can only delete your own listings' });
     const { error } = await supabaseAdmin.from('listings').update({ status: 'DELETED', updated_at: new Date().toISOString() }).eq('id', id);
     if (error) return res.status(400).json({ error: error.message });
+    bustCache();
     res.json({ success: true, message: 'Listing deleted' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -2145,6 +2201,7 @@ app.patch('/api/listings/:id/status', verifyToken, async (req, res) => {
     const { data, error } = await supabaseAdmin
       .from('listings').update({ status, updated_at: new Date().toISOString() }).eq('id', id).select().single();
     if (error) return res.status(400).json({ error: error.message });
+    bustCache();
     res.json({ success: true, listing: data });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -2155,6 +2212,9 @@ app.patch('/api/listings/:id/status', verifyToken, async (req, res) => {
 app.get('/api/offers', async (req, res) => {
   try {
     const { type, country, limit = 100 } = req.query;
+    const cacheKey = `offers|${type||'all'}|${country||'all'}|${limit}`;
+    const hit = getCached(cacheKey);
+    if (hit) return res.json({ success: true, offers: hit });
 
     const typeMap = { sell: 'SELL', buy: 'BUY', gc_buy: 'BUY_GIFT_CARD' };
     const listingTypeFilter = type ? (typeMap[type.toLowerCase()] || type.toUpperCase()) : null;
@@ -2175,7 +2235,7 @@ app.get('/api/offers', async (req, res) => {
 
     const userIds = [...new Set((listings || []).map(l => l.seller_id).filter(Boolean))];
 
-    if (userIds.length === 0) return res.json({ success: true, offers: [] });
+    if (userIds.length === 0) { setCached(cacheKey, []); return res.json({ success: true, offers: [] }); }
 
     const { data: users, error: userError } = await supabaseAdmin
       .from('users')
@@ -2186,14 +2246,14 @@ app.get('/api/offers', async (req, res) => {
 
     const userMap = Object.fromEntries((users || []).map(u => [u.id, u]));
 
-    // Add backward-compat aliases so BuyBitcoin.js (which checks offer.type) still works
     const offers = (listings || []).map(l => ({
       ...l,
-      type: (l.listing_type || '').toLowerCase(), // 'sell' | 'buy' | 'buy_gift_card'
+      type: (l.listing_type || '').toLowerCase(),
       user_id: l.seller_id,
       users: userMap[l.seller_id] || null,
     }));
 
+    setCached(cacheKey, offers);
     res.json({ success: true, offers });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2455,6 +2515,14 @@ app.get('/api/trades/:id', verifyToken, async (req, res) => {
       if (listing) data.listing = listing;
     }
 
+    // Inject whether the current user has already submitted feedback for this trade
+    const { data: myReview } = await supabaseAdmin
+      .from('reviews').select('id')
+      .eq('trade_id', req.params.id)
+      .eq('reviewer_id', req.userId)
+      .maybeSingle();
+    if (myReview) data.user_gave_feedback = true;
+
     res.json({ trade: data });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -2615,8 +2683,19 @@ app.post('/api/trades', verifyToken, async (req, res) => {
 
     // Pre-check: ensure BTC provider has enough balance before creating the trade
     const { data: providerBalance } = await supabaseAdmin
-      .from('user_balances').select('balance_btc').eq('user_id', btcProviderId).single();
-    const availableBtc = parseFloat(providerBalance?.balance_btc || 0);
+      .from('user_balances').select('balance_btc').eq('user_id', btcProviderId).maybeSingle();
+    let availableBtc = parseFloat(providerBalance?.balance_btc || 0);
+    // Fallback: user_balances row may be missing or stale — sync from user_wallets
+    if (availableBtc === 0) {
+      const { data: walletRow } = await supabaseAdmin
+        .from('user_wallets').select('balance_btc').eq('user_id', btcProviderId).maybeSingle();
+      const walletBtc = parseFloat(walletRow?.balance_btc || 0);
+      if (walletBtc > 0) {
+        await supabaseAdmin.from('user_balances')
+          .upsert({ user_id: btcProviderId, balance_btc: walletBtc, updated_at: new Date().toISOString() });
+        availableBtc = walletBtc;
+      }
+    }
     if (availableBtc < verifiedAmountBtc) {
       return res.status(400).json({
         error: `The ${btcProviderId === req.userId ? 'seller' : 'offer owner'} has insufficient Bitcoin balance to complete this trade. Please try a smaller amount or choose a different offer.`

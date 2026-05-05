@@ -73,14 +73,16 @@ function TradeCard({ trade, user, onClose }) {
     : `$${fmt(trade.amount_usd || 0)} USD`;
   const btcAmt   = parseFloat(trade.amount_btc || 0).toFixed(8);
 
+  // Parse as UTC — Supabase TIMESTAMP cols return without 'Z', causing local-time misparse
+  const toUTC = s => s ? new Date(/[Z+]/.test(s) ? s : s + 'Z') : null;
   // Live countdown — sanitize limit, prefer expires_at with validation
   const rawLimit  = parseInt(trade.listing?.time_limit || trade.time_limit || 30);
   const minsLimit = rawLimit > 1440 ? Math.min(480, Math.round(rawLimit / 60)) : Math.min(480, Math.max(5, rawLimit));
-  const computedMs = new Date(trade.created_at).getTime() + minsLimit * 60000;
+  const computedMs = (toUTC(trade.created_at) || new Date()).getTime() + minsLimit * 60000;
   // Use expires_at only if it's within 2× the limit of computed, otherwise use computed
   const deadlineMs = (() => {
     if (!trade.expires_at) return computedMs;
-    const srv = new Date(trade.expires_at).getTime();
+    const srv = toUTC(trade.expires_at).getTime();
     const diff = Math.abs(srv - computedMs);
     return diff <= minsLimit * 60 * 2000 ? srv : computedMs;
   })();

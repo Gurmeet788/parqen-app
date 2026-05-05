@@ -75,8 +75,11 @@ function TradeCard({ trade, user, onClose, onExpire }) {
   const btcNet    = btcAmt * 0.995;
   const payDisp   = localAmt ? `${sym}${fmt(localAmt)} ${cur}` : `$${fmt(trade.amount_usd||0)} USD`;
 
-  // Hard 30-minute timer
-  const deadline  = new Date(trade.created_at).getTime() + 30*60*1000;
+  // Parse as UTC — Supabase TIMESTAMP cols return without 'Z', causing local-time misparse
+  const toUTC = s => new Date(/[Z+]/.test(s) ? s : s + 'Z');
+  const deadline = trade.expires_at
+    ? toUTC(trade.expires_at).getTime()
+    : toUTC(trade.created_at).getTime() + 30*60*1000;
   const [timeLeft, setTimeLeft] = useState(null);
   const [isUrgent, setIsUrgent] = useState(false);
   const expiredRef = React.useRef(false);

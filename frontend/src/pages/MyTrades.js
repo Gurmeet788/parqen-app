@@ -89,9 +89,11 @@ function ActiveAlert({trade, userId, onDismiss, onExpire}) {
   const expiredRef = React.useRef(false);
   React.useEffect(()=>{
     if(!trade.created_at) return;
+    // Parse as UTC — Supabase TIMESTAMP cols return without 'Z', causing local-time misparse
+    const toUTC = s => new Date(/[Z+]/.test(s) ? s : s + 'Z');
     const deadline = trade.expires_at
-      ? new Date(trade.expires_at).getTime()
-      : new Date(trade.created_at).getTime() + 30*60*1000;
+      ? toUTC(trade.expires_at).getTime()
+      : toUTC(trade.created_at).getTime() + 30*60*1000;
     const tick = ()=>{
       const rem = Math.max(0, Math.floor((deadline - Date.now())/1000));
       setTimeLeft(rem);

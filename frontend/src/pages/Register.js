@@ -268,9 +268,23 @@ export default function Register({ onLogin }) {
     if (!validateContact()) return;
     setLoading(true); setGlobalError('');
     try {
-      await axios.post(`${API_URL}/auth/send-otp`, { method, contact, purpose: 'forgot-password' });
+      const channel = method === 'email' ? 'email' : 'sms';
+      const body    = method === 'email' ? { email: contact, channel } : { phone: contact, channel };
+      const r = await axios.post(`${API_URL}/auth/send-otp`, { ...body, purpose: 'forgot-password' });
       setStep('f2'); setOtpTimer(60);
-    } catch (err) { setGlobalError(err.response?.data?.error || 'Failed to send code. Try again.'); }
+      // Dev mode: if email/SMS delivery failed, auto-fill the OTP
+      if (r.data?.devCode) {
+        setOtp(r.data.devCode);
+      }
+    } catch (err) {
+      const errData = err.response?.data;
+      if (errData?.devCode) {
+        setOtp(errData.devCode);
+        setStep('f2'); setOtpTimer(60);
+      } else {
+        setGlobalError(errData?.error || 'Failed to send code. Try again.');
+      }
+    }
     finally { setLoading(false); }
   };
 

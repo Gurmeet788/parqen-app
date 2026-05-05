@@ -107,15 +107,25 @@ class TradeEscrowService {
     if (!amount || amount <= 0) throw new Error('Invalid escrow amount');
 
     // ── 1. Get BTC provider's current balance ──────────────────────────────
-    const { data: providerBal, error: balErr } = await supabaseAdmin
+    const { data: providerBal } = await supabaseAdmin
       .from('user_balances')
       .select('balance_btc')
       .eq('user_id', btcProviderId)
-      .single();
+      .maybeSingle();
 
-    if (balErr || !providerBal) throw new Error('BTC provider balance not found');
+    let currentBalance = parseFloat(providerBal?.balance_btc || 0);
 
-    const currentBalance = parseFloat(providerBal.balance_btc || 0);
+    // Fallback: sync from user_wallets if user_balances is missing or zero
+    if (currentBalance === 0) {
+      const { data: walletRow } = await supabaseAdmin
+        .from('user_wallets').select('balance_btc').eq('user_id', btcProviderId).maybeSingle();
+      const walletBtc = parseFloat(walletRow?.balance_btc || 0);
+      if (walletBtc > 0) {
+        await supabaseAdmin.from('user_balances')
+          .upsert({ user_id: btcProviderId, balance_btc: walletBtc, updated_at: new Date().toISOString() });
+        currentBalance = walletBtc;
+      }
+    }
 
     if (currentBalance < amount) {
       throw new Error(
@@ -325,6 +335,8 @@ class TradeEscrowService {
     }
     // Simple rule: if listing includes GIFT_CARD, buyer (gift card purchaser) provides BTC
     const isGiftCardTrade = listingType.includes('GIFT_CARD');
+    // Whoever locked BTC into escrow — seller for BTC trades, buyer for gift card trades
+    const btcProviderId = isGiftCardTrade ? tradeData.buyer_id : tradeData.seller_id;
 
 
 

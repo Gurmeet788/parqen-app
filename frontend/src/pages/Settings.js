@@ -209,19 +209,49 @@ export default function Settings({ user, setUser }) {
     if (!phone) { toast.error('Enter your phone number first'); return; }
     setPhoneStep('sending');
     try {
-      await axios.post(`${API_URL}/users/send-phone-otp`, { phone }, { headers: authH() });
+      const r = await axios.post(`${API_URL}/users/send-phone-otp`, { phone }, { headers: authH() });
       toast.success(`OTP sent to ${phone}`);
       setPhoneStep('otp');
-    } catch (e) { toast.error(e?.response?.data?.error || 'Failed to send OTP'); setPhoneStep('idle'); }
+      // Dev mode: auto-fill OTP if server couldn't send SMS
+      if (r.data?.devCode) {
+        setPhoneOtp(r.data.devCode);
+        toast.info(`🛠 Dev: code auto-filled (${r.data.devCode})`, { autoClose: 8000 });
+      }
+    } catch (e) {
+      const errData = e?.response?.data;
+      // Even if SMS failed, server may have returned devCode
+      if (errData?.devCode) {
+        setPhoneOtp(errData.devCode);
+        setPhoneStep('otp');
+        toast.warning(`SMS failed — dev code auto-filled: ${errData.devCode}`, { autoClose: 10000 });
+      } else {
+        toast.error(errData?.error || 'Failed to send OTP');
+        setPhoneStep('idle');
+      }
+    }
   };
 
   const handleSendEmailCode = async () => {
     setEmailCodeLoading(true);
     try {
-      await axios.post(`${API_URL}/users/resend-verification`, {}, { headers: authH() });
-      toast.success('Verification code sent to your email!');
+      const r = await axios.post(`${API_URL}/users/resend-verification`, {}, { headers: authH() });
+      toast.success('Verification code sent! Check your inbox and spam/junk folder.');
       setEmailVerifyStep('otp');
-    } catch (e) { toast.error(e?.response?.data?.error || 'Failed to send code'); }
+      // Dev mode: auto-fill code if email delivery had issues
+      if (r.data?.devCode) {
+        setEmailCode(r.data.devCode);
+        toast.info(`🛠 Dev: code auto-filled (${r.data.devCode})`, { autoClose: 8000 });
+      }
+    } catch (e) {
+      const errData = e?.response?.data;
+      if (errData?.devCode) {
+        setEmailCode(errData.devCode);
+        setEmailVerifyStep('otp');
+        toast.warning(`Email failed — dev code auto-filled: ${errData.devCode}`, { autoClose: 10000 });
+      } else {
+        toast.error(errData?.error || 'Failed to send code');
+      }
+    }
     finally { setEmailCodeLoading(false); }
   };
 
