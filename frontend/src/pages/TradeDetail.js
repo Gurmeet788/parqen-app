@@ -46,7 +46,7 @@ const STATUS_CFG = {
   PAID:        {label:'Payment Sent',   color:C.paid,    bg:`${C.paid}15`,   icon:Clock},
   COMPLETED:   {label:'Completed ✅',  color:C.success, bg:`${C.success}15`,icon:CheckCircle},
   CANCELLED:   {label:'Cancelled',      color:C.g500,    bg:`${C.g500}15`,   icon:X},
-  DISPUTED:    {label:'Disputed 🚨',    color:C.danger,  bg:`${C.danger}15`, icon:AlertTriangle},
+  DISPUTED:    {label:'Disputed 🚨',    color:'#7C3AED', bg:'#EDE9FE',       icon:AlertTriangle},
 };
 const getS = s=>STATUS_CFG[s?.toUpperCase()]||STATUS_CFG.CREATED;
 const fmtAge=d=>{if(!d)return'—';const s=(Date.now()-new Date(d))/1000;if(s<300)return'Online';if(s<3600)return`${~~(s/60)}m ago`;if(s<86400)return`${~~(s/3600)}h ago`;return`${~~(s/86400)}d ago`;};
@@ -621,20 +621,19 @@ export default function TradeDetail({user}) {
   },[messages]);
 
   const loadAll=async()=>{
-    await loadTrade();
-    await loadMessages();
-    await loadImages();
+    await Promise.all([loadTrade(), loadMessages(), loadImages()]);
   };
 
   const loadTrade=async()=>{
     if(!id)return;
     try{
       setLoadErr(false);
-      const r=await axios.get(`${API_URL}/trades/${id}`,{headers:authH()});
+      const r=await axios.get(`${API_URL}/trades/${id}`,{headers:authH(),timeout:10000});
       const t=r.data.trade;
       setTrade(t);
-      if(t.seller_id)try{const s=await axios.get(`${API_URL}/users/${t.seller_id}`,{headers:authH()});setSeller(s.data.user||s.data);}catch{}
-      if(t.buyer_id) try{const b=await axios.get(`${API_URL}/users/${t.buyer_id}`, {headers:authH()});setBuyer(b.data.user||b.data);}catch{}
+      // buyer and seller are already embedded in the trade response via backend join — no extra calls needed
+      if(t.seller) setSeller(t.seller);
+      if(t.buyer)  setBuyer(t.buyer);
     }catch(e){
       setLoadErr(true);
       if(e.response?.status===400)toast.error('Trade not found');
@@ -769,10 +768,10 @@ export default function TradeDetail({user}) {
     setDisputeSubmitting(true);
     try{
       await axios.post(`${API_URL}/trades/${id}/dispute`,{reason},{headers:authH()});
-      await postSys(`🚨 DISPUTE OPENED. Reason: ${reason}. A PRAQEN moderator will review within 24 hours.`);
       toast.warning('Dispute reported. A moderator will review within 24 hours.');
       setShowDisputeModal(false);
       await loadTrade();
+      await loadMessages();
     }catch{toast.error('Failed to submit report. Please try again.');}
     finally{setDisputeSubmitting(false);}
   };
@@ -876,7 +875,7 @@ export default function TradeDetail({user}) {
   const showRelease   = isGiftCardTrade ? (isBuyer&&isPaid&&isActive)    : (isSeller&&isPaid&&isActive);
   // Trade opener = buyer when trade_type is BUY, seller when trade_type is SELL
   const isTradeOpener = (trade.trade_type||'').toUpperCase()==='BUY' ? isBuyer : isSeller;
-  const showCancelBtn = isTradeOpener&&isEscrow&&isActive;
+  const showCancelBtn = (isTradeOpener&&isEscrow&&isActive)||(isBuyer&&isPaid&&isActive);
   const showDispute   = isActive&&!isDisputed&&(isBuyer||isSeller);
 
   // Read receipts: timestamp of the last message the counterparty sent
@@ -1014,10 +1013,10 @@ export default function TradeDetail({user}) {
               )}
               {isDisputed&&(
                 <div className="py-3 px-5 rounded-xl text-center text-white"
-                  style={{backgroundColor:C.danger}}>
-                  <AlertTriangle size={20} className="mx-auto mb-1"/>
-                  <p className="font-bold text-sm">Dispute Active</p>
-                  <p className="text-xs text-white/70 mt-0.5">Moderator reviews within 24h</p>
+                  style={{background:'linear-gradient(135deg,#4C1D95,#7C3AED)'}}>
+                  <Shield size={20} className="mx-auto mb-1"/>
+                  <p className="font-bold text-sm">Dispute Under Review</p>
+                  <p className="text-xs text-white/70 mt-0.5">PRAQEN Moderator reviewing within 24h</p>
                 </div>
               )}
             </div>
@@ -1304,7 +1303,7 @@ export default function TradeDetail({user}) {
                 ):messages.map((m,i)=>{
                   const isOwn=String(m.sender_id)===String(user?.id);
                   const isMod=m.sender_role==='moderator';
-                  const isSys=!m.sender_id||m.message_type==='SYSTEM'||m.sender_role==='system';
+                  const isSys=(!m.sender_id||m.message_type==='SYSTEM'||m.sender_role==='system')&&m.sender_role!=='moderator';
                   const text=m.message_text||m.message||'';
 
                   if(isSys){
@@ -1318,12 +1317,12 @@ export default function TradeDetail({user}) {
                     const isMod2    = /moderator|support.*review|dispute.*open/i.test(text);
 
                     let bg, border, color, icon;
-                    if (isSuccess)    { bg='#F0FDF4'; border='#86EFAC'; color='#166534'; icon='✅'; }
+                    if (isMod2)       { bg='#FFF1F2'; border='#EF4444'; color='#B91C1C'; icon='🚨'; }
+                    else if (isSuccess){ bg='#F0FDF4'; border='#86EFAC'; color='#166534'; icon='✅'; }
                     else if (isDanger){ bg='#FEF2F2'; border='#FCA5A5'; color='#991B1B'; icon='❌'; }
                     else if (isWarn)  { bg='#FFFBEB'; border='#FCD34D'; color='#92400E'; icon='⚠️'; }
                     else if (isPmt)   { bg='#EFF6FF'; border='#93C5FD'; color='#1E40AF'; icon='💳'; }
                     else if (isOpen)  { bg='#F0FDF4'; border='#6EE7B7'; color='#065F46'; icon='🔒'; }
-                    else if (isMod2)  { bg='#EDE9FE'; border='#C4B5FD'; color='#4C1D95'; icon='👨‍⚖️'; }
                     else              { bg=C.g50;     border=C.g200;    color=C.g600;    icon='ℹ️'; }
 
                     // Role-specific next-step hint for payment events
@@ -1357,17 +1356,23 @@ export default function TradeDetail({user}) {
                   }
 
                   if(isMod) return(
-                    <div key={i} className="flex justify-center">
-                      <div className="max-w-[85%] rounded-2xl p-3 border shadow-sm"
-                        style={{backgroundColor:'#EDE9FE',borderColor:'#8B5CF6'}}>
-                        <div className="flex items-center justify-center gap-1.5 mb-1.5">
-                          <Shield size={12} style={{color:'#6D28D9'}}/>
-                          <span className="text-xs font-black" style={{color:'#6D28D9'}}>MODERATOR</span>
+                    <div key={i} className="flex justify-center my-3 px-2">
+                      <div className="w-full max-w-[92%] rounded-2xl overflow-hidden shadow-xl" style={{border:'2px solid #7C3AED'}}>
+                        <div className="flex items-center justify-between px-4 py-2.5" style={{background:'linear-gradient(135deg,#4C1D95,#7C3AED)'}}>
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{backgroundColor:'#FFD700'}}>
+                              <Shield size={13} style={{color:'#4C1D95'}}/>
+                            </div>
+                            <span className="text-sm font-black tracking-widest" style={{color:'#FFD700'}}>PRAQEN MODERATOR</span>
+                          </div>
+                          <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{backgroundColor:'rgba(255,215,0,0.15)',color:'#FFD700',border:'1px solid rgba(255,215,0,0.5)'}}>OFFICIAL</span>
                         </div>
-                        <p className="text-xs text-center font-medium" style={{color:'#4C1D95'}}>{text}</p>
-                        <p className="text-xs text-center mt-1" style={{color:'#6D28D9'}}>
-                          {new Date(m.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
-                        </p>
+                        <div className="px-4 py-3" style={{backgroundColor:'#F5F0FF'}}>
+                          <p className="text-sm font-medium leading-relaxed whitespace-pre-line" style={{color:'#2E1065'}}>{text}</p>
+                          <p className="text-xs mt-2 text-right font-semibold" style={{color:'#7C3AED'}}>
+                            {new Date(m.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
+                          </p>
+                        </div>
                       </div>
                     </div>
                   );

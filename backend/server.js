@@ -19,8 +19,31 @@ const nodemailer = require('nodemailer');
 const { Resend } = require('resend');
 const resendClient = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const twilio = require('twilio');
-const twilioClient = twilio(process.env.TWILIO_SID, process.env.TWILIO_TOKEN);
+const twilioClient = (process.env.TWILIO_SID && process.env.TWILIO_TOKEN)
+  ? twilio(process.env.TWILIO_SID, process.env.TWILIO_TOKEN) : null;
 const twilioVerifySid = process.env.TWILIO_VERIFY_SID || 'VAddba23c45841679ed249d49be8a90bbe';
+// Strip any accidental text after the phone number (e.g. from copy-paste errors in .env)
+const TWILIO_PHONE = (process.env.TWILIO_PHONE || '').split(',')[0].trim();
+const TWILIO_WA_FROM = process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886'; // sandbox default
+
+// ── Africa's Talking (primary SMS for African numbers) ───────────────────────
+let atSms = null;
+try {
+  if (process.env.AFRICASTALKING_API_KEY) {
+    const AfricasTalking = require('africastalking');
+    const atClient = AfricasTalking({
+      apiKey:   process.env.AFRICASTALKING_API_KEY,
+      username: process.env.AFRICASTALKING_USERNAME || 'sandbox',
+    });
+    atSms = atClient.SMS;
+    const atMode = (process.env.AFRICASTALKING_USERNAME || 'sandbox') === 'sandbox' ? '🟡 SANDBOX' : '🟢 LIVE';
+    console.log(`[AT] Africa's Talking SMS initialized ${atMode}`);
+  } else {
+    console.warn('[AT] No AFRICASTALKING_API_KEY — AT SMS disabled');
+  }
+} catch (atInitErr) {
+  console.error('[AT] Init error:', atInitErr.message);
+}
 const CoinbaseWalletService = require('./services/coinbaseWallet');
 const quoteService          = require('./services/quoteService');
 const { E, S }              = require('./utils/apiErrors');
@@ -272,11 +295,7 @@ async function notifyUserSMS(userId, message) {
     if (!user?.phone) { console.warn(`[SMS] No phone on file for user ${userId} — skipping`); return; }
     if (!twilioClient) { console.error('[SMS] twilioClient not initialized'); return; }
     const phone = user.phone.startsWith('+') ? user.phone : `+${user.phone}`;
-    await twilioClient.messages.create({
-      body: `[PRAQEN ⚡] ${message}`,
-      from: process.env.TWILIO_PHONE,
-      to: phone
-    });
+    await sendSmsOtp(phone, `[PRAQEN ⚡] ${message}`);
     console.log(`📱 SMS sent to user ${userId} (${phone})`);
   } catch (err) {
     console.error(`[SMS] Failed for user ${userId}:`, err.message, err.code || '');
@@ -1033,64 +1052,65 @@ async function storeOtp(contact, otp) {
   if (error) throw new Error(`OTP store failed: ${error.message}`);
 }
 
-// Send SMS with Twilio primary, Termii fallback (better for African numbers)
+// ── Multi-channel OTP delivery: AT → Twilio SMS → Twilio WhatsApp ────────────
 async function sendSmsOtp(phone, message) {
-  // Try Twilio first
-  try {
-    await twilioClient.messages.create({
-      body: message,
-      from: process.env.TWILIO_PHONE,
-      to: phone,
-    });
-    console.log(`[SMS] Sent via Twilio to ${phone}`);
-    return;
-  } catch (twilioErr) {
-    console.warn(`[SMS] Twilio failed (code ${twilioErr.code}): ${twilioErr.message}`);
-    // If not a trial/geography restriction, rethrow immediately
-    if (![21608, 21408, 21215, 21612, 63038].includes(twilioErr.code)) {
-      throw twilioErr;
-    }
-  }
+  const errs = [];
 
-  // Fallback: Termii (African carrier routing)
-  if (!process.env.TERMII_API_KEY) throw new Error('SMS delivery failed and no Termii key configured.');
-  const termiiPhone = phone.replace(/^\+/, ''); // Termii expects no leading +
-  const termiiKey   = process.env.TERMII_API_KEY;
-  const termiiBase  = 'https://api.ng.termii.com/api/sms/send';
-
-  // Try multiple sender/channel combos — 'generic' with registered sender ID is ideal,
-  // but 'generic' with numeric sender works without registration in most African countries.
-  const termiiAttempts = [
-    { from: 'PRAQEN',   channel: 'generic' }, // registered alphanumeric sender
-    { from: '0',        channel: 'generic' }, // numeric sender — no registration needed
-    { from: 'N-Alert',  channel: 'dnd'     }, // DND bypass (works in Ghana via Termii routing)
-  ];
-
-  let lastTermiiErr = 'Unknown Termii error';
-  for (const attempt of termiiAttempts) {
+  // ── Channel 1: Africa's Talking (best delivery for GH/NG/KE/UG/TZ) ─────────
+  if (atSms) {
     try {
-      const { data: tres } = await require('axios').post(termiiBase, {
-        to:      termiiPhone,
-        from:    attempt.from,
-        sms:     message,
-        type:    'plain',
-        channel: attempt.channel,
-        api_key: termiiKey,
-      }, { timeout: 15000 });
-
-      if (tres && tres.code === 'ok') {
-        console.log(`[SMS] Sent via Termii (${attempt.channel}/${attempt.from}) to ${phone}`);
+      const sendOpts = { to: [phone], message };
+      const senderId = process.env.AFRICASTALKING_SENDER_ID;
+      if (senderId) sendOpts.from = senderId;
+      const result = await atSms.send(sendOpts);
+      const recip  = result?.SMSMessageData?.Recipients?.[0];
+      // statusCode 101 = Success, status 'Success' also valid
+      if (recip?.statusCode === 101 || (recip?.status || '').toLowerCase() === 'success') {
+        console.log(`[SMS] ✅ Africa's Talking → ${phone} (${recip.status})`);
         return;
       }
-      lastTermiiErr = tres?.message || JSON.stringify(tres);
-      console.warn(`[SMS] Termii ${attempt.channel}/${attempt.from} failed:`, lastTermiiErr);
-    } catch (e) {
-      lastTermiiErr = e.message;
-      console.warn(`[SMS] Termii ${attempt.channel}/${attempt.from} error:`, e.message);
+      const atErr = recip?.status || JSON.stringify(result?.SMSMessageData);
+      console.warn(`[SMS] AT returned non-success: ${atErr}`);
+      errs.push(`AT: ${atErr}`);
+    } catch (atErr) {
+      console.warn(`[SMS] Africa's Talking failed: ${atErr.message}`);
+      errs.push(`AT: ${atErr.message}`);
+    }
+  } else {
+    errs.push('AT: not configured');
+  }
+
+  // ── Channel 2: Twilio SMS ────────────────────────────────────────────────────
+  if (twilioClient && TWILIO_PHONE) {
+    try {
+      await twilioClient.messages.create({ body: message, from: TWILIO_PHONE, to: phone });
+      console.log(`[SMS] ✅ Twilio SMS → ${phone}`);
+      return;
+    } catch (twilioErr) {
+      console.warn(`[SMS] Twilio SMS failed (${twilioErr.code}): ${twilioErr.message}`);
+      errs.push(`Twilio: ${twilioErr.message}`);
+    }
+  } else {
+    errs.push('Twilio: not configured');
+  }
+
+  // ── Channel 3: Twilio WhatsApp (last resort — works if user has WhatsApp) ───
+  if (twilioClient) {
+    try {
+      await twilioClient.messages.create({
+        body: `*PRAQEN Verification* ⚡\n${message}`,
+        from: TWILIO_WA_FROM,
+        to:   `whatsapp:${phone}`,
+      });
+      console.log(`[SMS] ✅ Twilio WhatsApp → ${phone}`);
+      return;
+    } catch (waErr) {
+      console.warn(`[SMS] Twilio WhatsApp failed: ${waErr.message}`);
+      errs.push(`WhatsApp: ${waErr.message}`);
     }
   }
 
-  throw new Error(`SMS delivery failed. Last error: ${lastTermiiErr}`);
+  throw new Error(`All SMS channels failed — ${errs.join(' | ')}`);
 }
 
 async function checkOtp(contact, token) {
@@ -2917,8 +2937,11 @@ app.post('/api/trades/:id/cancel', verifyToken, async (req, res) => {
     if (fetchError || !trade) return res.status(404).json({ error: 'Trade not found' });
     // Trade opener = buyer when trade_type is BUY, seller when trade_type is SELL
     const tradeOpener = (trade.trade_type || '').toUpperCase() === 'BUY' ? trade.buyer_id : trade.seller_id;
-    if (tradeOpener !== req.userId) return res.status(403).json({ error: 'Only the person who opened the trade can cancel it' });
-    const cancellableStatuses = ['CREATED', 'FUNDS_LOCKED', 'ESCROW', 'ACTIVE', 'OPEN'];
+    const isPostPay = ['PAYMENT_SENT', 'PAID'].includes(trade.status);
+    // After marking paid the buyer can still cancel (changed mind before seller releases BTC)
+    const authorized = tradeOpener === req.userId || (isPostPay && trade.buyer_id === req.userId);
+    if (!authorized) return res.status(403).json({ error: 'Not authorized to cancel this trade' });
+    const cancellableStatuses = ['CREATED', 'FUNDS_LOCKED', 'ESCROW', 'ACTIVE', 'OPEN', 'PAYMENT_SENT', 'PAID'];
     if (!cancellableStatuses.includes(trade.status)) return res.status(400).json({ error: `Trade cannot be cancelled — status is ${trade.status}` });
     const { data: escrow } = await supabaseAdmin.from('escrow_locks').select('*').eq('trade_id', req.params.id).single();
     if (escrow && escrow.status === 'LOCKED') {
@@ -3163,7 +3186,7 @@ app.post('/api/trades/:id/moderator-join', verifyToken, async (req, res) => {
     if (!userData?.is_moderator && !userData?.is_admin) return res.status(403).json({ error: 'Moderators only' });
     const { data: trade } = await supabaseAdmin.from('trades').select('status, id, buyer_id, seller_id').eq('id', req.params.id).single();
     if (!trade) return res.status(404).json({ error: 'Trade not found' });
-    await supabaseAdmin.from('messages').insert([{ trade_id: req.params.id, sender_id: req.userId, recipient_id: null, message_text: `👨‍⚖️ Moderator ${userData.username} has joined and is reviewing this dispute.`, message_type: 'SYSTEM', sender_role: 'moderator', created_at: new Date() }]);
+    await supabaseAdmin.from('messages').insert([{ trade_id: req.params.id, sender_id: req.userId, recipient_id: null, message_text: `👨‍⚖️ Moderator has joined and is reviewing this dispute.`, message_type: 'SYSTEM', sender_role: 'moderator', created_at: new Date() }]);
     res.json({ success: true, moderator: userData.username });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -3216,7 +3239,7 @@ app.post('/api/admin/disputes/:id/resolve', verifyToken, async (req, res) => {
       await supabaseAdmin.from('trades').update({ status: 'CANCELLED', dispute_resolution: 'CANCEL', dispute_notes: notes, resolved_by: req.userId, resolved_at: new Date() }).eq('id', req.params.id);
       msg = '❌ Resolved: Trade cancelled. Funds returned to seller.';
     }
-    await supabaseAdmin.from('messages').insert([{ trade_id: req.params.id, sender_id: req.userId, message_text: `👨‍⚖️ Moderator ${userData.username} resolved dispute.\nDecision: ${resolution}\nNotes: ${notes || 'None'}\n${msg}`, message_type: 'SYSTEM', sender_role: 'moderator', created_at: new Date() }]);
+    await supabaseAdmin.from('messages').insert([{ trade_id: req.params.id, sender_id: req.userId, message_text: `👨‍⚖️ Moderator resolved dispute.\nDecision: ${resolution}\nNotes: ${notes || 'None'}\n${msg}`, message_type: 'SYSTEM', sender_role: 'moderator', created_at: new Date() }]);
     for (const uid of [trade.buyer_id, trade.seller_id]) await createNotification(uid, 'support', 'Dispute Resolved', `Trade #${trade.id.slice(0, 8)} dispute resolved: ${resolution}`, `/trade/${trade.id}`);
     res.json({ success: true, message: `Dispute resolved: ${resolution}` });
   } catch (error) {

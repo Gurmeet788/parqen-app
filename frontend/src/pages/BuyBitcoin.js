@@ -931,22 +931,17 @@ export default function BuyBitcoin({user}) {
 
   const loadListings = async () => {
     try {
-      console.log('🔄 loadListings started');
-      const r = await axios.get(`${API_URL}/offers`, { timeout: 25000 });
+      const r = await axios.get(`${API_URL}/offers`, { timeout: 8000 });
       const offers = r.data.offers || [];
       const sellOffers = offers.filter(offer =>
         (offer.type || '').toLowerCase() === 'sell' ||
         (offer.listing_type || '').toUpperCase() === 'SELL'
       );
-      console.log('📦 Sell offers count:', sellOffers.length);
       setListings(sellOffers);
       setLastSynced(new Date());
       try { sessionStorage.setItem('praqen_buy', JSON.stringify({data: sellOffers, ts:Date.now()})); } catch {}
-    } catch (error) {
-      console.error('❌ Error loading offers:', error);
-    } finally {
-      setLoading(false);
-    }
+    } catch {}
+    finally { setLoading(false); }
   };
 
   useEffect(() => {
@@ -958,38 +953,24 @@ export default function BuyBitcoin({user}) {
   useEffect(() => {
     const tk = localStorage.getItem('token');
     if (!tk) return;
-    const beat = () => axios.post(`${API_URL}/users/heartbeat`, {}, { headers: { Authorization: `Bearer ${tk}` } }).catch(() => {});
-    beat();
-    const iv = setInterval(beat, 60000);
-    return () => clearInterval(iv);
-  }, []);
-
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
-    axios.get(`${API_URL}/user/balance`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => setUserBtcBalance(parseFloat(r.data?.balance_btc || 0)))
-      .catch(() => {});
+    const h = { Authorization: `Bearer ${tk}` };
+    const toUTC = s => new Date(/[Z+]/.test(s) ? s : s + 'Z');
+    const fetchTrades = () => axios.get(`${API_URL}/trades/active`, { headers: h }).then(res => {
+      if (res.data.success) {
+        const now = Date.now();
+        setActiveTrades((res.data.trades||[]).filter(t => !t.expires_at || toUTC(t.expires_at).getTime() > now));
+      }
+    }).catch(() => {});
+    // All independent fetches fire in parallel on mount
+    Promise.all([
+      axios.post(`${API_URL}/users/heartbeat`, {}, { headers: h }).catch(() => {}),
+      axios.get(`${API_URL}/user/balance`, { headers: h }).then(r => setUserBtcBalance(parseFloat(r.data?.balance_btc || 0))).catch(() => {}),
+      fetchTrades(),
+    ]);
+    const iv1 = setInterval(() => axios.post(`${API_URL}/users/heartbeat`, {}, { headers: h }).catch(() => {}), 60000);
+    const iv2 = setInterval(fetchTrades, 10000);
+    return () => { clearInterval(iv1); clearInterval(iv2); };
   }, [user]);
-
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
-    const fetchTrades = async () => {
-      try {
-        const res = await axios.get(`${API_URL}/trades/active`, { headers: { Authorization: `Bearer ${token}` } });
-        if (res.data.success) {
-          const now = Date.now();
-          const toUTC = s => new Date(/[Z+]/.test(s) ? s : s + 'Z');
-          const live = (res.data.trades || []).filter(t => !t.expires_at || toUTC(t.expires_at).getTime() > now);
-          setActiveTrades(live);
-        }
-      } catch {}
-    };
-    fetchTrades();
-    const interval = setInterval(fetchTrades, 10000);
-    return () => clearInterval(interval);
-  }, []);
 
   useEffect(() => {
     const h = e => {
@@ -1018,40 +999,20 @@ export default function BuyBitcoin({user}) {
   };
 
   const getFiltered = () => {
-    console.log('🔴 getFiltered CALLED, listings.length:', listings.length);
     let list = [...listings];
-    
-    if (selCountry.code !== 'ALL') {
-      list = list.filter(l => l.country === selCountry.code);
-    }
-    
-    if (selPayment !== 'all') {
-      list = list.filter(l => String(l.payment_method || '').toLowerCase().includes(selPayment));
-    }
-    
+    if (selCountry.code !== 'ALL') list = list.filter(l => l.country === selCountry.code);
+    if (selPayment !== 'all') list = list.filter(l => String(l.payment_method || '').toLowerCase().includes(selPayment));
     if (buyAmt && parseFloat(buyAmt) > 0) {
       const amount = parseFloat(buyAmt);
-      list = list.filter(offer => {
-        const minAmount = offer.min_amount || 0;
-        const maxAmount = offer.max_amount || 999999;
-        return amount >= minAmount && amount <= maxAmount;
-      });
+      list = list.filter(offer => amount >= (offer.min_amount || 0) && amount <= (offer.max_amount || 999999));
     }
-    
-    if (sortBy === 'rate_low') {
-      list.sort((a, b) => (a.bitcoin_price || 0) - (b.bitcoin_price || 0));
-    } else if (sortBy === 'rating') {
-      list.sort((a, b) => (b.users?.average_rating || 0) - (a.users?.average_rating || 0));
-    } else if (sortBy === 'trades') {
-      list.sort((a, b) => (b.users?.total_trades || 0) - (a.users?.total_trades || 0));
-    }
-    
+    if (sortBy === 'rate_low') list.sort((a, b) => (a.bitcoin_price || 0) - (b.bitcoin_price || 0));
+    else if (sortBy === 'rating') list.sort((a, b) => (b.users?.average_rating || 0) - (a.users?.average_rating || 0));
+    else if (sortBy === 'trades') list.sort((a, b) => (b.users?.total_trades || 0) - (a.users?.total_trades || 0));
     if (traderSearch.trim()) {
       const search = traderSearch.trim().toLowerCase();
       list = list.filter(offer => (offer.users?.username || '').toLowerCase().includes(search));
     }
-    
-    console.log('📊 FINAL filtered length:', list.length);
     return list;
   };
 

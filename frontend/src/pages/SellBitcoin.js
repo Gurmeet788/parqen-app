@@ -907,29 +907,22 @@ export default function SellBitcoin({user}) {
   useEffect(()=>{
     const tk = localStorage.getItem('token');
     if (!tk) return;
-    const beat = () => axios.post(`${API_URL}/users/heartbeat`, {}, { headers: { Authorization: `Bearer ${tk}` } }).catch(() => {});
-    beat();
-    const iv = setInterval(beat, 60000);
-    return () => clearInterval(iv);
-  },[]);
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
-    const fetchTrades = async () => {
-      try {
-        const res = await axios.get(`${API_URL}/trades/active`, { headers: { Authorization: `Bearer ${token}` } });
-        if (res.data.success) {
-          const now = Date.now();
-          const toUTC = s => new Date(/[Z+]/.test(s) ? s : s + 'Z');
-          const live = (res.data.trades || []).filter(t => !t.expires_at || toUTC(t.expires_at).getTime() > now);
-          setActiveTrades(live);
-        }
-      } catch {}
-    };
-    fetchTrades();
-    const interval = setInterval(fetchTrades, 10000);
-    return () => clearInterval(interval);
-  }, []);
+    const h = { Authorization: `Bearer ${tk}` };
+    const toUTC = s => new Date(/[Z+]/.test(s) ? s : s + 'Z');
+    const fetchTrades = () => axios.get(`${API_URL}/trades/active`, { headers: h }).then(res => {
+      if (res.data.success) {
+        const now = Date.now();
+        setActiveTrades((res.data.trades||[]).filter(t => !t.expires_at || toUTC(t.expires_at).getTime() > now));
+      }
+    }).catch(() => {});
+    Promise.all([
+      axios.post(`${API_URL}/users/heartbeat`, {}, { headers: h }).catch(() => {}),
+      fetchTrades(),
+    ]);
+    const iv1 = setInterval(() => axios.post(`${API_URL}/users/heartbeat`, {}, { headers: h }).catch(() => {}), 60000);
+    const iv2 = setInterval(fetchTrades, 10000);
+    return () => { clearInterval(iv1); clearInterval(iv2); };
+  },[user]);
   useEffect(()=>{
     const h = e => {
       if(currencyRef.current&&!currencyRef.current.contains(e.target)){setShowCurrency(false);setCurrencySearch('');}
@@ -942,7 +935,7 @@ export default function SellBitcoin({user}) {
 
   const loadOffers = async () => {
     try {
-      const res = await axios.get(`${API_URL}/listings`, { timeout: 15000 });
+      const res = await axios.get(`${API_URL}/listings`, { timeout: 8000 });
       const all = (res.data.listings||[]).map(l=>({...l, users:Array.isArray(l.users)?l.users[0]:l.users}));
       const data = all.filter(l=>l.listing_type==='BUY'||l.listing_type==='BUY_BITCOIN');
       setOffers(data);
