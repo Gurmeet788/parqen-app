@@ -547,7 +547,6 @@ export default function MyTrades({user}) {
 
   return(
     <div className="min-h-screen flex flex-col" style={{backgroundColor:C.g50, fontFamily:"'DM Sans',sans-serif"}}>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
       <style>{`
         @keyframes pulse-once{0%,100%{opacity:1}50%{opacity:0.6}}
         .animate-pulse-once{animation:pulse-once 1.8s ease-in-out 3}

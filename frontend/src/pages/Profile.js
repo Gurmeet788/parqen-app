@@ -258,8 +258,6 @@ export default function Profile({userId:propUserId}){
 
   return(
     <div className="min-h-screen pb-0" style={{backgroundColor:C.mist,fontFamily:"'DM Sans',sans-serif",overflowX:'hidden',width:'100%',maxWidth:'100vw'}}>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
-
       {/* ── PROFILE CARD ──────────────────────────────────────────────────── */}
       <div className="pt-4 pb-0 px-3 sm:px-5 lg:px-8" style={{backgroundColor:C.mist,boxSizing:'border-box'}}>
         <div style={{maxWidth:'100%',width:'100%',margin:'0 auto'}} className="lg:max-w-5xl">

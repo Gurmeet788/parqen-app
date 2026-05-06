@@ -292,8 +292,6 @@ const loadAll = useCallback(async () => {
 
   return (
     <div style={{ fontFamily: "'DM Sans',sans-serif", minHeight: '100vh', background: `linear-gradient(160deg, #061208 0%, #0f2318 50%, #1B4332 100%)` }}>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-
       {/* Styles */}
       <style>{`
         * { box-sizing: border-box; }

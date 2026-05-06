@@ -398,12 +398,22 @@ function OfferCard({listing, btcPriceUSD, onViewSeller, onBuy, liked, onToggleLi
 
 // ── Profile Modal ─────────────────────────────────────────────────────────────
 function ProfileModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
-  const [tab,     setTab]     = useState('overview');
-  const [reviews, setReviews] = useState([]);
-  const [rvLoad,  setRvLoad]  = useState(false);
+  const [tab,        setTab]        = useState('overview');
+  const [reviews,    setReviews]    = useState([]);
+  const [rvLoad,     setRvLoad]     = useState(false);
+  const [freshSeller, setFreshSeller] = useState(null);
   const { rates: USD_RATES } = useRates();
 
-  const u      = getUser(seller);
+  // Fetch full profile (with verification fields) on open — l.users join omits them
+  const sellerId = getUser(seller)?.id;
+  useEffect(() => {
+    if (!sellerId) return;
+    axios.get(`${API_URL}/users/${sellerId}`)
+      .then(r => { const d = r.data.user || r.data; if (d?.id) setFreshSeller(d); })
+      .catch(() => {});
+  }, [sellerId]);
+
+  const u      = getUser(freshSeller || seller);
   const badge  = deriveBadge(u);
   const seen   = getLastSeen(u);
   const trades = getTrades(u);
@@ -429,7 +439,8 @@ function ProfileModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
   const payMins  = parseFloat(u.avg_payment_time || u.avg_response_time || u.avg_reply_minutes || 0);
   const avgPayDisplay = payMins > 0 ? (() => { const m=Math.floor(payMins),s=Math.round((payMins-m)*60); return s>0?`${m}m ${s}s`:m>0?`${m}m`:`${s}s`; })() : '—';
   const locCC    = (u.country || '').slice(0,2).toUpperCase() || ccCode.toUpperCase();
-  const locEmoji = locCC.length===2 ? locCC.replace(/./g,c=>String.fromCodePoint(0x1F1E0+c.charCodeAt(0)-65)) : '🌍';
+  const CC_NAME  = {GH:'Ghana',NG:'Nigeria',KE:'Kenya',ZA:'S. Africa',UG:'Uganda',TZ:'Tanzania',RW:'Rwanda',CM:'Cameroon',SN:'Senegal',ML:'Mali',CI:"Côte d'Ivoire",CD:'DR Congo',ZM:'Zambia',MZ:'Mozambique',ZW:'Zimbabwe',BF:'Burkina Faso',BJ:'Benin',TG:'Togo',NE:'Niger',US:'USA',GB:'UK',EU:'Europe'};
+  const countryName = (u.country && u.country.length > 2) ? u.country : (CC_NAME[locCC] || u.location || locCC || '—');
 
   // Load real reviews when feedback tab is opened
   useEffect(() => {
@@ -506,34 +517,33 @@ function ProfileModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
           {/* ── STATS 2×2 GRID ── */}
           <div className="grid grid-cols-2 gap-2">
             {/* Activity */}
+            {/* Last active */}
             <div className="flex items-center gap-2 rounded-xl px-3 py-2.5"
               style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
-              <span className="text-sm flex-shrink-0">{seen.online ? '🟢' : '🕐'}</span>
+              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{backgroundColor: seen.online ? '#4ADE80' : '#94A3B8'}}/>
               <div className="min-w-0">
                 <p className="text-white font-black text-xs leading-tight truncate">
-                  {seen.online ? 'Active now' : seen.label}
+                  {seen.online ? 'Online now' : seen.label}
                 </p>
-                <p className="text-white/50 text-xs leading-tight">Activity</p>
+                <p className="text-white/50 text-xs leading-tight">Last active</p>
               </div>
             </div>
-            {/* Location */}
+            {/* Location — real flag image, real country name */}
             <div className="flex items-center gap-2 rounded-xl px-3 py-2.5"
               style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
-              <MapPin size={14} style={{color:'rgba(255,255,255,0.7)', flexShrink:0}}/>
+              <CountryFlag countryCode={ccCode} className="w-5 h-3.5 rounded-sm flex-shrink-0"/>
               <div className="min-w-0">
-                <p className="text-white font-black text-xs leading-tight truncate">
-                  {locEmoji} {locCC || '—'}
-                </p>
+                <p className="text-white font-black text-xs leading-tight truncate">{countryName}</p>
                 <p className="text-white/50 text-xs leading-tight">Location</p>
               </div>
             </div>
-            {/* Avg. payment */}
+            {/* Avg. response */}
             <div className="flex items-center gap-2 rounded-xl px-3 py-2.5"
               style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
               <Timer size={14} style={{color:'#FDE68A', flexShrink:0}}/>
               <div className="min-w-0">
                 <p className="text-white font-black text-xs leading-tight">{avgPayDisplay}</p>
-                <p className="text-white/50 text-xs leading-tight">Avg. payment</p>
+                <p className="text-white/50 text-xs leading-tight">Avg. response</p>
               </div>
             </div>
             {/* Trusted by */}
@@ -541,7 +551,7 @@ function ProfileModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
               style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
               <Heart size={14} style={{color: pos > 0 ? '#86EFAC' : 'rgba(255,255,255,0.5)', flexShrink:0}}/>
               <div className="min-w-0">
-                <p className="text-white font-black text-xs leading-tight">{fmt(pos)} users</p>
+                <p className="text-white font-black text-xs leading-tight">{pos > 0 ? `${fmt(pos)} users` : 'No ratings yet'}</p>
                 <p className="text-white/50 text-xs leading-tight">Trusted by</p>
               </div>
             </div>
@@ -1022,8 +1032,10 @@ export default function BuyBitcoin({user}) {
     if (!user) { navigate('/login?message=Please log in to create an offer'); return; }
     const balanceUsd = userBtcBalance * btcPrice;
     if (balanceUsd < 10) {
-      toast.error(`You need at least $10 in your wallet to create an offer. Your current balance is $${balanceUsd.toFixed(2)}. Please deposit Bitcoin first.`);
-      return;
+      toast.warn(
+        `⚠️ Your wallet has $${balanceUsd.toFixed(2)}. Load at least $10 in BTC — your offer will only show in the market once your balance is $10+.`,
+        { autoClose: 6000 }
+      );
     }
     navigate('/create-offer');
   };
@@ -1048,10 +1060,7 @@ export default function BuyBitcoin({user}) {
 
   return (
     <div className="min-h-screen flex flex-col pb-0 overflow-x-hidden"
-      style={{backgroundColor:C.g100, fontFamily:"'DM Sans',sans-serif"}}>
-
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
-      <style>{`
+      style={{backgroundColor:C.g100, fontFamily:"'DM Sans',sans-serif"}}>      <style>{`
         @keyframes slideUp { from{transform:translateY(100%);opacity:0} to{transform:translateY(0);opacity:1} }
         input[type=number]::-webkit-inner-spin-button,
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
@@ -1140,7 +1149,8 @@ export default function BuyBitcoin({user}) {
         </div>
       </div>
 
-      {pausedOffer && (
+      {/* Low-balance reminder — shown to logged-in sellers whose BTC is below $10 */}
+      {user && userBtcBalance * btcPrice < 10 && (
         <div className="flex-shrink-0 px-3 pt-3">
           <div className="max-w-7xl mx-auto rounded-2xl p-4 flex items-start gap-3"
             style={{backgroundColor:'#FFFBEB', border:'1.5px solid #FCD34D'}}>
@@ -1149,16 +1159,18 @@ export default function BuyBitcoin({user}) {
               <Wallet size={16} style={{color:'#D97706'}}/>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-black" style={{color:'#92400E'}}>Your sell offer is off the market</p>
+              <p className="text-sm font-black" style={{color:'#92400E'}}>Keep your wallet funded to stay active</p>
               <p className="text-xs mt-0.5 leading-relaxed" style={{color:'#B45309'}}>
-                Your Bitcoin wallet is empty, so your sell offer has been automatically paused. Top up your wallet to bring it back to the marketplace.
+                Your Bitcoin wallet must have at least <strong>$10</strong> for your sell offer to appear in the Buy Bitcoin market.
+                Current balance: <strong>${(userBtcBalance * btcPrice).toFixed(2)}</strong>.
+                Top up now to activate your offer.
               </p>
             </div>
             <button
-              onClick={()=>window.location.href='/wallet'}
+              onClick={()=>navigate('/wallet')}
               className="flex-shrink-0 px-3 py-2 rounded-xl text-xs font-black text-white"
               style={{backgroundColor:'#D97706'}}>
-              Top Up Wallet
+              Top Up
             </button>
           </div>
         </div>

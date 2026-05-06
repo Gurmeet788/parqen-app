@@ -336,7 +336,7 @@ async function notifyUserEmail(userId, subject, htmlContent) {
     // Fallback: Resend
     if (resendClient) {
       const { error: resendErr } = await resendClient.emails.send({
-        from: process.env.RESEND_FROM || 'PRAQEN <onboarding@resend.dev>',
+        from: RESEND_FROM_ADDR,
         to: user.email, subject, html: htmlContent,
       });
       if (!resendErr) { console.log(`📧 Email sent to ${user.email} via Resend`); return; }
@@ -356,10 +356,144 @@ async function notifyTradeParties(trade, subject, _smsMessage, htmlContent) {
 
 // ────────────────────────────────────────────────────────────────────────────
 
+// ── Branded email HTML builders ──────────────────────────────────────────────
+function buildVerificationEmailHtml(code) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PRAQEN Verification Code</title></head>
+<body style="margin:0;padding:0;background:#F0FAF5;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0FAF5;padding:32px 0;">
+    <tr><td align="center">
+      <table width="520" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(27,67,50,0.10);">
+        <!-- Header -->
+        <tr><td style="background:linear-gradient(135deg,#1B4332 0%,#2D6A4F 100%);padding:32px 40px;text-align:center;">
+          <div style="display:inline-block;width:56px;height:56px;background:#F4A422;border-radius:14px;line-height:56px;font-size:28px;font-weight:900;color:#1B4332;font-family:Georgia,serif;text-align:center;">P</div>
+          <p style="margin:12px 0 0;color:#ffffff;font-size:20px;font-weight:800;letter-spacing:3px;font-family:Georgia,serif;">PRAQEN</p>
+          <p style="margin:4px 0 0;color:rgba(255,255,255,0.65);font-size:12px;letter-spacing:1px;">Africa's Safest Bitcoin Marketplace</p>
+        </td></tr>
+        <!-- Body -->
+        <tr><td style="padding:40px 40px 32px;text-align:center;">
+          <p style="margin:0 0 8px;font-size:16px;font-weight:600;color:#334155;">Your Verification Code</p>
+          <p style="margin:0 0 28px;font-size:13px;color:#64748B;line-height:1.6;">Use the code below to verify your account. It expires in <strong>10 minutes</strong>.</p>
+          <!-- Code box -->
+          <div style="display:inline-block;background:#F0FAF5;border:2px solid #2D6A4F;border-radius:12px;padding:20px 48px;margin-bottom:28px;">
+            <span style="font-size:42px;font-weight:900;letter-spacing:10px;color:#1B4332;font-family:'Courier New',monospace;">${code}</span>
+          </div>
+          <p style="margin:0 0 8px;font-size:12px;color:#94A3B8;">If you didn't request this, you can safely ignore this email.</p>
+          <p style="margin:0;font-size:12px;color:#94A3B8;">Never share this code with anyone — PRAQEN will never ask for it.</p>
+        </td></tr>
+        <!-- Warning -->
+        <tr><td style="padding:0 40px 24px;">
+          <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:10px;padding:14px 18px;text-align:center;">
+            <p style="margin:0;font-size:12px;font-weight:700;color:#92400E;">⚠️ Always trade within PRAQEN — never outside our platform</p>
+          </div>
+        </td></tr>
+        <!-- Footer -->
+        <tr><td style="background:#F8FAFC;padding:20px 40px;text-align:center;border-top:1px solid #E2E8F0;">
+          <p style="margin:0 0 4px;font-size:12px;color:#94A3B8;">Need help? Contact us at <a href="mailto:hello@hellopraqen.com" style="color:#2D6A4F;font-weight:700;">hello@hellopraqen.com</a></p>
+          <p style="margin:0;font-size:11px;color:#CBD5E1;">© 2025 PRAQEN · Africa's Safest P2P Bitcoin Marketplace</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+function buildWelcomeEmailHtml(username) {
+  const name = username || 'Trader';
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Welcome to PRAQEN!</title></head>
+<body style="margin:0;padding:0;background:#F0FAF5;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0FAF5;padding:32px 0;">
+    <tr><td align="center">
+      <table width="520" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(27,67,50,0.10);">
+        <!-- Header -->
+        <tr><td style="background:linear-gradient(135deg,#1B4332 0%,#2D6A4F 100%);padding:40px 40px 32px;text-align:center;">
+          <div style="display:inline-block;width:64px;height:64px;background:#F4A422;border-radius:16px;line-height:64px;font-size:32px;font-weight:900;color:#1B4332;font-family:Georgia,serif;text-align:center;">P</div>
+          <p style="margin:14px 0 4px;color:#ffffff;font-size:22px;font-weight:900;letter-spacing:3px;font-family:Georgia,serif;">PRAQEN</p>
+          <p style="margin:0;color:rgba(255,255,255,0.70);font-size:13px;letter-spacing:1px;">Africa's Safest Bitcoin Marketplace</p>
+        </td></tr>
+        <!-- Welcome headline -->
+        <tr><td style="padding:36px 40px 8px;text-align:center;">
+          <p style="margin:0 0 6px;font-size:22px;font-weight:800;color:#1B4332;">Welcome aboard, ${name}! 🎉</p>
+          <p style="margin:0;font-size:14px;color:#64748B;line-height:1.7;">You've just joined <strong>Africa's safest peer-to-peer Bitcoin marketplace</strong>. We're so glad you're here — think of PRAQEN as your secure home to buy, sell and trade Bitcoin freely and confidently.</p>
+        </td></tr>
+        <!-- Steps -->
+        <tr><td style="padding:28px 40px;">
+          <!-- Step 1 -->
+          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;">
+            <tr>
+              <td width="48" valign="top"><div style="width:40px;height:40px;background:#EFF6FF;border-radius:10px;text-align:center;line-height:40px;font-size:20px;">🔐</div></td>
+              <td style="padding-left:14px;">
+                <p style="margin:0 0 2px;font-size:14px;font-weight:700;color:#1B4332;">Verify Your Details</p>
+                <p style="margin:0;font-size:13px;color:#64748B;line-height:1.6;">Go to <strong>Settings → Verification</strong> to verify your email, phone and ID. This keeps you protected and unlocks higher trade limits.</p>
+              </td>
+            </tr>
+          </table>
+          <!-- Step 2 -->
+          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;">
+            <tr>
+              <td width="48" valign="top"><div style="width:40px;height:40px;background:#FEF3C7;border-radius:10px;text-align:center;line-height:40px;font-size:20px;">₿</div></td>
+              <td style="padding-left:14px;">
+                <p style="margin:0 0 2px;font-size:14px;font-weight:700;color:#1B4332;">Buy Bitcoin Easily</p>
+                <p style="margin:0;font-size:13px;color:#64748B;line-height:1.6;">Visit the <strong>Buy Bitcoin</strong> page, pick a trusted vendor, choose your payment method (Mobile Money, bank transfer & more) and open a trade. Your Bitcoin is held in escrow until payment is confirmed.</p>
+              </td>
+            </tr>
+          </table>
+          <!-- Step 3 -->
+          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;">
+            <tr>
+              <td width="48" valign="top"><div style="width:40px;height:40px;background:#F3E8FF;border-radius:10px;text-align:center;line-height:40px;font-size:20px;">🎁</div></td>
+              <td style="padding-left:14px;">
+                <p style="margin:0 0 2px;font-size:14px;font-weight:700;color:#1B4332;">Cash In Gift Cards</p>
+                <p style="margin:0;font-size:13px;color:#64748B;line-height:1.6;">Turn unused gift cards into Bitcoin in minutes on the <strong>Gift Card Marketplace</strong>. Amazon, iTunes, Steam and many more accepted!</p>
+              </td>
+            </tr>
+          </table>
+          <!-- Step 4 -->
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td width="48" valign="top"><div style="width:40px;height:40px;background:#F0FAF5;border-radius:10px;text-align:center;line-height:40px;font-size:20px;">💸</div></td>
+              <td style="padding-left:14px;">
+                <p style="margin:0 0 2px;font-size:14px;font-weight:700;color:#1B4332;">Sell Bitcoin & Create Offers</p>
+                <p style="margin:0;font-size:13px;color:#64748B;line-height:1.6;">Load your wallet and create your own buy/sell offers at your own rates. Build your reputation and earn more profit every trade!</p>
+              </td>
+            </tr>
+          </table>
+        </td></tr>
+        <!-- CTA -->
+        <tr><td style="padding:8px 40px 32px;text-align:center;">
+          <a href="https://praqen.com/buy-bitcoin" style="display:inline-block;background:linear-gradient(135deg,#1B4332,#2D6A4F);color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;padding:14px 36px;border-radius:10px;letter-spacing:0.5px;">🚀 Start Trading Now</a>
+        </td></tr>
+        <!-- Warning -->
+        <tr><td style="padding:0 40px 24px;">
+          <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:10px;padding:14px 18px;text-align:center;">
+            <p style="margin:0;font-size:12px;font-weight:700;color:#92400E;">⚠️ Always trade within PRAQEN — never share your OTP or trade outside the platform</p>
+          </div>
+        </td></tr>
+        <!-- Footer -->
+        <tr><td style="background:#F8FAFC;padding:20px 40px;text-align:center;border-top:1px solid #E2E8F0;">
+          <p style="margin:0 0 4px;font-size:12px;color:#94A3B8;">Questions? Reach us at <a href="mailto:hello@hellopraqen.com" style="color:#2D6A4F;font-weight:700;">hello@hellopraqen.com</a></p>
+          <p style="margin:0;font-size:11px;color:#CBD5E1;">© 2025 PRAQEN · Africa's Safest P2P Bitcoin Marketplace</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+// NOTE: For Resend to deliver to real inboxes, verify hellopraqen.com in your Resend dashboard
+// then set RESEND_FROM=hello@hellopraqen.com in .env
+const RESEND_FROM_ADDR = process.env.RESEND_FROM || 'PRAQEN <hello@hellopraqen.com>';
+
 async function sendVerificationEmail(email, code) {
-  console.log(`📧 Sending to ${email}, code: ${code}`);
+  console.log(`📧 Sending verification to ${email}`);
   console.log(`RESEND_API_KEY exists: ${!!process.env.RESEND_API_KEY}`);
-  console.log(`RESEND_FROM: ${process.env.RESEND_FROM || 'not set'}`);
+
+  const html = buildVerificationEmailHtml(code);
 
   // ── PRIMARY: Resend API ──────────────────────────────────────────────────
   try {
@@ -370,16 +504,15 @@ async function sendVerificationEmail(email, code) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: process.env.RESEND_FROM || 'PRAQEN <onboarding@resend.dev>',
+        from: RESEND_FROM_ADDR,
         to: email,
         subject: 'Your PRAQEN Verification Code',
-        html: `<h2>Your code is: ${code}</h2><p>Valid for 10 minutes.</p>`,
+        html,
       }),
     });
     const data = await response.json();
-    console.log('Resend response:', JSON.stringify(data));
     if (data.id) {
-      console.log(`✅ Email sent via Resend: ${data.id}`);
+      console.log(`✅ Verification email sent via Resend: ${data.id}`);
       return true;
     }
     throw new Error(`Resend error: ${JSON.stringify(data)}`);
@@ -395,21 +528,56 @@ async function sendVerificationEmail(email, code) {
       auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
     });
     await transporter.verify();
-    console.log(`✅ Gmail transporter verified`);
     const info = await transporter.sendMail({
       from: `"PRAQEN" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: 'Your PRAQEN Verification Code',
-      html: `<h2>Your code is: ${code}</h2><p>Valid for 10 minutes.</p>`,
+      html,
     });
-    console.log(`✅ Email sent via Gmail to ${email}`, info.messageId);
+    console.log(`✅ Verification email sent via Gmail to ${email}`, info.messageId);
     return true;
   } catch (gmailErr) {
     console.error(`❌ Gmail error:`, gmailErr.message);
   }
 
-  // Both providers failed — throw so the caller knows
   throw new Error(`All email providers failed for ${email}`);
+}
+
+async function sendWelcomeEmail(email, username) {
+  const html = buildWelcomeEmailHtml(username);
+  const subject = `Welcome to PRAQEN, ${username || 'Trader'}! 🎉`;
+
+  // Try Resend first
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ from: RESEND_FROM_ADDR, to: email, subject, html }),
+    });
+    const data = await response.json();
+    if (data.id) { console.log(`✅ Welcome email sent via Resend to ${email}`); return; }
+    throw new Error(JSON.stringify(data));
+  } catch (e) {
+    console.warn(`[Welcome email] Resend failed for ${email}:`, e.message);
+  }
+
+  // Fallback: Gmail SMTP
+  try {
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+    });
+    await transporter.sendMail({
+      from: `"PRAQEN" <${process.env.EMAIL_USER}>`,
+      to: email, subject, html,
+    });
+    console.log(`✅ Welcome email sent via Gmail to ${email}`);
+  } catch (e) {
+    console.warn(`[Welcome email] Gmail also failed for ${email}:`, e.message);
+  }
 }
 
 // ============================================================
@@ -853,6 +1021,10 @@ app.post('/api/auth/register', async (req, res) => {
     // 1. Send verification email (SMTP can be slow — never block signup on it)
     sendVerificationEmail(email, code)
       .catch(e => console.error('[Register] Verification email failed:', e.message));
+
+    // 2. Send welcome email to new user
+    sendWelcomeEmail(email, username)
+      .catch(e => console.error('[Register] Welcome email failed:', e.message));
 
     // 2. Generate HD wallet address for this user
     Promise.resolve().then(async () => {
@@ -1751,7 +1923,7 @@ app.get('/api/users/profile', verifyToken, async (req, res) => {
   try {
     // Core columns — confirmed to exist in every PRAQEN DB schema
     const { data, error } = await supabaseAdmin.from('users')
-      .select('id, email, username, full_name, bio, location, website, phone, avatar_url, average_rating, total_trades, completion_rate, created_at, is_admin, is_moderator, is_id_verified, is_email_verified, total_feedback_count, positive_feedback, negative_feedback, last_login, last_seen_at, badge')
+      .select('id, email, username, full_name, bio, location, website, phone, avatar_url, average_rating, total_trades, completion_rate, created_at, is_admin, is_moderator, is_id_verified, is_email_verified, is_phone_verified, total_feedback_count, positive_feedback, negative_feedback, last_login, last_seen_at, badge')
       .eq('id', req.userId).single();
     if (error) {
       console.error('[GET /api/users/profile] DB error:', error.message);
@@ -2098,6 +2270,15 @@ app.get('/api/listings', async (req, res) => {
         const effectiveMaxUsd = sellerBtc > 0 ? sellerBtc * btcPriceVal : parseFloat(l.max_limit_usd || 0);
         return { ...l, seller_balance_btc: sellerBtc, effective_max_usd: effectiveMaxUsd };
       });
+
+      // Hide SELL offers whose seller has less than $10 worth of BTC — their
+      // offer stays ACTIVE in the DB and reappears automatically once they top up.
+      listings = listings.filter(l => {
+        if (l.listing_type !== 'SELL' && l.listing_type !== 'SELL_BITCOIN') return true;
+        const sellerBtc   = l.seller_balance_btc || 0;
+        const btcPriceVal = parseFloat(l.bitcoin_price) || 88000;
+        return sellerBtc * btcPriceVal >= 10;
+      });
     }
 
     setCached(cacheKey, listings);
@@ -2259,12 +2440,37 @@ app.get('/api/offers', async (req, res) => {
 
     const userMap = Object.fromEntries((users || []).map(u => [u.id, u]));
 
-    const offers = (listings || []).map(l => ({
-      ...l,
-      type: (l.listing_type || '').toLowerCase(),
-      user_id: l.seller_id,
-      users: userMap[l.seller_id] || null,
-    }));
+    // Fetch BTC balances for SELL offer owners so we can hide low-balance offers
+    const sellSellerIds = [...new Set(
+      (listings || [])
+        .filter(l => l.listing_type === 'SELL' || l.listing_type === 'SELL_BITCOIN')
+        .map(l => l.seller_id)
+    )];
+    let balMap = {};
+    if (sellSellerIds.length > 0) {
+      const { data: bals } = await supabaseAdmin
+        .from('user_balances')
+        .select('user_id, balance_btc')
+        .in('user_id', sellSellerIds);
+      (bals || []).forEach(b => { balMap[b.user_id] = parseFloat(b.balance_btc || 0); });
+    }
+
+    const offers = (listings || [])
+      .filter(l => {
+        // Hide SELL offers where seller has < $10 BTC — offer stays ACTIVE in DB
+        // and reappears automatically once they top up their wallet.
+        if (l.listing_type !== 'SELL' && l.listing_type !== 'SELL_BITCOIN') return true;
+        const sellerBtc   = balMap[l.seller_id] || 0;
+        const btcPriceVal = parseFloat(l.bitcoin_price) || 88000;
+        return sellerBtc * btcPriceVal >= 10;
+      })
+      .map(l => ({
+        ...l,
+        type: (l.listing_type || '').toLowerCase(),
+        user_id: l.seller_id,
+        seller_balance_btc: balMap[l.seller_id] || undefined,
+        users: userMap[l.seller_id] || null,
+      }));
 
     setCached(cacheKey, offers);
     res.json({ success: true, offers });
@@ -2424,6 +2630,7 @@ app.post('/api/offers', verifyToken, async (req, res) => {
       return res.status(500).json({ error: error.message });
     }
 
+    bustCache();
     res.json({ success: true, offer: data, listing: data });
   } catch (err) {
     console.error('Offer creation exception:', err);
@@ -3406,6 +3613,59 @@ app.get('/api/referral/earnings', verifyToken, async (req, res) => {
   }
 });
 
+// Public leaderboard — top 10 referrers (anonymized: first 2 chars + ***)
+app.get('/api/referral/leaderboard', async (req, res) => {
+  try {
+    // Sum commission_btc grouped by referrer_id
+    const { data, error } = await supabaseAdmin
+      .from('affiliate_earnings')
+      .select('referrer_id, commission_btc');
+    if (error) throw error;
+
+    // Aggregate in JS since Supabase REST doesn't support GROUP BY directly
+    const map = {};
+    (data || []).forEach(r => {
+      if (!map[r.referrer_id]) map[r.referrer_id] = 0;
+      map[r.referrer_id] += parseFloat(r.commission_btc || 0);
+    });
+
+    // Resolve usernames (only for top earners)
+    const sorted = Object.entries(map)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10);
+
+    if (sorted.length === 0) return res.json({ success: true, leaderboard: [] });
+
+    const ids = sorted.map(([id]) => id);
+    const { data: users } = await supabaseAdmin
+      .from('users')
+      .select('id, username, badge, total_referrals, total_trades')
+      .in('id', ids);
+
+    const userMap = {};
+    (users || []).forEach(u => { userMap[u.id] = u; });
+
+    const leaderboard = sorted.map(([id, earned], rank) => {
+      const u = userMap[id] || {};
+      const name = u.username || 'Trader';
+      // Anonymize: first 2 chars visible, rest replaced
+      const anon = name.length <= 2 ? name + '***' : name.slice(0, 2) + '*'.repeat(Math.min(4, name.length - 2));
+      return {
+        rank: rank + 1,
+        username: anon,
+        badge: u.badge || 'BEGINNER',
+        earned_btc: earned,
+        referrals: u.total_referrals || 0,
+        total_trades: u.total_trades || 0,
+      };
+    });
+
+    res.json({ success: true, leaderboard });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/referral/withdraw', verifyToken, async (req, res) => {
   try {
     const { data: earnings, error } = await supabaseAdmin
@@ -3680,7 +3940,7 @@ app.post('/api/admin/send-welcome-emails', verifyToken, async (req, res) => {
       if (!delivered && resendClient) {
         try {
           const { error: resendErr } = await resendClient.emails.send({
-            from: process.env.RESEND_FROM || 'PRAQEN <onboarding@resend.dev>',
+            from: RESEND_FROM_ADDR,
             to: user.email, subject, html,
           });
           if (!resendErr) delivered = true;

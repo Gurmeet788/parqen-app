@@ -221,9 +221,9 @@ export default function SellGiftCardMarketplace({ user }) {
   const loadBuyOffers = async () => {
     try {
       const response = await axios.get(`${API_URL}/listings`);
-      // Show BUY_BITCOIN or BUY_GIFT_CARD offers (people wanting to buy)
+      // Show BUY_GIFT_CARD offers (people with BTC wanting to buy gift cards)
       const buyListings = (response.data.listings || []).filter(
-        l => l.listing_type === 'BUY_BITCOIN' || l.listing_type === 'BUY_GIFT_CARD'
+        l => l.listing_type === 'BUY_GIFT_CARD'
       );
       setBuyOffers(buyListings);
     } catch (error) {

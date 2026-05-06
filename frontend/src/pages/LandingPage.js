@@ -113,9 +113,7 @@ export default function LandingPage({ user }) {
   const goTo = path => navigate(path);
 
   return (
-    <div className="overflow-x-hidden" style={{fontFamily:"'DM Sans',sans-serif",background:'#fff',maxWidth:'100vw'}}>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
-      <style>{`
+    <div className="overflow-x-hidden" style={{fontFamily:"'DM Sans',sans-serif",background:'#fff',maxWidth:'100vw'}}>      <style>{`
         *, *::before, *::after { box-sizing: border-box; }
         html, body { overscroll-behavior-y: none; }
         @keyframes slideUp{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:translateY(0)}}

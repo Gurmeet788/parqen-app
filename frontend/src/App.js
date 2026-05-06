@@ -6,6 +6,16 @@ import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
+import WelcomeModal from './components/WelcomeModal';
+
+// Silence all non-error console output in production
+if (process.env.NODE_ENV === 'production') {
+  const noop = () => {};
+  console.log   = noop;
+  console.info  = noop;
+  console.debug = noop;
+  console.warn  = noop;
+}
 
 // Lazy-loaded pages — each becomes its own JS chunk
 const GiftCardMarketplace   = lazy(() => import('./pages/GiftCardMarketplace'));
@@ -98,16 +108,15 @@ function App() {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
+  const [showWelcome, setShowWelcome] = useState(false);
 
   // Setup axios interceptor for auth
   useEffect(() => {
     const storedToken = localStorage.getItem('token');
     if (storedToken) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
-      console.log('✅ Auth header set from localStorage:', storedToken.slice(0, 20) + '...');
     } else {
       delete axios.defaults.headers.common['Authorization'];
-      console.log('❌ No token found, auth header removed');
     }
   }, [token]);
 
@@ -130,6 +139,13 @@ function App() {
     window.addEventListener('userUpdated', handleUserUpdated);
     return () => window.removeEventListener('userUpdated', handleUserUpdated);
   }, [token]);
+
+  // Show welcome tour once per user — fires whenever user object is set
+  useEffect(() => {
+    if (user?.id && !localStorage.getItem(`prq_welcomed_${user.id}`)) {
+      setShowWelcome(true);
+    }
+  }, [user?.id]);
 
   const loadProfile = async () => {
     try {
@@ -177,34 +193,21 @@ function App() {
   }, [token]);
 
   const login = (userData, token) => {
-    console.log('🔐 LOGIN FUNCTION CALLED');
-    console.log('Token:', token.slice(0, 20) + '...');
-
     setToken(token);
     setUser(userData);
-
     localStorage.setItem('token', token);
     localStorage.setItem('user', JSON.stringify(userData));
-
-    // Fire event for Navbar and other components
     window.dispatchEvent(new Event('userUpdated'));
-
     axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    console.log('✅ Authorization header set immediately:', axios.defaults.headers.common['Authorization'].slice(0, 30) + '...');
-
-    toast.success('✅ Logged in successfully!');
+    toast.success('Logged in successfully!');
   };
 
   const logout = () => {
-    console.log('🚪 LOGOUT FUNCTION CALLED');
-
     setUser(null);
     setToken(null);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     delete axios.defaults.headers.common['Authorization'];
-
-    console.log('✅ Auth header removed');
     toast.info('Logged out');
   };
 
@@ -215,6 +218,10 @@ function App() {
     <Router>
       <AppShell>
         <Navbar user={user} onLogout={logout} />
+
+        {showWelcome && user && (
+          <WelcomeModal user={user} onClose={() => setShowWelcome(false)} />
+        )}
 
         <Suspense fallback={<PageLoader />}>
         <Routes>

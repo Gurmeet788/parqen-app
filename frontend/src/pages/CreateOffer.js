@@ -621,9 +621,7 @@ export default function CreateOffer() {
 
   // ── Main render ───────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen py-4 px-3" style={{ backgroundColor: C.mist, fontFamily: "'DM Sans',sans-serif", overflowX:'hidden', width:'100%', boxSizing:'border-box' }}>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
-      <style>{`
+    <div className="min-h-screen py-4 px-3" style={{ backgroundColor: C.mist, fontFamily: "'DM Sans',sans-serif", overflowX:'hidden', width:'100%', boxSizing:'border-box' }}>      <style>{`
         @keyframes slideUp { from{transform:translateY(100%);opacity:0} to{transform:translateY(0);opacity:1} }
         * { -webkit-tap-highlight-color: transparent; }
         input, select, textarea { font-size: 16px !important; }
@@ -788,6 +786,34 @@ export default function CreateOffer() {
                   PRAQEN charges <strong>0.5% fee</strong> only on completed trades.
                 </p>
               </div>
+
+              {/* Wallet balance reminder — shown when user picks Sell Bitcoin */}
+              {offerType === 'sell' && (
+                <div className="p-3.5 rounded-2xl flex items-start gap-2.5"
+                  style={{ backgroundColor: walletBal.btc * btcPrice >= 10 ? '#F0FDF4' : '#FFFBEB',
+                           border: `1px solid ${walletBal.btc * btcPrice >= 10 ? '#86EFAC' : '#FCD34D'}` }}>
+                  <Wallet size={13} style={{ color: walletBal.btc * btcPrice >= 10 ? '#16A34A' : '#D97706', flexShrink: 0, marginTop: 1 }} />
+                  <div className="flex-1 min-w-0">
+                    {walletBal.btc * btcPrice >= 10 ? (
+                      <p className="text-xs leading-relaxed" style={{ color: '#15803D' }}>
+                        ✅ <strong>Wallet ready:</strong> Your balance is <strong>${(walletBal.btc * btcPrice).toFixed(2)}</strong>.
+                        Your offer will be visible in the Buy Bitcoin market.
+                      </p>
+                    ) : (
+                      <p className="text-xs leading-relaxed" style={{ color: '#92400E' }}>
+                        ⚠️ <strong>Top up required:</strong> Your wallet has <strong>${(walletBal.btc * btcPrice).toFixed(2)}</strong>.
+                        You need at least <strong>$10 in BTC</strong> for your offer to appear in the Buy Bitcoin market.{' '}
+                        <button
+                          type="button"
+                          onClick={() => navigate('/wallet')}
+                          style={{ color: '#D97706', fontWeight: 700, textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 'inherit' }}>
+                          Top up your wallet →
+                        </button>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

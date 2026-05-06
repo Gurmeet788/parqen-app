@@ -415,12 +415,21 @@ function OfferCard({listing, btcPriceUSD, onViewBuyer, onSell}) {
 
 // ── Buyer Modal ───────────────────────────────────────────────────────────────
 function BuyerModal({buyer, listing, onClose, onTrade, btcPriceUSD}) {
-  const [tab,     setTab]     = useState('overview');
-  const [reviews, setReviews] = useState([]);
-  const [rvLoad,  setRvLoad]  = useState(false);
+  const [tab,        setTab]        = useState('overview');
+  const [reviews,    setReviews]    = useState([]);
+  const [rvLoad,     setRvLoad]     = useState(false);
+  const [freshBuyer, setFreshBuyer] = useState(null);
   const { rates: USD_RATES } = useRates();
 
-  const u      = getUser(buyer);
+  const buyerId = getUser(buyer)?.id;
+  useEffect(() => {
+    if (!buyerId) return;
+    axios.get(`${API_URL}/users/${buyerId}`)
+      .then(r => { const d = r.data.user || r.data; if (d?.id) setFreshBuyer(d); })
+      .catch(() => {});
+  }, [buyerId]);
+
+  const u      = getUser(freshBuyer || buyer);
   const badge  = deriveBadge(u);
   const seen   = getLastSeen(u);
   const trades = getTrades(u);
@@ -445,7 +454,8 @@ function BuyerModal({buyer, listing, onClose, onTrade, btcPriceUSD}) {
   const payMins  = parseFloat(u.avg_payment_time || u.avg_response_time || u.avg_reply_minutes || 0);
   const avgPayDisplay = payMins > 0 ? (() => { const m=Math.floor(payMins),s=Math.round((payMins-m)*60); return s>0?`${m}m ${s}s`:m>0?`${m}m`:`${s}s`; })() : '—';
   const locCC    = (u.country || '').slice(0,2).toUpperCase() || ccCode.toUpperCase();
-  const locEmoji = locCC.length===2 ? locCC.replace(/./g,c=>String.fromCodePoint(0x1F1E0+c.charCodeAt(0)-65)) : '🌍';
+  const CC_NAME  = {GH:'Ghana',NG:'Nigeria',KE:'Kenya',ZA:'S. Africa',UG:'Uganda',TZ:'Tanzania',RW:'Rwanda',CM:'Cameroon',SN:'Senegal',ML:'Mali',CI:"Côte d'Ivoire",CD:'DR Congo',ZM:'Zambia',MZ:'Mozambique',ZW:'Zimbabwe',BF:'Burkina Faso',BJ:'Benin',TG:'Togo',NE:'Niger',US:'USA',GB:'UK',EU:'Europe'};
+  const countryName = (u.country && u.country.length > 2) ? u.country : (CC_NAME[locCC] || u.location || locCC || '—');
 
   useEffect(() => {
     if (tab !== 'feedback' || !u.id || reviews.length) return;
@@ -513,31 +523,35 @@ function BuyerModal({buyer, listing, onClose, onTrade, btcPriceUSD}) {
 
           {/* Stats 2×2 grid */}
           <div className="grid grid-cols-2 gap-2">
+            {/* Last active */}
             <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
-              <span className="text-sm flex-shrink-0">{seen.online ? '🟢' : '🕐'}</span>
+              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{backgroundColor: seen.online ? '#4ADE80' : '#94A3B8'}}/>
               <div className="min-w-0">
-                <p className="text-white font-black text-xs leading-tight truncate">{seen.online ? 'Active now' : seen.label}</p>
-                <p className="text-white/50 text-xs leading-tight">Activity</p>
+                <p className="text-white font-black text-xs leading-tight truncate">{seen.online ? 'Online now' : seen.label}</p>
+                <p className="text-white/50 text-xs leading-tight">Last active</p>
               </div>
             </div>
+            {/* Location — real flag image, real country name */}
             <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
-              <MapPin size={14} style={{color:'rgba(255,255,255,0.7)', flexShrink:0}}/>
+              <CountryFlag countryCode={ccCode} className="w-5 h-3.5 rounded-sm flex-shrink-0"/>
               <div className="min-w-0">
-                <p className="text-white font-black text-xs leading-tight truncate">{locEmoji} {locCC || '—'}</p>
+                <p className="text-white font-black text-xs leading-tight truncate">{countryName}</p>
                 <p className="text-white/50 text-xs leading-tight">Location</p>
               </div>
             </div>
+            {/* Avg. response */}
             <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
               <Timer size={14} style={{color:'#FDE68A', flexShrink:0}}/>
               <div className="min-w-0">
                 <p className="text-white font-black text-xs leading-tight">{avgPayDisplay}</p>
-                <p className="text-white/50 text-xs leading-tight">Avg. payment</p>
+                <p className="text-white/50 text-xs leading-tight">Avg. response</p>
               </div>
             </div>
+            {/* Trusted by */}
             <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
               <Heart size={14} style={{color: pos > 0 ? '#86EFAC' : 'rgba(255,255,255,0.5)', flexShrink:0}}/>
               <div className="min-w-0">
-                <p className="text-white font-black text-xs leading-tight">{fmt(pos)} users</p>
+                <p className="text-white font-black text-xs leading-tight">{pos > 0 ? `${fmt(pos)} users` : 'No ratings yet'}</p>
                 <p className="text-white/50 text-xs leading-tight">Trusted by</p>
               </div>
             </div>
@@ -999,10 +1013,7 @@ export default function SellBitcoin({user}) {
 
   return (
     <div className="min-h-screen flex flex-col pb-0 overflow-x-hidden"
-      style={{backgroundColor:C.g100, fontFamily:"'DM Sans',sans-serif"}}>
-
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
-      <style>{`
+      style={{backgroundColor:C.g100, fontFamily:"'DM Sans',sans-serif"}}>      <style>{`
         @keyframes slideUp { from{transform:translateY(100%);opacity:0} to{transform:translateY(0);opacity:1} }
         input[type=number]::-webkit-inner-spin-button,
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }

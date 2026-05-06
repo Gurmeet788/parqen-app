@@ -29,9 +29,7 @@ export default function Home({ user }) {
 
   return (
     <div className="min-h-screen pb-24 md:pb-8 overflow-x-hidden"
-      style={{ fontFamily: "'DM Sans', sans-serif", backgroundColor: C.g50 }}>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
-      <style>{`
+      style={{ fontFamily: "'DM Sans', sans-serif", backgroundColor: C.g50 }}>      <style>{`
         @keyframes slideUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
         .slide { animation: slideUp .35s ease both; }
         .d1 { animation-delay:.05s } .d2 { animation-delay:.1s } .d3 { animation-delay:.15s }

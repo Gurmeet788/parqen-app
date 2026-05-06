@@ -553,8 +553,6 @@ export default function MyListings({ user }) {
 
   return (
     <div className="min-h-screen flex flex-col" style={{backgroundColor:C.g50,fontFamily:"'DM Sans',sans-serif",overflowX:'hidden'}}>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
-
       <div className="flex-1 max-w-3xl mx-auto w-full px-3 sm:px-4 py-5 space-y-4">
 
         {/* ── HEADER ── */}

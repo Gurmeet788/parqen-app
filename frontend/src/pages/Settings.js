@@ -116,11 +116,17 @@ export default function Settings({ user, setUser }) {
   const [kycFiles,     setKycFiles]     = useState({ id: null, selfie: null });
   const [kycLoading,   setKycLoading]   = useState(false);
   const [kycSubmitted, setKycSubmitted] = useState(false);
+  const [kycStatus,    setKycStatus]    = useState(user?.kyc_status || null); // null | 'pending' | 'approved'
+
+  // Resend attempt counters — persisted so they survive page refresh
+  const [emailResendCount, setEmailResendCount] = useState(() => parseInt(localStorage.getItem('prq_email_resend') || '0'));
+  const [phoneResendCount, setPhoneResendCount] = useState(() => parseInt(localStorage.getItem('prq_phone_resend') || '0'));
 
   // Verification status — own state so it updates without depending on parent re-rendering
   const [emailVerified, setEmailVerified] = useState(!!(user?.is_email_verified || user?.email_verified));
   const [phoneVerified, setPhoneVerified] = useState(!!(user?.is_phone_verified || user?.phone_verified));
   const [kycVerified,   setKycVerified]   = useState(!!(user?.kyc_verified || user?.is_id_verified));
+  const [verificationSyncing, setVerificationSyncing] = useState(true);
   const verLevel = kycVerified ? 3 : phoneVerified ? 2 : emailVerified ? 1 : 0;
 
   useEffect(() => {
@@ -148,19 +154,27 @@ export default function Settings({ user, setUser }) {
   // This ensures status is correct even when the user prop is stale from localStorage.
   useEffect(() => {
     const tk = localStorage.getItem('token');
-    if (!tk) return;
+    if (!tk) { setVerificationSyncing(false); return; }
     axios.get(`${API_URL}/users/profile`, { headers: authH() })
       .then(r => {
         const fresh = r.data.user || r.data;
-        if (!fresh?.id) return;
-        setEmailVerified(!!(fresh.is_email_verified || fresh.email_verified));
-        setPhoneVerified(!!(fresh.is_phone_verified || fresh.phone_verified));
-        setKycVerified(!!(fresh.kyc_verified || fresh.is_id_verified));
-        if (setUser) setUser(u => ({ ...u, ...fresh }));
-        const stored = JSON.parse(localStorage.getItem('user') || '{}');
-        localStorage.setItem('user', JSON.stringify({ ...stored, ...fresh }));
+        if (fresh?.id) {
+          const emailOk = !!(fresh.is_email_verified || fresh.email_verified);
+          const phoneOk = !!(fresh.is_phone_verified || fresh.phone_verified);
+          setEmailVerified(emailOk);
+          setPhoneVerified(phoneOk);
+          setKycVerified(!!(fresh.kyc_verified || fresh.is_id_verified));
+          if (fresh.kyc_status) setKycStatus(fresh.kyc_status);
+          // Clear retry counters once the user is actually verified
+          if (emailOk) { localStorage.removeItem('prq_email_resend'); setEmailResendCount(0); }
+          if (phoneOk) { localStorage.removeItem('prq_phone_resend'); setPhoneResendCount(0); }
+          if (setUser) setUser(u => ({ ...u, ...fresh }));
+          const stored = JSON.parse(localStorage.getItem('user') || '{}');
+          localStorage.setItem('user', JSON.stringify({ ...stored, ...fresh }));
+        }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setVerificationSyncing(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAccountUpdate = async (e) => {
@@ -212,6 +226,9 @@ export default function Settings({ user, setUser }) {
       const r = await axios.post(`${API_URL}/users/send-phone-otp`, { phone }, { headers: authH() });
       toast.success(`OTP sent to ${phone}`);
       setPhoneStep('otp');
+      const nc = phoneResendCount + 1;
+      setPhoneResendCount(nc);
+      localStorage.setItem('prq_phone_resend', String(nc));
       // Dev mode: auto-fill OTP if server couldn't send SMS
       if (r.data?.devCode) {
         setPhoneOtp(r.data.devCode);
@@ -237,6 +254,9 @@ export default function Settings({ user, setUser }) {
       const r = await axios.post(`${API_URL}/users/resend-verification`, {}, { headers: authH() });
       toast.success('Verification code sent! Check your inbox and spam/junk folder.');
       setEmailVerifyStep('otp');
+      const nc = emailResendCount + 1;
+      setEmailResendCount(nc);
+      localStorage.setItem('prq_email_resend', String(nc));
       // Dev mode: auto-fill code if email delivery had issues
       if (r.data?.devCode) {
         setEmailCode(r.data.devCode);
@@ -305,8 +325,9 @@ export default function Settings({ user, setUser }) {
         { idDocName: kycFiles.id.name, selfieDocName: kycFiles.selfie.name },
         { headers: authH() }
       );
-      toast.success("KYC submitted! We'll review within 24 hours.");
+      toast.success("Documents received! We'll review within 24 hours.");
       setKycSubmitted(true);
+      setKycStatus('pending');
     } catch (e) { toast.error(e?.response?.data?.error || 'Failed to submit KYC'); }
     finally { setKycLoading(false); }
   };
@@ -338,7 +359,6 @@ export default function Settings({ user, setUser }) {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: C.mist, fontFamily: "'DM Sans',sans-serif" }}>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
 
       <div className="flex-1 max-w-5xl mx-auto w-full px-4 py-8">
 
@@ -589,6 +609,13 @@ export default function Settings({ user, setUser }) {
             {/* ── VERIFICATION ────────────────────────────────────── */}
             {activeTab === 'verification' && (
               <div className="space-y-5">
+                {verificationSyncing && (
+                  <div className="bg-white rounded-2xl shadow-sm border p-8 flex items-center justify-center gap-3" style={{ borderColor: C.g200 }}>
+                    <RefreshCw size={18} className="animate-spin" style={{ color: C.green }} />
+                    <span className="text-sm font-bold" style={{ color: C.g500 }}>Loading verification status…</span>
+                  </div>
+                )}
+                {!verificationSyncing && <>
                 {/* Verification level banner */}
                 <div className="rounded-2xl p-5 border"
                   style={{ background: `linear-gradient(135deg,${C.forest},${C.green})`, borderColor: C.green }}>
@@ -623,161 +650,250 @@ export default function Settings({ user, setUser }) {
                   <h2 className="text-lg font-black mb-5" style={{ color: C.forest }}>Verification Steps</h2>
                   <div className="space-y-3">
 
-                    {/* Step 1 — Email */}
-                    <div className={`p-4 rounded-xl border transition ${emailVerified ? 'bg-green-50 border-green-200' : 'border-blue-200 bg-blue-50'}`}>
-                      <div className="flex items-start gap-4">
-                        <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0 ${emailVerified ? 'bg-green-500 text-white' : 'bg-blue-500 text-white'}`}>
-                          {emailVerified ? <CheckCircle size={18}/> : 1}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className={`font-bold text-sm ${emailVerified ? 'text-green-800' : 'text-blue-800'}`}>Email Verification</p>
-                            <span className={`text-xs font-black px-2 py-0.5 rounded-full ${emailVerified ? 'bg-green-200 text-green-800' : 'bg-blue-200 text-blue-800'}`}>{emailVerified ? '✓ Verified' : 'Basic'}</span>
-                          </div>
-                          <p className={`text-xs mt-0.5 ${emailVerified ? 'text-green-600' : 'text-blue-600'}`}>
-                            {emailVerified ? `${maskEmail(accountForm.email)} is verified ✓` : 'Verify your email address to start trading'}
-                          </p>
-                          {!emailVerified && (
-                            <div className="mt-3 space-y-2">
-                              {emailVerifyStep === 'idle' && (
-                                <button onClick={handleSendEmailCode} disabled={emailCodeLoading}
-                                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-60"
-                                  style={{ backgroundColor: C.paid }}>
-                                  <Mail size={13} />
-                                  {emailCodeLoading ? 'Sending…' : 'Send Verification Code →'}
-                                </button>
-                              )}
-                              {(emailVerifyStep === 'otp' || emailVerifyStep === 'verifying') && (
-                                <>
-                                  <p className="text-xs" style={{ color: '#1e40af' }}>Code sent! Check your inbox:</p>
-                                  <div className="flex gap-2 flex-wrap items-center">
-                                    <input type="text" inputMode="numeric" maxLength={6}
-                                      placeholder="000000" value={emailCode}
-                                      onChange={e => setEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                                      className="px-3 py-2 border-2 rounded-xl text-sm font-black focus:outline-none w-36"
-                                      style={{ borderColor: '#3b82f6', letterSpacing: '0.2em', color: C.g800 }} />
-                                    <button onClick={handleVerifyEmailCode}
-                                      disabled={emailVerifyStep === 'verifying' || emailCode.length < 6}
-                                      className="px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-50"
-                                      style={{ backgroundColor: C.success }}>
-                                      {emailVerifyStep === 'verifying' ? 'Verifying…' : '✓ Verify'}
-                                    </button>
-                                    <button onClick={() => { setEmailVerifyStep('idle'); setEmailCode(''); }} className="text-xs underline text-gray-400">Resend</button>
-                                  </div>
-                                </>
-                              )}
+                    {/* ── Step 1 — Email ── */}
+                    {(() => {
+                      const underReview = !emailVerified && emailResendCount >= 3;
+                      return (
+                        <div className={`p-4 rounded-xl border transition ${emailVerified ? 'bg-green-50 border-green-200' : underReview ? 'bg-amber-50 border-amber-200' : 'border-blue-200 bg-blue-50'}`}>
+                          <div className="flex items-start gap-4">
+                            <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0 ${emailVerified ? 'bg-green-500 text-white' : underReview ? 'bg-amber-400 text-white' : 'bg-blue-500 text-white'}`}>
+                              {emailVerified ? <CheckCircle size={18}/> : underReview ? <Clock size={18}/> : 1}
                             </div>
-                          )}
-                        </div>
-                        {emailVerified
-                          ? <CheckCircle size={16} className="text-green-500 flex-shrink-0 mt-0.5"/>
-                          : <span className="text-xs font-bold text-blue-600 flex-shrink-0 mt-0.5">Required →</span>}
-                      </div>
-                    </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className={`font-bold text-sm ${emailVerified ? 'text-green-800' : underReview ? 'text-amber-800' : 'text-blue-800'}`}>Email Verification</p>
+                                <span className={`text-xs font-black px-2 py-0.5 rounded-full ${emailVerified ? 'bg-green-200 text-green-800' : underReview ? 'bg-amber-200 text-amber-800' : 'bg-blue-200 text-blue-800'}`}>
+                                  {emailVerified ? '✓ Verified' : underReview ? '⏳ Under Review' : 'Basic'}
+                                </span>
+                              </div>
+                              <p className={`text-xs mt-0.5 ${emailVerified ? 'text-green-600' : underReview ? 'text-amber-700' : 'text-blue-600'}`}>
+                                {emailVerified ? `${maskEmail(accountForm.email)} is verified ✓` : underReview ? 'Being reviewed by our team' : 'Verify your email address to start trading'}
+                              </p>
 
-                    {/* Step 2 — Phone (interactive) */}
-                    <div className={`p-4 rounded-xl border transition ${phoneVerified||phoneStep==='done' ? 'bg-green-50 border-green-200' : emailVerified ? 'border-blue-200 bg-blue-50' : 'bg-gray-50 border-gray-100'}`}>
-                      <div className="flex items-start gap-4">
-                        <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0 ${phoneVerified||phoneStep==='done' ? 'bg-green-500 text-white' : emailVerified ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
-                          {phoneVerified||phoneStep==='done' ? <CheckCircle size={18}/> : 2}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className={`font-bold text-sm ${phoneVerified||phoneStep==='done' ? 'text-green-800' : emailVerified ? 'text-blue-800' : 'text-gray-600'}`}>Phone Number</p>
-                            <span className={`text-xs font-black px-2 py-0.5 rounded-full ${phoneVerified||phoneStep==='done' ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-600'}`}>{phoneVerified||phoneStep==='done' ? '✓ Verified' : 'Standard'}</span>
-                          </div>
-                          <p className={`text-xs mt-0.5 ${phoneVerified||phoneStep==='done' ? 'text-green-600' : emailVerified ? 'text-blue-600' : 'text-gray-400'}`}>
-                            {phoneVerified||phoneStep==='done' ? `${accountForm.phone||'Phone'} verified ✓` : 'Verify your phone number to unlock $2,000 trade limit'}
-                          </p>
-
-                          {/* Phone OTP flow */}
-                          {!phoneVerified && phoneStep!=='done' && emailVerified && (
-                            <div className="mt-3 space-y-2">
-                              {(phoneStep==='idle'||phoneStep==='sending') && (
-                                <button onClick={handleSendPhoneOtp} disabled={phoneStep==='sending'}
-                                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-60"
-                                  style={{backgroundColor:C.paid}}>
-                                  <Smartphone size={13}/>
-                                  {phoneStep==='sending' ? 'Sending OTP…' : `Send OTP to ${accountForm.phone||'your phone'}`}
-                                </button>
+                              {/* Under-review card */}
+                              {underReview && (
+                                <div className="mt-3 rounded-xl border overflow-hidden" style={{borderColor:'#FDE68A'}}>
+                                  <div className="px-4 py-2.5 flex items-center gap-2" style={{backgroundColor:'#FEF3C7', borderBottom:'1px solid #FDE68A'}}>
+                                    <Mail size={13} style={{color:'#D97706', flexShrink:0}}/>
+                                    <p className="text-xs font-black" style={{color:'#92400E'}}>Email is Under Manual Review</p>
+                                  </div>
+                                  <div className="px-4 py-3 space-y-2" style={{backgroundColor:'#FFFBEB'}}>
+                                    <p className="text-xs leading-relaxed" style={{color:'#78350F'}}>
+                                      We tried to send a code to <strong>{maskEmail(accountForm.email)}</strong> but couldn't confirm delivery.
+                                      Our team will manually verify your email and notify you within <strong>24 hours</strong>.
+                                    </p>
+                                    <p className="text-xs" style={{color:'#92400E'}}>You'll receive an update once your email is approved or rejected.</p>
+                                    <a href="mailto:hello@hellopraqen.com"
+                                      className="inline-flex items-center gap-1.5 text-xs font-black mt-1"
+                                      style={{color:'#D97706'}}>
+                                      <Mail size={11}/> hello@hellopraqen.com
+                                    </a>
+                                  </div>
+                                </div>
                               )}
-                              {(phoneStep==='otp'||phoneStep==='verifying') && (
-                                <div className="flex gap-2 items-center flex-wrap">
-                                  <input
-                                    type="text" inputMode="numeric" maxLength={6}
-                                    placeholder="Enter 6-digit OTP"
-                                    value={phoneOtp} onChange={e=>setPhoneOtp(e.target.value.replace(/\D/g,''))}
-                                    className="px-3 py-2 border-2 rounded-xl text-sm font-black tracking-widest focus:outline-none w-40"
-                                    style={{borderColor:C.paid, color:C.g800, letterSpacing:'0.2em'}}/>
-                                  <button onClick={handleVerifyPhone} disabled={phoneStep==='verifying'}
-                                    className="px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-60"
-                                    style={{backgroundColor:C.success}}>
-                                    {phoneStep==='verifying' ? 'Verifying…' : '✓ Verify'}
-                                  </button>
-                                  <button onClick={()=>{setPhoneStep('idle');setPhoneOtp('');}} className="text-xs text-gray-400 underline">Resend</button>
+
+                              {/* Normal OTP flow */}
+                              {!emailVerified && !underReview && (
+                                <div className="mt-3 space-y-2">
+                                  {emailVerifyStep === 'idle' && (
+                                    <button onClick={handleSendEmailCode} disabled={emailCodeLoading}
+                                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-60"
+                                      style={{ backgroundColor: C.paid }}>
+                                      <Mail size={13} />
+                                      {emailCodeLoading ? 'Sending…' : 'Send Verification Code →'}
+                                    </button>
+                                  )}
+                                  {(emailVerifyStep === 'otp' || emailVerifyStep === 'verifying') && (
+                                    <>
+                                      <p className="text-xs" style={{ color: '#1e40af' }}>Code sent! Check your inbox and spam folder:</p>
+                                      <div className="flex gap-2 flex-wrap items-center">
+                                        <input type="text" inputMode="numeric" maxLength={6}
+                                          placeholder="000000" value={emailCode}
+                                          onChange={e => setEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                          className="px-3 py-2 border-2 rounded-xl text-sm font-black focus:outline-none w-36"
+                                          style={{ borderColor: '#3b82f6', letterSpacing: '0.2em', color: C.g800 }} />
+                                        <button onClick={handleVerifyEmailCode}
+                                          disabled={emailVerifyStep === 'verifying' || emailCode.length < 6}
+                                          className="px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-50"
+                                          style={{ backgroundColor: C.success }}>
+                                          {emailVerifyStep === 'verifying' ? 'Verifying…' : '✓ Verify'}
+                                        </button>
+                                        <button onClick={() => { setEmailVerifyStep('idle'); setEmailCode(''); }} className="text-xs underline text-gray-400">Resend</button>
+                                      </div>
+                                    </>
+                                  )}
                                 </div>
                               )}
                             </div>
-                          )}
-                        </div>
-                        {phoneVerified||phoneStep==='done'
-                          ? <CheckCircle size={16} className="text-green-500 flex-shrink-0 mt-0.5"/>
-                          : emailVerified ? null
-                          : <Clock size={16} className="text-gray-300 flex-shrink-0 mt-0.5"/>}
-                      </div>
-                    </div>
-
-                    {/* Step 3 — KYC (interactive) */}
-                    <div className={`p-4 rounded-xl border transition ${kycVerified ? 'bg-green-50 border-green-200' : phoneVerified ? 'border-blue-200 bg-blue-50' : 'bg-gray-50 border-gray-100'}`}>
-                      <div className="flex items-start gap-4">
-                        <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0 ${kycVerified ? 'bg-green-500 text-white' : phoneVerified ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
-                          {kycVerified ? <CheckCircle size={18}/> : 3}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className={`font-bold text-sm ${kycVerified ? 'text-green-800' : phoneVerified ? 'text-blue-800' : 'text-gray-600'}`}>Identity (KYC)</p>
-                            <span className={`text-xs font-black px-2 py-0.5 rounded-full ${kycVerified ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-600'}`}>{kycVerified ? '✓ Verified' : 'Advanced'}</span>
+                            {emailVerified
+                              ? <CheckCircle size={16} className="text-green-500 flex-shrink-0 mt-0.5"/>
+                              : underReview ? <Clock size={16} style={{color:'#D97706', flexShrink:0, marginTop:2}}/>
+                              : <span className="text-xs font-bold text-blue-600 flex-shrink-0 mt-0.5">Required →</span>}
                           </div>
-                          <p className={`text-xs mt-0.5 ${kycVerified ? 'text-green-600' : phoneVerified ? 'text-blue-600' : 'text-gray-400'}`}>
-                            {kycVerified ? 'Identity verified — unlimited trading unlocked ✓' : 'Upload your government ID + selfie for unlimited trading'}
-                          </p>
-
-                          {/* KYC upload flow */}
-                          {!kycVerified && phoneVerified && !kycSubmitted && (
-                            <div className="mt-3 space-y-2">
-                              {[
-                                { key: 'id',     label: '🪪 National ID / Passport' },
-                                { key: 'selfie', label: '🤳 Selfie holding your ID' },
-                              ].map(({ key, label }) => (
-                                <label key={key} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 border-dashed cursor-pointer hover:border-blue-400 transition"
-                                  style={{borderColor: kycFiles[key] ? C.success : C.g200}}>
-                                  <Upload size={14} style={{color: kycFiles[key] ? C.success : C.g400, flexShrink:0}}/>
-                                  <span className="text-xs font-bold flex-1" style={{color: kycFiles[key] ? C.success : C.g600}}>
-                                    {kycFiles[key] ? `✓ ${kycFiles[key].name}` : label}
-                                  </span>
-                                  <input type="file" accept="image/*,.pdf" className="hidden"
-                                    onChange={e=>setKycFiles(f=>({...f,[key]:e.target.files[0]||null}))}/>
-                                </label>
-                              ))}
-                              <button onClick={handleKycSubmit} disabled={kycLoading||!kycFiles.id||!kycFiles.selfie}
-                                className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-50 mt-1"
-                                style={{backgroundColor: C.green}}>
-                                {kycLoading ? <><RefreshCw size={13} className="animate-spin"/> Submitting…</> : <><Upload size={13}/> Submit for Review</>}
-                              </button>
-                            </div>
-                          )}
-                          {kycSubmitted && !kycVerified && (
-                            <div className="mt-2 flex items-center gap-2 text-xs font-bold" style={{color:C.warn}}>
-                              <Clock size={12}/> Under review — usually within 24 hours
-                            </div>
-                          )}
                         </div>
-                        {kycVerified
-                          ? <CheckCircle size={16} className="text-green-500 flex-shrink-0 mt-0.5"/>
-                          : phoneVerified ? null
-                          : <Clock size={16} className="text-gray-300 flex-shrink-0 mt-0.5"/>}
-                      </div>
-                    </div>
+                      );
+                    })()}
+
+                    {/* ── Step 2 — Phone ── */}
+                    {(() => {
+                      const done = phoneVerified || phoneStep === 'done';
+                      const underReview = !done && phoneResendCount >= 3;
+                      return (
+                        <div className={`p-4 rounded-xl border transition ${done ? 'bg-green-50 border-green-200' : underReview ? 'bg-amber-50 border-amber-200' : emailVerified ? 'border-blue-200 bg-blue-50' : 'bg-gray-50 border-gray-100'}`}>
+                          <div className="flex items-start gap-4">
+                            <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0 ${done ? 'bg-green-500 text-white' : underReview ? 'bg-amber-400 text-white' : emailVerified ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
+                              {done ? <CheckCircle size={18}/> : underReview ? <Clock size={18}/> : 2}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className={`font-bold text-sm ${done ? 'text-green-800' : underReview ? 'text-amber-800' : emailVerified ? 'text-blue-800' : 'text-gray-600'}`}>Phone Number</p>
+                                <span className={`text-xs font-black px-2 py-0.5 rounded-full ${done ? 'bg-green-200 text-green-800' : underReview ? 'bg-amber-200 text-amber-800' : 'bg-gray-200 text-gray-600'}`}>
+                                  {done ? '✓ Verified' : underReview ? '⏳ Under Review' : 'Standard'}
+                                </span>
+                              </div>
+                              <p className={`text-xs mt-0.5 ${done ? 'text-green-600' : underReview ? 'text-amber-700' : emailVerified ? 'text-blue-600' : 'text-gray-400'}`}>
+                                {done ? `${accountForm.phone || 'Phone'} verified ✓` : underReview ? 'Being reviewed by our team' : 'Verify your phone number to unlock $2,000 trade limit'}
+                              </p>
+
+                              {/* Under-review card */}
+                              {underReview && (
+                                <div className="mt-3 rounded-xl border overflow-hidden" style={{borderColor:'#FDE68A'}}>
+                                  <div className="px-4 py-2.5 flex items-center gap-2" style={{backgroundColor:'#FEF3C7', borderBottom:'1px solid #FDE68A'}}>
+                                    <Smartphone size={13} style={{color:'#D97706', flexShrink:0}}/>
+                                    <p className="text-xs font-black" style={{color:'#92400E'}}>Phone is Under Manual Review</p>
+                                  </div>
+                                  <div className="px-4 py-3 space-y-2" style={{backgroundColor:'#FFFBEB'}}>
+                                    <p className="text-xs leading-relaxed" style={{color:'#78350F'}}>
+                                      We tried to send an OTP to <strong>{accountForm.phone}</strong> but couldn't confirm delivery.
+                                      Our team will manually verify your number and notify you within <strong>24 hours</strong>.
+                                    </p>
+                                    <p className="text-xs" style={{color:'#92400E'}}>You'll receive an update once your number is approved or rejected.</p>
+                                    <a href="mailto:hello@hellopraqen.com"
+                                      className="inline-flex items-center gap-1.5 text-xs font-black mt-1"
+                                      style={{color:'#D97706'}}>
+                                      <Mail size={11}/> hello@hellopraqen.com
+                                    </a>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Normal OTP flow */}
+                              {!done && !underReview && emailVerified && (
+                                <div className="mt-3 space-y-2">
+                                  {(phoneStep === 'idle' || phoneStep === 'sending') && (
+                                    <button onClick={handleSendPhoneOtp} disabled={phoneStep === 'sending'}
+                                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-60"
+                                      style={{backgroundColor: C.paid}}>
+                                      <Smartphone size={13}/>
+                                      {phoneStep === 'sending' ? 'Sending OTP…' : `Send OTP to ${accountForm.phone || 'your phone'}`}
+                                    </button>
+                                  )}
+                                  {(phoneStep === 'otp' || phoneStep === 'verifying') && (
+                                    <div className="flex gap-2 items-center flex-wrap">
+                                      <input type="text" inputMode="numeric" maxLength={6}
+                                        placeholder="Enter 6-digit OTP"
+                                        value={phoneOtp} onChange={e => setPhoneOtp(e.target.value.replace(/\D/g, ''))}
+                                        className="px-3 py-2 border-2 rounded-xl text-sm font-black tracking-widest focus:outline-none w-40"
+                                        style={{borderColor: C.paid, color: C.g800, letterSpacing: '0.2em'}}/>
+                                      <button onClick={handleVerifyPhone} disabled={phoneStep === 'verifying'}
+                                        className="px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-60"
+                                        style={{backgroundColor: C.success}}>
+                                        {phoneStep === 'verifying' ? 'Verifying…' : '✓ Verify'}
+                                      </button>
+                                      <button onClick={() => { setPhoneStep('idle'); setPhoneOtp(''); }} className="text-xs text-gray-400 underline">Resend</button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            {done
+                              ? <CheckCircle size={16} className="text-green-500 flex-shrink-0 mt-0.5"/>
+                              : underReview ? <Clock size={16} style={{color:'#D97706', flexShrink:0, marginTop:2}}/>
+                              : emailVerified ? null
+                              : <Clock size={16} className="text-gray-300 flex-shrink-0 mt-0.5"/>}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* ── Step 3 — KYC ── */}
+                    {(() => {
+                      const kycPending = (kycSubmitted || kycStatus === 'pending') && !kycVerified;
+                      return (
+                        <div className={`p-4 rounded-xl border transition ${kycVerified ? 'bg-green-50 border-green-200' : kycPending ? 'bg-amber-50 border-amber-200' : phoneVerified ? 'border-blue-200 bg-blue-50' : 'bg-gray-50 border-gray-100'}`}>
+                          <div className="flex items-start gap-4">
+                            <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0 ${kycVerified ? 'bg-green-500 text-white' : kycPending ? 'bg-amber-400 text-white' : phoneVerified ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
+                              {kycVerified ? <CheckCircle size={18}/> : kycPending ? <Clock size={18}/> : 3}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className={`font-bold text-sm ${kycVerified ? 'text-green-800' : kycPending ? 'text-amber-800' : phoneVerified ? 'text-blue-800' : 'text-gray-600'}`}>Identity (KYC)</p>
+                                <span className={`text-xs font-black px-2 py-0.5 rounded-full ${kycVerified ? 'bg-green-200 text-green-800' : kycPending ? 'bg-amber-200 text-amber-800' : 'bg-gray-200 text-gray-600'}`}>
+                                  {kycVerified ? '✓ Verified' : kycPending ? '⏳ Pending' : 'Advanced'}
+                                </span>
+                              </div>
+                              <p className={`text-xs mt-0.5 ${kycVerified ? 'text-green-600' : kycPending ? 'text-amber-700' : phoneVerified ? 'text-blue-600' : 'text-gray-400'}`}>
+                                {kycVerified ? 'Identity verified — unlimited trading unlocked ✓' : kycPending ? 'Documents received — under review by our team' : 'Upload your government ID + selfie for unlimited trading'}
+                              </p>
+
+                              {/* KYC pending card */}
+                              {kycPending && (
+                                <div className="mt-3 rounded-xl border overflow-hidden" style={{borderColor:'#FDE68A'}}>
+                                  <div className="px-4 py-2.5 flex items-center gap-2" style={{backgroundColor:'#FEF3C7', borderBottom:'1px solid #FDE68A'}}>
+                                    <Clock size={13} style={{color:'#D97706', flexShrink:0}}/>
+                                    <p className="text-xs font-black" style={{color:'#92400E'}}>Documents Under Review</p>
+                                    <span className="ml-auto text-xs font-black px-2 py-0.5 rounded-full" style={{backgroundColor:'#FCD34D', color:'#78350F'}}>Pending</span>
+                                  </div>
+                                  <div className="px-4 py-3 space-y-2" style={{backgroundColor:'#FFFBEB'}}>
+                                    {kycFiles.id && <div className="flex items-center gap-2"><CheckCircle size={12} style={{color:'#D97706', flexShrink:0}}/><span className="text-xs font-semibold" style={{color:'#92400E'}}>ID document received</span></div>}
+                                    {kycFiles.selfie && <div className="flex items-center gap-2"><CheckCircle size={12} style={{color:'#D97706', flexShrink:0}}/><span className="text-xs font-semibold" style={{color:'#92400E'}}>Selfie received</span></div>}
+                                    {!kycFiles.id && !kycFiles.selfie && <div className="flex items-center gap-2"><CheckCircle size={12} style={{color:'#D97706', flexShrink:0}}/><span className="text-xs font-semibold" style={{color:'#92400E'}}>Documents submitted</span></div>}
+                                    <p className="text-xs leading-relaxed" style={{color:'#78350F'}}>
+                                      Our team is reviewing your identity documents. You will be notified within <strong>24 hours</strong> whether your KYC is approved or if we need more information.
+                                    </p>
+                                    <a href="mailto:hello@hellopraqen.com"
+                                      className="inline-flex items-center gap-1.5 text-xs font-black"
+                                      style={{color:'#D97706'}}>
+                                      <Mail size={11}/> hello@hellopraqen.com
+                                    </a>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* KYC upload form */}
+                              {!kycVerified && !kycPending && phoneVerified && (
+                                <div className="mt-3 space-y-2">
+                                  {[
+                                    { key: 'id',     label: '🪪 National ID / Passport' },
+                                    { key: 'selfie', label: '🤳 Selfie holding your ID' },
+                                  ].map(({ key, label }) => (
+                                    <label key={key} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 border-dashed cursor-pointer hover:border-blue-400 transition"
+                                      style={{borderColor: kycFiles[key] ? C.success : C.g200}}>
+                                      <Upload size={14} style={{color: kycFiles[key] ? C.success : C.g400, flexShrink:0}}/>
+                                      <span className="text-xs font-bold flex-1" style={{color: kycFiles[key] ? C.success : C.g600}}>
+                                        {kycFiles[key] ? `✓ ${kycFiles[key].name}` : label}
+                                      </span>
+                                      <input type="file" accept="image/*,.pdf" className="hidden"
+                                        onChange={e => setKycFiles(f => ({...f, [key]: e.target.files[0] || null}))}/>
+                                    </label>
+                                  ))}
+                                  <button onClick={handleKycSubmit} disabled={kycLoading || !kycFiles.id || !kycFiles.selfie}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-50 mt-1"
+                                    style={{backgroundColor: C.green}}>
+                                    {kycLoading ? <><RefreshCw size={13} className="animate-spin"/> Submitting…</> : <><Upload size={13}/> Submit for Review</>}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                            {kycVerified
+                              ? <CheckCircle size={16} className="text-green-500 flex-shrink-0 mt-0.5"/>
+                              : kycPending ? <Clock size={16} style={{color:'#D97706', flexShrink:0, marginTop:2}}/>
+                              : phoneVerified ? null
+                              : <Clock size={16} className="text-gray-300 flex-shrink-0 mt-0.5"/>}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                   </div>
                 </div>
@@ -816,6 +932,7 @@ export default function Settings({ user, setUser }) {
                   </div>
                 </div>
 
+                </>}
               </div>
             )}
 

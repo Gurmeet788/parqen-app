@@ -9,7 +9,8 @@ import {
   MessageCircle, Gift, Copy, RefreshCw, Users,
   Medal, Crown, Zap, BarChart3, ChevronRight,
   PlusCircle, X, Link, TrendingDown, Award, Flame,
-  UserCheck, UserX, Target, Percent, Lock, ThumbsUp, ThumbsDown
+  UserCheck, UserX, Target, Percent, Lock, ThumbsUp, ThumbsDown,
+  Download, Trophy
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
@@ -250,7 +251,10 @@ function ProfileSummary({ user, profile, stats }) {
 }
 
 // ─── Affiliate Section — Premium Design ───────────────────────────────────────
-function AffiliateSection({ user, profile, earnings, referralData, btcPrice, onWithdraw, dbReferralCount, dbTotalEarnings }) {
+const BADGE_COLORS = { BEGINNER:'#7C3AED', PRO:'#065F46', EXPERT:'#1E40AF', AMBASSADOR:'#0D9488', LEGEND:'#D97706' };
+const RANK_MEDALS = ['🥇','🥈','🥉'];
+
+function AffiliateSection({ user, profile, earnings, referralData, btcPrice, onWithdraw, dbReferralCount, dbTotalEarnings, leaderboard }) {
   const [copied, setCopied] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const referralLink = `https://praqen.com/signup?ref=${user?.referral_code || profile?.referral_code || 'PRAQEN'}`;
@@ -536,6 +540,76 @@ function AffiliateSection({ user, profile, earnings, referralData, btcPrice, onW
         )}
       </div>
 
+      {/* ── HOW IT WORKS ────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border shadow-sm p-4" style={{borderColor:C.g200}}>
+        <p className="text-xs font-black mb-3" style={{color:C.forest}}>💡 How the Affiliate Program Works</p>
+        <div className="space-y-2.5">
+          {[
+            { step:'1', title:'Share Your Link', body:'Copy your unique referral link and share it on WhatsApp, Telegram, Twitter or anywhere.', color:'#3B82F6' },
+            { step:'2', title:'Friend Signs Up & Trades', body:'When your friend clicks your link, registers, and completes a trade — you earn automatically.', color:C.green },
+            { step:'3', title:'Earn BTC Commission', body:'You receive 0.1%–0.3% of every trade value in Bitcoin, directly credited to your account.', color:C.amber },
+            { step:'4', title:'No Limits, No Expiry', body:'Earn forever — there\'s no cap on how many people you refer or how much BTC you can earn.', color:C.purple },
+          ].map(({step,title,body,color})=>(
+            <div key={step} className="flex gap-3">
+              <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-black text-white flex-shrink-0 mt-0.5"
+                style={{backgroundColor:color}}>{step}</div>
+              <div>
+                <p className="text-xs font-black" style={{color:C.forest}}>{title}</p>
+                <p className="text-xs leading-relaxed mt-0.5" style={{color:C.g500}}>{body}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── LEADERBOARD ─────────────────────────────────────────────── */}
+      {leaderboard && leaderboard.length > 0 && (
+        <div className="bg-white rounded-2xl border shadow-sm overflow-hidden" style={{borderColor:C.g200}}>
+          <div className="px-4 py-3 border-b flex items-center justify-between"
+            style={{borderColor:C.g100, background:'linear-gradient(135deg,#FEF3C7,#FDE68A20)'}}>
+            <div className="flex items-center gap-2">
+              <Trophy size={14} style={{color:C.amber}}/>
+              <p className="text-xs font-black" style={{color:C.forest}}>Top Earners — Affiliate Leaderboard</p>
+            </div>
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{backgroundColor:`${C.amber}20`, color:C.amber}}>
+              This Month
+            </span>
+          </div>
+          <div className="divide-y" style={{borderColor:C.g50}}>
+            {leaderboard.map((entry) => (
+              <div key={entry.rank} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition">
+                <div className="w-8 flex-shrink-0 text-center">
+                  {entry.rank <= 3
+                    ? <span className="text-xl">{RANK_MEDALS[entry.rank-1]}</span>
+                    : <span className="text-sm font-black" style={{color:C.g400}}>#{entry.rank}</span>
+                  }
+                </div>
+                <div className="w-8 h-8 rounded-full flex items-center justify-center font-black text-xs text-white flex-shrink-0"
+                  style={{backgroundColor: BADGE_COLORS[entry.badge] || C.green}}>
+                  {entry.username?.charAt(0)?.toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs font-black" style={{color:C.forest}}>{entry.username}</p>
+                    <span className="text-xs px-1.5 py-0.5 rounded-full font-bold" style={{backgroundColor:`${BADGE_COLORS[entry.badge]||C.green}18`, color:BADGE_COLORS[entry.badge]||C.green}}>
+                      {entry.badge}
+                    </span>
+                  </div>
+                  <p className="text-xs" style={{color:C.g400}}>{entry.referrals} referrals · {entry.total_trades} trades</p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-xs font-black" style={{color:C.success}}>₿ {parseFloat(entry.earned_btc).toFixed(6)}</p>
+                  {btcPrice > 0 && <p className="text-xs" style={{color:C.g400}}>≈ ${(entry.earned_btc * btcPrice).toFixed(2)}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="px-4 py-2.5 border-t text-center" style={{borderColor:C.g100, backgroundColor:C.g50}}>
+            <p className="text-xs" style={{color:C.g400}}>🔒 Usernames are anonymized for privacy. Could you be next?</p>
+          </div>
+        </div>
+      )}
+
       {/* ── RECENT EARNINGS ─────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border shadow-sm overflow-hidden" style={{borderColor:C.g200}}>
         <div className="px-4 py-3 border-b flex items-center justify-between"
@@ -690,6 +764,7 @@ export default function Dashboard({ user }) {
   const [activeTrades, setActiveTrades]   = useState([]);
   const [earnings, setEarnings]           = useState([]);
   const [referralData, setReferralData]   = useState(null);
+  const [leaderboard, setLeaderboard]     = useState([]);
   const [btcPrice, setBtcPrice]           = useState(0);
   const [walletBalance, setWalletBalance] = useState(0);
   const [showBalance, setShowBalance]     = useState(true);
@@ -746,6 +821,7 @@ export default function Dashboard({ user }) {
       await loadDashboardData(true);
       await fetchWalletBalance();
       await fetchReferralData();
+      await fetchTrades();
     } finally {
       setIsRefreshing(false);
     }
@@ -763,6 +839,54 @@ export default function Dashboard({ user }) {
         setEarnings(res.data.earnings || []);
       }
     } catch (e) { /* silent */ }
+  };
+
+  const fetchTrades = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    try {
+      const [activeRes, allRes] = await Promise.all([
+        axios.get(`${API_URL}/trades/active`, { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get(`${API_URL}/my-trades?limit=50`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+      if (activeRes.data.success) setActiveTrades(activeRes.data.trades || []);
+      if (allRes.data.trades) setRecentTrades(allRes.data.trades || []);
+    } catch (e) { /* silent */ }
+  };
+
+  const fetchLeaderboard = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/referral/leaderboard`);
+      if (res.data.success) setLeaderboard(res.data.leaderboard || []);
+    } catch (e) { /* silent */ }
+  };
+
+  const exportTradesCSV = () => {
+    if (recentTrades.length === 0) { toast.info('No trades to export yet.'); return; }
+    const headers = ['Trade ID','Type','Status','BTC Amount','Local Amount','Currency','Payment Method','Date','Counterparty'];
+    const rows = recentTrades.map(t => {
+      const isBuyer = t.buyer_id === user?.id;
+      const cp = isBuyer ? (t.seller?.username||'—') : (t.buyer?.username||'—');
+      return [
+        t.id?.slice(0,8).toUpperCase(),
+        isBuyer ? 'BUY' : 'SELL',
+        t.status,
+        parseFloat(t.amount_btc||0).toFixed(8),
+        parseFloat(t.amount_local||t.amount_usd||0).toFixed(2),
+        t.local_currency||t.currency||'USD',
+        t.payment_method||'—',
+        t.created_at ? new Date(t.created_at).toLocaleDateString() : '—',
+        cp,
+      ];
+    });
+    const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = `praqen-trades-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Trade history exported!');
   };
 
   const fetchBtcPrice = async () => {
@@ -817,6 +941,8 @@ export default function Dashboard({ user }) {
     fetchReferralData();
     fetchBtcPrice();
     fetchWalletBalance();
+    fetchTrades();
+    fetchLeaderboard();
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-refresh every 60s — heartbeat keeps user online, silent so no spinner flicker
@@ -828,6 +954,7 @@ export default function Dashboard({ user }) {
       }
       loadDashboardData(true);
       fetchWalletBalance();
+      fetchTrades();
     }, 60000);
     return () => clearInterval(iv);
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -866,7 +993,6 @@ export default function Dashboard({ user }) {
 
   return (
     <div className="min-h-screen pb-10" style={{backgroundColor:C.mist, fontFamily:"'DM Sans',sans-serif"}}>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
 
       {/* Top bar */}
       <div className="border-b bg-white sticky top-0 z-30" style={{borderColor:C.g200}}>
@@ -1129,6 +1255,29 @@ export default function Dashboard({ user }) {
               </div>
             </div>
 
+          {/* ── AFFILIATE AWARENESS BANNER — shown prominently until first referral ── */}
+          {stats.totalReferrals === 0 && (
+            <div className="rounded-2xl overflow-hidden shadow-sm border cursor-pointer"
+              style={{borderColor:'#C4B5FD', background:'linear-gradient(135deg,#F5F3FF,#EDE9FE)'}}
+              onClick={()=>setActiveTab('affiliate')}>
+              <div className="p-4 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0"
+                  style={{backgroundColor:'#8B5CF620'}}>💰</div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-black" style={{color:'#4C1D95'}}>
+                    Did you know? You can earn Bitcoin just by sharing your link!
+                  </p>
+                  <p className="text-xs mt-0.5 leading-relaxed" style={{color:'#6D28D9'}}>
+                    Invite friends to PRAQEN — when they trade, you earn <strong>0.1–0.3% commission</strong> in BTC automatically. No limits.
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 text-xs font-black flex-shrink-0 px-3 py-1.5 rounded-xl"
+                  style={{backgroundColor:'#7C3AED', color:'#fff'}}>
+                  Start <ChevronRight size={11}/>
+                </div>
+              </div>
+            </div>
+          )}
           </>
         )}
 
@@ -1174,12 +1323,19 @@ export default function Dashboard({ user }) {
         {activeTab==='trades' && (
           <div className="bg-white rounded-2xl border shadow-sm overflow-hidden" style={{borderColor:C.g200}}>
             <div className="px-5 py-4 border-b" style={{borderColor:C.g100}}>
-              <SectionHeader icon={Activity} title="All My Trades"/>
+              <div className="flex items-center justify-between">
+                <SectionHeader icon={Activity} title="All My Trades"/>
+                <button onClick={exportTradesCSV}
+                  className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl border hover:bg-gray-50 transition"
+                  style={{borderColor:C.g200, color:C.g600}}>
+                  <Download size={12}/> Export CSV
+                </button>
+              </div>
               <div className="flex gap-3 text-xs mt-2">
                 {[
-                  {label:`${stats.completedTrades} Completed`, color:C.success},
-                  {label:`${stats.pendingTrades} Pending`,     color:C.warn},
-                  {label:`${stats.totalTrades} Total`,         color:C.paid},
+                  {label:`${recentTrades.filter(t=>t.status==='COMPLETED').length} Completed`, color:C.success},
+                  {label:`${activeTrades.length} Active`,  color:C.warn},
+                  {label:`${recentTrades.length} Total`,   color:C.paid},
                 ].map(({label,color})=>(
                   <span key={label} className="font-bold" style={{color}}>{label}</span>
                 ))}
@@ -1295,7 +1451,7 @@ export default function Dashboard({ user }) {
 
         {/* ── AFFILIATE TAB ─────────────────────────────────────────────────── */}
         {activeTab==='affiliate' && (
-          <AffiliateSection user={displayUser} profile={profile} earnings={earnings} referralData={referralData} btcPrice={btcPrice} onWithdraw={handleReferralWithdraw} dbReferralCount={stats.totalReferrals} dbTotalEarnings={stats.referralEarnings > 0 ? stats.referralEarnings : undefined}/>
+          <AffiliateSection user={displayUser} profile={profile} earnings={earnings} referralData={referralData} btcPrice={btcPrice} onWithdraw={handleReferralWithdraw} dbReferralCount={stats.totalReferrals} dbTotalEarnings={stats.referralEarnings > 0 ? stats.referralEarnings : undefined} leaderboard={leaderboard}/>
         )}
 
       </div>

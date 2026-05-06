@@ -885,7 +885,6 @@ export default function TradeDetail({user}) {
 
   return(
     <div className="min-h-screen flex flex-col" style={{backgroundColor:C.g50,fontFamily:"'DM Sans',sans-serif"}}>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
 
       {/* ── MAIN CONTENT ─────────────────────────────────────────────────── */}
       <div className="flex-1 max-w-7xl mx-auto w-full px-3 py-3 pb-4">
