@@ -112,11 +112,24 @@ export default function Settings({ user, setUser }) {
   const [emailCode,         setEmailCode]         = useState('');
   const [emailCodeLoading,  setEmailCodeLoading]  = useState(false);
 
-  // KYC upload
-  const [kycFiles,     setKycFiles]     = useState({ id: null, selfie: null });
-  const [kycLoading,   setKycLoading]   = useState(false);
-  const [kycSubmitted, setKycSubmitted] = useState(false);
-  const [kycStatus,    setKycStatus]    = useState(user?.kyc_status || null); // null | 'pending' | 'approved'
+  // KYC upload — multi-step flow
+  const [kycIdType,         setKycIdType]         = useState('');
+  const [kycFiles,          setKycFiles]          = useState({ id: null, selfie: null });
+  const [kycStep,           setKycStep]           = useState('select');
+  const [kycLoading,        setKycLoading]        = useState(false);
+  const [kycSubmitted,      setKycSubmitted]      = useState(false);
+  const [kycStatus,         setKycStatus]         = useState(user?.kyc_status || null);
+  const [kycSubmittedType,  setKycSubmittedType]  = useState(user?.kyc_id_type || null);
+  const [kycSubmittedAt,    setKycSubmittedAt]    = useState(user?.kyc_submitted_at || null);
+  const [kycRejectedReason, setKycRejectedReason] = useState(user?.kyc_rejection_reason || null);
+
+  const KYC_ID_TYPES = [
+    { value: 'ghana_card',      label: '🪪 Ghana Card' },
+    { value: 'drivers_license', label: '🚗 Driver\'s Licence' },
+    { value: 'passport',        label: '🛂 Passport' },
+    { value: 'id_card',         label: '💳 ID Card' },
+    { value: 'order_id',        label: '📄 Order ID Under Your Name' },
+  ];
 
   // Resend attempt counters — persisted so they survive page refresh
   const [emailResendCount, setEmailResendCount] = useState(() => parseInt(localStorage.getItem('prq_email_resend') || '0'));
@@ -150,31 +163,52 @@ export default function Settings({ user, setUser }) {
     setKycVerified(!!(user.kyc_verified || user.is_id_verified));
   }, [user]);
 
-  // On mount, fetch fresh profile from API and update verification state directly.
-  // This ensures status is correct even when the user prop is stale from localStorage.
+  // On mount, fetch fresh profile + KYC status from API.
+  // Ensures displayed state is accurate even when localStorage is stale.
   useEffect(() => {
     const tk = localStorage.getItem('token');
     if (!tk) { setVerificationSyncing(false); return; }
-    axios.get(`${API_URL}/users/profile`, { headers: authH() })
-      .then(r => {
-        const fresh = r.data.user || r.data;
-        if (fresh?.id) {
-          const emailOk = !!(fresh.is_email_verified || fresh.email_verified);
-          const phoneOk = !!(fresh.is_phone_verified || fresh.phone_verified);
-          setEmailVerified(emailOk);
-          setPhoneVerified(phoneOk);
+
+    // Fetch profile and KYC status in parallel
+    Promise.all([
+      axios.get(`${API_URL}/users/profile`, { headers: authH() }),
+      axios.get(`${API_URL}/kyc/status`,    { headers: authH() }),
+    ]).then(([profileRes, kycRes]) => {
+      const fresh = profileRes.data.user || profileRes.data;
+      if (fresh?.id) {
+        const emailOk = !!(fresh.is_email_verified || fresh.email_verified);
+        const phoneOk = !!(fresh.is_phone_verified || fresh.phone_verified);
+        setEmailVerified(emailOk);
+        setPhoneVerified(phoneOk);
+        if (emailOk) { localStorage.removeItem('prq_email_resend'); setEmailResendCount(0); }
+        if (phoneOk) { localStorage.removeItem('prq_phone_resend'); setPhoneResendCount(0); }
+        if (setUser) setUser(u => ({ ...u, ...fresh }));
+        const stored = JSON.parse(localStorage.getItem('user') || '{}');
+        localStorage.setItem('user', JSON.stringify({ ...stored, ...fresh }));
+      }
+      // Apply KYC status from dedicated endpoint (always fresh)
+      const kyc = kycRes.data;
+      const isVerified = !!(kyc.is_id_verified || kyc.kyc_status === 'approved');
+      setKycVerified(isVerified);
+      if (kyc.kyc_status) setKycStatus(kyc.kyc_status);
+      if (kyc.kyc_id_type) setKycSubmittedType(kyc.kyc_id_type);
+      if (kyc.kyc_submitted_at) setKycSubmittedAt(kyc.kyc_submitted_at);
+      if (kyc.kyc_rejection_reason) setKycRejectedReason(kyc.kyc_rejection_reason);
+      // If already submitted before, mark as submitted so pending banner shows
+      if (kyc.kyc_status === 'pending') setKycSubmitted(true);
+    }).catch(() => {
+      // Fallback: try profile alone if KYC endpoint fails (column may not exist yet)
+      axios.get(`${API_URL}/users/profile`, { headers: authH() })
+        .then(r => {
+          const fresh = r.data.user || r.data;
+          if (!fresh?.id) return;
+          setEmailVerified(!!(fresh.is_email_verified || fresh.email_verified));
+          setPhoneVerified(!!(fresh.is_phone_verified || fresh.phone_verified));
           setKycVerified(!!(fresh.kyc_verified || fresh.is_id_verified));
-          if (fresh.kyc_status) setKycStatus(fresh.kyc_status);
-          // Clear retry counters once the user is actually verified
-          if (emailOk) { localStorage.removeItem('prq_email_resend'); setEmailResendCount(0); }
-          if (phoneOk) { localStorage.removeItem('prq_phone_resend'); setPhoneResendCount(0); }
-          if (setUser) setUser(u => ({ ...u, ...fresh }));
-          const stored = JSON.parse(localStorage.getItem('user') || '{}');
-          localStorage.setItem('user', JSON.stringify({ ...stored, ...fresh }));
-        }
-      })
-      .catch(() => {})
-      .finally(() => setVerificationSyncing(false));
+          if (fresh.kyc_status) { setKycStatus(fresh.kyc_status); if (fresh.kyc_status === 'pending') setKycSubmitted(true); }
+          if (fresh.kyc_id_type) setKycSubmittedType(fresh.kyc_id_type);
+        }).catch(() => {});
+    }).finally(() => setVerificationSyncing(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAccountUpdate = async (e) => {
@@ -317,18 +351,42 @@ export default function Settings({ user, setUser }) {
     } catch (e) { toast.error(e?.response?.data?.error || 'Invalid OTP'); setPhoneStep('otp'); }
   };
 
+  const fileToBase64 = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
   const handleKycSubmit = async () => {
-    if (!kycFiles.id || !kycFiles.selfie) { toast.error('Please upload both documents'); return; }
+    if (!kycFiles.id || !kycFiles.selfie || !kycIdType) {
+      toast.error('Please complete all steps before submitting');
+      return;
+    }
     setKycLoading(true);
+    setKycStep('processing');
     try {
-      await axios.post(`${API_URL}/kyc/submit`,
-        { idDocName: kycFiles.id.name, selfieDocName: kycFiles.selfie.name },
+      const [idImage, selfieImage] = await Promise.all([
+        fileToBase64(kycFiles.id),
+        fileToBase64(kycFiles.selfie),
+      ]);
+      await axios.post(`${API_URL}/kyc/upload`,
+        { idImage, selfieImage, idType: kycIdType },
         { headers: authH() }
       );
-      toast.success("Documents received! We'll review within 24 hours.");
+      toast.success("Documents received! We'll review within 24 hours. ✅");
       setKycSubmitted(true);
       setKycStatus('pending');
-    } catch (e) { toast.error(e?.response?.data?.error || 'Failed to submit KYC'); }
+      setKycSubmittedType(kycIdType);
+      setKycSubmittedAt(new Date().toISOString());
+      setKycStep('done');
+      // Persist to localStorage so pending state survives navigation
+      const stored = JSON.parse(localStorage.getItem('user') || '{}');
+      localStorage.setItem('user', JSON.stringify({ ...stored, kyc_status: 'pending', kyc_id_type: kycIdType }));
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Failed to submit KYC');
+      setKycStep('ready');
+    }
     finally { setKycLoading(false); }
   };
 
@@ -818,70 +876,266 @@ export default function Settings({ user, setUser }) {
 
                     {/* ── Step 3 — KYC ── */}
                     {(() => {
-                      const kycPending = (kycSubmitted || kycStatus === 'pending') && !kycVerified;
+                      const kycPending  = (kycSubmitted || kycStatus === 'pending')  && !kycVerified;
+                      const kycRejected = kycStatus === 'rejected' && !kycVerified;
+                      const displayType = kycSubmittedType || kycIdType;
+                      const typeLabel   = KYC_ID_TYPES.find(t => t.value === displayType)?.label || 'Government ID';
+                      const submittedAgo = kycSubmittedAt ? (() => {
+                        const s = (Date.now() - new Date(kycSubmittedAt)) / 1000;
+                        if (s < 3600)  return `${Math.floor(s/60)}m ago`;
+                        if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+                        return `${Math.floor(s/86400)}d ago`;
+                      })() : null;
                       return (
-                        <div className={`p-4 rounded-xl border transition ${kycVerified ? 'bg-green-50 border-green-200' : kycPending ? 'bg-amber-50 border-amber-200' : phoneVerified ? 'border-blue-200 bg-blue-50' : 'bg-gray-50 border-gray-100'}`}>
+                        <div className={`p-4 rounded-xl border transition ${
+                          kycVerified  ? 'bg-green-50 border-green-200' :
+                          kycRejected  ? 'bg-red-50 border-red-200' :
+                          kycPending   ? 'bg-amber-50 border-amber-200' :
+                          phoneVerified? 'border-blue-200 bg-blue-50' : 'bg-gray-50 border-gray-100'
+                        }`}>
                           <div className="flex items-start gap-4">
-                            <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0 ${kycVerified ? 'bg-green-500 text-white' : kycPending ? 'bg-amber-400 text-white' : phoneVerified ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
-                              {kycVerified ? <CheckCircle size={18}/> : kycPending ? <Clock size={18}/> : 3}
+                            <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0 ${
+                              kycVerified  ? 'bg-green-500 text-white' :
+                              kycRejected  ? 'bg-red-500 text-white' :
+                              kycPending   ? 'bg-amber-400 text-white' :
+                              phoneVerified? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'
+                            }`}>
+                              {kycVerified ? <CheckCircle size={18}/> : kycPending ? <Clock size={18}/> : kycRejected ? '✕' : 3}
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <p className={`font-bold text-sm ${kycVerified ? 'text-green-800' : kycPending ? 'text-amber-800' : phoneVerified ? 'text-blue-800' : 'text-gray-600'}`}>Identity (KYC)</p>
-                                <span className={`text-xs font-black px-2 py-0.5 rounded-full ${kycVerified ? 'bg-green-200 text-green-800' : kycPending ? 'bg-amber-200 text-amber-800' : 'bg-gray-200 text-gray-600'}`}>
-                                  {kycVerified ? '✓ Verified' : kycPending ? '⏳ Pending' : 'Advanced'}
+                                <p className={`font-bold text-sm ${kycVerified ? 'text-green-800' : kycRejected ? 'text-red-800' : kycPending ? 'text-amber-800' : phoneVerified ? 'text-blue-800' : 'text-gray-600'}`}>
+                                  Identity (KYC)
+                                </p>
+                                <span className={`text-xs font-black px-2 py-0.5 rounded-full ${
+                                  kycVerified  ? 'bg-green-200 text-green-800' :
+                                  kycRejected  ? 'bg-red-200 text-red-800' :
+                                  kycPending   ? 'bg-amber-200 text-amber-800' :
+                                  'bg-gray-200 text-gray-600'
+                                }`}>
+                                  {kycVerified ? '✓ Verified' : kycRejected ? '✗ Rejected' : kycPending ? '⏳ Under Review' : 'Advanced'}
                                 </span>
                               </div>
-                              <p className={`text-xs mt-0.5 ${kycVerified ? 'text-green-600' : kycPending ? 'text-amber-700' : phoneVerified ? 'text-blue-600' : 'text-gray-400'}`}>
-                                {kycVerified ? 'Identity verified — unlimited trading unlocked ✓' : kycPending ? 'Documents received — under review by our team' : 'Upload your government ID + selfie for unlimited trading'}
+                              <p className={`text-xs mt-0.5 ${kycVerified ? 'text-green-600' : kycRejected ? 'text-red-600' : kycPending ? 'text-amber-700' : phoneVerified ? 'text-blue-600' : 'text-gray-400'}`}>
+                                {kycVerified  ? 'Identity verified — unlimited trading unlocked ✓' :
+                                 kycRejected  ? 'Your documents were not accepted — please re-submit' :
+                                 kycPending   ? 'Documents received and under review by our team' :
+                                 'Upload your government ID + selfie for unlimited trading'}
                               </p>
 
-                              {/* KYC pending card */}
+                              {/* ── KYC PENDING BANNER ── */}
                               {kycPending && (
                                 <div className="mt-3 rounded-xl border overflow-hidden" style={{borderColor:'#FDE68A'}}>
+                                  {/* Header */}
                                   <div className="px-4 py-2.5 flex items-center gap-2" style={{backgroundColor:'#FEF3C7', borderBottom:'1px solid #FDE68A'}}>
                                     <Clock size={13} style={{color:'#D97706', flexShrink:0}}/>
                                     <p className="text-xs font-black" style={{color:'#92400E'}}>Documents Under Review</p>
-                                    <span className="ml-auto text-xs font-black px-2 py-0.5 rounded-full" style={{backgroundColor:'#FCD34D', color:'#78350F'}}>Pending</span>
+                                    <span className="ml-auto text-xs font-black px-2 py-0.5 rounded-full animate-pulse" style={{backgroundColor:'#FCD34D', color:'#78350F'}}>⏳ Pending</span>
                                   </div>
+                                  {/* Body */}
                                   <div className="px-4 py-3 space-y-2" style={{backgroundColor:'#FFFBEB'}}>
-                                    {kycFiles.id && <div className="flex items-center gap-2"><CheckCircle size={12} style={{color:'#D97706', flexShrink:0}}/><span className="text-xs font-semibold" style={{color:'#92400E'}}>ID document received</span></div>}
-                                    {kycFiles.selfie && <div className="flex items-center gap-2"><CheckCircle size={12} style={{color:'#D97706', flexShrink:0}}/><span className="text-xs font-semibold" style={{color:'#92400E'}}>Selfie received</span></div>}
-                                    {!kycFiles.id && !kycFiles.selfie && <div className="flex items-center gap-2"><CheckCircle size={12} style={{color:'#D97706', flexShrink:0}}/><span className="text-xs font-semibold" style={{color:'#92400E'}}>Documents submitted</span></div>}
-                                    <p className="text-xs leading-relaxed" style={{color:'#78350F'}}>
-                                      Our team is reviewing your identity documents. You will be notified within <strong>24 hours</strong> whether your KYC is approved or if we need more information.
+                                    {displayType && (
+                                      <div className="flex items-center gap-2">
+                                        <CheckCircle size={12} style={{color:'#D97706', flexShrink:0}}/>
+                                        <span className="text-xs font-semibold" style={{color:'#92400E'}}>Document: {typeLabel}</span>
+                                      </div>
+                                    )}
+                                    <div className="flex items-center gap-2">
+                                      <CheckCircle size={12} style={{color:'#D97706', flexShrink:0}}/>
+                                      <span className="text-xs font-semibold" style={{color:'#92400E'}}>ID document uploaded ✓</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <CheckCircle size={12} style={{color:'#D97706', flexShrink:0}}/>
+                                      <span className="text-xs font-semibold" style={{color:'#92400E'}}>Selfie uploaded ✓</span>
+                                    </div>
+                                    {submittedAgo && (
+                                      <div className="flex items-center gap-2">
+                                        <Clock size={12} style={{color:'#D97706', flexShrink:0}}/>
+                                        <span className="text-xs font-semibold" style={{color:'#92400E'}}>Submitted {submittedAgo}</span>
+                                      </div>
+                                    )}
+                                    <p className="text-xs leading-relaxed pt-1" style={{color:'#78350F'}}>
+                                      Our team reviews documents within <strong>24 hours</strong>. You will receive an in-app notification when approved or if we need more information.
                                     </p>
-                                    <a href="mailto:hello@hellopraqen.com"
-                                      className="inline-flex items-center gap-1.5 text-xs font-black"
-                                      style={{color:'#D97706'}}>
-                                      <Mail size={11}/> hello@hellopraqen.com
+                                    <a href="mailto:hello@praqen.com" className="inline-flex items-center gap-1.5 text-xs font-black" style={{color:'#D97706'}}>
+                                      <Mail size={11}/> hello@praqen.com
                                     </a>
                                   </div>
                                 </div>
                               )}
 
-                              {/* KYC upload form */}
+                              {/* ── KYC REJECTED BANNER ── */}
+                              {kycRejected && (
+                                <div className="mt-3 rounded-xl border overflow-hidden" style={{borderColor:'#FCA5A5'}}>
+                                  <div className="px-4 py-2.5 flex items-center gap-2" style={{backgroundColor:'#FEF2F2', borderBottom:'1px solid #FCA5A5'}}>
+                                    <span className="text-xs">❌</span>
+                                    <p className="text-xs font-black" style={{color:'#991B1B'}}>KYC Not Approved</p>
+                                    <span className="ml-auto text-xs font-black px-2 py-0.5 rounded-full" style={{backgroundColor:'#FCA5A5', color:'#7F1D1D'}}>Rejected</span>
+                                  </div>
+                                  <div className="px-4 py-3 space-y-2" style={{backgroundColor:'#FFF5F5'}}>
+                                    {kycRejectedReason && (
+                                      <p className="text-xs font-semibold leading-relaxed" style={{color:'#991B1B'}}>
+                                        Reason: {kycRejectedReason}
+                                      </p>
+                                    )}
+                                    <p className="text-xs leading-relaxed" style={{color:'#7F1D1D'}}>
+                                      Please re-submit your documents with clearer, well-lit photos. Make sure all text on the ID is readable.
+                                    </p>
+                                    <button
+                                      onClick={() => { setKycStatus(null); setKycSubmitted(false); setKycStep('select'); setKycFiles({id:null, selfie:null}); setKycIdType(''); }}
+                                      className="w-full mt-1 py-2 rounded-xl text-xs font-black"
+                                      style={{backgroundColor:'#EF4444', color:'#fff'}}>
+                                      Re-submit KYC Documents
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* KYC multi-step upload form */}
                               {!kycVerified && !kycPending && phoneVerified && (
-                                <div className="mt-3 space-y-2">
-                                  {[
-                                    { key: 'id',     label: '🪪 National ID / Passport' },
-                                    { key: 'selfie', label: '🤳 Selfie holding your ID' },
-                                  ].map(({ key, label }) => (
-                                    <label key={key} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 border-dashed cursor-pointer hover:border-blue-400 transition"
-                                      style={{borderColor: kycFiles[key] ? C.success : C.g200}}>
-                                      <Upload size={14} style={{color: kycFiles[key] ? C.success : C.g400, flexShrink:0}}/>
-                                      <span className="text-xs font-bold flex-1" style={{color: kycFiles[key] ? C.success : C.g600}}>
-                                        {kycFiles[key] ? `✓ ${kycFiles[key].name}` : label}
-                                      </span>
-                                      <input type="file" accept="image/*,.pdf" className="hidden"
-                                        onChange={e => setKycFiles(f => ({...f, [key]: e.target.files[0] || null}))}/>
-                                    </label>
-                                  ))}
-                                  <button onClick={handleKycSubmit} disabled={kycLoading || !kycFiles.id || !kycFiles.selfie}
-                                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-50 mt-1"
-                                    style={{backgroundColor: C.green}}>
-                                    {kycLoading ? <><RefreshCw size={13} className="animate-spin"/> Submitting…</> : <><Upload size={13}/> Submit for Review</>}
-                                  </button>
+                                <div className="mt-4 space-y-4">
+
+                                  {/* Step A: Select ID type */}
+                                  <div className={`rounded-xl border-2 p-4 transition ${kycIdType ? 'border-green-300 bg-green-50' : 'border-dashed border-gray-200 bg-gray-50'}`}>
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${kycIdType ? 'bg-green-500 text-white' : 'bg-blue-500 text-white'}`}>
+                                        {kycIdType ? '✓' : '1'}
+                                      </div>
+                                      <p className="text-xs font-black text-gray-700">Select your ID type</p>
+                                    </div>
+                                    <select
+                                      value={kycIdType}
+                                      onChange={e => {
+                                        setKycIdType(e.target.value);
+                                        if (e.target.value) setKycStep('upload_id');
+                                        setKycFiles({ id: null, selfie: null });
+                                      }}
+                                      className="w-full px-3 py-2.5 border-2 rounded-xl text-sm font-semibold focus:outline-none transition"
+                                      style={{ borderColor: kycIdType ? C.success : C.g200, color: C.g800, backgroundColor: 'white' }}>
+                                      <option value="">— Choose a document type —</option>
+                                      {KYC_ID_TYPES.map(({ value, label }) => (
+                                        <option key={value} value={value}>{label}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+
+                                  {/* Step B: Upload ID document */}
+                                  {kycIdType && (
+                                    <div className={`rounded-xl border-2 p-4 transition ${kycFiles.id ? 'border-green-300 bg-green-50' : 'border-dashed border-blue-200 bg-blue-50'}`}>
+                                      <div className="flex items-center gap-2 mb-3">
+                                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${kycFiles.id ? 'bg-green-500 text-white' : 'bg-blue-500 text-white'}`}>
+                                          {kycFiles.id ? '✓' : '2'}
+                                        </div>
+                                        <div>
+                                          <p className="text-xs font-black text-gray-700">Upload your {KYC_ID_TYPES.find(t => t.value === kycIdType)?.label}</p>
+                                          <p className="text-xs text-gray-400">Clear photo of front — JPG, PNG or PDF</p>
+                                        </div>
+                                      </div>
+                                      <label className="flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed cursor-pointer hover:border-blue-400 transition bg-white"
+                                        style={{ borderColor: kycFiles.id ? C.success : '#93C5FD' }}>
+                                        <Upload size={18} style={{ color: kycFiles.id ? C.success : '#3B82F6', flexShrink: 0 }} />
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-xs font-bold" style={{ color: kycFiles.id ? C.success : '#1D4ED8' }}>
+                                            {kycFiles.id ? `✓ ${kycFiles.id.name}` : 'Tap to upload ID document'}
+                                          </p>
+                                          {!kycFiles.id && <p className="text-xs text-gray-400">Max 10MB · JPG, PNG, PDF</p>}
+                                        </div>
+                                        {kycFiles.id && (
+                                          <button type="button" onClick={e => { e.preventDefault(); setKycFiles(f => ({...f, id: null})); setKycStep('upload_id'); }}
+                                            className="text-xs text-red-400 font-bold hover:text-red-600">Remove</button>
+                                        )}
+                                        <input type="file" accept="image/*,.pdf" className="hidden"
+                                          onChange={e => {
+                                            const f = e.target.files[0] || null;
+                                            setKycFiles(prev => ({...prev, id: f}));
+                                            if (f) setKycStep('upload_selfie');
+                                          }} />
+                                      </label>
+                                    </div>
+                                  )}
+
+                                  {/* Step C: Upload selfie */}
+                                  {kycIdType && kycFiles.id && (
+                                    <div className={`rounded-xl border-2 p-4 transition ${kycFiles.selfie ? 'border-green-300 bg-green-50' : 'border-dashed border-purple-200 bg-purple-50'}`}>
+                                      <div className="flex items-center gap-2 mb-3">
+                                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${kycFiles.selfie ? 'bg-green-500 text-white' : 'bg-purple-500 text-white'}`}>
+                                          {kycFiles.selfie ? '✓' : '3'}
+                                        </div>
+                                        <div>
+                                          <p className="text-xs font-black text-gray-700">Selfie holding your ID</p>
+                                          <p className="text-xs text-gray-400">Hold your {KYC_ID_TYPES.find(t => t.value === kycIdType)?.label} clearly visible next to your face</p>
+                                        </div>
+                                      </div>
+                                      <div className="mb-3 px-3 py-2.5 rounded-lg text-xs" style={{ backgroundColor: '#F3E8FF', color: '#6B21A8', border: '1px solid #E9D5FF' }}>
+                                        <strong>Tips for a good selfie:</strong>
+                                        <ul className="mt-1 space-y-0.5 list-disc list-inside">
+                                          <li>Good lighting — avoid dark or blurry photos</li>
+                                          <li>Hold the ID open so the details are readable</li>
+                                          <li>Your full face must be visible</li>
+                                        </ul>
+                                      </div>
+                                      <label className="flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed cursor-pointer hover:border-purple-400 transition bg-white"
+                                        style={{ borderColor: kycFiles.selfie ? C.success : '#C4B5FD' }}>
+                                        <Camera size={18} style={{ color: kycFiles.selfie ? C.success : '#7C3AED', flexShrink: 0 }} />
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-xs font-bold" style={{ color: kycFiles.selfie ? C.success : '#4C1D95' }}>
+                                            {kycFiles.selfie ? `✓ ${kycFiles.selfie.name}` : 'Tap to upload selfie with your ID'}
+                                          </p>
+                                          {!kycFiles.selfie && <p className="text-xs text-gray-400">Face + ID in one photo · JPG or PNG</p>}
+                                        </div>
+                                        {kycFiles.selfie && (
+                                          <button type="button" onClick={e => { e.preventDefault(); setKycFiles(f => ({...f, selfie: null})); setKycStep('upload_selfie'); }}
+                                            className="text-xs text-red-400 font-bold hover:text-red-600">Remove</button>
+                                        )}
+                                        <input type="file" accept="image/*" className="hidden"
+                                          onChange={e => {
+                                            const f = e.target.files[0] || null;
+                                            setKycFiles(prev => ({...prev, selfie: f}));
+                                            if (f) setKycStep('ready');
+                                          }} />
+                                      </label>
+                                    </div>
+                                  )}
+
+                                  {/* Step D: Processing state */}
+                                  {kycStep === 'processing' && (
+                                    <div className="rounded-xl border-2 border-blue-200 bg-blue-50 p-5 text-center">
+                                      <RefreshCw size={28} className="animate-spin mx-auto mb-2 text-blue-500" />
+                                      <p className="text-sm font-black text-blue-800">Processing your documents…</p>
+                                      <p className="text-xs text-blue-600 mt-1">Securely uploading and encrypting your files</p>
+                                    </div>
+                                  )}
+
+                                  {/* Submit button */}
+                                  {kycIdType && kycFiles.id && kycFiles.selfie && kycStep !== 'processing' && (
+                                    <div className="rounded-xl border-2 border-green-200 bg-green-50 p-4">
+                                      <div className="flex items-center gap-2 mb-3">
+                                        <CheckCircle size={16} className="text-green-600 flex-shrink-0" />
+                                        <p className="text-xs font-black text-green-800">Ready to submit — all documents uploaded</p>
+                                      </div>
+                                      <div className="space-y-1 mb-4">
+                                        <div className="flex items-center gap-2 text-xs text-green-700">
+                                          <CheckCircle size={11} className="text-green-500 flex-shrink-0" />
+                                          <span>{KYC_ID_TYPES.find(t => t.value === kycIdType)?.label} selected</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-xs text-green-700">
+                                          <CheckCircle size={11} className="text-green-500 flex-shrink-0" />
+                                          <span>ID document: {kycFiles.id.name}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-xs text-green-700">
+                                          <CheckCircle size={11} className="text-green-500 flex-shrink-0" />
+                                          <span>Selfie: {kycFiles.selfie.name}</span>
+                                        </div>
+                                      </div>
+                                      <button onClick={handleKycSubmit} disabled={kycLoading}
+                                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-white text-sm font-black disabled:opacity-50 transition hover:opacity-90"
+                                        style={{ backgroundColor: C.green }}>
+                                        <Shield size={15} />
+                                        Submit for Review — Secure &amp; Encrypted
+                                      </button>
+                                      <p className="text-xs text-gray-400 text-center mt-2">We typically review within 24 hours</p>
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>

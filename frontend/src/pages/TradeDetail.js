@@ -8,7 +8,7 @@ import {
   X, RefreshCw, Info, Check, CheckCheck, Timer,
   Paperclip, Flag, BadgeCheck, FileText, Copy,
   ChevronDown, ChevronUp, DollarSign, CreditCard,
-  Smartphone, Building2, ThumbsUp, ThumbsDown, Gift,
+  Smartphone, Building2, ThumbsUp, ThumbsDown, Gift, Repeat2, Heart,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { deriveBadge } from '../lib/badge';
@@ -397,88 +397,411 @@ function DisputeModal({onClose,onSubmit,submitting}){
 }
 
 // ─── User profile popup ───────────────────────────────────────────────────────
-function ProfilePopup({user,label,onClose}) {
-  if(!user) return null;
-  const badge=deriveBadge(user);
-  const flag=isoToFlag(user.country||'');
-  const rating=parseFloat(user.average_rating||0);
-  const seen=fmtAge(user.last_login||user.updated_at);
-  const online=seen==='Online';
-  return(
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
-      style={{backgroundColor:'rgba(0,0,0,0.6)',backdropFilter:'blur(4px)'}} onClick={onClose}>
-      <div className="bg-white w-full sm:max-w-xs rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto"
-        style={{animation:'slideUp .3s ease'}} onClick={e=>e.stopPropagation()}>
-        <style>{`@keyframes slideUp{from{transform:translateY(100%);opacity:0;}to{transform:translateY(0);opacity:1;}}`}</style>
-        <div className="relative p-5 text-white"
-          style={{background:`linear-gradient(135deg,${C.forest},${C.mint})`}}>
+function ProfilePopup({user, label, trade, onClose}) {
+  const [tab,        setTab]        = useState('overview');
+  const [reviews,    setReviews]    = useState([]);
+  const [rvLoad,     setRvLoad]     = useState(false);
+  const [freshUser,  setFreshUser]  = useState(null);
+
+  // Fetch full profile (with verification flags) on open
+  useEffect(() => {
+    if (!user?.id) return;
+    axios.get(`${API_URL}/users/${user.id}`)
+      .then(r => { const d = r.data.user || r.data; if (d?.id) setFreshUser(d); })
+      .catch(() => {});
+  }, [user?.id]);
+
+  // Load real reviews when feedback tab is opened
+  useEffect(() => {
+    if (tab !== 'feedback' || !user?.id || reviews.length) return;
+    setRvLoad(true);
+    axios.get(`${API_URL}/users/${user.id}/reviews`)
+      .then(r => setReviews(r.data.reviews || []))
+      .catch(() => {})
+      .finally(() => setRvLoad(false));
+  }, [tab, user?.id]);
+
+  if (!user) return null;
+
+  const u          = freshUser || user;
+  const badge      = deriveBadge(u);
+  const rating     = parseFloat(u.average_rating || 0);
+  const trades     = parseInt(u.total_trades || 0);
+  const pos        = parseInt(u.positive_feedback || 0);
+  const neg        = parseInt(u.negative_feedback || 0);
+  const total      = pos + neg;
+  const trust      = total > 0 ? Math.round(pos / total * 100) : trades > 0 ? 100 : 0;
+  const compRate   = parseFloat(u.completion_rate || 0);
+  const phoneOk    = !!(u.is_phone_verified || u.phone_verified);
+  const emailOk    = !!(u.is_email_verified || u.email_verified);
+  const kycOk      = !!(u.is_id_verified || u.kyc_verified);
+  const memberSince= u.created_at ? new Date(u.created_at).toLocaleDateString('en-US',{month:'short',year:'numeric'}) : '—';
+  const avgReply   = u.avg_response_time || u.avg_reply_minutes;
+  const payMins    = parseFloat(u.avg_payment_time || u.avg_response_time || 0);
+  const avgPayDisplay = payMins > 0 ? (() => { const m=Math.floor(payMins),s=Math.round((payMins-m)*60); return s>0?`${m}m ${s}s`:m>0?`${m}m`:`${s}s`; })() : '—';
+  const ccCode     = (u.country || 'gh').slice(0,2).toLowerCase();
+  const locCC      = ccCode.toUpperCase();
+  const CC_NAME    = {GH:'Ghana',NG:'Nigeria',KE:'Kenya',ZA:'S. Africa',UG:'Uganda',TZ:'Tanzania',RW:'Rwanda',CM:'Cameroon',SN:'Senegal',CI:"Côte d'Ivoire",ZM:'Zambia',ZW:'Zimbabwe',US:'USA',GB:'UK'};
+  const countryName= (u.country && u.country.length > 2) ? u.country : (CC_NAME[locCC] || locCC || '—');
+  const flagEmoji  = isoToFlag(locCC);
+
+  // Last active
+  const rawSeen    = fmtAge(u.last_login || u.updated_at);
+  const isOnline   = rawSeen === 'Online';
+
+  const TABS = [
+    { id:'overview',  label:'👤 Profile' },
+    { id:'feedback',  label:`💬 Reviews (${total})` },
+    { id:'rules',     label:'📋 Rules' },
+    { id:'trade',     label:'📊 Trade' },
+  ];
+
+  // Trade tab helpers
+  const listing   = trade?.listing || {};
+  const tradeAmt  = trade?.amount_local || trade?.fiat_amount;
+  const tradeBtc  = trade?.btc_amount || trade?.amount_btc;
+  const tradeStatus = trade?.status || '—';
+  const tradeOpened = trade?.created_at ? new Date(trade.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+  const cur       = trade?.currency || listing?.currency || 'GHS';
+  const sym       = listing?.currency_symbol || CUR_SYM[cur] || '₵';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+      style={{backgroundColor:'rgba(0,0,0,0.6)', backdropFilter:'blur(6px)'}}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+
+      <div className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl shadow-2xl flex flex-col"
+        style={{
+          maxHeight:'92dvh',
+          border:`1px solid ${C.g200}`,
+          animation:'slideUp .28s cubic-bezier(0.34,1.56,0.64,1)',
+        }}>
+        <style>{`@keyframes slideUp{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}`}</style>
+
+        {/* drag handle (mobile) */}
+        <div className="flex justify-center pt-2.5 pb-1 flex-shrink-0 sm:hidden">
+          <div className="w-10 h-1 rounded-full" style={{backgroundColor:C.g200}}/>
+        </div>
+
+        {/* ── HEADER ── */}
+        <div className="relative px-4 pt-3 pb-4 flex-shrink-0"
+          style={{background:`linear-gradient(135deg,${C.forest} 0%,${C.mint} 100%)`}}>
           <button onClick={onClose}
-            className="absolute top-3 right-3 w-7 h-7 rounded-full bg-white/20 flex items-center justify-center">
-            <X size={13} className="text-white"/>
+            className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center"
+            style={{backgroundColor:'rgba(255,255,255,0.18)'}}>
+            <X size={15} className="text-white"/>
           </button>
-          <div className="flex items-center gap-3 mb-3">
-            <div className="relative">
-              <Avatar user={user} size={52} radius="rounded-2xl"/>
+
+          <div className="flex items-center gap-3 mb-4">
+            <div className="relative flex-shrink-0">
+              <Avatar user={u} size={56} radius="rounded-2xl"/>
               <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white"
-                style={{backgroundColor:online?C.online:C.g400}}/>
+                style={{backgroundColor: isOnline ? C.online : C.g400}}/>
             </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <h3 className="font-black text-lg">{user.username}</h3>
-                {user.kyc_verified&&<BadgeCheck size={14} style={{color:'#93C5FD'}}/>}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                <span className="font-black text-white text-base leading-tight truncate">
+                  {u.username || 'User'}
+                </span>
+                {kycOk && <BadgeCheck size={15} style={{color:'#93C5FD', flexShrink:0}}/>}
               </div>
-              <span className={`inline-flex items-center gap-0.5 text-xs font-black px-1.5 py-0.5 rounded-full border ${badge.animate?'shadow-md':''}`}
-                style={{background:badge.bg,borderColor:badge.borderColor,boxShadow:badge.glow?`0 0 8px ${badge.glow}`:undefined}}>
+              <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
+                <span className="text-xs">{flagEmoji}</span>
+                <span className="text-white/60 text-xs">{isOnline ? '🟢 Active now' : rawSeen}</span>
+              </div>
+              <span className="inline-flex items-center gap-px px-2 py-0.5 rounded-full border text-xs font-black"
+                style={{background:badge.bg, borderColor:badge.borderColor, boxShadow:badge.glow?`0 0 6px ${badge.glow}`:undefined}}>
                 <span style={{color:badge.iconColor||badge.textColor}}>{badge.icon}</span>
                 <span style={{color:badge.textColor}}>{badge.label}</span>
               </span>
             </div>
           </div>
-          <div className="flex gap-0.5 mb-1">
-            {[1,2,3,4,5].map(s=><Star key={s} size={14} className={s<=Math.round(rating)?'fill-yellow-400 text-yellow-400':'text-white/30'}/>)}
-            <span className="text-white font-bold text-xs ml-1">{rating.toFixed(1)}</span>
+
+          {/* ── STATS 2×2 GRID ── */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex items-center gap-2 rounded-xl px-3 py-2.5"
+              style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
+              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{backgroundColor: isOnline ? '#4ADE80' : '#94A3B8'}}/>
+              <div className="min-w-0">
+                <p className="text-white font-black text-xs leading-tight truncate">
+                  {isOnline ? 'Online now' : rawSeen}
+                </p>
+                <p className="text-white/50 text-xs leading-tight">Last active</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 rounded-xl px-3 py-2.5"
+              style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
+              <span className="text-base flex-shrink-0">{flagEmoji}</span>
+              <div className="min-w-0">
+                <p className="text-white font-black text-xs leading-tight truncate">{countryName}</p>
+                <p className="text-white/50 text-xs leading-tight">Location</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 rounded-xl px-3 py-2.5"
+              style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
+              <Timer size={14} style={{color:'#FDE68A', flexShrink:0}}/>
+              <div className="min-w-0">
+                <p className="text-white font-black text-xs leading-tight">{avgPayDisplay}</p>
+                <p className="text-white/50 text-xs leading-tight">Avg. response</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 rounded-xl px-3 py-2.5"
+              style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
+              <Heart size={14} style={{color: pos > 0 ? '#86EFAC' : 'rgba(255,255,255,0.5)', flexShrink:0}}/>
+              <div className="min-w-0">
+                <p className="text-white font-black text-xs leading-tight">{pos > 0 ? `${fmt(pos)} users` : 'No ratings yet'}</p>
+                <p className="text-white/50 text-xs leading-tight">Trusted by</p>
+              </div>
+            </div>
           </div>
-          <p className="text-white/60 text-xs flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full" style={{backgroundColor:online?C.online:C.g400}}/>{seen}
-            {user.country&&<span className="ml-2">{flag} {user.country}</span>}
-          </p>
         </div>
-        <div className="p-4">
-          <div className="grid grid-cols-2 gap-2 mb-3">
-            {(()=>{
-              // Normalize completion: could be 0.21 or 21.4 or 21.428571...
-              const raw = parseFloat(user.completion_rate||0);
-              const comp = (raw > 0 && raw <= 1) ? (raw*100).toFixed(1) : raw.toFixed(1);
-              return [
-                {label:'Trades',     value:fmt(user.total_trades||0),        color:C.green},
-                {label:'Rating',     value:`${rating.toFixed(1)}★`,           color:C.warn},
-                {label:'Completion', value:`${comp}%`,                        color:C.success},
-                {label:'Reviews',    value:fmt(user.feedback_count||0),       color:C.paid},
-              ];
-            })().map(s=>(
-              <div key={s.label} className="text-center p-2.5 rounded-xl" style={{backgroundColor:C.g50}}>
-                <p className="font-black text-sm" style={{color:s.color}}>{s.value}</p>
-                <p className="text-xs text-gray-400">{s.label}</p>
+
+        {/* ── TABS ── */}
+        <div className="flex border-b flex-shrink-0 overflow-x-auto" style={{borderColor:C.g200}}>
+          {TABS.map(({id, label}) => (
+            <button key={id} onClick={() => setTab(id)}
+              className="flex-shrink-0 px-3 py-2.5 text-xs font-bold whitespace-nowrap transition"
+              style={{
+                color: tab===id ? C.green : C.g500,
+                borderBottom: tab===id ? `2px solid ${C.green}` : '2px solid transparent',
+                backgroundColor: tab===id ? `${C.green}08` : 'transparent',
+              }}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* ── TAB CONTENT ── */}
+        <div className="flex-1 overflow-y-auto p-4" style={{WebkitOverflowScrolling:'touch', minHeight:0}}>
+
+          {/* OVERVIEW */}
+          {tab==='overview' && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  {label:'Trades',     value:fmt(trades),                sub:'completed'},
+                  {label:'Rating',     value:`⭐ ${rating.toFixed(1)}`,  sub:'of 5.0'},
+                  {label:'Completion', value:`${compRate.toFixed(0)}%`,  sub:'rate'},
+                ].map(({label:lbl,value,sub}) => (
+                  <div key={lbl} className="rounded-xl p-3 text-center"
+                    style={{backgroundColor:C.mist, border:`1px solid ${C.g200}`}}>
+                    <p className="font-black text-sm" style={{color:C.forest}}>{value}</p>
+                    <p className="text-xs font-semibold mt-0.5" style={{color:C.g500}}>{lbl}</p>
+                    <p className="text-xs" style={{color:C.g400}}>{sub}</p>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <div className="space-y-0 border-t pt-2" style={{borderColor:C.g100}}>
-            {[
-              {label:'Location',     value:`${flag} ${user.country||'—'}`},
-              {label:'Member since', value:user.created_at?new Date(user.created_at).toLocaleDateString('en-US',{month:'short',year:'numeric'}):'—'},
-              {label:'Identity',     value:user.kyc_verified?'✅ KYC Verified':'Not verified'},
-              {label:'Response',     value:'< 5 minutes'},
-            ].map(({label,value})=>(
-              <div key={label} className="flex justify-between text-xs py-1.5 border-b last:border-0"
-                style={{borderColor:C.g50}}>
-                <span style={{color:C.g400}}>{label}</span>
-                <span className="font-bold" style={{color:C.g700}}>{value}</span>
+
+              <div className="flex gap-2">
+                <div className="flex-1 flex items-center gap-2 rounded-xl px-3 py-2.5"
+                  style={{backgroundColor:'#F0FDF4', border:'1px solid #86EFAC'}}>
+                  <ThumbsUp size={14} style={{color:'#16A34A', flexShrink:0}}/>
+                  <div>
+                    <p className="font-black text-sm" style={{color:'#16A34A'}}>{fmt(pos)}</p>
+                    <p className="text-xs" style={{color:'#166534'}}>Positive</p>
+                  </div>
+                </div>
+                <div className="flex-1 flex items-center gap-2 rounded-xl px-3 py-2.5"
+                  style={{backgroundColor:'#FEF2F2', border:'1px solid #FCA5A5'}}>
+                  <ThumbsDown size={14} style={{color:'#DC2626', flexShrink:0}}/>
+                  <div>
+                    <p className="font-black text-sm" style={{color:'#DC2626'}}>{fmt(neg)}</p>
+                    <p className="text-xs" style={{color:'#991B1B'}}>Negative</p>
+                  </div>
+                </div>
               </div>
-            ))}
-          </div>
-          <p className="text-xs text-center mt-2" style={{color:C.g400}}>
-            {label}
-          </p>
+
+              {/* Verification badges */}
+              <div className="rounded-xl overflow-hidden" style={{border:`1px solid ${C.g200}`}}>
+                <p className="text-xs font-black px-3 py-2 uppercase tracking-wider"
+                  style={{color:C.g500, backgroundColor:C.g50}}>Verification</p>
+                {[
+                  {label:'Phone Number', ok:phoneOk, icon:'📱'},
+                  {label:'Email Address',ok:emailOk, icon:'📧'},
+                  {label:'ID / KYC',     ok:kycOk,   icon:'🪪'},
+                ].map(({label:lbl,ok,icon}) => (
+                  <div key={lbl} className="flex items-center justify-between px-3 py-2.5 border-t"
+                    style={{borderColor:C.g100}}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">{icon}</span>
+                      <span className="text-xs font-semibold" style={{color:C.g700}}>{lbl}</span>
+                    </div>
+                    <span className="text-xs font-black px-2.5 py-1 rounded-full"
+                      style={{
+                        backgroundColor: ok ? '#F0FDF4' : '#FEF2F2',
+                        color: ok ? '#16A34A' : '#DC2626',
+                      }}>
+                      {ok ? '✓ Verified' : '✗ Not verified'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {u.bio && (
+                <div className="rounded-xl p-3" style={{backgroundColor:C.g50, border:`1px solid ${C.g200}`}}>
+                  <p className="text-xs font-bold mb-1" style={{color:C.g500}}>About</p>
+                  <p className="text-xs leading-relaxed" style={{color:C.g700}}>{u.bio}</p>
+                </div>
+              )}
+
+              <div className="rounded-xl overflow-hidden" style={{border:`1px solid ${C.g200}`}}>
+                {[
+                  avgReply ? {label:'Avg. Response', value:`~${Math.round(avgReply)} min`} : null,
+                  {label:'Trade Role',   value: label || 'Counterparty'},
+                  {label:'Member since', value: memberSince},
+                ].filter(Boolean).map(({label:lbl,value}) => (
+                  <div key={lbl} className="flex items-center justify-between px-3 py-2.5 border-b last:border-0"
+                    style={{borderColor:C.g100}}>
+                    <span className="text-xs font-semibold" style={{color:C.g500}}>{lbl}</span>
+                    <span className="text-xs font-black" style={{color:C.g800}}>{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* REVIEWS */}
+          {tab==='feedback' && (
+            <div className="space-y-3">
+              <div className="flex gap-2 p-3 rounded-xl"
+                style={{backgroundColor:C.mist, border:`1px solid ${C.g200}`}}>
+                <div className="text-center px-3">
+                  <p className="text-2xl font-black" style={{color:C.forest}}>{rating.toFixed(1)}</p>
+                  <p className="text-xs" style={{color:C.g400}}>Rating</p>
+                </div>
+                <div className="w-px" style={{backgroundColor:C.g200}}/>
+                <div className="flex-1 flex items-center gap-3 px-2">
+                  <div className="text-center flex-1">
+                    <p className="font-black text-sm" style={{color:'#16A34A'}}>{fmt(pos)}</p>
+                    <p className="text-xs" style={{color:C.g400}}>👍 Positive</p>
+                  </div>
+                  <div className="text-center flex-1">
+                    <p className="font-black text-sm" style={{color:'#DC2626'}}>{fmt(neg)}</p>
+                    <p className="text-xs" style={{color:C.g400}}>👎 Negative</p>
+                  </div>
+                  <div className="text-center flex-1">
+                    <p className="font-black text-sm" style={{color:C.forest}}>{trust}%</p>
+                    <p className="text-xs" style={{color:C.g400}}>Trust</p>
+                  </div>
+                </div>
+              </div>
+
+              {rvLoad ? (
+                <div className="space-y-2">
+                  {[1,2,3].map(i => (
+                    <div key={i} className="rounded-xl p-3 border animate-pulse" style={{borderColor:C.g200}}>
+                      <div className="flex gap-2 mb-2">
+                        <div className="w-7 h-7 rounded-full" style={{backgroundColor:C.g200}}/>
+                        <div className="flex-1 space-y-1.5">
+                          <div className="h-2.5 rounded w-1/3" style={{backgroundColor:C.g200}}/>
+                          <div className="h-2 rounded w-1/4" style={{backgroundColor:C.g100}}/>
+                        </div>
+                      </div>
+                      <div className="h-2.5 rounded w-4/5" style={{backgroundColor:C.g100}}/>
+                    </div>
+                  ))}
+                </div>
+              ) : reviews.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-3xl mb-2">💬</p>
+                  <p className="font-bold text-sm" style={{color:C.g700}}>No reviews yet</p>
+                  <p className="text-xs mt-1" style={{color:C.g400}}>Complete trades to earn reviews</p>
+                </div>
+              ) : (
+                reviews.slice(0,20).map((rv, i) => {
+                  const isPos = rv.rating >= 4;
+                  const ago = rv.created_at ? (() => {
+                    const s = (Date.now()-new Date(rv.created_at))/1000;
+                    if(s<3600) return `${~~(s/60)}m ago`;
+                    if(s<86400) return `${~~(s/3600)}h ago`;
+                    return `${~~(s/86400)}d ago`;
+                  })() : '';
+                  return (
+                    <div key={i} className="rounded-xl border p-3"
+                      style={{
+                        borderColor: isPos ? '#86EFAC' : '#FCA5A5',
+                        backgroundColor: isPos ? '#F0FDF4' : '#FEF2F2',
+                      }}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-black text-white flex-shrink-0"
+                            style={{backgroundColor: isPos ? '#16A34A' : '#DC2626'}}>
+                            {isPos ? '👍' : '👎'}
+                          </div>
+                          <span className="text-xs font-black" style={{color: isPos ? '#166534' : '#991B1B'}}>
+                            {rv.reviewer?.username || 'Anonymous'}
+                          </span>
+                        </div>
+                        <span className="text-xs" style={{color:C.g400}}>{ago}</span>
+                      </div>
+                      {rv.comment && (
+                        <p className="text-xs leading-relaxed pl-8"
+                          style={{color: isPos ? '#14532D' : '#7F1D1D'}}>
+                          "{rv.comment}"
+                        </p>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+
+          {/* RULES */}
+          {tab==='rules' && (
+            <div className="space-y-3">
+              <div className="p-3.5 rounded-xl text-sm leading-relaxed whitespace-pre-wrap"
+                style={{backgroundColor:C.mist, color:C.g700, border:`1px solid ${C.g200}`}}>
+                {listing?.trade_instructions || listing?.listing_terms || listing?.description ||
+                  'Send payment within the time limit and tap "I Have Paid". Share a screenshot of your payment if requested.'}
+              </div>
+              <div className="flex items-center gap-2.5 p-3 rounded-xl"
+                style={{backgroundColor:'#FFFBEB', border:'1px solid #FDE68A'}}>
+                <Timer size={14} style={{color:C.warn, flexShrink:0}}/>
+                <p className="text-xs font-bold" style={{color:'#92400E'}}>
+                  Time limit: {listing?.time_limit||30} minutes — trade auto-cancels if unpaid
+                </p>
+              </div>
+              <div className="flex items-start gap-2.5 p-3 rounded-xl"
+                style={{backgroundColor:'#FEF2F2', border:'1px solid #FCA5A5'}}>
+                <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" style={{color:C.danger}}/>
+                <p className="text-xs leading-relaxed" style={{color:'#991B1B'}}>
+                  <strong>Never release BTC</strong> before confirming payment is received in your account. Escrow protects every trade.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* TRADE DETAILS */}
+          {tab==='trade' && (
+            <div className="rounded-xl overflow-hidden" style={{border:`1px solid ${C.g200}`}}>
+              {[
+                {label:'Trade ID',       value: trade?.id ? `#${String(trade.id).slice(0,8).toUpperCase()}` : '—'},
+                {label:'Status',         value: tradeStatus},
+                {label:'Payment Method', value: listing?.payment_method || trade?.payment_method || '—'},
+                {label:'Fiat Amount',    value: tradeAmt ? `${sym}${fmt(tradeAmt)} ${cur}` : '—'},
+                {label:'BTC Amount',     value: tradeBtc ? `${fmtBtc(tradeBtc,6)} BTC` : '—'},
+                {label:'Time Limit',     value: `${listing?.time_limit || 30} minutes`},
+                {label:'Opened',         value: tradeOpened},
+                {label:'Your Role',      value: label || 'Counterparty'},
+              ].map(({label:lbl,value}) => (
+                <div key={lbl} className="flex items-center justify-between px-3.5 py-3 border-b last:border-0"
+                  style={{borderColor:C.g100}}>
+                  <span className="text-xs font-semibold" style={{color:C.g500}}>{lbl}</span>
+                  <span className="text-xs font-black text-right ml-4" style={{color:C.g800, maxWidth:'60%'}}>{value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── FOOTER ── */}
+        <div className="p-4 flex-shrink-0 border-t" style={{borderColor:C.g200}}>
+          <button onClick={onClose}
+            className="w-full py-3 rounded-2xl border text-sm font-bold hover:bg-gray-50 transition"
+            style={{borderColor:C.g200, color:C.g600}}>
+            Close
+          </button>
         </div>
       </div>
     </div>
@@ -873,10 +1196,15 @@ export default function TradeDetail({user}) {
   );
   const showMarkPaid  = isGiftCardTrade ? (isSeller&&isEscrow&&isActive) : (isBuyer&&isEscrow&&isActive);
   const showRelease   = isGiftCardTrade ? (isBuyer&&isPaid&&isActive)    : (isSeller&&isPaid&&isActive);
-  // Trade opener = buyer when trade_type is BUY, seller when trade_type is SELL
-  const isTradeOpener = (trade.trade_type||'').toUpperCase()==='BUY' ? isBuyer : isSeller;
-  const showCancelBtn = (isTradeOpener&&isEscrow&&isActive)||(isBuyer&&isPaid&&isActive);
   const showDispute   = isActive&&!isDisputed&&(isBuyer||isSeller);
+
+  // ── Cancel eligibility ────────────────────────────────────────────────────
+  // Only the PAYER can cancel. In a regular BTC trade the buyer pays fiat, so
+  // the buyer holds cancel rights. In a gift-card trade the seller sends the
+  // card, so the seller (gift-card sender) holds cancel rights.
+  // The BTC holder NEVER has the right to cancel once a trade is open.
+  const isPayer = isGiftCardTrade ? isSeller : isBuyer;
+  const showCancelBtn = isActive && isPayer && isEscrow; // only before marking paid
 
   // Read receipts: timestamp of the last message the counterparty sent
   const lastCpMsgTime = messages
@@ -1304,125 +1632,128 @@ export default function TradeDetail({user}) {
                   const isMod=m.sender_role==='moderator';
                   const isSys=(!m.sender_id||m.message_type==='SYSTEM'||m.sender_role==='system')&&m.sender_role!=='moderator';
                   const text=m.message_text||m.message||'';
+                  const ts=new Date(m.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
 
+                  /* ── SYSTEM event banners ─────────────────────────────── */
                   if(isSys){
-                    // Classify the message type for styling
-                    const tl = text.toLowerCase();
-                    const isSuccess = /complet|released|btc.*released|paid.*confirmed|verified|unlock/i.test(text);
-                    const isDanger  = /disput|cancel|expired|refund|failed/i.test(text);
-                    const isWarn    = /warning|urgent|expir|time.*left|5 minute/i.test(text);
-                    const isPmt     = /payment.*sent|paid|mark.*paid|sent.*payment/i.test(text);
-                    const isOpen    = /trade.*open|escrow.*lock|btc.*locked|opened/i.test(text);
-                    const isMod2    = /moderator|support.*review|dispute.*open/i.test(text);
+                    const isSuccess=/complet|released|btc.*released|verified|unlock/i.test(text);
+                    const isDanger =/cancel|expired|refund|failed/i.test(text);
+                    const isWarn   =/warning|urgent|expir|time.*left|5 minute/i.test(text);
+                    const isPmt    =/payment.*sent|buyer.*paid|mark.*paid|sent.*payment|confirmed payment/i.test(text);
+                    const isOpen   =/trade.*open|escrow.*lock|btc.*locked|opened/i.test(text);
+                    const isDisp   =/disput|moderator|support.*review/i.test(text);
 
-                    let bg, border, color, icon;
-                    if (isMod2)       { bg='#FFF1F2'; border='#EF4444'; color='#B91C1C'; icon='🚨'; }
-                    else if (isSuccess){ bg='#F0FDF4'; border='#86EFAC'; color='#166534'; icon='✅'; }
-                    else if (isDanger){ bg='#FEF2F2'; border='#FCA5A5'; color='#991B1B'; icon='❌'; }
-                    else if (isWarn)  { bg='#FFFBEB'; border='#FCD34D'; color='#92400E'; icon='⚠️'; }
-                    else if (isPmt)   { bg='#EFF6FF'; border='#93C5FD'; color='#1E40AF'; icon='💳'; }
-                    else if (isOpen)  { bg='#F0FDF4'; border='#6EE7B7'; color='#065F46'; icon='🔒'; }
-                    else              { bg=C.g50;     border=C.g200;    color=C.g600;    icon='ℹ️'; }
+                    let grad, iconBg, iconColor, textColor, icon, label;
+                    if(isDisp)   {grad='linear-gradient(135deg,#7F1D1D,#DC2626)';iconBg='#FEF2F2';iconColor='#DC2626';textColor='#fff';icon='🚨';label='DISPUTE';}
+                    else if(isDanger){grad='linear-gradient(135deg,#450a0a,#991B1B)';iconBg='#FEE2E2';iconColor='#EF4444';textColor='#fff';icon='❌';label='CANCELLED';}
+                    else if(isSuccess){grad='linear-gradient(135deg,#052e16,#166534)';iconBg='#DCFCE7';iconColor='#16A34A';textColor='#fff';icon='✅';label='COMPLETED';}
+                    else if(isPmt)   {grad='linear-gradient(135deg,#1e1b4b,#3730A3)';iconBg='#EDE9FE';iconColor='#6D28D9';textColor='#fff';icon='💰';label='PAYMENT';}
+                    else if(isWarn)  {grad='linear-gradient(135deg,#431407,#C2410C)';iconBg='#FED7AA';iconColor='#EA580C';textColor='#fff';icon='⚠️';label='ALERT';}
+                    else if(isOpen)  {grad='linear-gradient(135deg,#0c1a10,#1B4332)';iconBg='#D1FAE5';iconColor='#059669';textColor='#fff';icon='🔒';label='TRADE OPEN';}
+                    else             {grad='linear-gradient(135deg,#1e293b,#334155)';iconBg='#E2E8F0';iconColor='#64748B';textColor='#fff';icon='ℹ️';label='INFO';}
 
-                    // Role-specific next-step hint for payment events
-                    const pmtHint = isPmt ? (
-                      isBuyer
-                        ? '✓ Your payment notification was sent. The seller is now verifying.'
-                        : isSeller
-                          ? '⚠️ Check your account now. If payment is confirmed, tap RELEASE BITCOIN.'
-                          : null
-                    ) : null;
+                    const pmtHint=isPmt?(isBuyer?'✓ Payment sent. Seller is now verifying your transfer.':isSeller?'⚡ Check your account. Confirm receipt then release Bitcoin.':null):null;
 
                     return(
-                      <div key={i} className="flex justify-center my-1">
-                        <div className="max-w-[92%] rounded-2xl border px-4 py-2.5 text-center"
-                          style={{backgroundColor:bg, borderColor:border}}>
-                          <p className="text-xs font-semibold leading-relaxed" style={{color}}>
-                            <span className="mr-1">{icon}</span>{text}
-                          </p>
-                          {pmtHint&&(
-                            <p className="text-xs font-bold mt-1.5 px-2 py-1 rounded-lg"
-                              style={{backgroundColor:isBuyer?'rgba(30,64,175,0.08)':'rgba(180,83,9,0.1)',color:isBuyer?'#1D4ED8':'#92400E'}}>
-                              {pmtHint}
-                            </p>
-                          )}
-                          <p className="text-xs mt-1 opacity-60" style={{color}}>
-                            {new Date(m.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
-                          </p>
+                      <div key={i} className="flex justify-center my-3 px-1">
+                        <div className="w-full max-w-[95%] rounded-2xl overflow-hidden shadow-lg">
+                          {/* coloured header bar */}
+                          <div className="flex items-center gap-2.5 px-3.5 py-2" style={{background:grad}}>
+                            <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-base" style={{backgroundColor:iconBg}}>
+                              {icon}
+                            </div>
+                            <span className="text-xs font-black tracking-widest flex-1" style={{color:'rgba(255,255,255,0.85)',letterSpacing:'0.08em'}}>{label}</span>
+                            <span className="text-xs font-semibold" style={{color:'rgba(255,255,255,0.5)'}}>{ts}</span>
+                          </div>
+                          {/* message body */}
+                          <div className="px-4 py-2.5" style={{background:'rgba(0,0,0,0.03)',borderTop:'none'}}>
+                            <p className="text-xs font-semibold leading-relaxed" style={{color:'#1E293B'}}>{text}</p>
+                            {pmtHint&&(
+                              <div className="mt-2 px-3 py-1.5 rounded-xl text-xs font-bold"
+                                style={{background:isBuyer?'linear-gradient(90deg,#EDE9FE,#DDD6FE)':'linear-gradient(90deg,#FEF3C7,#FDE68A)',color:isBuyer?'#4C1D95':'#92400E'}}>
+                                {pmtHint}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );
                   }
 
+                  /* ── MODERATOR message ───────────────────────────────── */
                   if(isMod) return(
-                    <div key={i} className="flex justify-center my-3 px-2">
-                      <div className="w-full max-w-[92%] rounded-2xl overflow-hidden shadow-xl" style={{border:'2px solid #7C3AED'}}>
-                        <div className="flex items-center justify-between px-4 py-2.5" style={{background:'linear-gradient(135deg,#4C1D95,#7C3AED)'}}>
+                    <div key={i} className="flex justify-center my-3 px-1">
+                      <div className="w-full max-w-[95%] rounded-2xl overflow-hidden shadow-xl" style={{border:'2px solid #7C3AED'}}>
+                        <div className="flex items-center justify-between px-4 py-2.5" style={{background:'linear-gradient(135deg,#2E1065,#6D28D9)'}}>
                           <div className="flex items-center gap-2">
                             <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{backgroundColor:'#FFD700'}}>
-                              <Shield size={13} style={{color:'#4C1D95'}}/>
+                              <Shield size={12} style={{color:'#2E1065'}}/>
                             </div>
-                            <span className="text-sm font-black tracking-widest" style={{color:'#FFD700'}}>PRAQEN MODERATOR</span>
+                            <span className="text-xs font-black tracking-widest" style={{color:'#FFD700',letterSpacing:'0.1em'}}>PRAQEN MODERATOR</span>
                           </div>
-                          <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{backgroundColor:'rgba(255,215,0,0.15)',color:'#FFD700',border:'1px solid rgba(255,215,0,0.5)'}}>OFFICIAL</span>
+                          <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{backgroundColor:'rgba(255,215,0,0.2)',color:'#FFD700',border:'1px solid rgba(255,215,0,0.4)'}}>OFFICIAL</span>
                         </div>
                         <div className="px-4 py-3" style={{backgroundColor:'#F5F0FF'}}>
                           <p className="text-sm font-medium leading-relaxed whitespace-pre-line" style={{color:'#2E1065'}}>{text}</p>
-                          <p className="text-xs mt-2 text-right font-semibold" style={{color:'#7C3AED'}}>
-                            {new Date(m.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
-                          </p>
+                          <p className="text-xs mt-2 text-right font-semibold" style={{color:'#7C3AED'}}>{ts}</p>
                         </div>
                       </div>
                     </div>
                   );
 
+                  /* ── USER chat bubbles ───────────────────────────────── */
+                  // Own messages: deep forest green | Other user: deep navy blue
+                  const ownBg   = 'linear-gradient(135deg,#166534,#15803D)';
+                  const otherBg = 'linear-gradient(135deg,#1E3A5F,#1D4ED8)';
                   const isImage = text.startsWith('data:image/');
                   return(
-                    <div key={i} className={`flex ${isOwn?'justify-end':'justify-start'}`}>
+                    <div key={i} className={`flex ${isOwn?'justify-end':'justify-start'} items-end gap-2`}>
                       {!isOwn&&(
                         <button onClick={()=>{setProfUser(cp);setProfLabel(isBuyer?'Seller':'Buyer');}}
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-black mr-2 flex-shrink-0 self-end hover:opacity-80 transition"
-                          style={{backgroundColor:C.mint,color:C.white}}>
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 shadow-md hover:opacity-80 transition"
+                          style={{background:otherBg,color:'#fff'}}>
                           {cp?.username?.charAt(0)?.toUpperCase()||'?'}
                         </button>
                       )}
-                      <div className="max-w-[75%]">
-                        {!isOwn&&<p className="text-xs font-bold mb-0.5 ml-1" style={{color:C.g500}}>{cp?.username}</p>}
+                      <div className={`max-w-[72%] ${isOwn?'items-end':'items-start'} flex flex-col`}>
+                        {!isOwn&&<p className="text-xs font-bold mb-1 ml-1" style={{color:'#1D4ED8'}}>{cp?.username}</p>}
                         {isImage?(
                           <button onClick={()=>setImgSrc(text)}
-                            className="block rounded-2xl overflow-hidden border-2 hover:opacity-90 transition shadow-md"
-                            style={{borderColor:isOwn?C.mint:C.g200,maxWidth:220}}>
-                            <img src={text} alt="Shared" className="block w-full h-auto object-cover"
-                              style={{maxHeight:280}}
+                            className="block rounded-2xl overflow-hidden hover:opacity-90 transition shadow-lg"
+                            style={{border:`2px solid ${isOwn?'#16A34A':'#1D4ED8'}`,maxWidth:220}}>
+                            <img src={text} alt="Shared" className="block w-full h-auto object-cover" style={{maxHeight:280}}
                               onError={e=>{e.currentTarget.style.display='none';e.currentTarget.parentElement.innerHTML='<span style="padding:8px;font-size:12px;color:#94A3B8">Image unavailable</span>';}}/>
-                            <p className="text-center text-xs py-1 font-semibold" style={{backgroundColor:isOwn?C.mint:'#F1F5F9',color:isOwn?'#fff':C.g500}}>
+                            <p className="text-center text-xs py-1.5 font-bold" style={{background:isOwn?ownBg:otherBg,color:'rgba(255,255,255,0.9)'}}>
                               📎 Tap to enlarge
                             </p>
                           </button>
                         ):(
-                          <div className="px-3.5 py-2.5 text-sm font-medium break-words shadow-sm"
+                          <div className="px-3.5 py-2.5 text-sm font-medium break-words shadow-md"
                             style={{
-                              backgroundColor:isOwn?'#22C55E':'#F1F5F9',
-                              color:isOwn?'#fff':'#1E293B',
-                              fontWeight:isOwn?600:500,
-                              lineHeight:'1.45',
+                              background:isOwn?ownBg:otherBg,
+                              color:'#fff',
+                              fontWeight:500,
+                              lineHeight:'1.5',
                               borderRadius:isOwn?'18px 18px 4px 18px':'4px 18px 18px 18px',
-                              border:isOwn?'none':'1px solid #E2E8F0',
                             }}>
                             {text}
                           </div>
                         )}
                         <div className={`flex items-center gap-1 mt-1 ${isOwn?'justify-end':'ml-1'}`}>
-                          <span className="text-xs font-medium" style={{color:C.g400}}>
-                            {new Date(m.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
-                          </span>
+                          <span className="text-xs" style={{color:C.g400}}>{ts}</span>
                           {isOwn&&(
                             m.is_read||new Date(m.created_at).getTime()<lastCpMsgTime
-                              ?<CheckCheck size={13} style={{color:'#3B82F6'}}/>
-                              :<Check size={13} style={{color:C.g300}}/>
+                              ?<CheckCheck size={12} style={{color:'#3B82F6'}}/>
+                              :<Check size={12} style={{color:C.g300}}/>
                           )}
                         </div>
                       </div>
+                      {isOwn&&(
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 shadow-md"
+                          style={{background:ownBg,color:'#fff'}}>
+                          {user?.username?.charAt(0)?.toUpperCase()||'Y'}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1542,7 +1873,7 @@ export default function TradeDetail({user}) {
       )}
 
       {/* ── MODALS ─────────────────────────────────────────────────────────── */}
-      {profUser && <ProfilePopup user={profUser} label={profLabel} onClose={()=>setProfUser(null)}/>}
+      {profUser && <ProfilePopup user={profUser} label={profLabel} trade={trade} onClose={()=>setProfUser(null)}/>}
       {showSuccessModal && <FeedbackModal name={cp?.username} onClose={dismissFeedbackModal} onSubmit={submitFeedback} submitting={fbSub}/>}
       {showFb && <FeedbackModal name={cp?.username} onClose={dismissFeedbackModal} onSubmit={submitFeedback} submitting={fbSub}/>}
       {showCancel && <CancelModal onClose={()=>setShowCancel(false)} onConfirm={cancelTrade} submitting={submitting}/>}

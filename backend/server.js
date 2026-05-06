@@ -840,6 +840,18 @@ function verifyToken(req, res, next) {
   }
 }
 
+// Optional auth — attaches userId if token present, but never blocks the request
+function optionalAuth(req, res, next) {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      req.userId = decoded.userId;
+    } catch {}
+  }
+  next();
+}
+
 // ============================================================
 // HEALTH CHECK
 // ============================================================
@@ -1850,6 +1862,27 @@ app.post('/api/kyc/upload', verifyToken, async (req, res) => {
   }
 });
 
+// GET /api/kyc/status — returns current KYC status for the logged-in user
+app.get('/api/kyc/status', verifyToken, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin.from('users')
+      .select('kyc_status, kyc_id_type, kyc_submitted_at, kyc_id_url, kyc_selfie_url, kyc_rejection_reason, is_id_verified')
+      .eq('id', req.userId).single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({
+      kyc_status:          data?.kyc_status          || null,
+      kyc_id_type:         data?.kyc_id_type         || null,
+      kyc_submitted_at:    data?.kyc_submitted_at    || null,
+      kyc_id_url:          data?.kyc_id_url          || null,
+      kyc_selfie_url:      data?.kyc_selfie_url      || null,
+      kyc_rejection_reason:data?.kyc_rejection_reason|| null,
+      is_id_verified:      data?.is_id_verified      || false,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Resend verification code
 app.post('/api/auth/resend-code', async (req, res) => {
   try {
@@ -1923,7 +1956,7 @@ app.get('/api/users/profile', verifyToken, async (req, res) => {
   try {
     // Core columns — confirmed to exist in every PRAQEN DB schema
     const { data, error } = await supabaseAdmin.from('users')
-      .select('id, email, username, full_name, bio, location, website, phone, avatar_url, average_rating, total_trades, completion_rate, created_at, is_admin, is_moderator, is_id_verified, is_email_verified, is_phone_verified, total_feedback_count, positive_feedback, negative_feedback, last_login, last_seen_at, badge')
+      .select('id, email, username, full_name, bio, location, website, phone, avatar_url, average_rating, total_trades, completion_rate, created_at, is_admin, is_moderator, is_id_verified, is_email_verified, is_phone_verified, total_feedback_count, positive_feedback, negative_feedback, last_login, last_seen_at, badge, country')
       .eq('id', req.userId).single();
     if (error) {
       console.error('[GET /api/users/profile] DB error:', error.message);
@@ -1935,7 +1968,7 @@ app.get('/api/users/profile', verifyToken, async (req, res) => {
     let extraFields = {};
     try {
       const { data: extra } = await supabaseAdmin.from('users')
-        .select('email_verified, is_phone_verified, phone_verified, kyc_verified, kyc_status, username_changed, preferred_currency, preferred_language, hide_full_name, referral_code, total_referrals, referral_earnings_btc')
+        .select('email_verified, is_phone_verified, phone_verified, kyc_verified, kyc_status, kyc_id_type, kyc_submitted_at, kyc_id_url, kyc_selfie_url, kyc_rejection_reason, username_changed, preferred_currency, preferred_language, hide_full_name, referral_code, total_referrals, referral_earnings_btc')
         .eq('id', req.userId).single();
       if (extra) extraFields = extra;
     } catch {}
@@ -3968,6 +4001,572 @@ app.post('/api/admin/send-welcome-emails', verifyToken, async (req, res) => {
     console.error('[send-welcome-emails] error:', err.message);
     res.status(500).json({ error: err.message });
   }
+});
+
+// ============================================================
+// ADMIN — COMPREHENSIVE MANAGEMENT ROUTES
+// ============================================================
+
+// Helper: verify admin access
+async function requireAdmin(req, res) {
+  const { data: u } = await supabaseAdmin.from('users').select('is_admin, is_moderator, email').eq('id', req.userId).single();
+  const ok = u?.is_admin || u?.is_moderator || u?.email === ADMIN_EMAIL;
+  if (!ok) { res.status(403).json({ error: 'Admin access required' }); return null; }
+  return u;
+}
+
+// GET /api/admin/stats — full platform overview
+app.get('/api/admin/stats', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const [usersR, tradesR, listingsR, profitsR, disputesR, kycR] = await Promise.all([
+      supabaseAdmin.from('users').select('id, created_at, account_status, is_email_verified, is_id_verified, badge', { count: 'exact' }),
+      supabaseAdmin.from('trades').select('id, status, amount_usd, amount_btc, created_at', { count: 'exact' }),
+      supabaseAdmin.from('listings').select('id, status', { count: 'exact' }),
+      supabaseAdmin.from('company_profits').select('profit_btc, profit_usd'),
+      supabaseAdmin.from('trades').select('id', { count: 'exact' }).eq('status', 'DISPUTED'),
+      supabaseAdmin.from('users').select('id', { count: 'exact' }).eq('kyc_status', 'pending'),
+    ]);
+    const users   = usersR.data  || [];
+    const trades  = tradesR.data || [];
+    const profits = profitsR.data || [];
+    const now = Date.now();
+    const day = 86400000;
+    const newUsersToday  = users.filter(u => now - new Date(u.created_at) < day).length;
+    const newUsersWeek   = users.filter(u => now - new Date(u.created_at) < 7*day).length;
+    const activeTrades   = trades.filter(t => ['CREATED','FUNDS_LOCKED','ESCROW','ACTIVE','OPEN','PAYMENT_SENT','PAID'].includes(t.status)).length;
+    const completedTrades= trades.filter(t => t.status === 'COMPLETED').length;
+    const cancelledTrades= trades.filter(t => t.status === 'CANCELLED').length;
+    const totalVolumeUsd = trades.filter(t => t.status === 'COMPLETED').reduce((s, t) => s + parseFloat(t.amount_usd || 0), 0);
+    const totalVolumeBtc = trades.filter(t => t.status === 'COMPLETED').reduce((s, t) => s + parseFloat(t.amount_btc || 0), 0);
+    const totalRevBtc    = profits.reduce((s, p) => s + parseFloat(p.profit_btc || 0), 0);
+    const totalRevUsd    = profits.reduce((s, p) => s + parseFloat(p.profit_usd || 0), 0);
+    // Trades per day last 7 days
+    const tradeDays = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(); d.setDate(d.getDate() - (6 - i));
+      const label = d.toLocaleDateString('en-US', { weekday: 'short' });
+      const count = trades.filter(t => {
+        const td = new Date(t.created_at);
+        return td.toDateString() === d.toDateString();
+      }).length;
+      return { label, count };
+    });
+    res.json({
+      totalUsers: usersR.count || users.length,
+      newUsersToday, newUsersWeek,
+      verifiedUsers: users.filter(u => u.is_email_verified).length,
+      kycVerified:   users.filter(u => u.is_id_verified).length,
+      pendingKyc:    kycR.count || 0,
+      totalTrades:   tradesR.count || trades.length,
+      activeTrades, completedTrades, cancelledTrades,
+      openDisputes:  disputesR.count || 0,
+      activeListings: (listingsR.data || []).filter(l => l.status === 'ACTIVE').length,
+      totalListings:  listingsR.count || 0,
+      totalVolumeUsd: totalVolumeUsd.toFixed(2),
+      totalVolumeBtc: totalVolumeBtc.toFixed(8),
+      totalRevBtc:    totalRevBtc.toFixed(8),
+      totalRevUsd:    totalRevUsd.toFixed(2),
+      tradeDays,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/admin/users — all users with search/filter/pagination
+app.get('/api/admin/users', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { search = '', status = '', page = 1, limit = 50 } = req.query;
+    let query = supabaseAdmin.from('users')
+      .select('id, email, username, full_name, phone_number, avatar_url, account_status, is_admin, is_moderator, is_email_verified, is_id_verified, is_phone_verified, kyc_status, total_trades, completion_rate, average_rating, positive_feedback, negative_feedback, badge, referral_code, total_referrals, created_at, last_login, last_seen_at, country', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range((page - 1) * limit, page * limit - 1);
+    if (search) query = query.or(`username.ilike.%${search}%,email.ilike.%${search}%,full_name.ilike.%${search}%`);
+    if (status) query = query.eq('account_status', status);
+    const { data, error, count } = await query;
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ users: data || [], total: count || 0, page: parseInt(page), limit: parseInt(limit) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT /api/admin/users/:id — update user (ban, make admin, verify, etc.)
+app.put('/api/admin/users/:id', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const allowed = ['account_status', 'is_admin', 'is_moderator', 'is_id_verified', 'is_email_verified', 'badge', 'kyc_status'];
+    const updates = {};
+    for (const k of allowed) { if (req.body[k] !== undefined) updates[k] = req.body[k]; }
+    if (!Object.keys(updates).length) return res.status(400).json({ error: 'No valid fields' });
+    updates.updated_at = new Date();
+    const { data, error } = await supabaseAdmin.from('users').update(updates).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, user: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /api/admin/users/:id — delete user account
+app.delete('/api/admin/users/:id', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    if (req.params.id === req.userId) return res.status(400).json({ error: 'Cannot delete your own account' });
+    const { error } = await supabaseAdmin.from('users').delete().eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/admin/trades/all — all trades with filter/pagination
+app.get('/api/admin/trades/all', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { status = '', page = 1, limit = 50, search = '' } = req.query;
+    let query = supabaseAdmin.from('trades')
+      .select('*, buyer:buyer_id(id, username, email), seller:seller_id(id, username, email)', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range((page - 1) * limit, page * limit - 1);
+    if (status) query = query.eq('status', status);
+    if (search) query = query.or(`id.ilike.%${search}%,trade_ref.ilike.%${search}%`);
+    const { data, error, count } = await query;
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ trades: data || [], total: count || 0 });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT /api/admin/trades/:id — force update trade status
+app.put('/api/admin/trades/:id', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { status, notes } = req.body;
+    if (!status) return res.status(400).json({ error: 'status required' });
+    const updates = { status, admin_notes: notes, updated_at: new Date() };
+    if (status === 'COMPLETED') updates.completed_at = new Date();
+    if (status === 'CANCELLED') updates.cancelled_at = new Date();
+    const { data, error } = await supabaseAdmin.from('trades').update(updates).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, trade: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/admin/kyc — pending KYC submissions (resilient to missing columns)
+app.get('/api/admin/kyc', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { status = 'pending' } = req.query;
+
+    let query = supabaseAdmin.from('users')
+      .select('id, email, username, full_name, kyc_id_type, kyc_id_url, kyc_selfie_url, kyc_status, kyc_submitted_at, created_at, country')
+      .order('kyc_submitted_at', { ascending: true, nullsFirst: false });
+
+    if (status === 'all') {
+      // Anyone who ever uploaded a document OR has any kyc_status
+      query = query.or('kyc_id_url.not.is.null,kyc_status.not.is.null');
+    } else if (status === 'pending') {
+      // kyc_status='pending' OR has a document but status was never set (legacy)
+      query = query.or('kyc_status.eq.pending,and(kyc_status.is.null,kyc_id_url.not.is.null)');
+    } else {
+      query = query.eq('kyc_status', status);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      // KYC columns likely haven't been migrated yet — fall back to basic query
+      console.warn('[admin/kyc] Column error (run admin_columns.sql):', error.message);
+      const { data: fallback } = await supabaseAdmin.from('users')
+        .select('id, email, username, created_at, country, is_id_verified')
+        .eq('is_id_verified', false)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      return res.json({
+        submissions: (fallback || []).map(u => ({ ...u, kyc_status: null, _migration_needed: true })),
+        migration_needed: true,
+        migration_hint: 'Run admin_columns.sql in Supabase SQL Editor to enable full KYC management.',
+      });
+    }
+
+    res.json({ submissions: data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/admin/backfill-kyc — set kyc_status='pending' for legacy users who uploaded docs
+app.post('/api/admin/backfill-kyc', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { data, error } = await supabaseAdmin.from('users')
+      .update({ kyc_status: 'pending', updated_at: new Date() })
+      .not('kyc_id_url', 'is', null)
+      .is('kyc_status', null)
+      .select('id, username');
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, updated: (data || []).length, users: data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT /api/admin/kyc/:userId/approve
+app.put('/api/admin/kyc/:userId/approve', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    await supabaseAdmin.from('users').update({ kyc_status: 'approved', is_id_verified: true, kyc_approved_at: new Date(), updated_at: new Date() }).eq('id', req.params.userId);
+    await createNotification(req.params.userId, 'kyc', '✅ KYC Approved', 'Your identity has been verified. You now have full access to all PRAQEN features.', '/settings');
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT /api/admin/kyc/:userId/reject
+app.put('/api/admin/kyc/:userId/reject', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { reason = 'Documents unclear or invalid' } = req.body;
+    await supabaseAdmin.from('users').update({ kyc_status: 'rejected', is_id_verified: false, kyc_rejection_reason: reason, updated_at: new Date() }).eq('id', req.params.userId);
+    await createNotification(req.params.userId, 'kyc', '❌ KYC Rejected', `Your KYC was not approved: ${reason}. Please re-submit with clearer documents.`, '/settings');
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/admin/listings/all — all listings
+app.get('/api/admin/listings/all', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { status = '', page = 1, limit = 50 } = req.query;
+    let query = supabaseAdmin.from('listings')
+      .select('*, seller:seller_id(id, username, email)', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range((page - 1) * limit, page * limit - 1);
+    if (status) query = query.eq('status', status);
+    const { data, error, count } = await query;
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ listings: data || [], total: count || 0 });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT /api/admin/listings/:id — update listing (pause/activate)
+app.put('/api/admin/listings/:id', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { status } = req.body;
+    const { data, error } = await supabaseAdmin.from('listings').update({ status, updated_at: new Date() }).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, listing: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /api/admin/listings/:id — delete listing
+app.delete('/api/admin/listings/:id', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { error } = await supabaseAdmin.from('listings').delete().eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/admin/broadcast — send notification to all users
+app.post('/api/admin/broadcast', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { title, message, type = 'system' } = req.body;
+    if (!title || !message) return res.status(400).json({ error: 'title and message required' });
+    const { data: users } = await supabaseAdmin.from('users').select('id').eq('account_status', 'active');
+    if (!users?.length) return res.json({ success: true, sent: 0 });
+    const notifications = users.map(u => ({ user_id: u.id, type, title, message, is_read: false, created_at: new Date() }));
+    // Insert in batches of 100
+    for (let i = 0; i < notifications.length; i += 100) {
+      await supabaseAdmin.from('notifications').insert(notifications.slice(i, i + 100));
+    }
+    res.json({ success: true, sent: users.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/admin/revenue — revenue over time
+app.get('/api/admin/revenue', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { data: profits } = await supabaseAdmin.from('company_profits').select('*').order('collected_at', { ascending: false }).limit(200);
+    const { data: affiliates } = await supabaseAdmin.from('affiliate_earnings').select('commission_btc, commission_usd, status, created_at').order('created_at', { ascending: false }).limit(100);
+    const totalRevBtc = (profits || []).reduce((s, p) => s + parseFloat(p.profit_btc || 0), 0);
+    const totalRevUsd = (profits || []).reduce((s, p) => s + parseFloat(p.profit_usd || 0), 0);
+    const totalAffBtc = (affiliates || []).filter(a => a.status === 'COMPLETED').reduce((s, a) => s + parseFloat(a.commission_btc || 0), 0);
+    res.json({ profits: profits || [], affiliates: affiliates || [], totalRevBtc: totalRevBtc.toFixed(8), totalRevUsd: totalRevUsd.toFixed(2), totalAffBtc: totalAffBtc.toFixed(8) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT /api/admin/users/:id/verify-email — manually verify email
+app.put('/api/admin/users/:id/verify-email', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { data, error } = await supabaseAdmin.from('users').update({ is_email_verified: true, updated_at: new Date() }).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    await createNotification(req.params.id, 'system', '📧 Email Verified', 'Your email address has been manually verified by an admin.', '/settings');
+    res.json({ success: true, user: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT /api/admin/users/:id/verify-phone — manually verify phone
+app.put('/api/admin/users/:id/verify-phone', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { data, error } = await supabaseAdmin.from('users').update({ is_phone_verified: true, updated_at: new Date() }).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    await createNotification(req.params.id, 'system', '📱 Phone Verified', 'Your phone number has been manually verified by an admin.', '/settings');
+    res.json({ success: true, user: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT /api/admin/users/:id/ban — ban a user
+app.put('/api/admin/users/:id/ban', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { reason = '' } = req.body;
+    if (req.params.id === req.userId) return res.status(400).json({ error: 'Cannot ban your own account' });
+    const { data, error } = await supabaseAdmin.from('users').update({ account_status: 'banned', updated_at: new Date() }).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    if (reason) await createNotification(req.params.id, 'security', '🚫 Account Banned', `Your account has been banned. Reason: ${reason}`, '/');
+    res.json({ success: true, user: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT /api/admin/users/:id/unban — reinstate a banned user
+app.put('/api/admin/users/:id/unban', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { data, error } = await supabaseAdmin.from('users').update({ account_status: 'active', updated_at: new Date() }).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    await createNotification(req.params.id, 'system', '✅ Account Reinstated', 'Your account ban has been lifted. Welcome back to PRAQEN!', '/dashboard');
+    res.json({ success: true, user: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT /api/admin/users/:id/make-admin — toggle admin role
+app.put('/api/admin/users/:id/make-admin', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { data: cur } = await supabaseAdmin.from('users').select('is_admin').eq('id', req.params.id).single();
+    const newVal = !cur?.is_admin;
+    const { data, error } = await supabaseAdmin.from('users').update({ is_admin: newVal, updated_at: new Date() }).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, user: data, is_admin: newVal });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/admin/users/new — users who joined in the last 7 days
+app.get('/api/admin/users/new', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data, error, count } = await supabaseAdmin.from('users')
+      .select('id, email, username, full_name, avatar_url, account_status, is_email_verified, is_phone_verified, is_id_verified, total_trades, country, created_at, last_login', { count: 'exact' })
+      .gte('created_at', since)
+      .order('created_at', { ascending: false });
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ users: data || [], total: count || 0 });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/admin/reports — feedback and dispute reports
+app.get('/api/admin/reports', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const [feedbackR, disputesR] = await Promise.all([
+      supabaseAdmin.from('trade_feedback')
+        .select('id, rating, comment, created_at, reviewer:reviewer_id(username, email), reviewed:reviewed_id(username, email), trade:trade_id(id, trade_ref, status, amount_usd)')
+        .order('created_at', { ascending: false })
+        .limit(100),
+      supabaseAdmin.from('trades')
+        .select('id, trade_ref, status, amount_usd, amount_btc, dispute_reason, disputed_at, created_at, buyer:buyer_id(username, email), seller:seller_id(username, email)')
+        .eq('status', 'DISPUTED')
+        .order('disputed_at', { ascending: false })
+        .limit(50),
+    ]);
+    res.json({ feedback: feedbackR.data || [], disputes: disputesR.data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/admin/activity — recent user activity logs
+app.get('/api/admin/activity', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { data, error } = await supabaseAdmin.from('users')
+      .select('id, username, email, last_login, last_seen_at, created_at, total_trades, account_status, country, is_email_verified, is_phone_verified, is_id_verified')
+      .not('last_seen_at', 'is', null)
+      .order('last_seen_at', { ascending: false })
+      .limit(100);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ activity: data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ============================================================
+// COMMUNITY SUGGESTIONS BOARD
+// ============================================================
+
+// Helper: flatten joined user onto suggestion row
+function flattenSuggestion(s) {
+  const username = s.users?.username || s.username || 'Anonymous';
+  const { users: _u, ...rest } = s;
+  return { ...rest, username };
+}
+
+// GET /api/suggestions — public list (optional auth for user_voted flag)
+app.get('/api/suggestions', optionalAuth, async (req, res) => {
+  try {
+    const { sort = 'votes', category = '', status = '', page = 1, limit = 20 } = req.query;
+    const offset = (page - 1) * limit;
+
+    let query = supabaseAdmin.from('suggestions')
+      .select('*, users!suggestions_user_id_fkey(id, username)', { count: 'exact' })
+      .order('is_pinned', { ascending: false })
+      .order(sort === 'votes' ? 'upvotes' : 'created_at', { ascending: false })
+      .range(offset, offset + parseInt(limit) - 1);
+
+    if (category) query = query.eq('category', category);
+    if (status)   query = query.eq('status', status);
+
+    const { data, error, count } = await query;
+    if (error) return res.status(400).json({ error: error.message });
+
+    // Attach user_voted flag for logged-in users
+    let votedSet = new Set();
+    if (req.userId && data?.length) {
+      const ids = data.map(s => s.id);
+      const { data: votes } = await supabaseAdmin.from('suggestion_votes')
+        .select('suggestion_id')
+        .eq('user_id', req.userId)
+        .in('suggestion_id', ids);
+      votedSet = new Set((votes || []).map(v => v.suggestion_id));
+    }
+
+    res.json({
+      suggestions: (data || []).map(s => ({ ...flattenSuggestion(s), user_voted: votedSet.has(s.id) })),
+      total: count || 0,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/suggestions — submit a new suggestion (requires auth)
+app.post('/api/suggestions', verifyToken, async (req, res) => {
+  try {
+    const { title, body, category = 'feature' } = req.body;
+    if (!title?.trim()) return res.status(400).json({ error: 'Title is required' });
+    if (title.length > 200) return res.status(400).json({ error: 'Title too long (max 200 chars)' });
+
+    const VALID_CATS = ['feature', 'trading', 'bug', 'improvement', 'other'];
+    const safeCategory = VALID_CATS.includes(category) ? category : 'other';
+
+    const { data: user } = await supabaseAdmin.from('users')
+      .select('username, account_status').eq('id', req.userId).single();
+    if (user?.account_status === 'banned') return res.status(403).json({ error: 'Account suspended' });
+
+    // Insert without username — we join users table on read
+    const { data, error } = await supabaseAdmin.from('suggestions').insert({
+      user_id:    req.userId,
+      title:      title.trim(),
+      body:       body?.trim()?.slice(0, 1000) || null,
+      category:   safeCategory,
+      upvotes:    0,
+      status:     'open',
+      created_at: new Date(),
+      updated_at: new Date(),
+    }).select('*, users!suggestions_user_id_fkey(id, username)').single();
+
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, suggestion: { ...flattenSuggestion(data), user_voted: false } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/suggestions/:id/vote — toggle upvote
+app.post('/api/suggestions/:id/vote', verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { data: existing } = await supabaseAdmin.from('suggestion_votes')
+      .select('id').eq('suggestion_id', id).eq('user_id', req.userId).maybeSingle();
+
+    const { data: current } = await supabaseAdmin.from('suggestions')
+      .select('upvotes').eq('id', id).single();
+
+    let voted;
+    if (existing) {
+      await supabaseAdmin.from('suggestion_votes')
+        .delete().eq('suggestion_id', id).eq('user_id', req.userId);
+      await supabaseAdmin.from('suggestions')
+        .update({ upvotes: Math.max(0, (current?.upvotes || 1) - 1), updated_at: new Date() }).eq('id', id);
+      voted = false;
+    } else {
+      await supabaseAdmin.from('suggestion_votes')
+        .insert({ suggestion_id: id, user_id: req.userId, created_at: new Date() });
+      await supabaseAdmin.from('suggestions')
+        .update({ upvotes: (current?.upvotes || 0) + 1, updated_at: new Date() }).eq('id', id);
+      voted = true;
+    }
+
+    const { data: updated } = await supabaseAdmin.from('suggestions')
+      .select('upvotes').eq('id', id).single();
+
+    res.json({ success: true, voted, upvotes: updated?.upvotes || 0 });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/admin/suggestions — admin: all suggestions with filters
+app.get('/api/admin/suggestions', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { sort = 'votes', category = '', status = '', page = 1, limit = 50 } = req.query;
+    const offset = (page - 1) * limit;
+
+    let query = supabaseAdmin.from('suggestions')
+      .select('*, users!suggestions_user_id_fkey(id, username)', { count: 'exact' })
+      .order('is_pinned', { ascending: false })
+      .order(sort === 'votes' ? 'upvotes' : 'created_at', { ascending: false })
+      .range(offset, offset + parseInt(limit) - 1);
+
+    if (category) query = query.eq('category', category);
+    if (status)   query = query.eq('status', status);
+
+    const { data, error, count } = await query;
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ suggestions: (data || []).map(flattenSuggestion), total: count || 0 });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT /api/admin/suggestions/:id — update status / reply / pin
+app.put('/api/admin/suggestions/:id', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { status, admin_reply, is_pinned } = req.body;
+    const updates = { updated_at: new Date() };
+    if (status !== undefined)      updates.status      = status;
+    if (is_pinned !== undefined)   updates.is_pinned   = is_pinned;
+    if (admin_reply !== undefined) {
+      updates.admin_reply      = admin_reply;
+      updates.admin_replied_at = new Date();
+    }
+
+    const { data, error } = await supabaseAdmin.from('suggestions')
+      .update(updates).eq('id', req.params.id)
+      .select('*, users!suggestions_user_id_fkey(id, username)').single();
+    if (error) return res.status(400).json({ error: error.message });
+
+    // Notify user when admin replies
+    if (admin_reply !== undefined && data?.user_id && admin_reply.trim()) {
+      await createNotification(
+        data.user_id, 'system',
+        '💬 PRAQEN Team replied to your idea',
+        `Your suggestion "${(data.title || '').slice(0, 60)}" got a response from the team. Check it out!`,
+        '/'
+      );
+    }
+
+    res.json({ success: true, suggestion: flattenSuggestion(data) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /api/admin/suggestions/:id
+app.delete('/api/admin/suggestions/:id', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { error } = await supabaseAdmin.from('suggestions').delete().eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ============================================================

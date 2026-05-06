@@ -7,6 +7,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
 import WelcomeModal from './components/WelcomeModal';
+import SuggestionsPanel from './components/SuggestionsPanel';
 
 // Silence all non-error console output in production
 if (process.env.NODE_ENV === 'production') {
@@ -275,7 +276,7 @@ function App() {
           <Route path="/feedback/:tradeId/:userId" element={user ? <Feedback user={user} /> : <Navigate to="/login" />} />
 
           {/* Admin/Moderator Routes */}
-          <Route path="/admin" element={user?.is_admin ? <AdminDashboard user={user} /> : <Navigate to="/" />} />
+          <Route path="/admin" element={<AdminDashboard user={user} onLogin={login} />} />
           <Route path="/moderator" element={<ModeratorDashboard user={user} />} />
           <Route path="/escrow/:id" element={user ? <EscrowVerification user={user} /> : <Navigate to="/login" />} />
 
@@ -288,6 +289,7 @@ function App() {
         </Suspense>
 
         <BottomNav user={user} />
+        <SuggestionsPanel user={user} />
         <ToastContainer position="bottom-right" autoClose={3000} />
       </AppShell>
     </Router>

@@ -262,7 +262,6 @@ function OfferCard({listing, btcPriceUSD, onViewSeller, onBuy, liked, onToggleLi
   return (
     <div className="bg-white rounded-2xl overflow-hidden border hover:shadow-lg transition-all w-full"
       style={{borderColor:C.g200}}>
-
       <div className="px-4 pt-4 pb-2">
         <div className="flex items-start gap-3">
           <div className="relative flex-shrink-0">
