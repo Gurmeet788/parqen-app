@@ -47,6 +47,7 @@ try {
 const CoinbaseWalletService = require('./services/coinbaseWallet');
 const quoteService          = require('./services/quoteService');
 const { E, S }              = require('./utils/apiErrors');
+const emailService          = require('./services/emailService');
 
 // In-memory typing state: 'tradeId:userId' -> expiresAt timestamp
 const typingState = {};
@@ -307,43 +308,7 @@ async function notifyUserEmail(userId, subject, htmlContent) {
     const { data: user, error: dbErr } = await supabaseAdmin.from('users').select('email').eq('id', userId).single();
     if (dbErr) { console.error(`[Email] DB lookup failed for ${userId}:`, dbErr.message); return; }
     if (!user?.email) { console.warn(`[Email] No email on file for user ${userId} — skipping`); return; }
-
-    const from = `"PRAQEN" <${process.env.EMAIL_USER || 'kendevdash@gmail.com'}>`;
-    const mailOpts = { from, to: user.email, subject, html: htmlContent };
-
-    // Try SMTP port 587 first
-    try {
-      await transporter.sendMail(mailOpts);
-      console.log(`📧 Email sent to ${user.email} (user ${userId.slice(0,8)}) via SMTP 587`);
-      return;
-    } catch (e1) {
-      console.warn(`[Email] SMTP 587 failed for ${user.email}:`, e1.message, '— trying 465');
-    }
-
-    // Try SMTP port 465 SSL
-    try {
-      const sslTransporter = require('nodemailer').createTransport({
-        host: 'smtp.gmail.com', port: 465, secure: true,
-        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-      });
-      await sslTransporter.sendMail(mailOpts);
-      console.log(`📧 Email sent to ${user.email} via SMTP 465`);
-      return;
-    } catch (e2) {
-      console.warn(`[Email] SMTP 465 failed for ${user.email}:`, e2.message, '— trying Resend');
-    }
-
-    // Fallback: Resend
-    if (resendClient) {
-      const { error: resendErr } = await resendClient.emails.send({
-        from: RESEND_FROM_ADDR,
-        to: user.email, subject, html: htmlContent,
-      });
-      if (!resendErr) { console.log(`📧 Email sent to ${user.email} via Resend`); return; }
-      console.error(`[Email] Resend also failed for ${user.email}:`, resendErr.message);
-    } else {
-      console.error(`[Email] All delivery methods exhausted for user ${userId.slice(0,8)}`);
-    }
+    await emailService.sendEmail({ userId, to: user.email, subject, html: htmlContent, type: 'trade_notification' });
   } catch (err) {
     console.error(`[Email] notifyUserEmail error for ${userId}:`, err.message);
   }
@@ -821,6 +786,21 @@ async function releaseFundsToBuyer(tradeId, buyerId, amountBtc, tradeAmountUsd) 
   await supabaseAdmin.from('escrow_locks').update({ status: 'RELEASED', released_at: new Date() }).eq('trade_id', tradeId);
   await supabaseAdmin.from('trades').update({ status: 'COMPLETED', completed_at: new Date() }).eq('id', tradeId);
   await createAffiliateEarning(tradeId, buyerId, amountBtc, tradeAmountUsd);
+
+  // Send trade confirmation emails to buyer and seller (fire and forget)
+  Promise.resolve().then(async () => {
+    try {
+      const { data: trade } = await supabaseAdmin.from('trades').select('*').eq('id', tradeId).single();
+      const sellerId = escrow?.seller_id;
+      const [buyerRes, sellerRes] = await Promise.all([
+        supabaseAdmin.from('users').select('id, email, username').eq('id', buyerId).single(),
+        sellerId ? supabaseAdmin.from('users').select('id, email, username').eq('id', sellerId).single() : Promise.resolve({ data: null }),
+      ]);
+      if (buyerRes.data?.email)  emailService.sendTradeConfirmationEmail(buyerRes.data,  trade, 'buyer').catch(() => {});
+      if (sellerRes.data?.email) emailService.sendTradeConfirmationEmail(sellerRes.data, trade, 'seller').catch(() => {});
+    } catch (_) {}
+  }).catch(() => {});
+
   return { success: true };
 }
 
@@ -1030,12 +1010,12 @@ app.post('/api/auth/register', async (req, res) => {
     });
 
     // ── BACKGROUND WORK (runs after response is sent) ──────────────────────
-    // 1. Send verification email (SMTP can be slow — never block signup on it)
-    sendVerificationEmail(email, code)
+    // 1. Send verification email (Brevo SMTP + logged)
+    emailService.sendVerificationEmail(email, code, newUser.id)
       .catch(e => console.error('[Register] Verification email failed:', e.message));
 
-    // 2. Send welcome email to new user
-    sendWelcomeEmail(email, username)
+    // 2. Send welcome email (Brevo SMTP + logged)
+    emailService.sendWelcomeEmail({ id: newUser.id, email, username })
       .catch(e => console.error('[Register] Welcome email failed:', e.message));
 
     // 2. Generate HD wallet address for this user
@@ -1168,6 +1148,11 @@ app.post('/api/auth/login', async (req, res) => {
         referral_earnings_btc: data.referral_earnings_btc || 0 },
       token,
     });
+
+    // Login alert email (fire and forget — never block login)
+    emailService.sendLoginAlertEmail({ id: data.id, email: data.email, username: data.username })
+      .catch(() => {});
+
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: error.message });
