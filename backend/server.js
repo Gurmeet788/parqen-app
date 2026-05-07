@@ -58,7 +58,7 @@ setInterval(() => {
 
 // In-memory market cache — serves offers/listings without hitting DB on every page load
 const _marketCache = new Map(); // key -> { data, ts }
-const MARKET_CACHE_TTL = 25000; // 25 seconds
+const MARKET_CACHE_TTL = 90000; // 90 seconds
 function getCached(key) {
   const c = _marketCache.get(key);
   return c && Date.now() - c.ts < MARKET_CACHE_TTL ? c.data : null;
@@ -1731,6 +1731,60 @@ app.post('/api/users/send-phone-otp', verifyToken, async (req, res) => {
   }
 });
 
+// POST /api/users/submit-phone — save phone for manual admin review (no OTP)
+// User submits their number → saved immediately → admin verifies → user gets notified.
+app.post('/api/users/submit-phone', verifyToken, async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ error: 'Phone number required' });
+
+    // Clean the number — strip spaces, dashes, parentheses
+    let e164 = phone.trim().replace(/[\s\-()]/g, '');
+    if (!e164.startsWith('+')) {
+      return res.status(400).json({ error: 'Please include your country code. Use international format, e.g. +233XXXXXXXXX for Ghana or +234XXXXXXXXXX for Nigeria.' });
+    }
+
+    // Check if THIS user already has a phone saved — once submitted, it cannot be changed
+    const { data: currentUser } = await supabaseAdmin
+      .from('users').select('phone').eq('id', req.userId).maybeSingle();
+    if (currentUser?.phone) {
+      // Idempotent: same number already saved — just return success
+      if (currentUser.phone === e164) return res.json({ success: true });
+      // Different number — block; phone is locked once submitted
+      return res.status(400).json({ error: 'A phone number has already been submitted for your account. It cannot be changed while under review.' });
+    }
+
+    // One phone = one account — block if number belongs to someone else
+    const { data: existing } = await supabaseAdmin
+      .from('users').select('id').eq('phone', e164).neq('id', req.userId).maybeSingle();
+    if (existing) return res.status(400).json({ error: 'This number is already registered to another account.' });
+
+    // Save phone to users table — not verified yet, admin will approve manually
+    const { error: updateErr } = await supabaseAdmin
+      .from('users')
+      .update({ phone: e164, updated_at: new Date().toISOString() })
+      .eq('id', req.userId);
+
+    if (updateErr) return res.status(400).json({ error: updateErr.message });
+
+    // In-app notification so the user gets immediate confirmation
+    try {
+      await createNotification(
+        req.userId, 'kyc',
+        '📱 Phone Number Received',
+        `We've received your number (${e164}) and it's now under manual review. You'll be notified once it's verified — usually within 24 hours.`,
+        '/settings?tab=verification'
+      );
+    } catch (_) {}
+
+    console.log(`[submit-phone] ${req.userId.slice(0,8)} submitted ${e164} for manual review`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[submit-phone] error:', err.message);
+    res.status(500).json({ error: 'Could not save phone number. Please try again.' });
+  }
+});
+
 // POST /api/users/verify-phone-otp — verify phone OTP and mark phone verified
 app.post('/api/users/verify-phone-otp', verifyToken, async (req, res) => {
   try {
@@ -2273,13 +2327,18 @@ app.get('/api/listings', async (req, res) => {
 
     if (sellListings.length > 0) {
       const sellerIds = [...new Set(sellListings.map(l => l.seller_id))];
-      const { data: wallets } = await supabaseAdmin
-        .from('user_balances')
-        .select('user_id, balance_btc')
-        .in('user_id', sellerIds);
+      const [{ data: balRows }, { data: walletRows }] = await Promise.all([
+        supabaseAdmin.from('user_balances').select('user_id, balance_btc').in('user_id', sellerIds),
+        supabaseAdmin.from('user_wallets').select('user_id, balance_btc').in('user_id', sellerIds),
+      ]);
 
       const balMap = {};
-      (wallets || []).forEach(w => { balMap[w.user_id] = parseFloat(w.balance_btc || 0); });
+      (balRows || []).forEach(w => { balMap[w.user_id] = parseFloat(w.balance_btc || 0); });
+      // Use the higher of the two tables — user_wallets may be ahead after a fresh deposit
+      (walletRows || []).forEach(w => {
+        const wBtc = parseFloat(w.balance_btc || 0);
+        if (wBtc > (balMap[w.user_id] || 0)) balMap[w.user_id] = wBtc;
+      });
 
       listings = listings.map(l => {
         if (l.listing_type !== 'SELL' && l.listing_type !== 'SELL_BITCOIN') return l;
@@ -2319,14 +2378,24 @@ app.get('/api/listings/:id', async (req, res) => {
       return res.status(404).json({ error: 'Listing not found' });
     }
 
-    // Get the seller separately
-    const { data: seller } = await supabaseAdmin
-      .from('users')
-      .select('id, username, badge, country, average_rating, total_trades, completion_rate, avatar_url, created_at, total_feedback_count, positive_feedback, negative_feedback, last_login, last_seen_at, is_id_verified, is_email_verified, is_phone_verified, bio, trust_score, blocks_received, avg_response_time')
-      .eq('id', listing.seller_id)
-      .single();
+    // Fetch seller info and live balance in parallel — never use cached balance for the detail view
+    const [{ data: seller }, { data: balRow }, { data: walletRow }] = await Promise.all([
+      supabaseAdmin.from('users')
+        .select('id, username, badge, country, average_rating, total_trades, completion_rate, avatar_url, created_at, total_feedback_count, positive_feedback, negative_feedback, last_login, last_seen_at, is_id_verified, is_email_verified, is_phone_verified, bio, trust_score, blocks_received, avg_response_time')
+        .eq('id', listing.seller_id).single(),
+      supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', listing.seller_id).maybeSingle(),
+      supabaseAdmin.from('user_wallets').select('balance_btc').eq('user_id', listing.seller_id).maybeSingle(),
+    ]);
 
-    res.json({ listing: { ...listing, users: seller ? [seller] : [] } });
+    const sellerBalBtc    = parseFloat(balRow?.balance_btc || 0);
+    const sellerWalletBtc = parseFloat(walletRow?.balance_btc || 0);
+    const sellerBalanceBtc = Math.max(sellerBalBtc, sellerWalletBtc);
+    const btcPriceVal = parseFloat(listing.bitcoin_price) || 88000;
+    const effectiveMaxUsd = sellerBalanceBtc > 0
+      ? Math.min(sellerBalanceBtc * btcPriceVal, parseFloat(listing.max_limit_usd || 0) || sellerBalanceBtc * btcPriceVal)
+      : parseFloat(listing.max_limit_usd || 0);
+
+    res.json({ listing: { ...listing, users: seller ? [seller] : [], seller_balance_btc: sellerBalanceBtc, effective_max_usd: effectiveMaxUsd } });
   } catch (error) {
     console.error('Listing error:', error);
     res.status(500).json({ error: error.message });
@@ -2466,11 +2535,16 @@ app.get('/api/offers', async (req, res) => {
     )];
     let balMap = {};
     if (sellSellerIds.length > 0) {
-      const { data: bals } = await supabaseAdmin
-        .from('user_balances')
-        .select('user_id, balance_btc')
-        .in('user_id', sellSellerIds);
+      const [{ data: bals }, { data: walBals }] = await Promise.all([
+        supabaseAdmin.from('user_balances').select('user_id, balance_btc').in('user_id', sellSellerIds),
+        supabaseAdmin.from('user_wallets').select('user_id, balance_btc').in('user_id', sellSellerIds),
+      ]);
       (bals || []).forEach(b => { balMap[b.user_id] = parseFloat(b.balance_btc || 0); });
+      // Use the higher of the two tables — user_wallets may be ahead after a fresh deposit
+      (walBals || []).forEach(b => {
+        const wBtc = parseFloat(b.balance_btc || 0);
+        if (wBtc > (balMap[b.user_id] || 0)) balMap[b.user_id] = wBtc;
+      });
     }
 
     const offers = (listings || [])
@@ -2913,20 +2987,21 @@ app.post('/api/trades', verifyToken, async (req, res) => {
     const verifiedFee = parseFloat(calculateFee(verifiedAmountBtc));
     const tradeRef = 'PRAQ-' + require('crypto').randomBytes(4).toString('hex').toUpperCase();
 
-    // Pre-check: ensure BTC provider has enough balance before creating the trade
-    const { data: providerBalance } = await supabaseAdmin
-      .from('user_balances').select('balance_btc').eq('user_id', btcProviderId).maybeSingle();
-    let availableBtc = parseFloat(providerBalance?.balance_btc || 0);
-    // Fallback: user_balances row may be missing or stale — sync from user_wallets
-    if (availableBtc === 0) {
-      const { data: walletRow } = await supabaseAdmin
-        .from('user_wallets').select('balance_btc').eq('user_id', btcProviderId).maybeSingle();
-      const walletBtc = parseFloat(walletRow?.balance_btc || 0);
-      if (walletBtc > 0) {
-        await supabaseAdmin.from('user_balances')
-          .upsert({ user_id: btcProviderId, balance_btc: walletBtc, updated_at: new Date().toISOString() });
-        availableBtc = walletBtc;
-      }
+    // Pre-check: ensure BTC provider has enough balance before creating the trade.
+    // Always query BOTH tables in parallel — user_balances can lag behind fresh deposits
+    // that haven't been synced yet. Use whichever table shows the higher (more accurate) value.
+    const [{ data: providerBalance }, { data: providerWallet }] = await Promise.all([
+      supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', btcProviderId).maybeSingle(),
+      supabaseAdmin.from('user_wallets').select('balance_btc').eq('user_id', btcProviderId).maybeSingle(),
+    ]);
+    const balBtc    = parseFloat(providerBalance?.balance_btc || 0);
+    const walletBtc = parseFloat(providerWallet?.balance_btc || 0);
+    let availableBtc = Math.max(balBtc, walletBtc);
+    // If user_wallets is ahead of user_balances (deposit monitor lag), sync now so
+    // the rest of the trade flow (escrow lock) sees the correct balance.
+    if (walletBtc > balBtc) {
+      await supabaseAdmin.from('user_balances')
+        .upsert({ user_id: btcProviderId, balance_btc: walletBtc, updated_at: new Date().toISOString() });
     }
     if (availableBtc < verifiedAmountBtc) {
       return res.status(400).json({
@@ -2983,6 +3058,8 @@ app.post('/api/trades', verifyToken, async (req, res) => {
         error: 'Could not lock Bitcoin in escrow. The seller may have insufficient funds. Please try a different offer.'
       });
     }
+    // Invalidate marketplace cache so seller's reduced BTC balance shows immediately
+    bustCache();
     // Respond immediately — escrow is locked, trade is live. Do NOT block on emails.
     res.json({ success: true, trade: trade[0], escrowAddress: escrowResult.escrowAddress, fee });
 
@@ -4053,11 +4130,13 @@ app.get('/api/admin/users', verifyToken, async (req, res) => {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { search = '', status = '', page = 1, limit = 50 } = req.query;
     let query = supabaseAdmin.from('users')
-      .select('id, email, username, full_name, phone_number, avatar_url, account_status, is_admin, is_moderator, is_email_verified, is_id_verified, is_phone_verified, kyc_status, total_trades, completion_rate, average_rating, positive_feedback, negative_feedback, badge, referral_code, total_referrals, created_at, last_login, last_seen_at, country', { count: 'exact' })
+      .select('id, email, username, full_name, phone, avatar_url, account_status, is_admin, is_moderator, is_email_verified, is_id_verified, is_phone_verified, kyc_status, kyc_id_type, kyc_submitted_at, total_trades, completion_rate, average_rating, positive_feedback, negative_feedback, badge, referral_code, total_referrals, created_at, last_login, last_seen_at, country', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range((page - 1) * limit, page * limit - 1);
-    if (search) query = query.or(`username.ilike.%${search}%,email.ilike.%${search}%,full_name.ilike.%${search}%`);
-    if (status) query = query.eq('account_status', status);
+    if (search) query = query.or(`username.ilike.%${search}%,email.ilike.%${search}%,full_name.ilike.%${search}%,phone.ilike.%${search}%`);
+    if (status === 'phone_pending') query = query.not('phone', 'is', null).eq('is_phone_verified', false);
+    else if (status === 'kyc_pending') query = query.eq('kyc_status', 'pending');
+    else if (status) query = query.eq('account_status', status);
     const { data, error, count } = await query;
     if (error) return res.status(400).json({ error: error.message });
     res.json({ users: data || [], total: count || 0, page: parseInt(page), limit: parseInt(limit) });
@@ -4181,9 +4260,17 @@ app.post('/api/admin/backfill-kyc', verifyToken, async (req, res) => {
 app.put('/api/admin/kyc/:userId/approve', verifyToken, async (req, res) => {
   try {
     const admin = await requireAdmin(req, res); if (!admin) return;
-    await supabaseAdmin.from('users').update({ kyc_status: 'approved', is_id_verified: true, kyc_approved_at: new Date(), updated_at: new Date() }).eq('id', req.params.userId);
-    await createNotification(req.params.userId, 'kyc', '✅ KYC Approved', 'Your identity has been verified. You now have full access to all PRAQEN features.', '/settings');
-    res.json({ success: true });
+    const { data: updated, error } = await supabaseAdmin.from('users')
+      .update({ kyc_status: 'approved', is_id_verified: true, kyc_approved_at: new Date(), updated_at: new Date() })
+      .eq('id', req.params.userId)
+      .select('id, username, kyc_status, is_id_verified')
+      .single();
+    if (error) return res.status(400).json({ error: error.message });
+    if (!updated) return res.status(404).json({ error: 'User not found' });
+    try {
+      await createNotification(req.params.userId, 'kyc', '✅ KYC Approved', 'Your identity has been verified. You now have full access to all PRAQEN features.', '/settings');
+    } catch (_) {}
+    res.json({ success: true, user: updated });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -4192,9 +4279,17 @@ app.put('/api/admin/kyc/:userId/reject', verifyToken, async (req, res) => {
   try {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { reason = 'Documents unclear or invalid' } = req.body;
-    await supabaseAdmin.from('users').update({ kyc_status: 'rejected', is_id_verified: false, kyc_rejection_reason: reason, updated_at: new Date() }).eq('id', req.params.userId);
-    await createNotification(req.params.userId, 'kyc', '❌ KYC Rejected', `Your KYC was not approved: ${reason}. Please re-submit with clearer documents.`, '/settings');
-    res.json({ success: true });
+    const { data: updated, error } = await supabaseAdmin.from('users')
+      .update({ kyc_status: 'rejected', is_id_verified: false, kyc_rejection_reason: reason, updated_at: new Date() })
+      .eq('id', req.params.userId)
+      .select('id, username, kyc_status, is_id_verified')
+      .single();
+    if (error) return res.status(400).json({ error: error.message });
+    if (!updated) return res.status(404).json({ error: 'User not found' });
+    try {
+      await createNotification(req.params.userId, 'kyc', '❌ KYC Rejected', `Your KYC was not approved: ${reason}. Please re-submit with clearer documents.`, '/settings');
+    } catch (_) {}
+    res.json({ success: true, user: updated });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -4280,9 +4375,9 @@ app.put('/api/admin/users/:id/verify-email', verifyToken, async (req, res) => {
 app.put('/api/admin/users/:id/verify-phone', verifyToken, async (req, res) => {
   try {
     const admin = await requireAdmin(req, res); if (!admin) return;
-    const { data, error } = await supabaseAdmin.from('users').update({ is_phone_verified: true, updated_at: new Date() }).eq('id', req.params.id).select().single();
+    const { data, error } = await supabaseAdmin.from('users').update({ is_phone_verified: true, phone_verified: true, updated_at: new Date() }).eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
-    await createNotification(req.params.id, 'system', '📱 Phone Verified', 'Your phone number has been manually verified by an admin.', '/settings');
+    await createNotification(req.params.id, 'system', '📱 Phone Number Verified!', 'Great news! Your phone number has been verified by our team. Your trade limit has been upgraded. You can now continue trading.', '/settings?tab=verification');
     res.json({ success: true, user: data });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

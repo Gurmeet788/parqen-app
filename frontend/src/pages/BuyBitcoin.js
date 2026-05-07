@@ -905,9 +905,13 @@ function SkeletonCard() {
 export default function BuyBitcoin({user}) {
   const navigate = useNavigate();
   const { rates: USD_RATES, btcUsd: contextBtcUsd } = useRates();
-  const _cache = () => { try{const c=JSON.parse(sessionStorage.getItem('praqen_buy')||'null');return c&&Date.now()-c.ts<120000?c.data:null;}catch{return null;} };
-  const [listings,     setListings]     = useState(()=>_cache()||[]);
-  const [loading,      setLoading]      = useState(()=>!_cache());
+  // Shared market cache — all 3 tabs (Buy/Sell/Gift Cards) read from the same key so
+  // navigating between them is instant (no extra network requests).
+  const _cacheAll  = () => { try { const c=JSON.parse(sessionStorage.getItem('praqen_market_all')||'null'); return c?.data||null; } catch { return null; } };
+  const _sellNow   = () => { const a=_cacheAll(); return a?a.filter(l=>l.listing_type==='SELL'||l.listing_type==='SELL_BITCOIN'):[]; };
+  const [listings,     setListings]     = useState(()=>_sellNow());
+  const [loading,      setLoading]      = useState(()=>_sellNow().length===0);
+  const [loadError,    setLoadError]    = useState(false);
   const [btcPrice,     setBtcPrice]     = useState(68000);
   const [selCountry,    setSelCountry]    = useState(COUNTRIES[0]);
   const [countrySearch, setCountrySearch] = useState('');
@@ -939,16 +943,19 @@ export default function BuyBitcoin({user}) {
   }, [contextBtcUsd]);
 
   const loadListings = async () => {
+    setLoadError(false);
     try {
-      const r = await axios.get(`${API_URL}/listings`, { timeout: 8000 });
+      const r = await axios.get(`${API_URL}/listings`, { timeout: 12000 });
       const all = (r.data.listings || []).map(l => ({...l, users: Array.isArray(l.users) ? l.users[0] : l.users}));
-      const sellOffers = all.filter(l =>
-        l.listing_type === 'SELL' || l.listing_type === 'SELL_BITCOIN'
-      );
+      const sellOffers = all.filter(l => l.listing_type === 'SELL' || l.listing_type === 'SELL_BITCOIN');
       setListings(sellOffers);
       setLastSynced(new Date());
-      try { sessionStorage.setItem('praqen_buy', JSON.stringify({data: sellOffers, ts:Date.now()})); } catch {}
-    } catch { if (!listings.length) toast.error('Failed to load marketplace'); }
+      // Store ALL listings so Sell/GiftCards tabs load instantly from this cache
+      try { sessionStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() })); } catch {}
+    } catch {
+      // Only show error UI if we have absolutely nothing to display
+      if (!listings.length) setLoadError(true);
+    }
     finally { setLoading(false); }
   };
 
@@ -1434,6 +1441,17 @@ export default function BuyBitcoin({user}) {
         {loading && !listings.length ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 w-full">
             {Array(6).fill(0).map((_,i)=><SkeletonCard key={i}/>)}
+          </div>
+        ) : loadError && !listings.length ? (
+          <div className="bg-white rounded-2xl border p-8 text-center" style={{borderColor:C.g200}}>
+            <p className="text-5xl mb-3">📡</p>
+            <p className="font-black text-base mb-1" style={{color:C.g800}}>Couldn't load offers</p>
+            <p className="text-sm mb-4" style={{color:C.g400}}>Check your internet connection and try again</p>
+            <button onClick={()=>{ setLoading(true); loadListings(); }}
+              className="px-6 py-2.5 rounded-xl text-white text-sm font-black hover:opacity-90 transition flex items-center gap-2 mx-auto"
+              style={{backgroundColor:C.forest}}>
+              <RefreshCw size={14}/> Try Again
+            </button>
           </div>
         ) : filtered.length === 0 ? (
           <div className="bg-white rounded-2xl border p-6 sm:p-10 text-center" style={{borderColor:C.g200}}>

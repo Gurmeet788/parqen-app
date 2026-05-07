@@ -106,25 +106,19 @@ class TradeEscrowService {
     const amount = parseFloat(amountBtc);
     if (!amount || amount <= 0) throw new Error('Invalid escrow amount');
 
-    // ── 1. Get BTC provider's current balance ──────────────────────────────
-    const { data: providerBal } = await supabaseAdmin
-      .from('user_balances')
-      .select('balance_btc')
-      .eq('user_id', btcProviderId)
-      .maybeSingle();
-
-    let currentBalance = parseFloat(providerBal?.balance_btc || 0);
-
-    // Fallback: sync from user_wallets if user_balances is missing or zero
-    if (currentBalance === 0) {
-      const { data: walletRow } = await supabaseAdmin
-        .from('user_wallets').select('balance_btc').eq('user_id', btcProviderId).maybeSingle();
-      const walletBtc = parseFloat(walletRow?.balance_btc || 0);
-      if (walletBtc > 0) {
-        await supabaseAdmin.from('user_balances')
-          .upsert({ user_id: btcProviderId, balance_btc: walletBtc, updated_at: new Date().toISOString() });
-        currentBalance = walletBtc;
-      }
+    // ── 1. Get BTC provider's current balance from BOTH tables in parallel ────
+    // user_balances can lag behind fresh deposits — always use the higher value.
+    const [{ data: providerBal }, { data: walletRowInit }] = await Promise.all([
+      supabaseAdmin.from('user_balances').select('balance_btc, balance_usd').eq('user_id', btcProviderId).maybeSingle(),
+      supabaseAdmin.from('user_wallets').select('balance_btc').eq('user_id', btcProviderId).maybeSingle(),
+    ]);
+    const balBtc_    = parseFloat(providerBal?.balance_btc || 0);
+    const walletBtc_ = parseFloat(walletRowInit?.balance_btc || 0);
+    let currentBalance = Math.max(balBtc_, walletBtc_);
+    // Sync user_balances if user_wallets is ahead (deposit monitor hasn't run yet)
+    if (walletBtc_ > balBtc_) {
+      await supabaseAdmin.from('user_balances')
+        .upsert({ user_id: btcProviderId, balance_btc: walletBtc_, updated_at: new Date().toISOString() });
     }
 
     if (currentBalance < amount) {
@@ -143,11 +137,18 @@ class TradeEscrowService {
 
     // ── 3. Deduct from BTC provider's balance (locked into escrow) ─────────
     const newBalance = parseFloat((currentBalance - amount).toFixed(8));
+    // Keep balance_usd in sync: deduct proportionally so the stored USD value
+    // stays accurate after the lock (avoids drift in wallet display).
+    const currentBalUsd = parseFloat(providerBal?.balance_usd || 0);
+    const newBalUsd = currentBalance > 0
+      ? parseFloat((currentBalUsd * newBalance / currentBalance).toFixed(2))
+      : 0;
 
     const { error: deductErr } = await supabaseAdmin
       .from('user_balances')
       .update({
         balance_btc: newBalance,
+        balance_usd: newBalUsd,
         updated_at:  new Date().toISOString(),
       })
       .eq('user_id', btcProviderId);
@@ -198,7 +199,7 @@ class TradeEscrowService {
     if (lockErr) {
       // Revert balance deduction if record creation fails
       await supabaseAdmin.from('user_balances')
-        .update({ balance_btc: currentBalance, updated_at: new Date().toISOString() })
+        .update({ balance_btc: currentBalance, balance_usd: currentBalUsd, updated_at: new Date().toISOString() })
         .eq('user_id', btcProviderId);
       throw new Error(`Failed to create escrow record: ${lockErr.message}`);
     }
@@ -389,12 +390,18 @@ class TradeEscrowService {
     // ── Credit the BTC receiver's balance (user_balances + user_wallets) ────
     const { data: currentBal } = await supabaseAdmin
         .from('user_balances')
-        .select('balance_btc')
+        .select('balance_btc, balance_usd')
         .eq('user_id', btcReceiverId)
         .single();
 
     const newReceiverBalance = parseFloat(
         (parseFloat(currentBal?.balance_btc || 0) + buyerGets).toFixed(8)
+    );
+    // Credit USD: use the trade's recorded USD amount (net of 0.5% fee) so balance_usd
+    // stays accurate and the wallet page shows the correct dollar value.
+    const buyerGetsUsd = parseFloat(((parseFloat(tradeData.amount_usd || 0)) * 0.995).toFixed(2));
+    const newReceiverUsd = parseFloat(
+        (parseFloat(currentBal?.balance_usd || 0) + buyerGetsUsd).toFixed(2)
     );
 
     const { error: balError } = await supabaseAdmin
@@ -402,6 +409,7 @@ class TradeEscrowService {
         .upsert({
             user_id:     btcReceiverId,
             balance_btc: newReceiverBalance,
+            balance_usd: newReceiverUsd,
             updated_at:  new Date().toISOString(),
         });
 
@@ -572,16 +580,21 @@ class TradeEscrowService {
 
       const { data: providerBal } = await supabaseAdmin
         .from('user_balances')
-        .select('balance_btc')
+        .select('balance_btc, balance_usd')
         .eq('user_id', btcProviderId)
         .single();
 
       const newProviderBalance = parseFloat((parseFloat(providerBal?.balance_btc || 0) + refundAmount).toFixed(8));
+      // Restore balance_usd proportionally: refund the USD equivalent of the returned BTC.
+      // Use the trade's amount_usd as the source of truth for the USD value being returned.
+      const refundUsd = parseFloat((parseFloat(trade.amount_usd || 0)).toFixed(2));
+      const newProviderUsd = parseFloat((parseFloat(providerBal?.balance_usd || 0) + refundUsd).toFixed(2));
 
       await supabaseAdmin
         .from('user_balances')
         .update({
           balance_btc: newProviderBalance,
+          balance_usd: newProviderUsd,
           updated_at:  new Date().toISOString(),
         })
         .eq('user_id', btcProviderId);

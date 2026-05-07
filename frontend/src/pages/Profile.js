@@ -809,9 +809,39 @@ export default function Profile({userId:propUserId}){
                 </p>
               </div>
             )}
-            <div className="bg-white rounded-2xl border shadow-sm p-4" style={{borderColor:C.g200}}>
-              <p className="font-black text-sm mb-1" style={{color:C.forest}}>Verification Status</p>
-              <p className="text-xs mb-4" style={{color:C.g400}}>Complete all steps in Settings to unlock higher trade limits.</p>
+            <div className="bg-white rounded-2xl border shadow-sm p-4"
+              style={{borderColor: verifPct===100 ? C.success : C.g200}}>
+              <div className="flex items-center justify-between mb-1">
+                <p className="font-black text-sm" style={{color:C.forest}}>Verification Status</p>
+                {verifPct===100 && (
+                  <span className="text-xs font-black px-2 py-0.5 rounded-full flex items-center gap-1"
+                    style={{backgroundColor:`${C.success}15`, color:C.success}}>
+                    <Lock size={10}/> Fully Locked
+                  </span>
+                )}
+              </div>
+              <p className="text-xs mb-4"
+                style={{color: verifPct===100 ? C.success : C.g400}}>
+                {verifPct===100
+                  ? '✅ All 3 verifications complete — your account is fully unlocked!'
+                  : 'Complete all steps in Settings to unlock higher trade limits.'}
+              </p>
+
+              {/* Fully-verified celebration banner */}
+              {verifPct===100 && (
+                <div className="mb-4 rounded-xl p-3 flex items-center gap-3"
+                  style={{background:`linear-gradient(135deg,${C.success},${C.mint})`, border:`1px solid ${C.success}`}}>
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{backgroundColor:'rgba(255,255,255,0.2)'}}>
+                    <Lock size={18} className="text-white"/>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-black text-sm">🏆 Account Fully Verified</p>
+                    <p className="text-white/80 text-xs mt-0.5">Email · Phone · ID — all locked and verified</p>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-3">
                 {/* Email */}
                 <div className="rounded-2xl border-2 p-4 flex items-center gap-3 transition-all"
@@ -834,16 +864,22 @@ export default function Profile({userId:propUserId}){
                         :'Verify your email to start trading on PRAQEN'}
                     </p>
                   </div>
-                  {own&&!emailOk&&(
-                    <button onClick={()=>navigate('/settings?tab=verification')}
-                      className="px-3 py-2 rounded-xl text-white text-xs font-black flex-shrink-0"
-                      style={{backgroundColor:C.danger}}>Verify Email →</button>
-                  )}
+                  {emailOk
+                    ? <Lock size={14} style={{color:C.success, flexShrink:0}}/>
+                    : own&&(
+                        <button onClick={()=>navigate('/settings?tab=verification')}
+                          className="px-3 py-2 rounded-xl text-white text-xs font-black flex-shrink-0"
+                          style={{backgroundColor:C.danger}}>Verify Email →</button>
+                      )
+                  }
                 </div>
 
                 {/* Phone */}
                 <div className="rounded-2xl border-2 p-4 flex items-center gap-3 transition-all"
-                  style={{borderColor:phoneOk?C.success:'#FCD34D',backgroundColor:phoneOk?'#ECFDF5':'#FFFBEB'}}>
+                  style={{
+                    borderColor: phoneOk ? C.success : user.phone ? '#FCD34D' : C.g200,
+                    backgroundColor: phoneOk ? '#ECFDF5' : user.phone ? '#FFFBEB' : 'white',
+                  }}>
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
                     style={{backgroundColor:phoneOk?`${C.success}15`:'#FEF3C7'}}>
                     {phoneOk?<CheckCircle size={18} style={{color:C.success}}/>:<Phone size={18} style={{color:'#D97706'}}/>}
@@ -852,16 +888,29 @@ export default function Profile({userId:propUserId}){
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-black" style={{color:C.forest}}>Phone Number</p>
                       <span className="text-xs font-bold px-2 py-0.5 rounded-full"
-                        style={{backgroundColor:phoneOk?`${C.success}15`:'#FEF3C7',color:phoneOk?C.success:'#92400E'}}>
-                        {phoneOk?'✅ Phone verified':'⚠️ Optional'}
+                        style={{
+                          backgroundColor: phoneOk ? `${C.success}15` : user.phone ? '#FEF3C7' : C.g100,
+                          color: phoneOk ? C.success : user.phone ? '#92400E' : C.g500,
+                        }}>
+                        {phoneOk ? '✅ Phone verified' : user.phone ? '⏳ Under Review' : '⚠️ Not Added'}
                       </span>
                     </div>
                     <p className="text-xs mt-0.5 truncate" style={{color:C.g500}}>
                       {phoneOk
-                        ?`${user.phone||''}  — verified`
-                        :'Not required to trade. Add phone for higher limits & SMS alerts.'}
+                        ? `${user.phone||''}  — verified`
+                        : user.phone
+                          ? `${user.phone} — being reviewed by our team`
+                          : 'Add phone in Settings to unlock higher trade limits'}
                     </p>
                   </div>
+                  {phoneOk
+                    ? <Lock size={14} style={{color:C.success, flexShrink:0}}/>
+                    : user.phone
+                      ? <Clock size={14} style={{color:'#D97706', flexShrink:0}}/>
+                      : own && <button onClick={()=>navigate('/settings?tab=verification')}
+                          className="px-3 py-2 rounded-xl text-white text-xs font-black flex-shrink-0"
+                          style={{backgroundColor:'#D97706'}}>Add →</button>
+                  }
                 </div>
 
                 {/* KYC */}
@@ -875,20 +924,22 @@ export default function Profile({userId:propUserId}){
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-black" style={{color:C.forest}}>Identity (KYC)</p>
                       <span className="text-xs font-bold px-2 py-0.5 rounded-full"
-                        style={{backgroundColor:kycOk?`${C.success}15`:user.kyc_status==='pending'?'#FFFBEB':'#FFFBEB',color:kycOk?C.success:C.warn}}>
-                        {kycOk?'✓ Verified':user.kyc_status==='pending'?'Under Review':'Not Verified'}
+                        style={{backgroundColor:kycOk?`${C.success}15`:user.kyc_status==='pending'?'#FEF3C7':'#FFFBEB',color:kycOk?C.success:user.kyc_status==='pending'?'#92400E':C.warn}}>
+                        {kycOk?'✓ Verified':user.kyc_status==='pending'?'⏳ Under Review':'Not Verified'}
                       </span>
                     </div>
                     <p className="text-xs mt-0.5" style={{color:C.g500}}>
                       {kycOk?'ID verified — Advanced & VIP limits unlocked':user.kyc_status==='pending'?'Your documents are under review (24–48 hrs)':'National ID / Passport + selfie — unlocks $10,000 limit'}
                     </p>
                   </div>
-                  {own&&!kycOk&&user.kyc_status!=='pending'&&(
-                    <button onClick={()=>navigate('/settings?tab=verification')}
-                      className="px-3 py-2 rounded-xl text-white text-xs font-black flex-shrink-0"
-                      style={{backgroundColor:C.gold}}>Verify →</button>
-                  )}
-                  {user.kyc_status==='pending'&&<Clock size={16} style={{color:C.warn,flexShrink:0}}/>}
+                  {kycOk
+                    ? <Lock size={14} style={{color:C.success, flexShrink:0}}/>
+                    : user.kyc_status==='pending'
+                      ? <Clock size={16} style={{color:C.warn,flexShrink:0}}/>
+                      : own && <button onClick={()=>navigate('/settings?tab=verification')}
+                          className="px-3 py-2 rounded-xl text-white text-xs font-black flex-shrink-0"
+                          style={{backgroundColor:C.gold}}>Verify →</button>
+                  }
                 </div>
               </div>
             </div>

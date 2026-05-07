@@ -40,27 +40,23 @@ router.get('/wallet', verifyToken, async (req, res) => {
     try {
         const userId = req.userId;
 
-        // Primary source: user_wallets (updated by deposit monitor on every confirmed tx)
-        const { data: walletRow } = await supabaseAdmin
-            .from('user_wallets')
-            .select('btc_address, balance_btc')
-            .eq('user_id', userId)
-            .single();
+        // Fetch user_wallets and user_balances in parallel — both needed for accurate display
+        const [{ data: walletRow }, { data: balancesRow }] = await Promise.all([
+            supabaseAdmin.from('user_wallets').select('btc_address, balance_btc').eq('user_id', userId).single(),
+            supabaseAdmin.from('user_balances').select('balance_btc, balance_usd').eq('user_id', userId).single(),
+        ]);
 
         let address = walletRow?.btc_address || null;
         let balance = parseFloat(walletRow?.balance_btc || 0);
 
-        // Fallback: if user_wallets has 0, also check user_balances
-        if (!balance) {
-            const { data: balRow } = await supabaseAdmin
-                .from('user_balances')
-                .select('balance_btc')
-                .eq('user_id', userId)
-                .single();
-            if (parseFloat(balRow?.balance_btc || 0) > 0) {
-                balance = parseFloat(balRow.balance_btc);
-            }
+        // Fallback: if user_wallets has 0, use user_balances.balance_btc
+        if (!balance && parseFloat(balancesRow?.balance_btc || 0) > 0) {
+            balance = parseFloat(balancesRow.balance_btc);
         }
+
+        // balance_usd from user_balances is the authoritative stored USD value — never
+        // calculate USD dynamically from a live price feed, which causes display drift.
+        const balance_usd = parseFloat(balancesRow?.balance_usd || 0);
 
         // Escrow locks — sum BTC locked as seller in active trades
         const { data: escrowData } = await supabaseAdmin
@@ -101,6 +97,7 @@ router.get('/wallet', verifyToken, async (req, res) => {
             balance_btc:   total_btc,     // total = available + locked (for "Total Balance" display)
             locked_btc:    locked_btc,
             available_btc: available_btc, // what user can actually spend/withdraw
+            balance_usd:   balance_usd,   // stored USD value — use this, never recalculate from live price
             network:       network,
             has_address:   !!address,
             transactions:  txs || [],

@@ -849,9 +849,11 @@ function BottomNav() {
 export default function GiftCards({user}) {
   const navigate = useNavigate();
   const {rates:USD_RATES, btcUsd:contextBtcUsd} = useRates();
-  const _cache = () => { try{const c=JSON.parse(sessionStorage.getItem('praqen_gc')||'null');return c&&Date.now()-c.ts<120000?c.data:null;}catch{return null;} };
-  const [listings,     setListings]     = useState(()=>_cache()||[]);
-  const [loading,      setLoading]      = useState(()=>!_cache());
+  const _cacheAll = () => { try { const c=JSON.parse(sessionStorage.getItem('praqen_market_all')||'null'); return c?.data||null; } catch { return null; } };
+  const _gcNow    = () => { const a=_cacheAll(); return a?a.filter(l=>l.listing_type==='BUY_GIFT_CARD'||l.listing_type==='SELL_GIFT_CARD'):[]; };
+  const [listings,     setListings]     = useState(()=>_gcNow());
+  const [loading,      setLoading]      = useState(()=>_gcNow().length===0);
+  const [loadError,    setLoadError]    = useState(false);
   const [btcPrice,     setBtcPrice]     = useState(68000);
   const [selCurrency,  setSelCurrency]  = useState(CURRENCIES[0]);
   const [selBrand,     setSelBrand]     = useState('All Brands');
@@ -909,24 +911,28 @@ export default function GiftCards({user}) {
   },[]);
 
   const loadListings = async () => {
+    setLoadError(false);
     try {
-      const tk = localStorage.getItem('token');
-      const listingsReq = axios.get(`${API_URL}/listings`, { timeout: 8000 });
-      const myListingsReq = tk
-        ? axios.get(`${API_URL}/my-listings`, { headers: { Authorization: `Bearer ${tk}` } }).catch(() => null)
-        : Promise.resolve(null);
-      const [r, myR] = await Promise.all([listingsReq, myListingsReq]);
+      const r = await axios.get(`${API_URL}/listings`, { timeout: 12000 });
       const all=(r.data.listings||[]).map(l=>({...l,users:Array.isArray(l.users)?l.users[0]:l.users}));
       const data=all.filter(l=>l.listing_type==='BUY_GIFT_CARD'||l.listing_type==='SELL_GIFT_CARD');
       setListings(data);
-      try { sessionStorage.setItem('praqen_gc', JSON.stringify({data, ts:Date.now()})); } catch {}
-      if (myR) {
-        const myPaused=(myR.data.listings||[]).filter(l=>
-          l.status==='PAUSED'&&(l.listing_type==='BUY_GIFT_CARD'||l.listing_type==='SELL_GIFT_CARD')
-        );
-        setPausedOffer(myPaused.length>0);
+      // Store ALL listings in shared cache so Buy/Sell tabs load instantly
+      try { sessionStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() })); } catch {}
+      // Check for paused offers in background — non-blocking
+      const tk = localStorage.getItem('token');
+      if (tk) {
+        axios.get(`${API_URL}/my-listings`, { headers: { Authorization: `Bearer ${tk}` } })
+          .then(myR => {
+            const myPaused=(myR.data.listings||[]).filter(l=>
+              l.status==='PAUSED'&&(l.listing_type==='BUY_GIFT_CARD'||l.listing_type==='SELL_GIFT_CARD')
+            );
+            setPausedOffer(myPaused.length>0);
+          }).catch(()=>{});
       }
-    } catch { if (!listings.length) toast.error('Failed to load gift card marketplace'); }
+    } catch {
+      if (!listings.length) setLoadError(true);
+    }
     finally { setLoading(false); }
   };
 
@@ -1345,6 +1351,17 @@ export default function GiftCards({user}) {
         {loading && !listings.length ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3">
             {Array(6).fill(0).map((_,i)=><SkeletonCard key={i}/>)}
+          </div>
+        ) : loadError && !listings.length ? (
+          <div className="bg-white rounded-2xl border p-8 text-center" style={{borderColor:C.g200}}>
+            <p className="text-5xl mb-3">📡</p>
+            <p className="font-black text-base mb-1" style={{color:C.g800}}>Couldn't load offers</p>
+            <p className="text-sm mb-4" style={{color:C.g400}}>Check your internet connection and try again</p>
+            <button onClick={()=>{ setLoading(true); loadListings(); }}
+              className="px-6 py-2.5 rounded-xl text-white text-sm font-black hover:opacity-90 transition flex items-center gap-2 mx-auto"
+              style={{backgroundColor:C.forest}}>
+              <RefreshCw size={14}/> Try Again
+            </button>
           </div>
         ) : filtered.length===0?(
           <div className="bg-white rounded-2xl border p-10 text-center" style={{borderColor:C.g200}}>

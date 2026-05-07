@@ -672,6 +672,7 @@ export default function WalletPage({ user }) {
         balance_btc:   r.data.balance_btc,
         locked_btc:    r.data.locked_btc    || 0,
         available_btc: r.data.available_btc || r.data.balance_btc,
+        balance_usd:   parseFloat(r.data.balance_usd || 0),
         network:       r.data.network,
         has_address:   r.data.has_address,
       });
@@ -757,7 +758,8 @@ export default function WalletPage({ user }) {
   const balance      = parseFloat(walletData?.balance_btc   || 0); // total (available + locked)
   const lockedBal    = parseFloat(lockedBtc                 || 0);
   const availableBal = parseFloat(walletData?.available_btc ?? balance); // already deducted server-side
-  const balUsd       = balance * (btcPrice || 88000);
+  // Use the stored DB value — never recalculate from a live price feed which can drift
+  const balUsd       = parseFloat(walletData?.balance_usd   || 0) || balance * (btcPrice || 88000);
   const network = walletData?.network || 'mainnet';
 
   const fxRate   = displayCurrency === 'USD' ? 1 : (USD_RATES?.[displayCurrency] || 1);
@@ -819,7 +821,7 @@ export default function WalletPage({ user }) {
                   <p className="font-black text-white tracking-tight" style={{ fontSize: 'clamp(1.6rem, 6vw, 2.5rem)' }}>
                     ₿ {fmt(availableBal)}
                   </p>
-                  <p className="text-white/70 text-sm mt-1">≈ {fmtLocal(availableBal * (btcPrice || 88000))}</p>
+                  <p className="text-white/70 text-sm mt-1">≈ {fmtLocal(balUsd)}</p>
 
                   {/* Locked + Total breakdown */}
                   <div className="flex gap-4 mt-3">

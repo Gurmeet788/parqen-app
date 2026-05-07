@@ -333,10 +333,37 @@ class DepositMonitor {
           continue;
         }
 
-        // ── 2. Update user_balances ──────────────────────────────────────────
+        // ── 2. Update user_balances (btc + usd) ─────────────────────────────
+        // Fetch the BTC/USD price at deposit time so balance_usd stays accurate.
+        // This is the only moment we know the true USD value of the incoming BTC.
+        let btcUsdAtDeposit = 0;
+        try {
+          const priceRes = await axios.get(
+            'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd',
+            { timeout: 5000 }
+          );
+          btcUsdAtDeposit = parseFloat(priceRes.data?.bitcoin?.usd || 0);
+        } catch {
+          try {
+            const priceRes2 = await axios.get('https://api.coinbase.com/v2/prices/BTC-USD/spot', { timeout: 5000 });
+            btcUsdAtDeposit = parseFloat(priceRes2.data?.data?.amount || 0);
+          } catch { /* price fetch failed — balance_usd will be updated on next sync */ }
+        }
+
+        // Get existing balance_usd so we can add the deposit's USD value to it
+        const { data: existingBal } = await supabaseAdmin
+          .from('user_balances').select('balance_usd').eq('user_id', userId).maybeSingle();
+        const depositUsd    = btcUsdAtDeposit > 0 ? parseFloat((depositBTC * btcUsdAtDeposit).toFixed(2)) : 0;
+        const newBalanceUsd = parseFloat((parseFloat(existingBal?.balance_usd || 0) + depositUsd).toFixed(2));
+
         const { error: balErr } = await supabaseAdmin
           .from('user_balances')
-          .upsert({ user_id: userId, balance_btc: newBalance, updated_at: new Date().toISOString() });
+          .upsert({
+            user_id:     userId,
+            balance_btc: newBalance,
+            ...(depositUsd > 0 ? { balance_usd: newBalanceUsd } : {}),
+            updated_at:  new Date().toISOString(),
+          });
 
         if (balErr) {
           console.error(`[DepositMonitor] user_balances update failed for ${username}:`, balErr.message);

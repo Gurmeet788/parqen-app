@@ -29,6 +29,7 @@ export default function Navbar({ user, onLogout }) {
   const [profileDrop,     setProfileDrop]     = useState(false);
   const [marketDrop,      setMarketDrop]      = useState(false);
   const [hdBalance,       setHdBalance]       = useState(() => parseFloat(localStorage.getItem('praqen_btc_balance') || 0));
+  const [balanceUsd,      setBalanceUsd]      = useState(() => parseFloat(localStorage.getItem('praqen_usd_balance') || 0));
   const [localUser,       setLocalUser]       = useState(user);
   const [showBal,         setShowBal]         = useState(true);
   const [displayCurrency, setDisplayCurrency] = useState(localStorage.getItem('praqen_currency') || 'USD');
@@ -76,9 +77,12 @@ export default function Navbar({ user, onLogout }) {
       const tk = localStorage.getItem('token');
       if (!tk) return;
       const r = await axios.get(`${API_URL}/hd-wallet/wallet`, { headers: { Authorization: `Bearer ${tk}` } });
-      const bal = parseFloat(r.data?.balance_btc || 0);
+      const bal    = parseFloat(r.data?.balance_btc || 0);
+      const usdBal = parseFloat(r.data?.balance_usd || 0);
       setHdBalance(bal);
+      setBalanceUsd(usdBal);
       localStorage.setItem('praqen_btc_balance', bal.toString());
+      localStorage.setItem('praqen_usd_balance', usdBal.toString());
     } catch {}
   };
 
@@ -94,8 +98,11 @@ export default function Navbar({ user, onLogout }) {
   const displayUser = localUser?.id ? localUser : user;
   const totalBtc    = parseFloat(hdBalance || 0);
   const fxRate      = displayCurrency === 'USD' ? 1 : (USD_RATES?.[displayCurrency] || 1);
-  const btcLocal    = (btcUsd || 88000) * (displayCurrency === 'USD' ? 1 : fxRate);
-  const totalLocal  = totalBtc * btcLocal;
+  // Use stored DB balance_usd — never derive from live BTC price which causes display drift.
+  // Fall back to live calculation only when balance_usd hasn't been fetched yet (first load).
+  const totalLocal  = balanceUsd > 0
+    ? balanceUsd * fxRate
+    : totalBtc * (btcUsd || 88000) * fxRate;
   const localCode   = displayCurrency;
   const CURRENCY_SYMBOLS = { USD:'$', GBP:'£', EUR:'€', GHS:'₵', NGN:'₦', KES:'KSh', ZAR:'R' };
   const sym         = CURRENCY_SYMBOLS[displayCurrency] || '';

@@ -345,6 +345,8 @@ function UsersSection() {
           <option value="active">Active</option>
           <option value="suspended">Suspended</option>
           <option value="banned">Banned</option>
+          <option value="phone_pending">⏳ Phone Pending</option>
+          <option value="kyc_pending">📋 KYC Pending</option>
         </select>
         <button onClick={load} className="bg-white border rounded-xl px-3 py-2" style={{ borderColor: C.g200 }}>
           <RefreshCw size={14} style={{ color: C.g500 }} />
@@ -387,10 +389,14 @@ function UsersSection() {
                       </td>
                       <td className="px-4 py-3 text-xs font-bold" style={{ color: C.g700 }}>{u.total_trades || 0}</td>
                       <td className="px-4 py-3">
-                        <div className="flex gap-1">
-                          {u.is_email_verified && <span title="Email" className="text-xs">📧</span>}
-                          {u.is_phone_verified && <span title="Phone" className="text-xs">📱</span>}
-                          {u.is_id_verified    && <span title="KYC"   className="text-xs">🪪</span>}
+                        <div className="flex gap-1 flex-wrap">
+                          {u.is_email_verified && <span title="Email verified" className="text-xs">📧</span>}
+                          {u.is_phone_verified
+                            ? <span title="Phone verified" className="text-xs">📱</span>
+                            : u.phone && <span title="Phone pending review" className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-black" style={{ backgroundColor:'#FFFBEB', color:'#92400E' }}>📱 Pending</span>}
+                          {u.is_id_verified
+                            ? <span title="KYC verified" className="text-xs">🪪</span>
+                            : u.kyc_status === 'pending' && <span title="KYC pending review" className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-black" style={{ backgroundColor:'#F5F3FF', color:'#6D28D9' }}>🪪 Pending</span>}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-xs" style={{ color: C.g400 }}>{fmtDate(u.created_at)}</td>
@@ -457,6 +463,24 @@ function UsersSection() {
                   <span className="text-xs font-bold" style={{ color: C.g700 }}>{r.value}</span>
                 </div>
               ))}
+              {/* Phone number row — always visible so admin can see the number before approving */}
+              <div className="flex items-center justify-between py-1.5 border-b" style={{ borderColor: C.g100 }}>
+                <span className="text-xs" style={{ color: C.g400 }}>Phone</span>
+                {selected.phone
+                  ? <span className="text-xs font-bold" style={{ color: selected.is_phone_verified ? C.success : '#D97706' }}>
+                      {selected.phone}{!selected.is_phone_verified && ' ⏳'}
+                    </span>
+                  : <span className="text-xs" style={{ color: C.g400 }}>—</span>}
+              </div>
+              {/* KYC status row */}
+              {(selected.kyc_status || selected.kyc_id_type) && (
+                <div className="flex items-center justify-between py-1.5 border-b" style={{ borderColor: C.g100 }}>
+                  <span className="text-xs" style={{ color: C.g400 }}>KYC</span>
+                  <span className="text-xs font-bold" style={{ color: selected.kyc_status === 'approved' ? C.success : selected.kyc_status === 'pending' ? '#D97706' : C.danger }}>
+                    {selected.kyc_id_type ? `${selected.kyc_id_type} — ` : ''}{selected.kyc_status || '—'}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -478,21 +502,32 @@ function UsersSection() {
                 </button>
               )}
               {/* Verify Phone */}
-              {!selected.is_phone_verified && (
-                <button disabled={acting} onClick={async () => {
-                  setActing(true);
-                  try {
-                    await axios.put(`${API_URL}/admin/users/${selected.id}/verify-phone`, {}, { headers: authH() });
-                    toast.success('Phone verified ✅');
-                    load();
-                    setSelected(s => ({ ...s, is_phone_verified: true }));
-                  } catch (e) { toast.error(e.response?.data?.error || 'Failed'); }
-                  finally { setActing(false); }
-                }}
-                  className="w-full py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5"
-                  style={{ backgroundColor: '#F0FDF4', color: '#166534' }}>
-                  <Phone size={12} /> Verify Phone
-                </button>
+              {!selected.is_phone_verified && selected.phone && (
+                <div>
+                  <p className="text-xs mb-1.5 px-0.5" style={{ color: C.g400 }}>
+                    Number submitted: <span className="font-black" style={{ color: C.g700 }}>{selected.phone}</span>
+                  </p>
+                  <button disabled={acting} onClick={async () => {
+                    setActing(true);
+                    try {
+                      await axios.put(`${API_URL}/admin/users/${selected.id}/verify-phone`, {}, { headers: authH() });
+                      toast.success('Phone verified ✅');
+                      load();
+                      setSelected(s => ({ ...s, is_phone_verified: true }));
+                    } catch (e) { toast.error(e.response?.data?.error || 'Failed'); }
+                    finally { setActing(false); }
+                  }}
+                    className="w-full py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5"
+                    style={{ backgroundColor: '#F0FDF4', color: '#166534' }}>
+                    <Phone size={12} /> Approve Phone ✓
+                  </button>
+                </div>
+              )}
+              {!selected.is_phone_verified && !selected.phone && (
+                <div className="w-full py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5"
+                  style={{ backgroundColor: C.g50, color: C.g400, border: `1px dashed ${C.g200}` }}>
+                  <Phone size={12} /> No phone submitted
+                </div>
               )}
               {/* Ban / Unban */}
               <button disabled={acting} onClick={async () => {
@@ -513,7 +548,22 @@ function UsersSection() {
                 <Ban size={12} /> {selected.account_status === 'banned' ? 'Unban User' : 'Ban User'}
               </button>
               {/* KYC toggle */}
-              <button disabled={acting} onClick={() => act(selected.id, { is_id_verified: !selected.is_id_verified }, 'KYC update')}
+              <button disabled={acting} onClick={async () => {
+                setActing(true);
+                try {
+                  if (selected.is_id_verified) {
+                    await axios.put(`${API_URL}/admin/kyc/${selected.id}/reject`, { reason: 'Revoked by admin' }, { headers: authH() });
+                    toast.success('KYC revoked');
+                    setSelected(s => ({ ...s, is_id_verified: false, kyc_status: 'rejected' }));
+                  } else {
+                    await axios.put(`${API_URL}/admin/kyc/${selected.id}/approve`, {}, { headers: authH() });
+                    toast.success('KYC approved ✅');
+                    setSelected(s => ({ ...s, is_id_verified: true, kyc_status: 'approved' }));
+                  }
+                  load();
+                } catch (e) { toast.error(e.response?.data?.error || 'Action failed'); }
+                finally { setActing(false); }
+              }}
                 className="w-full py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5"
                 style={{ backgroundColor: '#F5F3FF', color: '#6D28D9' }}>
                 <ShieldCheck size={12} /> {selected.is_id_verified ? 'Revoke KYC' : 'Approve KYC'}
@@ -1394,7 +1444,7 @@ function SuggestionsSection() {
 
   return (
     <div className="space-y-5">
-      <SectionHead title={`Community Suggestions (${total})`} sub="User ideas, feedback, and feature requests — click any row to read & reply"
+      <SectionHead title={`User Messages & Suggestions (${total})`} sub="All messages sent by users — click any row to read the full message, see the username, and reply"
         action={<button onClick={load} className="p-2 rounded-xl border hover:bg-gray-50 transition" style={{ borderColor: C.g200 }}><RefreshCw size={14} style={{ color: C.g500 }} /></button>} />
 
       {/* Stats */}
@@ -1438,7 +1488,7 @@ function SuggestionsSection() {
             <table className="w-full text-sm">
               <thead style={{ backgroundColor: C.g50 }}>
                 <tr>
-                  {['Votes', 'Message', 'Category', 'Status', 'Author', 'Date', 'Actions'].map(h => (
+                  {['Votes', 'Title / Message', 'Category', 'Status', 'From User', 'Date', 'Actions'].map(h => (
                     <th key={h} className="text-left px-4 py-3 text-xs font-black uppercase tracking-wide" style={{ color: C.g500 }}>{h}</th>
                   ))}
                 </tr>
@@ -1960,8 +2010,8 @@ const NAV = [
   { id:'kyc',          label:'KYC Review',    icon:ShieldCheck     },
   { id:'finance',      label:'Finance',       icon:DollarSign      },
   { id:'listings',     label:'Listings',      icon:List            },
-  { id:'suggestions',  label:'Suggestions',   icon:Lightbulb       },
-  { id:'reports',      label:'Reports',       icon:MessageSquare   },
+  { id:'suggestions',  label:'User Messages',  icon:MessageSquare   },
+  { id:'reports',      label:'Reports',       icon:Star            },
   { id:'activity',     label:'Activity Log',  icon:Activity        },
   { id:'broadcast',    label:'Broadcast',     icon:Megaphone       },
 ];

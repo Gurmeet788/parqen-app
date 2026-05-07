@@ -54,56 +54,60 @@ function EditModal({ listing, onClose, onSave, saving }) {
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4"
-      style={{backgroundColor:'rgba(0,0,0,0.6)',backdropFilter:'blur(6px)'}}>
-      <div className="bg-white w-full md:max-w-lg rounded-t-3xl md:rounded-3xl overflow-hidden shadow-2xl">
+    <div className="fixed inset-0 flex items-end md:items-center justify-center p-0 md:p-4"
+      style={{backgroundColor:'rgba(0,0,0,0.6)',backdropFilter:'blur(6px)',zIndex:1100}}>
+      {/* flex-col + max-h ensures the footer is ALWAYS on screen, never cut off by the navbar */}
+      <div className="bg-white w-full md:max-w-lg rounded-t-3xl md:rounded-3xl shadow-2xl flex flex-col"
+        style={{maxHeight:'92dvh'}}>
 
-        <div className="flex items-center justify-between px-5 py-4 border-b" style={{borderColor:C.g100}}>
+        {/* Header — fixed height, never scrolls */}
+        <div className="flex items-center justify-between px-5 py-4 border-b flex-shrink-0" style={{borderColor:C.g100}}>
           <div>
-            <h2 className="font-black text-base" style={{color:C.forest}}>Edit Offer</h2>
-            <p className="text-xs mt-0.5" style={{color:C.g400}}>
+            <h2 className="font-black text-lg" style={{color:C.forest}}>Edit Offer</h2>
+            <p className="text-sm font-semibold mt-0.5" style={{color:C.g500}}>
               #{String(listing.id||'').slice(0,8).toUpperCase()} · {listing.payment_method}
             </p>
           </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-gray-100">
-            <X size={15} style={{color:C.g500}}/>
+          <button onClick={onClose} className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-gray-100">
+            <X size={18} style={{color:C.g500}}/>
           </button>
         </div>
 
-        <div className="p-5 max-h-[70vh] overflow-y-auto space-y-4">
+        {/* Scrollable fields — flex-1 + min-h-0 makes it shrink so footer stays visible */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-5">
           <div>
-            <label className="text-xs font-black mb-1.5 block" style={{color:C.g700}}>Margin — your profit above market rate</label>
+            <label className="text-sm font-black mb-2 block" style={{color:C.g700}}>Margin — your profit above market rate</label>
             <div className="flex items-center gap-3">
               <button onClick={()=>set('margin',Math.max(0,parseFloat((form.margin-0.5).toFixed(1))))}
-                className="w-9 h-9 rounded-xl border-2 flex items-center justify-center flex-shrink-0"
+                className="w-11 h-11 rounded-xl border-2 flex items-center justify-center flex-shrink-0"
                 style={{borderColor:C.danger,backgroundColor:`${C.danger}10`}}>
-                <Minus size={14} style={{color:C.danger}}/>
+                <Minus size={16} style={{color:C.danger}}/>
               </button>
               <div className="flex-1 relative">
                 <input type="number" step="0.5" min="0" max="100"
                   value={form.margin} onChange={e=>set('margin',parseFloat(e.target.value)||0)}
-                  className="w-full px-4 pr-8 py-3 text-lg font-black border-2 rounded-xl focus:outline-none text-center"
+                  className="w-full px-4 pr-10 py-3.5 text-xl font-black border-2 rounded-xl focus:outline-none text-center"
                   style={{borderColor:C.green,color:C.success}}/>
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 font-black text-sm" style={{color:C.g400}}>%</span>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 font-black text-base" style={{color:C.g400}}>%</span>
               </div>
               <button onClick={()=>set('margin',Math.min(100,parseFloat((form.margin+0.5).toFixed(1))))}
-                className="w-9 h-9 rounded-xl border-2 flex items-center justify-center flex-shrink-0"
+                className="w-11 h-11 rounded-xl border-2 flex items-center justify-center flex-shrink-0"
                 style={{borderColor:C.success,backgroundColor:`${C.success}10`}}>
-                <Plus size={14} style={{color:C.success}}/>
+                <Plus size={16} style={{color:C.success}}/>
               </button>
             </div>
           </div>
 
           <div>
-            <label className="text-xs font-black mb-1.5 block" style={{color:C.g700}}>Trade Range ({sym} {cur})</label>
+            <label className="text-sm font-black mb-2 block" style={{color:C.g700}}>Trade Range ({sym} {cur})</label>
             <div className="grid grid-cols-2 gap-3">
               {[{key:'min_limit_local',label:'Minimum'},{key:'max_limit_local',label:'Maximum'}].map(({key,label})=>(
                 <div key={key}>
-                  <p className="text-xs font-bold mb-1" style={{color:C.g500}}>{label}</p>
+                  <p className="text-sm font-bold mb-1.5" style={{color:C.g500}}>{label}</p>
                   <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-black" style={{color:C.g400}}>{sym}</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black" style={{color:C.g400}}>{sym}</span>
                     <input type="number" value={form[key]} onChange={e=>set(key,e.target.value)}
-                      className="w-full pl-7 pr-3 py-2.5 text-sm font-bold border-2 rounded-xl focus:outline-none"
+                      className="w-full pl-8 pr-3 py-3 text-base font-bold border-2 rounded-xl focus:outline-none"
                       style={{borderColor:form[key]?C.green:C.g200,color:C.forest}}/>
                   </div>
                 </div>
@@ -112,53 +116,55 @@ function EditModal({ listing, onClose, onSave, saving }) {
           </div>
 
           <div>
-            <label className="text-xs font-black mb-1.5 block" style={{color:C.g700}}>Payment Method</label>
+            <label className="text-sm font-black mb-2 block" style={{color:C.g700}}>Payment Method</label>
             <input type="text" value={form.payment_method} onChange={e=>set('payment_method',e.target.value)}
               placeholder="e.g. MTN Mobile Money"
-              className="w-full px-4 py-2.5 text-sm border-2 rounded-xl focus:outline-none"
+              className="w-full px-4 py-3 text-base font-semibold border-2 rounded-xl focus:outline-none"
               style={{borderColor:form.payment_method?C.green:C.g200}}/>
           </div>
 
           <div>
-            <label className="text-xs font-black mb-1.5 block" style={{color:C.g700}}>Payment Window</label>
+            <label className="text-sm font-black mb-2 block" style={{color:C.g700}}>Payment Window</label>
             <div className="grid grid-cols-6 gap-1.5">
               {[15,30,45,60,90,120].map(t=>(
                 <button key={t} onClick={()=>set('time_limit',t)}
-                  className="py-2 rounded-xl text-xs font-black border-2 transition"
+                  className="py-2.5 rounded-xl text-sm font-black border-2 transition"
                   style={{borderColor:form.time_limit===t?C.green:C.g200,backgroundColor:form.time_limit===t?C.green:'transparent',color:form.time_limit===t?C.white:C.g500}}>
-                  {t}<span className="text-xs">m</span>
+                  {t}<span style={{fontSize:11}}>m</span>
                 </button>
               ))}
             </div>
           </div>
 
           <div>
-            <label className="text-xs font-black mb-1.5 block" style={{color:C.g700}}>Trade Instructions</label>
+            <label className="text-sm font-black mb-2 block" style={{color:C.g700}}>Trade Instructions</label>
             <textarea value={form.trade_instructions} onChange={e=>set('trade_instructions',e.target.value)}
               rows={3} placeholder="Tell traders exactly how to pay you…"
-              className="w-full px-4 py-3 text-sm border-2 rounded-xl focus:outline-none resize-none"
+              className="w-full px-4 py-3 text-sm font-medium border-2 rounded-xl focus:outline-none resize-none"
               style={{borderColor:C.g200}}/>
           </div>
 
           <div>
-            <label className="text-xs font-black mb-1.5 block" style={{color:C.g700}}>
+            <label className="text-sm font-black mb-2 block" style={{color:C.g700}}>
               Offer Terms <span className="font-normal text-xs" style={{color:C.g400}}>(optional)</span>
             </label>
             <textarea value={form.listing_terms} onChange={e=>set('listing_terms',e.target.value)}
               rows={2} placeholder="Any conditions or restrictions…"
-              className="w-full px-4 py-3 text-sm border-2 rounded-xl focus:outline-none resize-none"
+              className="w-full px-4 py-3 text-sm font-medium border-2 rounded-xl focus:outline-none resize-none"
               style={{borderColor:C.g200}}/>
           </div>
         </div>
 
-        <div className="px-5 py-4 border-t flex gap-2.5" style={{borderColor:C.g100}}>
+        {/* Footer — flex-shrink-0 keeps it pinned to bottom, safe area handles iOS home indicator */}
+        <div className="flex-shrink-0 px-5 pt-4 border-t flex gap-3"
+          style={{borderColor:C.g100, paddingBottom:'max(24px, env(safe-area-inset-bottom, 24px))'}}>
           <button onClick={onClose}
-            className="flex-1 py-3 rounded-xl border text-sm font-bold hover:bg-gray-50 transition"
+            className="flex-1 py-4 rounded-2xl border text-base font-bold hover:bg-gray-50 transition"
             style={{borderColor:C.g200,color:C.g600}}>Cancel</button>
           <button onClick={()=>onSave(listing.id,form)} disabled={saving}
-            className="flex-1 py-3 rounded-xl text-white text-sm font-black flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 transition"
-            style={{backgroundColor:C.green}}>
-            {saving?<><RefreshCw size={13} className="animate-spin"/>Saving…</>:<><Save size={13}/>Save Changes</>}
+            className="flex-2 py-4 rounded-2xl text-white text-base font-black flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 transition"
+            style={{backgroundColor:C.green, flex:2}}>
+            {saving?<><RefreshCw size={16} className="animate-spin"/>Saving…</>:<><Save size={16}/>Save Changes</>}
           </button>
         </div>
       </div>
@@ -238,27 +244,27 @@ function OfferCard({ listing, onEdit, onDelete, onToggle, walletBtc }) {
       {/* ── Top: type + status + toggle + delete ── */}
       <div className="flex items-center gap-2 px-3 pt-2.5 pb-2 border-b" style={{borderColor:C.g100}}>
         {/* Icon */}
-        <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
           style={{backgroundColor:`${tc.color}15`}}>
-          <Icon size={13} style={{color:tc.color}}/>
+          <Icon size={15} style={{color:tc.color}}/>
         </div>
 
         {/* Label + ID */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1 flex-wrap">
-            <span className="font-black text-xs" style={{color:C.forest}}>{tc.label}</span>
-            <span className="text-xs font-bold px-1.5 py-0.5 rounded-full"
-              style={{backgroundColor:`${tc.color}12`,color:tc.color,fontSize:10}}>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-black text-sm" style={{color:C.forest}}>{tc.label}</span>
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full"
+              style={{backgroundColor:`${tc.color}12`,color:tc.color}}>
               {tc.badge}
             </span>
             {listing.gift_card_brand && (
-              <span className="text-xs font-bold px-1.5 py-0.5 rounded-full"
-                style={{backgroundColor:`${C.purple}12`,color:C.purple,fontSize:10}}>
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full"
+                style={{backgroundColor:`${C.purple}12`,color:C.purple}}>
                 {listing.gift_card_brand}
               </span>
             )}
           </div>
-          <p className="text-xs mt-0.5" style={{color:isActive?C.success:C.g400,fontSize:10}}>
+          <p className="text-xs font-bold mt-0.5" style={{color:isActive?C.success:C.g400}}>
             {isActive?'🟢 Live':'⏸ Paused'} · #{String(listing.id||'').slice(0,6).toUpperCase()}
           </p>
         </div>
@@ -275,11 +281,11 @@ function OfferCard({ listing, onEdit, onDelete, onToggle, walletBtc }) {
         {confirmDelete ? (
           <div className="flex items-center gap-1 flex-shrink-0">
             <button onClick={()=>setConfirmDelete(false)}
-              className="text-xs font-bold px-1.5 py-1 rounded-lg border"
-              style={{borderColor:C.g200,color:C.g500,fontSize:10}}>No</button>
+              className="text-xs font-bold px-2 py-1 rounded-lg border"
+              style={{borderColor:C.g200,color:C.g500}}>No</button>
             <button onClick={()=>{setConfirmDelete(false);onDelete(listing.id);}}
-              className="text-xs font-black px-2 py-1 rounded-lg text-white"
-              style={{backgroundColor:C.danger,fontSize:10}}>Del</button>
+              className="text-xs font-black px-2.5 py-1 rounded-lg text-white"
+              style={{backgroundColor:C.danger}}>Del</button>
           </div>
         ) : (
           <button onClick={()=>setConfirmDelete(true)}
@@ -292,39 +298,39 @@ function OfferCard({ listing, onEdit, onDelete, onToggle, walletBtc }) {
 
       {/* ── Metrics: 2×2 grid ── */}
       <div className="grid grid-cols-2 gap-px" style={{backgroundColor:C.g100}}>
-        <div className="bg-white px-3 py-2">
-          <p style={{fontSize:10,fontWeight:700,color:C.g400,textTransform:'uppercase',letterSpacing:'0.04em'}}>Margin</p>
-          <p className="font-black text-xs mt-0.5" style={{color:marginColor}}>{marginDisplay}</p>
+        <div className="bg-white px-3 py-2.5">
+          <p className="text-xs font-bold uppercase" style={{color:C.g400,letterSpacing:'0.04em'}}>Margin</p>
+          <p className="font-black text-sm mt-0.5" style={{color:marginColor}}>{marginDisplay}</p>
         </div>
-        <div className="bg-white px-3 py-2 min-w-0 overflow-hidden">
-          <p style={{fontSize:10,fontWeight:700,color:C.g400,textTransform:'uppercase',letterSpacing:'0.04em'}}>Range</p>
-          <p className="font-black text-xs mt-0.5 truncate" style={{color:C.forest}}>{rangeDisplay} {cur}</p>
+        <div className="bg-white px-3 py-2.5 min-w-0 overflow-hidden">
+          <p className="text-xs font-bold uppercase" style={{color:C.g400,letterSpacing:'0.04em'}}>Range</p>
+          <p className="font-black text-sm mt-0.5 truncate" style={{color:C.forest}}>{rangeDisplay} {cur}</p>
         </div>
-        <div className="bg-white px-3 py-2 min-w-0 overflow-hidden">
-          <p style={{fontSize:10,fontWeight:700,color:C.g400,textTransform:'uppercase',letterSpacing:'0.04em'}}>Payment</p>
-          <p className="font-black text-xs mt-0.5 truncate" style={{color:C.paid}}>{listing.payment_method||'—'}</p>
+        <div className="bg-white px-3 py-2.5 min-w-0 overflow-hidden">
+          <p className="text-xs font-bold uppercase" style={{color:C.g400,letterSpacing:'0.04em'}}>Payment</p>
+          <p className="font-black text-sm mt-0.5 truncate" style={{color:C.paid}}>{listing.payment_method||'—'}</p>
         </div>
-        <div className="bg-white px-3 py-2">
-          <p style={{fontSize:10,fontWeight:700,color:C.g400,textTransform:'uppercase',letterSpacing:'0.04em'}}>Views · Time</p>
-          <p className="font-black text-xs mt-0.5" style={{color:C.g600}}>
-            <Eye size={9} className="inline mr-0.5" style={{color:C.amber}}/>{fmt(views)}
+        <div className="bg-white px-3 py-2.5">
+          <p className="text-xs font-bold uppercase" style={{color:C.g400,letterSpacing:'0.04em'}}>Views · Time</p>
+          <p className="font-black text-sm mt-0.5" style={{color:C.g600}}>
+            <Eye size={11} className="inline mr-0.5" style={{color:C.amber}}/>{fmt(views)}
             <span className="mx-1" style={{color:C.g300}}>·</span>
-            <Clock size={9} className="inline mr-0.5"/>{listing.time_limit||30}m
+            <Clock size={11} className="inline mr-0.5"/>{listing.time_limit||30}m
           </p>
         </div>
       </div>
 
       {/* ── Actions ── */}
-      <div className="flex gap-2 p-2.5">
+      <div className="flex gap-2 p-3">
         <button onClick={()=>onEdit(listing)}
-          className="flex items-center justify-center gap-1 py-2 rounded-xl text-xs font-black border transition flex-1"
+          className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-black border transition flex-1"
           style={{borderColor:C.green,color:C.green}}>
-          <Edit size={11}/> Edit
+          <Edit size={13}/> Edit
         </button>
         <button onClick={copyLink}
-          className="flex items-center justify-center gap-1 py-2 rounded-xl text-xs font-black border transition flex-1"
+          className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-black border transition flex-1"
           style={{borderColor:copied?C.success:C.paid,color:copied?C.success:C.paid,backgroundColor:copied?`${C.success}08`:`${C.paid}06`}}>
-          {copied ? <><CheckCircle size={11}/> Copied!</> : <><Share2 size={11}/> Share</>}
+          {copied ? <><CheckCircle size={13}/> Copied!</> : <><Share2 size={13}/> Share</>}
         </button>
       </div>
     </div>

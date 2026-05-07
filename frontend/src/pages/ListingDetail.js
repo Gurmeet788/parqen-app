@@ -647,9 +647,39 @@ const loadAll = useCallback(async () => {
 
               {/* Amount input */}
               <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 800, color: C.g600, marginBottom: 8 }}>
-                  YOU PAY ({cur})
-                </label>
+                {/* Label row with MIN / MAX quick-fill chips */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <label style={{ fontSize: 12, fontWeight: 800, color: C.g600 }}>
+                    YOU PAY ({cur})
+                  </label>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      type="button"
+                      onClick={() => { setPayAmt(String(Math.ceil(minLocal))); setTradeError(''); }}
+                      style={{
+                        fontSize: 11, fontWeight: 800, cursor: 'pointer',
+                        color: C.forest, background: C.mist,
+                        border: `1.5px solid ${C.sage}60`,
+                        borderRadius: 7, padding: '4px 10px', lineHeight: 1,
+                        transition: 'all 0.15s',
+                      }}>
+                      MIN {sym}{fmt(minLocal, 0)}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setPayAmt(String(Math.floor(maxLocal))); setTradeError(''); }}
+                      style={{
+                        fontSize: 11, fontWeight: 900, cursor: 'pointer',
+                        color: '#fff', background: `linear-gradient(135deg, ${C.forest}, ${C.green})`,
+                        border: 'none',
+                        borderRadius: 7, padding: '4px 10px', lineHeight: 1,
+                        boxShadow: '0 2px 8px rgba(27,67,50,0.25)',
+                        transition: 'all 0.15s',
+                      }}>
+                      MAX {sym}{fmt(maxLocal, 0)}
+                    </button>
+                  </div>
+                </div>
                 <div style={{ position: 'relative' }}>
                   <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 16, fontWeight: 900, color: C.g400 }}>{sym}</span>
                   <input

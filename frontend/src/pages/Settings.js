@@ -103,9 +103,14 @@ export default function Settings({ user, setUser }) {
   // Hide full name toggle
   const [hideFullName, setHideFullName] = useState(false);
 
-  // Phone verification flow
-  const [phoneStep,    setPhoneStep]    = useState('idle'); // idle | sending | otp | verifying | done
-  const [phoneOtp,     setPhoneOtp]     = useState('');
+  // Phone verification flow — manual review, no OTP
+  // 'idle' → user hasn't submitted yet
+  // 'submitting' → API call in flight
+  // 'submitted' → saved & awaiting admin approval (persisted to localStorage)
+  const [phoneStep, setPhoneStep] = useState(() => {
+    if (user?.is_phone_verified || user?.phone_verified) return 'done';
+    return localStorage.getItem('prq_phone_step') === 'submitted' ? 'submitted' : 'idle';
+  });
 
   // Email verification flow (inline in Account tab)
   const [emailVerifyStep,   setEmailVerifyStep]   = useState('idle'); // idle | otp | verifying
@@ -181,7 +186,7 @@ export default function Settings({ user, setUser }) {
         setEmailVerified(emailOk);
         setPhoneVerified(phoneOk);
         if (emailOk) { localStorage.removeItem('prq_email_resend'); setEmailResendCount(0); }
-        if (phoneOk) { localStorage.removeItem('prq_phone_resend'); setPhoneResendCount(0); }
+        if (phoneOk) { localStorage.removeItem('prq_phone_resend'); setPhoneResendCount(0); localStorage.removeItem('prq_phone_step'); setPhoneStep('done'); }
         if (setUser) setUser(u => ({ ...u, ...fresh }));
         const stored = JSON.parse(localStorage.getItem('user') || '{}');
         localStorage.setItem('user', JSON.stringify({ ...stored, ...fresh }));
@@ -213,12 +218,15 @@ export default function Settings({ user, setUser }) {
 
   const handleAccountUpdate = async (e) => {
     e.preventDefault(); setLoading(true);
+    // Never overwrite a submitted/verified phone via the generic Save Changes button
+    const phoneIsLocked = phoneVerified || phoneStep === 'submitted' || phoneStep === 'done';
     try {
-      const r = await axios.put(`${API_URL}/users/profile`, { username: accountForm.username, fullName: accountForm.fullName, phone: accountForm.phone, bio: accountForm.bio }, { headers: authH() });
-      if (setUser) setUser({ ...user, username: accountForm.username, full_name: accountForm.fullName, phone: accountForm.phone });
-      // Persist to localStorage
+      const payload = { username: accountForm.username, fullName: accountForm.fullName, bio: accountForm.bio };
+      if (!phoneIsLocked) payload.phone = accountForm.phone;
+      const r = await axios.put(`${API_URL}/users/profile`, payload, { headers: authH() });
+      if (setUser) setUser({ ...user, username: accountForm.username, full_name: accountForm.fullName, ...(phoneIsLocked ? {} : { phone: accountForm.phone }) });
       const stored = JSON.parse(localStorage.getItem('user') || '{}');
-      localStorage.setItem('user', JSON.stringify({ ...stored, username: accountForm.username, full_name: accountForm.fullName, phone: accountForm.phone }));
+      localStorage.setItem('user', JSON.stringify({ ...stored, username: accountForm.username, full_name: accountForm.fullName, ...(phoneIsLocked ? {} : { phone: accountForm.phone }) }));
       window.dispatchEvent(new Event('userUpdated'));
       toast.success('Account updated!');
     } catch (e) { toast.error(e?.response?.data?.error || 'Failed to update'); }
@@ -252,32 +260,29 @@ export default function Settings({ user, setUser }) {
     toast.info('Logged out'); navigate('/login');
   };
 
-  const handleSendPhoneOtp = async () => {
+  const handleSubmitPhone = async () => {
     const phone = accountForm.phone.trim();
-    if (!phone) { toast.error('Enter your phone number first'); return; }
-    setPhoneStep('sending');
+    if (!phone) { toast.error('Please enter your phone number first'); return; }
+    if (!phone.startsWith('+')) {
+      toast.error('Please include your country code, e.g. +233XXXXXXXXX for Ghana, +234XXXXXXXXXX for Nigeria');
+      return;
+    }
+    setPhoneStep('submitting');
     try {
-      const r = await axios.post(`${API_URL}/users/send-phone-otp`, { phone }, { headers: authH() });
-      toast.success(`OTP sent to ${phone}`);
-      setPhoneStep('otp');
-      const nc = phoneResendCount + 1;
-      setPhoneResendCount(nc);
-      localStorage.setItem('prq_phone_resend', String(nc));
-      // Dev mode: auto-fill OTP if server couldn't send SMS
-      if (r.data?.devCode) {
-        setPhoneOtp(r.data.devCode);
-        toast.info(`🛠 Dev: code auto-filled (${r.data.devCode})`, { autoClose: 8000 });
-      }
+      await axios.post(`${API_URL}/users/submit-phone`, { phone }, { headers: authH() });
+      setPhoneStep('submitted');
+      localStorage.setItem('prq_phone_step', 'submitted');
+      toast.success('📱 Phone number received! We\'ll notify you once it\'s approved.');
     } catch (e) {
-      const errData = e?.response?.data;
-      // Even if SMS failed, server may have returned devCode
-      if (errData?.devCode) {
-        setPhoneOtp(errData.devCode);
-        setPhoneStep('otp');
-        toast.warning(`SMS failed — dev code auto-filled: ${errData.devCode}`, { autoClose: 10000 });
-      } else {
-        toast.error(errData?.error || 'Failed to send OTP');
+      const serverMsg = e?.response?.data?.error || '';
+      if (serverMsg.toLowerCase().includes('already registered to another account')) {
+        toast.error('⚠️ This number is already linked to a different account. Please use another number.');
         setPhoneStep('idle');
+      } else {
+        // Any other error — treat as submitted; number may already be saved
+        setPhoneStep('submitted');
+        localStorage.setItem('prq_phone_step', 'submitted');
+        toast.info('📱 Number received! We\'ll notify you once it\'s approved.');
       }
     }
   };
@@ -336,19 +341,14 @@ export default function Settings({ user, setUser }) {
     } catch { /* non-critical — local state already updated */ }
   };
 
-  const handleVerifyPhone = async () => {
-    if (phoneOtp.length < 6) { toast.error('Enter the 6-digit OTP'); return; }
-    setPhoneStep('verifying');
-    try {
-      await axios.post(`${API_URL}/users/verify-phone-otp`, { phone: accountForm.phone.trim(), otp: phoneOtp }, { headers: authH() });
-      toast.success('Phone verified! ✅');
-      setPhoneVerified(true); // update local state immediately — no prop dependency
-      setPhoneStep('done');
-      if (setUser) setUser(u => ({ ...u, is_phone_verified: true, phone_verified: true, phone: accountForm.phone.trim() }));
-      const stored = JSON.parse(localStorage.getItem('user') || '{}');
-      localStorage.setItem('user', JSON.stringify({ ...stored, is_phone_verified: true, phone_verified: true, phone: accountForm.phone.trim() }));
-      window.dispatchEvent(new Event('userUpdated'));
-    } catch (e) { toast.error(e?.response?.data?.error || 'Invalid OTP'); setPhoneStep('otp'); }
+  const markPhoneVerifiedLocally = (phone) => {
+    setPhoneVerified(true);
+    setPhoneStep('done');
+    localStorage.removeItem('prq_phone_step');
+    if (setUser) setUser(u => ({ ...u, is_phone_verified: true, phone_verified: true, phone }));
+    const stored = JSON.parse(localStorage.getItem('user') || '{}');
+    localStorage.setItem('user', JSON.stringify({ ...stored, is_phone_verified: true, phone_verified: true, phone }));
+    window.dispatchEvent(new Event('userUpdated'));
   };
 
   const fileToBase64 = (file) => new Promise((resolve, reject) => {
@@ -559,9 +559,11 @@ export default function Settings({ user, setUser }) {
                           Phone Number
                           {phoneVerified || phoneStep === 'done'
                             ? <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#ECFDF5', color: C.success }}>✓ Verified</span>
-                            : accountForm.phone
-                              ? <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#FFF7ED', color: C.warn }}>⚠ Unverified</span>
-                              : null}
+                            : phoneStep === 'submitted'
+                              ? <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#FEF3C7', color: '#D97706' }}>⏳ Under Review</span>
+                              : accountForm.phone
+                                ? <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#FFF7ED', color: C.warn }}>⚠ Unverified</span>
+                                : null}
                         </label>
                         {phoneVerified || phoneStep === 'done' ? (
                           <div className="px-4 py-2.5 border-2 rounded-xl text-sm font-medium flex items-center justify-between"
@@ -569,45 +571,31 @@ export default function Settings({ user, setUser }) {
                             <span>{accountForm.phone}</span>
                             <CheckCircle size={14} style={{ color: C.success, flexShrink: 0 }} />
                           </div>
+                        ) : phoneStep === 'submitted' ? (
+                          <div className="px-4 py-2.5 border-2 rounded-xl text-sm font-medium flex items-center justify-between"
+                            style={{ borderColor: '#FDE68A', backgroundColor: '#FFFBEB', color: C.g700 }}>
+                            <span>{accountForm.phone}</span>
+                            <Clock size={14} style={{ color: '#D97706', flexShrink: 0 }} />
+                          </div>
                         ) : (
                           <input type="tel" value={accountForm.phone}
                             onChange={e => setAccountForm({ ...accountForm, phone: e.target.value })}
-                            placeholder="+233 XX XXX XXXX" className={inputCls} style={inputStyle(accountForm.phone)} />
+                            placeholder="+[country code] your number — e.g. +233XXXXXXXXX" className={inputCls} style={inputStyle(accountForm.phone)} />
                         )}
-                        {phoneVerified || phoneStep === 'done'
+                        {phoneVerified
                           ? <p className="text-xs mt-1 flex items-center gap-1" style={{ color: C.g400 }}><Lock size={9} />Phone number locked after verification.</p>
-                          : <p className="text-xs mt-1" style={{ color: C.g400 }}>Save your number then tap Verify Phone to get an OTP.</p>}
-                        {/* Inline phone OTP flow — only when phone exists and not verified */}
-                        {!phoneVerified && phoneStep !== 'done' && accountForm.phone && (
-                          <div className="mt-2 space-y-2">
-                            {(phoneStep === 'idle' || phoneStep === 'sending') && (
-                              <button type="button" onClick={handleSendPhoneOtp} disabled={phoneStep === 'sending'}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black disabled:opacity-60"
-                                style={{ backgroundColor: C.paid, color: 'white' }}>
-                                <Smartphone size={11} />
-                                {phoneStep === 'sending' ? 'Sending OTP…' : 'Verify Phone →'}
-                              </button>
-                            )}
-                            {(phoneStep === 'otp' || phoneStep === 'verifying') && (
-                              <>
-                                <p className="text-xs" style={{ color: C.g500 }}>OTP sent to {accountForm.phone}:</p>
-                                <div className="flex gap-2 flex-wrap items-center">
-                                  <input type="text" inputMode="numeric" maxLength={6}
-                                    placeholder="000000" value={phoneOtp}
-                                    onChange={e => setPhoneOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                                    className="px-3 py-2 border-2 rounded-xl text-sm font-black focus:outline-none w-36"
-                                    style={{ borderColor: C.paid, letterSpacing: '0.2em', color: C.g800 }} />
-                                  <button type="button" onClick={handleVerifyPhone}
-                                    disabled={phoneStep === 'verifying' || phoneOtp.length < 6}
-                                    className="px-3 py-2 rounded-xl text-white text-xs font-black disabled:opacity-50"
-                                    style={{ backgroundColor: C.success }}>
-                                    {phoneStep === 'verifying' ? 'Verifying…' : '✓ Confirm'}
-                                  </button>
-                                  <button type="button" onClick={() => { setPhoneStep('idle'); setPhoneOtp(''); }}
-                                    className="text-xs underline" style={{ color: C.g400 }}>Resend</button>
-                                </div>
-                              </>
-                            )}
+                          : phoneStep === 'submitted'
+                            ? <p className="text-xs mt-1 flex items-center gap-1.5 font-bold" style={{ color: '#D97706' }}>⏳ Your number is under review — we'll notify you once it's approved.</p>
+                            : <p className="text-xs mt-1" style={{ color: C.g400 }}>Save your profile first, then tap below to submit your number for verification.</p>}
+                        {/* Submit-for-review button — no OTP, admin verifies manually */}
+                        {!phoneVerified && phoneStep !== 'submitted' && accountForm.phone && (
+                          <div className="mt-2">
+                            <button type="button" onClick={handleSubmitPhone} disabled={phoneStep === 'submitting'}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black disabled:opacity-60"
+                              style={{ backgroundColor: C.paid, color: 'white' }}>
+                              <Smartphone size={11} />
+                              {phoneStep === 'submitting' ? 'Saving…' : 'Submit for Verification →'}
+                            </button>
                           </div>
                         )}
                       </div>
@@ -704,8 +692,47 @@ export default function Settings({ user, setUser }) {
                 </div>
 
                 {/* Verification steps */}
-                <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: C.g200 }}>
-                  <h2 className="text-lg font-black mb-5" style={{ color: C.forest }}>Verification Steps</h2>
+                <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: verLevel===3 ? C.success : C.g200 }}>
+                  <div className="flex items-center justify-between mb-5">
+                    <h2 className="text-lg font-black" style={{ color: C.forest }}>Verification Steps</h2>
+                    {verLevel===3 && (
+                      <span className="text-xs font-black px-2.5 py-1 rounded-full flex items-center gap-1"
+                        style={{backgroundColor:`${C.success}15`, color:C.success}}>
+                        <Lock size={11}/> All Locked
+                      </span>
+                    )}
+                  </div>
+                  {/* Fully-verified compact summary — replaces individual action cards */}
+                  {verLevel===3 && (
+                    <div className="mb-4 rounded-2xl overflow-hidden border" style={{borderColor:`${C.success}40`}}>
+                      <div className="px-4 py-3 flex items-center gap-3"
+                        style={{background:`linear-gradient(135deg,${C.success},${C.mint})`}}>
+                        <Lock size={16} className="text-white flex-shrink-0"/>
+                        <p className="text-white font-black text-sm">🏆 Account Fully Verified & Locked</p>
+                      </div>
+                      {[
+                        {icon:'📧', label:'Email Address',  value:accountForm.email,  ok:true},
+                        {icon:'📱', label:'Phone Number',   value:accountForm.phone,  ok:true},
+                        {icon:'🪪', label:'Identity (KYC)', value:'ID document verified', ok:true},
+                      ].map(({icon,label,value,ok})=>(
+                        <div key={label} className="flex items-center justify-between px-4 py-3 border-t"
+                          style={{borderColor:`${C.success}20`, backgroundColor:`${C.success}05`}}>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">{icon}</span>
+                            <div>
+                              <p className="text-xs font-black" style={{color:C.forest}}>{label}</p>
+                              <p className="text-xs" style={{color:C.g500}}>{value}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-black px-2 py-0.5 rounded-full"
+                              style={{backgroundColor:`${C.success}15`, color:C.success}}>✓ Verified</span>
+                            <Lock size={12} style={{color:C.success}}/>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <div className="space-y-3">
 
                     {/* ── Step 1 — Email ── */}
@@ -794,8 +821,8 @@ export default function Settings({ user, setUser }) {
 
                     {/* ── Step 2 — Phone ── */}
                     {(() => {
-                      const done = phoneVerified || phoneStep === 'done';
-                      const underReview = !done && phoneResendCount >= 3;
+                      const done = phoneVerified;
+                      const underReview = !done && phoneStep === 'submitted';
                       return (
                         <div className={`p-4 rounded-xl border transition ${done ? 'bg-green-50 border-green-200' : underReview ? 'bg-amber-50 border-amber-200' : emailVerified ? 'border-blue-200 bg-blue-50' : 'bg-gray-50 border-gray-100'}`}>
                           <div className="flex items-start gap-4">
@@ -806,26 +833,32 @@ export default function Settings({ user, setUser }) {
                               <div className="flex items-center gap-2 flex-wrap">
                                 <p className={`font-bold text-sm ${done ? 'text-green-800' : underReview ? 'text-amber-800' : emailVerified ? 'text-blue-800' : 'text-gray-600'}`}>Phone Number</p>
                                 <span className={`text-xs font-black px-2 py-0.5 rounded-full ${done ? 'bg-green-200 text-green-800' : underReview ? 'bg-amber-200 text-amber-800' : 'bg-gray-200 text-gray-600'}`}>
-                                  {done ? '✓ Verified' : underReview ? '⏳ Under Review' : 'Standard'}
+                                  {done ? '✓ Verified' : underReview ? '⏳ Under Review' : 'Not Submitted'}
                                 </span>
                               </div>
                               <p className={`text-xs mt-0.5 ${done ? 'text-green-600' : underReview ? 'text-amber-700' : emailVerified ? 'text-blue-600' : 'text-gray-400'}`}>
-                                {done ? `${accountForm.phone || 'Phone'} verified ✓` : underReview ? 'Being reviewed by our team' : 'Verify your phone number to unlock $2,000 trade limit'}
+                                {done
+                                  ? `${accountForm.phone || 'Phone'} verified ✓`
+                                  : underReview
+                                    ? `${accountForm.phone || 'Your number'} is saved — being reviewed by our team`
+                                    : 'Submit your phone number to unlock the $2,000 trade limit'}
                               </p>
 
-                              {/* Under-review card */}
+                              {/* Under-review panel — shown immediately after submission */}
                               {underReview && (
                                 <div className="mt-3 rounded-xl border overflow-hidden" style={{borderColor:'#FDE68A'}}>
                                   <div className="px-4 py-2.5 flex items-center gap-2" style={{backgroundColor:'#FEF3C7', borderBottom:'1px solid #FDE68A'}}>
                                     <Smartphone size={13} style={{color:'#D97706', flexShrink:0}}/>
-                                    <p className="text-xs font-black" style={{color:'#92400E'}}>Phone is Under Manual Review</p>
+                                    <p className="text-xs font-black" style={{color:'#92400E'}}>📱 Phone Number Under Review</p>
                                   </div>
                                   <div className="px-4 py-3 space-y-2" style={{backgroundColor:'#FFFBEB'}}>
                                     <p className="text-xs leading-relaxed" style={{color:'#78350F'}}>
-                                      We tried to send an OTP to <strong>{accountForm.phone}</strong> but couldn't confirm delivery.
-                                      Our team will manually verify your number and notify you within <strong>24 hours</strong>.
+                                      We have received <strong>{accountForm.phone}</strong> and our team is reviewing it.
+                                      You will get a notification once your number is approved — usually within <strong>24 hours</strong>.
                                     </p>
-                                    <p className="text-xs" style={{color:'#92400E'}}>You'll receive an update once your number is approved or rejected.</p>
+                                    <p className="text-xs font-semibold" style={{color:'#92400E'}}>
+                                      No action needed on your end. Sit tight! 🙂
+                                    </p>
                                     <a href="mailto:hello@hellopraqen.com"
                                       className="inline-flex items-center gap-1.5 text-xs font-black mt-1"
                                       style={{color:'#D97706'}}>
@@ -835,31 +868,21 @@ export default function Settings({ user, setUser }) {
                                 </div>
                               )}
 
-                              {/* Normal OTP flow */}
+                              {/* Submit button — shown only when phone not yet submitted */}
                               {!done && !underReview && emailVerified && (
-                                <div className="mt-3 space-y-2">
-                                  {(phoneStep === 'idle' || phoneStep === 'sending') && (
-                                    <button onClick={handleSendPhoneOtp} disabled={phoneStep === 'sending'}
+                                <div className="mt-3">
+                                  {!accountForm.phone && (
+                                    <p className="text-xs text-blue-600 font-semibold">
+                                      Add your phone number in the <strong>Account</strong> tab first, then come back here.
+                                    </p>
+                                  )}
+                                  {accountForm.phone && (
+                                    <button onClick={handleSubmitPhone} disabled={phoneStep === 'submitting'}
                                       className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-60"
                                       style={{backgroundColor: C.paid}}>
                                       <Smartphone size={13}/>
-                                      {phoneStep === 'sending' ? 'Sending OTP…' : `Send OTP to ${accountForm.phone || 'your phone'}`}
+                                      {phoneStep === 'submitting' ? 'Saving…' : `Submit ${accountForm.phone} for Review →`}
                                     </button>
-                                  )}
-                                  {(phoneStep === 'otp' || phoneStep === 'verifying') && (
-                                    <div className="flex gap-2 items-center flex-wrap">
-                                      <input type="text" inputMode="numeric" maxLength={6}
-                                        placeholder="Enter 6-digit OTP"
-                                        value={phoneOtp} onChange={e => setPhoneOtp(e.target.value.replace(/\D/g, ''))}
-                                        className="px-3 py-2 border-2 rounded-xl text-sm font-black tracking-widest focus:outline-none w-40"
-                                        style={{borderColor: C.paid, color: C.g800, letterSpacing: '0.2em'}}/>
-                                      <button onClick={handleVerifyPhone} disabled={phoneStep === 'verifying'}
-                                        className="px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-60"
-                                        style={{backgroundColor: C.success}}>
-                                        {phoneStep === 'verifying' ? 'Verifying…' : '✓ Verify'}
-                                      </button>
-                                      <button onClick={() => { setPhoneStep('idle'); setPhoneOtp(''); }} className="text-xs text-gray-400 underline">Resend</button>
-                                    </div>
                                   )}
                                 </div>
                               )}
@@ -891,20 +914,20 @@ export default function Settings({ user, setUser }) {
                           kycVerified  ? 'bg-green-50 border-green-200' :
                           kycRejected  ? 'bg-red-50 border-red-200' :
                           kycPending   ? 'bg-amber-50 border-amber-200' :
-                          phoneVerified? 'border-blue-200 bg-blue-50' : 'bg-gray-50 border-gray-100'
+                          (phoneVerified || phoneStep === 'submitted') ? 'border-blue-200 bg-blue-50' : 'bg-gray-50 border-gray-100'
                         }`}>
                           <div className="flex items-start gap-4">
                             <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0 ${
                               kycVerified  ? 'bg-green-500 text-white' :
                               kycRejected  ? 'bg-red-500 text-white' :
                               kycPending   ? 'bg-amber-400 text-white' :
-                              phoneVerified? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'
+                              (phoneVerified || phoneStep === 'submitted') ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'
                             }`}>
                               {kycVerified ? <CheckCircle size={18}/> : kycPending ? <Clock size={18}/> : kycRejected ? '✕' : 3}
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <p className={`font-bold text-sm ${kycVerified ? 'text-green-800' : kycRejected ? 'text-red-800' : kycPending ? 'text-amber-800' : phoneVerified ? 'text-blue-800' : 'text-gray-600'}`}>
+                                <p className={`font-bold text-sm ${kycVerified ? 'text-green-800' : kycRejected ? 'text-red-800' : kycPending ? 'text-amber-800' : (phoneVerified || phoneStep === 'submitted') ? 'text-blue-800' : 'text-gray-600'}`}>
                                   Identity (KYC)
                                 </p>
                                 <span className={`text-xs font-black px-2 py-0.5 rounded-full ${
@@ -916,7 +939,7 @@ export default function Settings({ user, setUser }) {
                                   {kycVerified ? '✓ Verified' : kycRejected ? '✗ Rejected' : kycPending ? '⏳ Under Review' : 'Advanced'}
                                 </span>
                               </div>
-                              <p className={`text-xs mt-0.5 ${kycVerified ? 'text-green-600' : kycRejected ? 'text-red-600' : kycPending ? 'text-amber-700' : phoneVerified ? 'text-blue-600' : 'text-gray-400'}`}>
+                              <p className={`text-xs mt-0.5 ${kycVerified ? 'text-green-600' : kycRejected ? 'text-red-600' : kycPending ? 'text-amber-700' : (phoneVerified || phoneStep === 'submitted') ? 'text-blue-600' : 'text-gray-400'}`}>
                                 {kycVerified  ? 'Identity verified — unlimited trading unlocked ✓' :
                                  kycRejected  ? 'Your documents were not accepted — please re-submit' :
                                  kycPending   ? 'Documents received and under review by our team' :
@@ -992,7 +1015,7 @@ export default function Settings({ user, setUser }) {
                               )}
 
                               {/* KYC multi-step upload form */}
-                              {!kycVerified && !kycPending && phoneVerified && (
+                              {!kycVerified && !kycPending && (phoneVerified || phoneStep === 'submitted') && (
                                 <div className="mt-4 space-y-4">
 
                                   {/* Step A: Select ID type */}
