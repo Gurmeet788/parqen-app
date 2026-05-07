@@ -2428,7 +2428,7 @@ app.get('/api/offers', async (req, res) => {
     const hit = getCached(cacheKey);
     if (hit) return res.json({ success: true, offers: hit });
 
-    const typeMap = { sell: 'SELL', buy: 'BUY', gc_buy: 'BUY_GIFT_CARD' };
+    const typeMap = { sell: 'SELL', sell_bitcoin: 'SELL_BITCOIN', buy: 'BUY', buy_bitcoin: 'BUY_BITCOIN', gc_buy: 'BUY_GIFT_CARD', gc_sell: 'SELL_GIFT_CARD' };
     const listingTypeFilter = type ? (typeMap[type.toLowerCase()] || type.toUpperCase()) : null;
 
     let query = supabaseAdmin
@@ -3002,19 +3002,17 @@ app.post('/api/trades', verifyToken, async (req, res) => {
         await createNotification(sellerId, 'trade', '💰 New Trade Request',
           `${buyerName} wants to buy ${assetLabel} · ${localDisp} via ${pmDisp}`,
           `/trade/${trade[0].id}`);
-        await notifyTradeParties(
-          trade[0],
-          '⚡ New Trade Opened on PRAQEN!',
-          `Trade #${trade[0].trade_ref} opened! ${trade[0].amount_btc} BTC secured in escrow. Log in to proceed: https://praqen.com/trade/${trade[0].id}`,
-          tradeEmailTemplate(
-            '⚡ New Trade Opened on PRAQEN!',
-            '⚡ Your Trade Is Live!',
-            `A new trade has been successfully created and <strong>${trade[0].amount_btc} BTC</strong> is now locked safely in escrow. Buyer — complete your payment to proceed. Seller — you'll be notified once payment is sent.`,
-            trade[0].trade_ref,
-            trade[0].amount_btc,
-            `https://praqen.com/trade/${trade[0].id}`
-          )
-        );
+        // Send personalized emails to buyer and seller in parallel
+        const [buyerEmailRes, sellerEmailRes] = await Promise.allSettled([
+          supabaseAdmin.from('users').select('id, email, username').eq('id', buyerId).single(),
+          supabaseAdmin.from('users').select('id, email, username').eq('id', sellerId).single(),
+        ]);
+        const buyerEmailUser  = buyerEmailRes.value?.data;
+        const sellerEmailUser = sellerEmailRes.value?.data;
+        if (buyerEmailUser?.email)
+          emailService.sendTradeOpenedEmail(buyerEmailUser,  trade[0], 'buyer').catch(e => console.error('[TradeOpen] buyer email:', e.message));
+        if (sellerEmailUser?.email)
+          emailService.sendTradeOpenedEmail(sellerEmailUser, trade[0], 'seller').catch(e => console.error('[TradeOpen] seller email:', e.message));
       } catch (notifyErr) {
         console.error('[Trade Open] Background notification failed:', notifyErr.message);
       }
@@ -3089,19 +3087,12 @@ app.post('/api/trades/:id/mark-paid', verifyToken, async (req, res) => {
           ? `${actorName} sent the gift card code · Verify and release Bitcoin`
           : `${actorName} sent ${paidDisp} via ${paidPM} · Verify and release Bitcoin`;
         await createNotification(notifyId, 'payment', '💳 Payment Sent', notifyMsg, `/trade/${req.params.id}`);
-        await notifyTradeParties(
-          trade,
-          '💰 Payment Sent — Release BTC Now',
-          `Trade #${trade.trade_ref}: buyer has marked payment as sent. Seller — verify and release BTC: https://praqen.com/trade/${trade.id}`,
-          tradeEmailTemplate(
-            '💰 Payment Sent — Release BTC Now',
-            '💰 Buyer Has Sent Payment!',
-            `The buyer has confirmed their payment for this trade. <strong>Seller — please verify the payment in your account and release the BTC</strong> to complete the trade. Only release after confirming funds are received.`,
-            trade.trade_ref,
-            trade.amount_btc,
-            `https://praqen.com/trade/${trade.id}`
-          )
-        );
+        // Email only the party who needs to act next (seller for BTC trade, buyer for gift card)
+        const { data: notifyEmailUser } = await supabaseAdmin
+          .from('users').select('id, email, username').eq('id', notifyId).single();
+        if (notifyEmailUser?.email)
+          emailService.sendPaymentSentEmail(notifyEmailUser, trade)
+            .catch(e => console.error('[mark-paid] notify email:', e.message));
       } catch (e) { console.error('[mark-paid] Background notify failed:', e.message); }
     });
   } catch (error) {
@@ -3120,19 +3111,19 @@ app.post('/api/trades/:id/release', verifyToken, async (req, res) => {
         try {
           updateUserTradeStats(releasedTrade.seller_id).catch(() => {});
           updateUserTradeStats(releasedTrade.buyer_id).catch(() => {});
-          await notifyTradeParties(
-            releasedTrade,
-            '✅ Trade Complete — BTC Released!',
-            `Trade #${releasedTrade.trade_ref} complete! ${releasedTrade.amount_btc} BTC released. Check your PRAQEN wallet: https://praqen.com/trade/${releasedTrade.id}`,
-            tradeEmailTemplate(
-              '✅ Trade Complete — BTC Released!',
-              '✅ Trade Successfully Completed!',
-              `Congratulations! The trade has been completed and <strong>${releasedTrade.amount_btc} BTC has been released</strong>. Buyer — check your PRAQEN wallet. Seller — your payment is confirmed. Thank you for trading safely on PRAQEN!`,
-              releasedTrade.trade_ref,
-              releasedTrade.amount_btc,
-              `https://praqen.com/trade/${releasedTrade.id}`
-            )
-          );
+          // Fetch buyer and seller with emails, then send role-specific completion emails in parallel
+          const [buyerRel, sellerRel] = await Promise.allSettled([
+            supabaseAdmin.from('users').select('id, email, username').eq('id', releasedTrade.buyer_id).single(),
+            supabaseAdmin.from('users').select('id, email, username').eq('id', releasedTrade.seller_id).single(),
+          ]);
+          const buyerRelUser  = buyerRel.value?.data;
+          const sellerRelUser = sellerRel.value?.data;
+          if (buyerRelUser?.email)
+            emailService.sendTradeConfirmationEmail(buyerRelUser,  releasedTrade, 'buyer')
+              .catch(e => console.error('[release] buyer email:', e.message));
+          if (sellerRelUser?.email)
+            emailService.sendTradeConfirmationEmail(sellerRelUser, releasedTrade, 'seller')
+              .catch(e => console.error('[release] seller email:', e.message));
         } catch (e) { console.error('[release] Background notify failed:', e.message); }
       });
     }
@@ -3186,19 +3177,19 @@ app.post('/api/trades/:id/cancel', verifyToken, async (req, res) => {
         await createNotification(otherId, 'cancelled', '❌ Trade Cancelled', cancelMsg, `/trade/${req.params.id}`);
         await createNotification(req.userId, 'cancelled', '❌ Trade Cancelled',
           `You cancelled the trade · ${cDisp} via ${cPM}`, `/trade/${req.params.id}`);
-        await notifyTradeParties(
-          trade,
-          '❌ Trade Cancelled',
-          `Trade #${trade.trade_ref} has been cancelled. ${reason ? `Reason: ${reason}. ` : ''}Any locked BTC has been returned to your wallet.`,
-          tradeEmailTemplate(
-            '❌ Trade Cancelled',
-            '❌ Your Trade Has Been Cancelled',
-            `Trade <strong>#${trade.trade_ref}</strong> has been cancelled${reason ? ` — Reason: <em>${reason}</em>` : ''}. Any BTC that was locked in escrow has been returned to your PRAQEN wallet. If you have concerns, please contact our support team.`,
-            trade.trade_ref,
-            trade.amount_btc,
-            null
-          )
-        );
+        // Email both parties about the cancellation
+        const [buyerCancel, sellerCancel] = await Promise.allSettled([
+          supabaseAdmin.from('users').select('id, email, username').eq('id', trade.buyer_id).single(),
+          supabaseAdmin.from('users').select('id, email, username').eq('id', trade.seller_id).single(),
+        ]);
+        const buyerCancelUser  = buyerCancel.value?.data;
+        const sellerCancelUser = sellerCancel.value?.data;
+        if (buyerCancelUser?.email)
+          emailService.sendTradeCancelledEmail(buyerCancelUser,  trade, reason)
+            .catch(e => console.error('[cancel] buyer email:', e.message));
+        if (sellerCancelUser?.email)
+          emailService.sendTradeCancelledEmail(sellerCancelUser, trade, reason)
+            .catch(e => console.error('[cancel] seller email:', e.message));
       } catch (e) { console.error('[cancel] Background notify failed:', e.message); }
     });
   } catch (error) {

@@ -940,16 +940,15 @@ export default function BuyBitcoin({user}) {
 
   const loadListings = async () => {
     try {
-      const r = await axios.get(`${API_URL}/offers`, { timeout: 8000 });
-      const offers = r.data.offers || [];
-      const sellOffers = offers.filter(offer =>
-        (offer.type || '').toLowerCase() === 'sell' ||
-        (offer.listing_type || '').toUpperCase() === 'SELL'
+      const r = await axios.get(`${API_URL}/listings`, { timeout: 8000 });
+      const all = (r.data.listings || []).map(l => ({...l, users: Array.isArray(l.users) ? l.users[0] : l.users}));
+      const sellOffers = all.filter(l =>
+        l.listing_type === 'SELL' || l.listing_type === 'SELL_BITCOIN'
       );
       setListings(sellOffers);
       setLastSynced(new Date());
       try { sessionStorage.setItem('praqen_buy', JSON.stringify({data: sellOffers, ts:Date.now()})); } catch {}
-    } catch {}
+    } catch { if (!listings.length) toast.error('Failed to load marketplace'); }
     finally { setLoading(false); }
   };
 
@@ -1009,15 +1008,20 @@ export default function BuyBitcoin({user}) {
 
   const getFiltered = () => {
     let list = [...listings];
-    if (selCountry.code !== 'ALL') list = list.filter(l => l.country === selCountry.code);
+    if (selCountry.code !== 'ALL') list = list.filter(l => (l.country_code||l.country||'').toUpperCase() === selCountry.code);
     if (selPayment !== 'all') list = list.filter(l => String(l.payment_method || '').toLowerCase().includes(selPayment));
     if (buyAmt && parseFloat(buyAmt) > 0) {
-      const amount = parseFloat(buyAmt);
-      list = list.filter(offer => amount >= (offer.min_amount || 0) && amount <= (offer.max_amount || 999999));
+      const amtUsd = parseFloat(buyAmt) / (USD_RATES[selCurrency.code] || 1);
+      list = list.filter(l => {
+        const minUsd = parseFloat(l.min_limit_usd || 0);
+        const maxUsd = parseFloat(l.max_limit_usd || l.max_limit_local || 999999);
+        return amtUsd >= minUsd && amtUsd <= maxUsd;
+      });
     }
-    if (sortBy === 'rate_low') list.sort((a, b) => (a.bitcoin_price || 0) - (b.bitcoin_price || 0));
+    if (sortBy === 'rate_low')  list.sort((a, b) => parseFloat(a.margin||0) - parseFloat(b.margin||0));
+    else if (sortBy === 'rate_high') list.sort((a, b) => parseFloat(b.margin||0) - parseFloat(a.margin||0));
     else if (sortBy === 'rating') list.sort((a, b) => (b.users?.average_rating || 0) - (a.users?.average_rating || 0));
-    else if (sortBy === 'trades') list.sort((a, b) => (b.users?.total_trades || 0) - (a.users?.total_trades || 0));
+    else if (sortBy === 'trades') list.sort((a, b) => (b.users?.total_trades || b.users?.trade_count || 0) - (a.users?.total_trades || a.users?.trade_count || 0));
     if (traderSearch.trim()) {
       const search = traderSearch.trim().toLowerCase();
       list = list.filter(offer => (offer.users?.username || '').toLowerCase().includes(search));
