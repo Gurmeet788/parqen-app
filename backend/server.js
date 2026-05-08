@@ -3070,6 +3070,22 @@ app.post('/api/trades', verifyToken, async (req, res) => {
     }]).select();
     if (error) return res.status(400).json({ error: error.message });
 
+    // ── Push notification debug (fires immediately after DB insert) ──────────
+    console.error('[DEBUG] Trade saved to DB — id:', trade[0].id, '| ref:', trade[0].trade_ref);
+    console.error('[DEBUG] Seller ID:', sellerId, '| Buyer ID:', buyerId);
+    if (sellerId) {
+      console.error('[DEBUG] Calling sendTradeAlert for new_trade...');
+      try {
+        await sendTradeAlert(sellerId, trade[0], 'new_trade');
+        console.error('[DEBUG] sendTradeAlert completed successfully');
+      } catch (pushError) {
+        console.error('[DEBUG] sendTradeAlert failed:', pushError.message, pushError.stack);
+      }
+    } else {
+      console.error('[DEBUG] No seller_id — skipping push notification');
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     console.log(`[BTC Lock] btcProvider:${btcProviderId.slice(0,8)} locking ${verifiedAmountBtc} BTC`);
 
 
@@ -3112,7 +3128,6 @@ app.post('/api/trades', verifyToken, async (req, res) => {
         await createNotification(sellerId, 'trade', '💰 New Trade Request',
           `${buyerName} wants to buy ${assetLabel} · ${localDisp} via ${pmDisp}`,
           `/trade/${trade[0].id}`);
-        sendTradeAlert(sellerId, trade[0], 'new_trade').catch(() => {});
         // Send personalized emails to buyer and seller in parallel
         const [buyerEmailRes, sellerEmailRes] = await Promise.allSettled([
           supabaseAdmin.from('users').select('id, email, username').eq('id', buyerId).single(),
