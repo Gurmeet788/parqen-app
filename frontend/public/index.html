@@ -183,6 +183,24 @@
     }
     </script>
 
+    <!-- ── OneSignal Web Push ────────────────────────────────────────────── -->
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+    <script>
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      OneSignalDeferred.push(async function(OneSignal) {
+        await OneSignal.init({
+          appId: "5fc11b99-516c-4178-8443-b06c08865b99",
+          notifyButton: { enable: false },
+          allowLocalhostAsSecureOrigin: true,
+        });
+        // Expose globally so helpers can access it synchronously
+        window.OneSignal = OneSignal;
+        // Signal that init is complete — helpers waiting on this event will unblock
+        window.dispatchEvent(new CustomEvent('onesignal:ready'));
+        console.log('OneSignal initialized! ✅  App:', OneSignal);
+      });
+    </script>
+
     <!-- ── Splash Screen Styles ──────────────────────────────────────────── -->
     <style>
       #praqen-loader {

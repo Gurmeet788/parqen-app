@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
+import { requestNotificationPermission, getNotificationPermission, isPushSupported } from '../utils/notifications';
 import {
   User, Lock, Mail, Phone, CreditCard, Bell,
   Shield, Globe, Save, Eye, EyeOff, CheckCircle,
@@ -59,6 +60,88 @@ function Toggle({ checked, onChange }) {
     <button onClick={() => onChange(!checked)} className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${checked ? 'bg-green-500' : 'bg-gray-200'}`}>
       <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${checked ? 'translate-x-5' : 'translate-x-0.5'}`} />
     </button>
+  );
+}
+
+function PushEnableCard() {
+  const [permission, setPermission] = React.useState('default');
+  const [requesting, setRequesting] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!isPushSupported()) { setPermission('unsupported'); return; }
+    getNotificationPermission().then(setPermission);
+  }, []);
+
+  if (permission === 'unsupported') {
+    return (
+      <div className="rounded-2xl border p-4 flex items-start gap-3" style={{ borderColor: '#FED7AA', backgroundColor: '#FFF7ED' }}>
+        <span className="text-xl flex-shrink-0">📵</span>
+        <div>
+          <p className="text-sm font-black" style={{ color: '#92400E' }}>Push not supported</p>
+          <p className="text-xs mt-0.5" style={{ color: '#B45309' }}>Your browser doesn't support push notifications. Use Chrome or Safari for the best experience.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (permission === 'granted') {
+    return (
+      <div className="rounded-2xl border p-4 flex items-center gap-3" style={{ borderColor: '#A7F3D0', backgroundColor: '#ECFDF5' }}>
+        <span className="text-xl">🔔</span>
+        <div className="flex-1">
+          <p className="text-sm font-black" style={{ color: '#065F46' }}>Push notifications are ON</p>
+          <p className="text-xs mt-0.5" style={{ color: '#059669' }}>You'll get instant alerts for trades, payments and messages — even when the browser is closed.</p>
+        </div>
+        <span className="text-xs font-black px-2 py-1 rounded-full" style={{ backgroundColor: '#D1FAE5', color: '#065F46' }}>✓ Active</span>
+      </div>
+    );
+  }
+
+  if (permission === 'denied') {
+    return (
+      <div className="rounded-2xl border p-4 flex items-start gap-3" style={{ borderColor: '#FECACA', backgroundColor: '#FEF2F2' }}>
+        <span className="text-xl flex-shrink-0">🚫</span>
+        <div>
+          <p className="text-sm font-black" style={{ color: '#991B1B' }}>Notifications blocked</p>
+          <p className="text-xs mt-1" style={{ color: '#B91C1C' }}>
+            You've blocked notifications for this site. To re-enable:
+            click the 🔒 lock icon in your browser address bar → Site settings → Notifications → Allow.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border p-4" style={{ borderColor: '#A5F3FC', backgroundColor: '#ECFEFF' }}>
+      <div className="flex items-start gap-3 mb-3">
+        <span className="text-2xl flex-shrink-0">🔔</span>
+        <div>
+          <p className="text-sm font-black" style={{ color: '#164E63' }}>Enable Instant Trade Alerts</p>
+          <p className="text-xs mt-0.5" style={{ color: '#0891B2' }}>
+            Get notified the moment someone opens a trade with you, sends payment, or releases Bitcoin — even when you're not on the site.
+          </p>
+          <p className="text-xs mt-1" style={{ color: '#0891B2' }}>
+            Works on Android &amp; iPhone (add to home screen for iOS).
+          </p>
+        </div>
+      </div>
+      <button
+        disabled={requesting}
+        onClick={async () => {
+          setRequesting(true);
+          const granted = await requestNotificationPermission();
+          setPermission(granted ? 'granted' : 'denied');
+          setRequesting(false);
+          if (granted) toast.success('🔔 Trade alerts enabled! You\'ll never miss a trade.');
+          else toast.info('Notifications not enabled. You can turn them on later.');
+        }}
+        className="w-full py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
+        style={{ backgroundColor: '#0E7490', color: '#fff' }}>
+        <Bell size={15} />
+        {requesting ? 'Requesting permission…' : '🔔 Enable Instant Trade Alerts'}
+      </button>
+    </div>
   );
 }
 
@@ -272,17 +355,24 @@ export default function Settings({ user, setUser }) {
       await axios.post(`${API_URL}/users/submit-phone`, { phone }, { headers: authH() });
       setPhoneStep('submitted');
       localStorage.setItem('prq_phone_step', 'submitted');
-      toast.success('📱 Phone number received! We\'ll notify you once it\'s approved.');
+      toast.success('📱 Phone number submitted! We\'ll notify you once it\'s approved.');
     } catch (e) {
       const serverMsg = e?.response?.data?.error || '';
       if (serverMsg.toLowerCase().includes('already registered to another account')) {
         toast.error('⚠️ This number is already linked to a different account. Please use another number.');
         setPhoneStep('idle');
-      } else {
-        // Any other error — treat as submitted; number may already be saved
+      } else if (serverMsg.toLowerCase().includes('already been submitted')) {
+        // Already submitted before — treat as submitted state
         setPhoneStep('submitted');
         localStorage.setItem('prq_phone_step', 'submitted');
-        toast.info('📱 Number received! We\'ll notify you once it\'s approved.');
+      } else if (serverMsg) {
+        // Real server error with a message — show it and let user try again
+        toast.error(serverMsg);
+        setPhoneStep('idle');
+      } else {
+        // Network/unknown error — show generic message, let user retry
+        toast.error('Could not connect to server. Please check your internet and try again.');
+        setPhoneStep('idle');
       }
     }
   };
@@ -1390,14 +1480,17 @@ export default function Settings({ user, setUser }) {
               <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: C.g200 }}>
                 <h2 className="text-lg font-black mb-5" style={{ color: C.forest }}>Notification Preferences</h2>
                 <div className="space-y-4">
+                  {/* ── Push Notification Enable Banner ── */}
+                  <PushEnableCard />
+
                   {[
                     { section: '📧 Email Notifications', items: [
                       { key: 'email_trades',   label: 'Trade Updates',     desc: 'New trades, payments, releases' },
                       { key: 'email_security', label: 'Security Alerts',   desc: 'Login attempts, password changes' },
                       { key: 'email_marketing',label: 'News & Promotions', desc: 'Platform updates and offers' },
                     ]},
-                    { section: '🔔 Push Notifications', items: [
-                      { key: 'push_trades',   label: 'Trade Alerts',   desc: 'Real-time trade status updates' },
+                    { section: '🔔 Push Notification Types', items: [
+                      { key: 'push_trades',   label: 'Trade Alerts',   desc: 'New trades, payments, BTC releases' },
                       { key: 'push_messages', label: 'Chat Messages',  desc: 'New messages in trade chat' },
                       { key: 'push_disputes', label: 'Dispute Alerts', desc: 'Dispute opened or resolved' },
                     ]},

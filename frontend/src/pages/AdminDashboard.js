@@ -851,6 +851,209 @@ function DisputesSection() {
 }
 
 // ================================================================
+// ================================================================
+// PHONE VERIFICATION SECTION
+// ================================================================
+function PhoneVerifSection() {
+  const [requests, setRequests] = useState([]);
+  const [total, setTotal]       = useState(0);
+  const [loading, setLoading]   = useState(true);
+  const [filter, setFilter]     = useState('pending');
+  const [acting, setActing]     = useState(null); // id being acted on
+  const [rejectId, setRejectId] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await axios.get(`${API_URL}/admin/phone-verifications/pending`,
+        { headers: authH(), params: { status: filter, limit: 100 } });
+      setRequests(r.data.requests || []);
+      setTotal(r.data.total || 0);
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Failed to load phone verifications');
+    } finally { setLoading(false); }
+  }, [filter]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const approve = async (id) => {
+    setActing(id);
+    try {
+      await axios.put(`${API_URL}/admin/phone-verifications/${id}/approve`, {}, { headers: authH() });
+      toast.success('✅ Phone number approved! User notified.');
+      load();
+    } catch (e) { toast.error(e.response?.data?.error || 'Approval failed'); }
+    finally { setActing(null); }
+  };
+
+  const reject = async () => {
+    if (!rejectId) return;
+    setActing(rejectId);
+    try {
+      await axios.put(`${API_URL}/admin/phone-verifications/${rejectId}/reject`,
+        { reason: rejectReason || 'Phone number could not be verified' }, { headers: authH() });
+      toast.success('❌ Phone verification rejected. User notified.');
+      setRejectId(null);
+      setRejectReason('');
+      load();
+    } catch (e) { toast.error(e.response?.data?.error || 'Rejection failed'); }
+    finally { setActing(null); }
+  };
+
+  const pendingCount = requests.filter(r => r.status === 'pending').length;
+
+  return (
+    <div className="space-y-4">
+      <SectionHead
+        title={`Phone Verifications${pendingCount > 0 ? ` (${pendingCount} pending)` : ''}`}
+        sub="Review and approve phone numbers submitted by users"
+      />
+
+      {/* Filter tabs */}
+      <div className="flex gap-2 flex-wrap">
+        {[
+          { value:'pending',  label:'⏳ Pending'  },
+          { value:'approved', label:'✅ Approved' },
+          { value:'rejected', label:'❌ Rejected' },
+          { value:'all',      label:'All'         },
+        ].map(f => (
+          <button key={f.value} onClick={() => setFilter(f.value)}
+            className="px-4 py-2 rounded-xl text-sm font-bold transition"
+            style={{
+              backgroundColor: filter === f.value ? C.forest : '#fff',
+              color: filter === f.value ? '#fff' : C.g600,
+              border: `1px solid ${filter === f.value ? C.forest : C.g200}`,
+            }}>
+            {f.label}
+          </button>
+        ))}
+        <button onClick={load} className="bg-white border rounded-xl px-3 py-2 ml-auto" style={{ borderColor: C.g200 }}>
+          <RefreshCw size={14} style={{ color: C.g500 }} />
+        </button>
+      </div>
+
+      {/* Reject reason modal */}
+      {rejectId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
+            <h3 className="font-black text-base mb-3" style={{ color: C.g800 }}>Rejection Reason</h3>
+            <textarea
+              value={rejectReason}
+              onChange={e => setRejectReason(e.target.value)}
+              placeholder="e.g. Invalid number, cannot verify ownership…"
+              rows={3}
+              className="w-full border rounded-xl p-3 text-sm outline-none mb-4 resize-none"
+              style={{ borderColor: C.g200, color: C.g700 }} />
+            <div className="flex gap-2">
+              <button onClick={() => { setRejectId(null); setRejectReason(''); }}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold border"
+                style={{ borderColor: C.g200, color: C.g600 }}>
+                Cancel
+              </button>
+              <button onClick={reject} disabled={!!acting}
+                className="flex-1 py-2.5 rounded-xl text-sm font-black text-white"
+                style={{ backgroundColor: C.danger }}>
+                {acting ? 'Rejecting…' : 'Reject & Notify User'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Table */}
+      <div className="bg-white rounded-2xl border overflow-hidden" style={{ borderColor: C.g200 }}>
+        {loading ? <Spin /> : requests.length === 0 ? (
+          <Empty icon="📱" text={`No ${filter === 'all' ? '' : filter} phone verifications`} />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead style={{ backgroundColor: C.g50 }}>
+                <tr>
+                  {['User', 'Phone Number', 'Submitted', 'Status', 'Actions'].map(h => (
+                    <th key={h} className="text-left px-4 py-3 text-xs font-black uppercase tracking-wide" style={{ color: C.g500 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {requests.map(req => (
+                  <tr key={req.id} className="border-t hover:bg-gray-50 transition" style={{ borderColor: C.g100 }}>
+                    {/* User */}
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black text-white flex-shrink-0"
+                          style={{ backgroundColor: C.forest }}>
+                          {(req.user?.username || '?')[0].toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-bold text-xs" style={{ color: C.g800 }}>{req.user?.username || '—'}</p>
+                          <p className="text-xs" style={{ color: C.g400 }}>{req.user?.email || req.user_id.slice(0,12)+'…'}</p>
+                        </div>
+                      </div>
+                    </td>
+                    {/* Phone */}
+                    <td className="px-4 py-3">
+                      <span className="font-black text-sm px-2 py-1 rounded-lg"
+                        style={{ backgroundColor: '#F0FDF4', color: C.forest }}>
+                        {req.phone}
+                      </span>
+                    </td>
+                    {/* Submitted */}
+                    <td className="px-4 py-3 text-xs" style={{ color: C.g400 }}>
+                      {fmtDate(req.submitted_at)}<br />
+                      <span style={{ color: C.g400 }}>{fmtAge(req.submitted_at)}</span>
+                    </td>
+                    {/* Status */}
+                    <td className="px-4 py-3">
+                      {req.status === 'pending'  && <Pill label="⏳ Pending"  color="#92400E" bg="#FFFBEB" />}
+                      {req.status === 'approved' && <Pill label="✅ Approved" color="#166534" bg="#F0FDF4" />}
+                      {req.status === 'rejected' && (
+                        <div>
+                          <Pill label="❌ Rejected" color="#991B1B" bg="#FEF2F2" />
+                          {req.rejection_reason && <p className="text-xs mt-1" style={{ color: C.g400 }}>{req.rejection_reason}</p>}
+                        </div>
+                      )}
+                    </td>
+                    {/* Actions */}
+                    <td className="px-4 py-3">
+                      {req.status === 'pending' && (
+                        <div className="flex gap-2">
+                          <button
+                            disabled={acting === req.id}
+                            onClick={() => approve(req.id)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-black transition hover:opacity-80"
+                            style={{ backgroundColor: '#F0FDF4', color: '#166534' }}>
+                            {acting === req.id ? '…' : '✓ Approve'}
+                          </button>
+                          <button
+                            disabled={acting === req.id}
+                            onClick={() => { setRejectId(req.id); setRejectReason(''); }}
+                            className="px-3 py-1.5 rounded-lg text-xs font-black transition hover:opacity-80"
+                            style={{ backgroundColor: '#FEF2F2', color: '#991B1B' }}>
+                            ✕ Reject
+                          </button>
+                        </div>
+                      )}
+                      {req.status === 'approved' && (
+                        <span className="text-xs" style={{ color: C.g400 }}>Approved {fmtAge(req.reviewed_at)}</span>
+                      )}
+                      {req.status === 'rejected' && (
+                        <span className="text-xs" style={{ color: C.g400 }}>Rejected {fmtAge(req.reviewed_at)}</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ================================================================
 // KYC REVIEW SECTION
 // ================================================================
 function KycSection() {
@@ -2007,6 +2210,7 @@ const NAV = [
   { id:'newusers',     label:'New Users',     icon:UserPlus        },
   { id:'trades',       label:'Trades',        icon:ArrowLeftRight  },
   { id:'disputes',     label:'Disputes',      icon:AlertTriangle   },
+  { id:'phone-verif',  label:'Phone Verif.',  icon:Phone           },
   { id:'kyc',          label:'KYC Review',    icon:ShieldCheck     },
   { id:'finance',      label:'Finance',       icon:DollarSign      },
   { id:'listings',     label:'Listings',      icon:List            },
@@ -2060,6 +2264,7 @@ export default function AdminDashboard({ user: appUser, onLogin }) {
     newusers:    <NewUsersSection />,
     trades:      <TradesSection />,
     disputes:    <DisputesSection />,
+    'phone-verif': <PhoneVerifSection />,
     kyc:         <KycSection />,
     finance:     <FinanceSection />,
     listings:    <ListingsSection />,

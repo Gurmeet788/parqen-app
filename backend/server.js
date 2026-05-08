@@ -26,6 +26,9 @@ const twilioVerifySid = process.env.TWILIO_VERIFY_SID || 'VAddba23c45841679ed249
 const TWILIO_PHONE = (process.env.TWILIO_PHONE || '').split(',')[0].trim();
 const TWILIO_WA_FROM = process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886'; // sandbox default
 
+// ── OneSignal Push Notifications ────────────────────────────────────────────
+const { sendTradeAlert, sendSystemAlert } = require('./services/pushNotificationService');
+
 // ── Africa's Talking (primary SMS for African numbers) ───────────────────────
 let atSms = null;
 try {
@@ -1732,7 +1735,7 @@ app.post('/api/users/send-phone-otp', verifyToken, async (req, res) => {
 });
 
 // POST /api/users/submit-phone — save phone for manual admin review (no OTP)
-// User submits their number → saved immediately → admin verifies → user gets notified.
+// User submits their number → saved to users.phone + phone_verification_requests → admin approves → user notified.
 app.post('/api/users/submit-phone', verifyToken, async (req, res) => {
   try {
     const { phone } = req.body;
@@ -1745,12 +1748,21 @@ app.post('/api/users/submit-phone', verifyToken, async (req, res) => {
     }
 
     // Check if THIS user already has a phone saved — once submitted, it cannot be changed
-    const { data: currentUser } = await supabaseAdmin
-      .from('users').select('phone').eq('id', req.userId).maybeSingle();
+    const { data: currentUser, error: fetchErr } = await supabaseAdmin
+      .from('users').select('id, phone, is_phone_verified').eq('id', req.userId).maybeSingle();
+    if (fetchErr) {
+      console.error('[submit-phone] fetch user failed:', fetchErr.message);
+      return res.status(500).json({ error: 'Could not verify account. Please try again.' });
+    }
     if (currentUser?.phone) {
-      // Idempotent: same number already saved — just return success
-      if (currentUser.phone === e164) return res.json({ success: true });
-      // Different number — block; phone is locked once submitted
+      if (currentUser.phone === e164) {
+        // Idempotent: same number already saved — ensure request row exists and return success
+        await supabaseAdmin.from('phone_verification_requests').upsert(
+          { user_id: req.userId, phone: e164, status: currentUser.is_phone_verified ? 'approved' : 'pending' },
+          { onConflict: 'user_id', ignoreDuplicates: true }
+        ).catch(() => {});
+        return res.json({ success: true });
+      }
       return res.status(400).json({ error: 'A phone number has already been submitted for your account. It cannot be changed while under review.' });
     }
 
@@ -1759,28 +1771,49 @@ app.post('/api/users/submit-phone', verifyToken, async (req, res) => {
       .from('users').select('id').eq('phone', e164).neq('id', req.userId).maybeSingle();
     if (existing) return res.status(400).json({ error: 'This number is already registered to another account.' });
 
-    // Save phone to users table — not verified yet, admin will approve manually
-    const { error: updateErr } = await supabaseAdmin
+    // ── Step 1: Save phone to users table ───────────────────────────────────
+    const { data: savedUser, error: updateErr } = await supabaseAdmin
       .from('users')
       .update({ phone: e164, updated_at: new Date().toISOString() })
-      .eq('id', req.userId);
+      .eq('id', req.userId)
+      .select('id, phone')
+      .single();
 
-    if (updateErr) return res.status(400).json({ error: updateErr.message });
+    if (updateErr) {
+      console.error('[submit-phone] users.update failed:', updateErr.message, '| code:', updateErr.code);
+      return res.status(400).json({ error: 'Could not save phone number: ' + updateErr.message });
+    }
+    if (!savedUser?.phone) {
+      console.error('[submit-phone] update returned no row — user may not exist:', req.userId);
+      return res.status(400).json({ error: 'Could not save phone number. Please try again.' });
+    }
 
-    // In-app notification so the user gets immediate confirmation
+    // ── Step 2: Track in phone_verification_requests ──────────────────────
+    const { error: reqErr } = await supabaseAdmin
+      .from('phone_verification_requests')
+      .upsert(
+        { user_id: req.userId, phone: e164, status: 'pending', submitted_at: new Date().toISOString() },
+        { onConflict: 'user_id', ignoreDuplicates: false }
+      );
+    if (reqErr) {
+      // Table may not exist yet — log but don't fail the request
+      console.warn('[submit-phone] phone_verification_requests upsert failed (table may not exist yet):', reqErr.message);
+    }
+
+    // ── Step 3: In-app notification ───────────────────────────────────────
     try {
       await createNotification(
         req.userId, 'kyc',
         '📱 Phone Number Received',
-        `We've received your number (${e164}) and it's now under manual review. You'll be notified once it's verified — usually within 24 hours.`,
+        `We've received your number (${e164}) and it's now under review. You'll be notified once it's approved — usually within 24 hours.`,
         '/settings?tab=verification'
       );
     } catch (_) {}
 
-    console.log(`[submit-phone] ${req.userId.slice(0,8)} submitted ${e164} for manual review`);
-    res.json({ success: true });
+    console.log(`[submit-phone] ✅ ${req.userId.slice(0,8)} submitted ${e164} — saved to users.phone and phone_verification_requests`);
+    res.json({ success: true, phone: savedUser.phone });
   } catch (err) {
-    console.error('[submit-phone] error:', err.message);
+    console.error('[submit-phone] unexpected error:', err.message);
     res.status(500).json({ error: 'Could not save phone number. Please try again.' });
   }
 });
@@ -3079,6 +3112,7 @@ app.post('/api/trades', verifyToken, async (req, res) => {
         await createNotification(sellerId, 'trade', '💰 New Trade Request',
           `${buyerName} wants to buy ${assetLabel} · ${localDisp} via ${pmDisp}`,
           `/trade/${trade[0].id}`);
+        sendTradeAlert(sellerId, trade[0], 'new_trade').catch(() => {});
         // Send personalized emails to buyer and seller in parallel
         const [buyerEmailRes, sellerEmailRes] = await Promise.allSettled([
           supabaseAdmin.from('users').select('id, email, username').eq('id', buyerId).single(),
@@ -3164,6 +3198,7 @@ app.post('/api/trades/:id/mark-paid', verifyToken, async (req, res) => {
           ? `${actorName} sent the gift card code · Verify and release Bitcoin`
           : `${actorName} sent ${paidDisp} via ${paidPM} · Verify and release Bitcoin`;
         await createNotification(notifyId, 'payment', '💳 Payment Sent', notifyMsg, `/trade/${req.params.id}`);
+        sendTradeAlert(notifyId, trade, 'payment_sent').catch(() => {});
         // Email only the party who needs to act next (seller for BTC trade, buyer for gift card)
         const { data: notifyEmailUser } = await supabaseAdmin
           .from('users').select('id, email, username').eq('id', notifyId).single();
@@ -3188,6 +3223,7 @@ app.post('/api/trades/:id/release', verifyToken, async (req, res) => {
         try {
           updateUserTradeStats(releasedTrade.seller_id).catch(() => {});
           updateUserTradeStats(releasedTrade.buyer_id).catch(() => {});
+          sendTradeAlert(releasedTrade.buyer_id, releasedTrade, 'btc_released').catch(() => {});
           // Fetch buyer and seller with emails, then send role-specific completion emails in parallel
           const [buyerRel, sellerRel] = await Promise.allSettled([
             supabaseAdmin.from('users').select('id, email, username').eq('id', releasedTrade.buyer_id).single(),
@@ -3254,6 +3290,7 @@ app.post('/api/trades/:id/cancel', verifyToken, async (req, res) => {
         await createNotification(otherId, 'cancelled', '❌ Trade Cancelled', cancelMsg, `/trade/${req.params.id}`);
         await createNotification(req.userId, 'cancelled', '❌ Trade Cancelled',
           `You cancelled the trade · ${cDisp} via ${cPM}`, `/trade/${req.params.id}`);
+        sendTradeAlert([trade.buyer_id, trade.seller_id].filter(Boolean), trade, 'trade_cancelled').catch(() => {});
         // Email both parties about the cancellation
         const [buyerCancel, sellerCancel] = await Promise.allSettled([
           supabaseAdmin.from('users').select('id, email, username').eq('id', trade.buyer_id).single(),
@@ -4269,6 +4306,7 @@ app.put('/api/admin/kyc/:userId/approve', verifyToken, async (req, res) => {
     if (!updated) return res.status(404).json({ error: 'User not found' });
     try {
       await createNotification(req.params.userId, 'kyc', '✅ KYC Approved', 'Your identity has been verified. You now have full access to all PRAQEN features.', '/settings');
+      sendSystemAlert(req.params.userId, '🪪 KYC Approved!', 'Your identity has been verified. Full access to all PRAQEN features is now unlocked!', 'https://praqen.com/settings').catch(() => {});
     } catch (_) {}
     res.json({ success: true, user: updated });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -4371,14 +4409,127 @@ app.put('/api/admin/users/:id/verify-email', verifyToken, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// PUT /api/admin/users/:id/verify-phone — manually verify phone
+// PUT /api/admin/users/:id/verify-phone — manually verify phone (legacy button in Users panel)
 app.put('/api/admin/users/:id/verify-phone', verifyToken, async (req, res) => {
   try {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { data, error } = await supabaseAdmin.from('users').update({ is_phone_verified: true, phone_verified: true, updated_at: new Date() }).eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
+    // Update request row if it exists
+    await supabaseAdmin.from('phone_verification_requests')
+      .update({ status: 'approved', reviewed_at: new Date().toISOString(), reviewed_by: req.userId })
+      .eq('user_id', req.params.id).catch(() => {});
     await createNotification(req.params.id, 'system', '📱 Phone Number Verified!', 'Great news! Your phone number has been verified by our team. Your trade limit has been upgraded. You can now continue trading.', '/settings?tab=verification');
+    sendSystemAlert(req.params.id, '📱 Phone Verified!', 'Your phone number has been verified. Trade limits upgraded!', 'https://praqen.com/settings?tab=verification').catch(() => {});
     res.json({ success: true, user: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Phone verification request endpoints ──────────────────────────────────────
+
+// GET /api/admin/phone-verifications/pending — list all requests with user info
+app.get('/api/admin/phone-verifications/pending', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { status = 'pending', page = 1, limit = 50 } = req.query;
+    const from = (parseInt(page) - 1) * parseInt(limit);
+    const to   = from + parseInt(limit) - 1;
+
+    let query = supabaseAdmin
+      .from('phone_verification_requests')
+      .select('id, user_id, phone, status, submitted_at, reviewed_at, rejection_reason', { count: 'exact' })
+      .order('submitted_at', { ascending: false })
+      .range(from, to);
+
+    if (status && status !== 'all') query = query.eq('status', status);
+
+    const { data: requests, count, error } = await query;
+    if (error) return res.status(400).json({ error: error.message });
+
+    // Attach user info for each request
+    const userIds = [...new Set((requests || []).map(r => r.user_id))];
+    let usersMap = {};
+    if (userIds.length > 0) {
+      const { data: users } = await supabaseAdmin
+        .from('users')
+        .select('id, username, email, full_name, avatar_url, is_phone_verified, created_at')
+        .in('id', userIds);
+      (users || []).forEach(u => { usersMap[u.id] = u; });
+    }
+
+    const enriched = (requests || []).map(r => ({ ...r, user: usersMap[r.user_id] || null }));
+    res.json({ requests: enriched, total: count || 0 });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT /api/admin/phone-verifications/:id/approve — approve a phone request
+app.put('/api/admin/phone-verifications/:id/approve', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+
+    const { data: request, error: fetchErr } = await supabaseAdmin
+      .from('phone_verification_requests')
+      .select('*').eq('id', req.params.id).single();
+    if (fetchErr || !request) return res.status(404).json({ error: 'Verification request not found' });
+
+    // Mark request as approved
+    const { error: reqErr } = await supabaseAdmin
+      .from('phone_verification_requests')
+      .update({ status: 'approved', reviewed_at: new Date().toISOString(), reviewed_by: req.userId })
+      .eq('id', req.params.id);
+    if (reqErr) return res.status(400).json({ error: reqErr.message });
+
+    // Mark user as phone-verified
+    const { error: userErr } = await supabaseAdmin
+      .from('users')
+      .update({ is_phone_verified: true, phone_verified: true, phone: request.phone, updated_at: new Date().toISOString() })
+      .eq('id', request.user_id);
+    if (userErr) return res.status(400).json({ error: userErr.message });
+
+    // Notify the user
+    await createNotification(request.user_id, 'system', '📱 Phone Number Verified!',
+      `Your number ${request.phone} has been verified. Your trade limits have been upgraded!`,
+      '/settings?tab=verification').catch(() => {});
+    sendSystemAlert(request.user_id, '📱 Phone Verified!',
+      'Your phone number has been verified. Trade limits upgraded!',
+      'https://praqen.com/settings?tab=verification').catch(() => {});
+
+    console.log(`[phone-verif] ✅ Admin ${req.userId.slice(0,8)} approved ${request.phone} for user ${request.user_id.slice(0,8)}`);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT /api/admin/phone-verifications/:id/reject — reject a phone request
+app.put('/api/admin/phone-verifications/:id/reject', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { reason = 'Phone number could not be verified' } = req.body;
+
+    const { data: request, error: fetchErr } = await supabaseAdmin
+      .from('phone_verification_requests')
+      .select('*').eq('id', req.params.id).single();
+    if (fetchErr || !request) return res.status(404).json({ error: 'Verification request not found' });
+
+    // Mark request as rejected
+    const { error: reqErr } = await supabaseAdmin
+      .from('phone_verification_requests')
+      .update({ status: 'rejected', reviewed_at: new Date().toISOString(), reviewed_by: req.userId, rejection_reason: reason })
+      .eq('id', req.params.id);
+    if (reqErr) return res.status(400).json({ error: reqErr.message });
+
+    // Clear the phone from users table so they can re-submit
+    await supabaseAdmin
+      .from('users')
+      .update({ phone: null, updated_at: new Date().toISOString() })
+      .eq('id', request.user_id).catch(() => {});
+
+    // Notify the user
+    await createNotification(request.user_id, 'system', '📱 Phone Verification Failed',
+      `We could not verify ${request.phone}. Reason: ${reason}. Please submit a valid number.`,
+      '/settings?tab=verification').catch(() => {});
+
+    console.log(`[phone-verif] ❌ Admin ${req.userId.slice(0,8)} rejected ${request.phone} for user ${request.user_id.slice(0,8)}`);
+    res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useParams, useNavigate } from 'react-router-dom';
 import { RatesProvider } from './contexts/RatesContext';
 import axios from 'axios';
+import { identifyUser, unidentifyUser } from './utils/notifications';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Navbar from './components/Navbar';
@@ -201,6 +202,8 @@ function App() {
     window.dispatchEvent(new Event('userUpdated'));
     axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     toast.success('Logged in successfully!');
+    // Link this browser's push subscription to the user's account
+    if (userData?.id) identifyUser(userData.id).catch(() => {});
   };
 
   const logout = () => {
@@ -210,6 +213,8 @@ function App() {
     localStorage.removeItem('user');
     delete axios.defaults.headers.common['Authorization'];
     toast.info('Logged out');
+    // Unlink push subscription from this account on logout
+    unidentifyUser().catch(() => {});
   };
 
   if (loading) return <PageLoader />;
