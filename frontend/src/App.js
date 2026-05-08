@@ -156,6 +156,8 @@ function App() {
       setUser(userData);
       localStorage.setItem('user', JSON.stringify(userData));
       window.dispatchEvent(new Event('userUpdated'));
+      // Re-link push subscription on every session restore (covers page refresh)
+      if (userData?.id) identifyUser(userData.id).catch(() => {});
     } catch (error) {
       if (error.response?.status === 401) {
         // Token is invalid or expired — log out

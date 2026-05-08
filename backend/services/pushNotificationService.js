@@ -10,10 +10,13 @@ function isConfigured() {
 
 async function send({ userIds, title, message, url }) {
   if (!isConfigured()) {
-    console.log('[Push] OneSignal not configured — skipping push notification');
+    console.error('[Push] OneSignal not configured — ONESIGNAL_APP_ID or ONESIGNAL_REST_API_KEY missing');
     return;
   }
-  if (!userIds || userIds.length === 0) return;
+  if (!userIds || userIds.length === 0) {
+    console.error('[Push] No userIds provided — skipping');
+    return;
+  }
 
   const body = {
     app_id: APP_ID,
@@ -24,6 +27,8 @@ async function send({ userIds, title, message, url }) {
     url: url || 'https://praqen.com',
   };
 
+  console.error(`[Push] Sending to external_id(s): ${userIds.join(',')} | title: ${title}`);
+
   try {
     const response = await axios.post('https://onesignal.com/api/v1/notifications', body, {
       headers: {
@@ -32,11 +37,17 @@ async function send({ userIds, title, message, url }) {
       },
       timeout: 8000,
     });
-    console.log(`[Push] Sent to ${userIds.join(',')} — id: ${response.data?.id}`);
+    const { id, recipients, errors } = response.data || {};
+    if (recipients === 0) {
+      console.error(`[Push] 0 recipients — user(s) ${userIds.join(',')} have no linked push subscription. Call OS.login(userId) on the frontend after login AND after page refresh.`);
+    } else {
+      console.error(`[Push] Delivered — id: ${id} | recipients: ${recipients}`);
+    }
+    if (errors) console.error('[Push] OneSignal errors field:', JSON.stringify(errors));
     return response.data;
   } catch (e) {
     const detail = e.response?.data || e.message;
-    console.error('[Push] OneSignal error:', detail);
+    console.error('[Push] OneSignal API error:', JSON.stringify(detail));
   }
 }
 
