@@ -905,7 +905,9 @@ export default function TradeDetail({user}) {
   },[id,user]);
 
   useEffect(()=>{
-    if(!trade?.created_at||!isActive)return;
+    // Disputed trades are frozen — only the moderator can give a final verdict.
+    // Never show a countdown or trigger auto-cancel while a dispute is open.
+    if(!trade?.created_at||!isActive||isDisputed)return;
     // Parse timestamps as UTC — Supabase returns TIMESTAMP cols without 'Z', causing local-time misparse
     const toUTC = s => s ? new Date(/[Z+]/.test(s) ? s : s + 'Z') : null;
     // Use the stored expires_at (authoritative). Fallback to created_at + time_limit for old trades.
@@ -915,7 +917,9 @@ export default function TradeDetail({user}) {
     const iv=setInterval(()=>{
       const rem=Math.max(0, Math.floor((deadline - Date.now()) / 1000));
       setTimeLeft(rem);
-      if(rem<=0 && isEscrow && !autoCancelled.current){
+      // Never auto-cancel a disputed trade — isDisputed check above already prevents
+      // this effect from running, but isEscrow is kept as a second guard.
+      if(rem<=0 && isEscrow && !isDisputed && !autoCancelled.current){
         autoCancelled.current = true;
         clearInterval(iv);
         autoCancel();

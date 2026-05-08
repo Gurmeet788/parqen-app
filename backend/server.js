@@ -3334,6 +3334,13 @@ app.post('/api/trades/:id/auto-cancel', async (req, res) => {
     const { data: trade } = await supabaseAdmin.from('trades').select('*').eq('id', tradeId).single();
     if (!trade) return res.status(404).json({ error: 'Trade not found' });
 
+    // Disputed trades are locked — only a moderator can resolve them.
+    // Reject the cancellation regardless of who or what called this endpoint.
+    if (trade.status === 'DISPUTED') {
+      console.error(`[Auto-cancel] Blocked — trade ${tradeId.slice(0,8)} is DISPUTED. Moderator must give final verdict.`);
+      return res.status(403).json({ error: 'Cannot cancel a disputed trade. A moderator must give the final verdict.' });
+    }
+
     const cancellableStatuses = ['CREATED', 'FUNDS_LOCKED', 'ESCROW', 'ACTIVE', 'OPEN', 'PAYMENT_SENT'];
     if (!cancellableStatuses.includes(trade.status)) {
       return res.json({ success: true, message: `Trade already in status: ${trade.status}` });
@@ -3480,32 +3487,37 @@ app.post('/api/trades/:id/dispute', verifyToken, async (req, res) => {
     const { reason } = req.body;
     const { data: trade } = await supabaseAdmin.from('trades').select('*').eq('id', req.params.id).single();
     if (!trade) return res.status(404).json({ error: 'Trade not found' });
+    // Clear expires_at so no expiry logic (frontend timer or backend) can ever
+    // auto-cancel this trade. Only a moderator can give the final verdict.
     const { data, error } = await supabaseAdmin.from('trades')
-      .update({ status: 'DISPUTED', disputed_at: new Date(), dispute_reason: reason || 'User opened a dispute' })
+      .update({
+        status: 'DISPUTED',
+        disputed_at: new Date(),
+        dispute_reason: reason || 'User opened a dispute',
+        expires_at: null,
+      })
       .eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
     res.json({ success: true, trade: data });
 
     setImmediate(async () => {
-      try {
-        await createNotification(trade.seller_id, 'support', '⚠️ Dispute Opened', `Dispute opened for trade #${req.params.id.slice(0, 8)}. Moderator will review.`, `/trade/${req.params.id}`);
-        await createNotification(trade.buyer_id, 'support', '⚠️ Dispute Opened', `Dispute opened for trade #${req.params.id.slice(0, 8)}. Please provide evidence.`, `/trade/${req.params.id}`);
-        await notifyModerators(req.params.id, trade, reason || 'User opened a dispute');
-        await supabaseAdmin.from('messages').insert([{ trade_id: req.params.id, sender_id: null, recipient_id: null, message_text: `🚨 DISPUTE OPENED — Reason: ${reason || 'User opened a dispute'}. Moderators notified.`, message_type: 'SYSTEM', sender_role: 'system', created_at: new Date() }]);
-        await notifyTradeParties(
-          trade,
-          '🚨 Dispute Opened — Moderator Notified',
-          `Dispute filed on trade #${trade.trade_ref}. Do NOT release funds. A moderator will contact you shortly: https://praqen.com/trade/${trade.id}`,
-          tradeEmailTemplate(
-            '🚨 Dispute Opened — Moderator Notified',
-            '🚨 A Dispute Has Been Filed',
-            `A dispute has been opened on trade <strong>#${trade.trade_ref}</strong>${reason ? ` — Reason: <em>${reason}</em>` : ''}. A PRAQEN moderator has been notified and will review all evidence. <strong>Do not release or transfer any funds until the dispute is fully resolved.</strong>`,
-            trade.trade_ref,
-            trade.amount_btc,
-            `https://praqen.com/trade/${trade.id}`
-          )
-        );
-      } catch (e) { console.error('[dispute] Background notify failed:', e.message); }
+      // In-app notifications and system message
+      await createNotification(trade.seller_id, 'support', '⚠️ Dispute Opened', `Dispute opened for trade #${req.params.id.slice(0, 8)}. Moderator will review.`, `/trade/${req.params.id}`);
+      await createNotification(trade.buyer_id,  'support', '⚠️ Dispute Opened', `Dispute opened for trade #${req.params.id.slice(0, 8)}. Please provide evidence.`, `/trade/${req.params.id}`);
+      notifyModerators(req.params.id, trade, reason || 'User opened a dispute').catch(e => console.error('[dispute] notifyModerators failed:', e.message));
+      supabaseAdmin.from('messages').insert([{ trade_id: req.params.id, sender_id: null, recipient_id: null, message_text: `🚨 DISPUTE OPENED — Reason: ${reason || 'User opened a dispute'}. Moderators notified.`, message_type: 'SYSTEM', sender_role: 'system', created_at: new Date() }]).catch(() => {});
+
+      // Email both parties — fetch their user records in parallel
+      const [buyerRes, sellerRes] = await Promise.allSettled([
+        supabaseAdmin.from('users').select('id, email, username').eq('id', trade.buyer_id).single(),
+        supabaseAdmin.from('users').select('id, email, username').eq('id', trade.seller_id).single(),
+      ]);
+      const buyerUser  = buyerRes.value?.data;
+      const sellerUser = sellerRes.value?.data;
+      if (buyerUser?.email)
+        emailService.sendDisputeOpenedEmail(buyerUser,  trade, reason).catch(e => console.error('[dispute] buyer email failed:', e.message));
+      if (sellerUser?.email)
+        emailService.sendDisputeOpenedEmail(sellerUser, trade, reason).catch(e => console.error('[dispute] seller email failed:', e.message));
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -3572,8 +3584,23 @@ app.post('/api/admin/disputes/:id/resolve', verifyToken, async (req, res) => {
       msg = '❌ Resolved: Trade cancelled. Funds returned to seller.';
     }
     await supabaseAdmin.from('messages').insert([{ trade_id: req.params.id, sender_id: req.userId, message_text: `👨‍⚖️ Moderator resolved dispute.\nDecision: ${resolution}\nNotes: ${notes || 'None'}\n${msg}`, message_type: 'SYSTEM', sender_role: 'moderator', created_at: new Date() }]);
-    for (const uid of [trade.buyer_id, trade.seller_id]) await createNotification(uid, 'support', 'Dispute Resolved', `Trade #${trade.id.slice(0, 8)} dispute resolved: ${resolution}`, `/trade/${trade.id}`);
+    for (const uid of [trade.buyer_id, trade.seller_id]) await createNotification(uid, 'support', '⚖️ Dispute Resolved', `Trade #${trade.id.slice(0, 8)} dispute resolved: ${resolution}`, `/trade/${trade.id}`);
     res.json({ success: true, message: `Dispute resolved: ${resolution}` });
+
+    // Email both parties about the resolution
+    setImmediate(async () => {
+      const [buyerRes, sellerRes] = await Promise.allSettled([
+        supabaseAdmin.from('users').select('id, email, username').eq('id', trade.buyer_id).single(),
+        supabaseAdmin.from('users').select('id, email, username').eq('id', trade.seller_id).single(),
+      ]);
+      const buyerUser  = buyerRes.value?.data;
+      const sellerUser = sellerRes.value?.data;
+      if (buyerUser?.email)
+        emailService.sendDisputeResolvedEmail(buyerUser,  trade, resolution, notes).catch(e => console.error('[resolve] buyer email failed:', e.message));
+      if (sellerUser?.email)
+        emailService.sendDisputeResolvedEmail(sellerUser, trade, resolution, notes).catch(e => console.error('[resolve] seller email failed:', e.message));
+      sendTradeAlert([trade.buyer_id, trade.seller_id].filter(Boolean), trade, 'dispute_resolved').catch(() => {});
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

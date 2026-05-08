@@ -45,25 +45,51 @@ async function logEmail({ userId, email, subject, type, status, messageId, error
   }
 }
 
-// ── Core send ─────────────────────────────────────────────────────────────────
+// ── Core send — tries Brevo SMTP first, falls back to Resend API ──────────────
 async function sendEmail({ userId, to, subject, html, text, type, metadata }) {
-  const transporter = makeTransporter();
-  try {
-    const info = await transporter.sendMail({
-      from: FROM_ADDRESS,
-      to,
-      subject,
-      html,
-      text: text || '',
-    });
-    console.log(`[Email] ✅ ${type} → ${to} (${info.messageId})`);
-    await logEmail({ userId, email: to, subject, type, status: 'sent', messageId: info.messageId, metadata });
-    return { success: true, messageId: info.messageId };
-  } catch (err) {
-    console.error(`[Email] ❌ ${type} → ${to}: ${err.message}`);
-    await logEmail({ userId, email: to, subject, type, status: 'failed', errorMessage: err.message, metadata });
-    return { success: false, error: err.message };
+  // ── Attempt 1: Brevo SMTP ────────────────────────────────────────────────
+  if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+    try {
+      const transporter = makeTransporter();
+      const info = await transporter.sendMail({ from: FROM_ADDRESS, to, subject, html, text: text || '' });
+      console.log(`[Email] ✅ Brevo SMTP ${type} → ${to} (${info.messageId})`);
+      await logEmail({ userId, email: to, subject, type, status: 'sent', messageId: info.messageId, metadata });
+      return { success: true, messageId: info.messageId };
+    } catch (smtpErr) {
+      console.error(`[Email] ⚠️ Brevo SMTP failed for ${type} → ${to}: ${smtpErr.message} — trying Resend fallback`);
+    }
+  } else {
+    console.warn(`[Email] Brevo SMTP not configured — skipping to Resend for ${type} → ${to}`);
   }
+
+  // ── Attempt 2: Resend API fallback ───────────────────────────────────────
+  const resendKey  = process.env.RESEND_API_KEY;
+  const resendFrom = process.env.RESEND_FROM || 'PRAQEN <onboarding@resend.dev>';
+  if (resendKey) {
+    try {
+      const response = await fetch('https://api.resend.com/emails', {
+        method:  'POST',
+        headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: resendFrom, to, subject, html }),
+      });
+      const data = await response.json();
+      if (data.id) {
+        console.log(`[Email] ✅ Resend fallback ${type} → ${to} (${data.id})`);
+        await logEmail({ userId, email: to, subject, type, status: 'sent', messageId: data.id, metadata });
+        return { success: true, messageId: data.id };
+      }
+      throw new Error(JSON.stringify(data));
+    } catch (resendErr) {
+      console.error(`[Email] ❌ Resend fallback also failed for ${type} → ${to}: ${resendErr.message}`);
+      await logEmail({ userId, email: to, subject, type, status: 'failed', errorMessage: `SMTP: failed, Resend: ${resendErr.message}`, metadata });
+      return { success: false, error: resendErr.message };
+    }
+  }
+
+  // ── Both providers unconfigured ──────────────────────────────────────────
+  console.error(`[Email] ❌ No email provider configured — cannot send ${type} → ${to}`);
+  await logEmail({ userId, email: to, subject, type, status: 'failed', errorMessage: 'No provider configured', metadata });
+  return { success: false, error: 'No email provider configured' };
 }
 
 // ── Base HTML template ────────────────────────────────────────────────────────
@@ -468,6 +494,75 @@ async function sendTradeCancelledEmail(user, trade, reason) {
   });
 }
 
+function disputeOpenedHtml(name, trade, reason) {
+  const ref = (trade.trade_ref || trade.id || '').toString().slice(0, 8).toUpperCase();
+  return base('🚨 Dispute Opened — Moderator Notified', `
+    <div style="text-align:center;margin-bottom:20px;">
+      <div style="font-size:48px;">🚨</div>
+      <h2 style="color:#7C3AED;font-size:22px;margin:8px 0;">Dispute Filed on Your Trade</h2>
+    </div>
+    <p style="color:#475569;font-size:14px;line-height:1.7;margin:0 0 20px;">Hello <strong>${name}</strong>! A dispute has been opened on trade <strong>#${ref}</strong>. A PRAQEN moderator has been notified and will review all evidence.</p>
+    ${infoBox(`
+      <tr><td style="padding:7px 0;color:#64748B;font-size:13px;font-weight:600;">Trade Ref</td>
+          <td style="padding:7px 0;text-align:right;"><span style="background:#7C3AED;color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:6px;">#${ref}</span></td></tr>
+      <tr><td style="padding:7px 0;color:#64748B;font-size:13px;font-weight:600;">BTC in Escrow</td>
+          <td style="padding:7px 0;color:#059669;font-size:16px;font-weight:900;text-align:right;">₿ ${parseFloat(trade.amount_btc || 0).toFixed(8)}</td></tr>
+      ${reason ? `<tr><td style="padding:7px 0;color:#64748B;font-size:13px;font-weight:600;">Reason</td><td style="padding:7px 0;color:#7C3AED;font-size:13px;text-align:right;">${reason}</td></tr>` : ''}
+    `)}
+    <div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:8px;padding:14px 16px;margin-bottom:20px;">
+      <p style="margin:0;font-size:13px;font-weight:700;color:#5B21B6;">⚠️ Do NOT release or transfer any funds until the dispute is fully resolved by a moderator.</p>
+    </div>
+    ${ctaButton('📋 View Trade & Evidence', `https://praqen.com/trade/${trade.id}`)}
+  `);
+}
+
+function disputeResolvedHtml(name, trade, resolution, notes) {
+  const ref = (trade.trade_ref || trade.id || '').toString().slice(0, 8).toUpperCase();
+  const isCompleted = (resolution || '').toUpperCase().includes('BUYER') || (resolution || '').toUpperCase() === 'COMPLETED';
+  const color = isCompleted ? '#10b981' : '#ef4444';
+  const icon  = isCompleted ? '✅' : '❌';
+  const label = isCompleted ? 'Resolved — Trade Completed' : 'Resolved — Trade Cancelled';
+  return base(`${icon} Dispute Resolved`, `
+    <div style="text-align:center;margin-bottom:20px;">
+      <div style="font-size:48px;">${icon}</div>
+      <h2 style="color:${color};font-size:22px;margin:8px 0;">${label}</h2>
+    </div>
+    <p style="color:#475569;font-size:14px;line-height:1.7;margin:0 0 20px;">Hello <strong>${name}</strong>! The dispute on trade <strong>#${ref}</strong> has been reviewed and resolved by a PRAQEN moderator.</p>
+    ${infoBox(`
+      <tr><td style="padding:7px 0;color:#64748B;font-size:13px;font-weight:600;">Trade Ref</td>
+          <td style="padding:7px 0;text-align:right;"><span style="background:${color};color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:6px;">#${ref}</span></td></tr>
+      <tr><td style="padding:7px 0;color:#64748B;font-size:13px;font-weight:600;">Decision</td>
+          <td style="padding:7px 0;color:${color};font-size:13px;font-weight:700;text-align:right;">${resolution || 'Resolved'}</td></tr>
+      ${notes ? `<tr><td style="padding:7px 0;color:#64748B;font-size:13px;font-weight:600;">Moderator Notes</td><td style="padding:7px 0;color:#334155;font-size:13px;text-align:right;">${notes}</td></tr>` : ''}
+    `)}
+    ${ctaButton('View Trade Details', `https://praqen.com/trade/${trade.id}`)}
+  `);
+}
+
+async function sendDisputeOpenedEmail(user, trade, reason) {
+  const ref = (trade.trade_ref || trade.id || '').toString().slice(0, 8).toUpperCase();
+  return sendEmail({
+    userId:   user.id,
+    to:       user.email,
+    subject:  `🚨 Dispute Opened — Trade #${ref}`,
+    html:     disputeOpenedHtml(user.username || 'Trader', trade, reason),
+    type:     'dispute_opened',
+    metadata: { trade_id: trade.id, trade_ref: trade.trade_ref, reason },
+  });
+}
+
+async function sendDisputeResolvedEmail(user, trade, resolution, notes) {
+  const ref = (trade.trade_ref || trade.id || '').toString().slice(0, 8).toUpperCase();
+  return sendEmail({
+    userId:   user.id,
+    to:       user.email,
+    subject:  `⚖️ Dispute Resolved — Trade #${ref}`,
+    html:     disputeResolvedHtml(user.username || 'Trader', trade, resolution, notes),
+    type:     'dispute_resolved',
+    metadata: { trade_id: trade.id, trade_ref: trade.trade_ref, resolution },
+  });
+}
+
 async function sendBroadcastToAllUsers(subject, htmlBody, broadcastType = 'broadcast') {
   const { data: users, error } = await supabase
     .from('users')
@@ -501,6 +596,8 @@ module.exports = {
   sendLoginAlertEmail,
   sendKycApprovedEmail,
   sendKycRejectedEmail,
+  sendDisputeOpenedEmail,
+  sendDisputeResolvedEmail,
   sendTradeOpenedEmail,
   sendPaymentSentEmail,
   sendTradeConfirmationEmail,
