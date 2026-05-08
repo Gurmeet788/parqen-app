@@ -18,16 +18,19 @@ async function send({ userIds, title, message, url }) {
     return;
   }
 
+  // include_external_user_ids targets subscriptions by external_id (set via
+  // OneSignal.login(userId) on the frontend). channel_for_external_user_ids
+  // restricts delivery to push only (not email/SMS channels).
   const body = {
     app_id: APP_ID,
-    target_channel: 'push',
     headings: { en: title },
     contents: { en: message },
-    include_aliases: { external_id: userIds.map(String) },
+    include_external_user_ids: userIds.map(String),
+    channel_for_external_user_ids: 'push',
     url: url || 'https://praqen.com',
   };
 
-  console.error(`[Push] Sending to external_id(s): ${userIds.join(',')} | title: ${title}`);
+  console.error(`[Push] Sending to user(s): ${userIds.join(',')} | title: ${title}`);
 
   try {
     const response = await axios.post('https://onesignal.com/api/v1/notifications', body, {
@@ -39,11 +42,11 @@ async function send({ userIds, title, message, url }) {
     });
     const { id, recipients, errors } = response.data || {};
     if (recipients === 0) {
-      console.error(`[Push] 0 recipients — user(s) ${userIds.join(',')} have no linked push subscription. Call OS.login(userId) on the frontend after login AND after page refresh.`);
+      console.error(`[Push] 0 recipients for user(s) ${userIds.join(',')} — their browser may not have called OS.login(userId) yet. Check frontend identifyUser.`);
     } else {
-      console.error(`[Push] Delivered — id: ${id} | recipients: ${recipients}`);
+      console.error(`[Push] Delivered — notification id: ${id} | recipients: ${recipients}`);
     }
-    if (errors) console.error('[Push] OneSignal errors field:', JSON.stringify(errors));
+    if (errors) console.error('[Push] OneSignal errors:', JSON.stringify(errors));
     return response.data;
   } catch (e) {
     const detail = e.response?.data || e.message;

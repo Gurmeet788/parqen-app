@@ -1,11 +1,8 @@
 // OneSignal Web Push helpers for PRAQEN
 
 // ── Internal: wait for OneSignal to finish initialising ──────────────────────
-// The SDK loads with `defer` — it's always async. This function waits up to
-// `timeout` ms for init to complete, then resolves with the SDK instance or null.
 function waitForOS(timeout = 8000) {
   return new Promise((resolve) => {
-    // Already ready (e.g. user revisits a page after first load)
     if (window.OneSignal) return resolve(window.OneSignal);
 
     let timer;
@@ -24,19 +21,16 @@ function waitForOS(timeout = 8000) {
 
 // ── Public helpers ────────────────────────────────────────────────────────────
 
-// Check if push is supported in this browser (must be HTTPS + SW support)
 export function isPushSupported() {
   return typeof window !== 'undefined'
     && 'Notification' in window
     && 'serviceWorker' in navigator;
 }
 
-// Check the current browser permission without triggering a prompt
-// Returns: 'granted' | 'denied' | 'default' | 'unsupported'
 export async function getNotificationPermission() {
   if (!isPushSupported()) return 'unsupported';
   try {
-    const OS = await waitForOS(3000); // short wait — just checking state
+    const OS = await waitForOS(3000);
     if (!OS) return window.Notification?.permission || 'default';
     const granted = await OS.Notifications.permission;
     return granted ? 'granted'
@@ -47,8 +41,6 @@ export async function getNotificationPermission() {
   }
 }
 
-// Show the browser permission prompt and subscribe the user
-// Returns true if the user granted permission
 export async function requestNotificationPermission() {
   if (!isPushSupported()) return false;
   try {
@@ -57,31 +49,60 @@ export async function requestNotificationPermission() {
       console.warn('[Push] OneSignal not available — cannot request permission');
       return false;
     }
-
     const alreadyGranted = await OS.Notifications.permission;
     if (alreadyGranted) return true;
-
     await OS.Notifications.requestPermission();
-    const nowGranted = await OS.Notifications.permission;
-    return !!nowGranted;
+    return !!(await OS.Notifications.permission);
   } catch (e) {
     console.error('[Push] requestNotificationPermission failed:', e);
     return false;
   }
 }
 
-// Link the logged-in user's ID to their push subscription so the backend
-// can send pushes to a specific user via include_aliases: { external_id }
+// Link the logged-in user's ID to their push subscription.
+// OneSignal v16 uses OneSignal.login(externalId) to set external_id server-side.
+// This must be called on every page load (login + session restore) so the
+// backend can target users by external_id.
 export async function identifyUser(userId) {
   if (!userId) return;
   try {
-    const OS = await waitForOS(5000);
-    if (!OS) return;
+    const OS = await waitForOS(6000);
+    if (!OS) {
+      console.warn('[Push] identifyUser: OneSignal not ready — push ID not linked for', userId);
+      return;
+    }
+    // login() is the v16 documented API — it makes a server-side call to
+    // associate this browser's subscription with the given external_id.
     await OS.login(String(userId));
-    console.log('[Push] identifyUser:', userId);
+    console.log('[Push] identifyUser linked external_id:', userId);
   } catch (e) {
-    console.error('[Push] identifyUser failed:', e);
+    console.error('[Push] identifyUser failed for', userId, ':', e?.message || e);
   }
+}
+
+// Read the external_id currently linked to this browser's subscription.
+// Useful for debugging: open browser console and call window.__checkPushId()
+export async function checkExternalId() {
+  try {
+    const OS = await waitForOS(3000);
+    if (!OS) {
+      console.warn('[Push] checkExternalId: OneSignal not ready');
+      return null;
+    }
+    // v16 exposes the linked external_id on the User object
+    const externalId = OS.User?.externalId ?? null;
+    const playerId   = OS.User?.onesignalId ?? null;
+    console.log('[Push] checkExternalId — externalId:', externalId, '| playerId:', playerId);
+    return { externalId, playerId };
+  } catch (e) {
+    console.error('[Push] checkExternalId failed:', e);
+    return null;
+  }
+}
+
+// Expose checkExternalId on window for quick browser-console debugging
+if (typeof window !== 'undefined') {
+  window.__checkPushId = checkExternalId;
 }
 
 // Unlink the push subscription from the account on logout
