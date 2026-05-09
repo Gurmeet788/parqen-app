@@ -232,7 +232,7 @@ export default function Profile({userId:propUserId}){
   const score=calcTrust(user,reviews); const trust=trustLvl(score);
   const tierIdx=getTier(user); const tier=TIERS[tierIdx]; const nextTier=TIERS[tierIdx+1];
   const emailOk=!!(user.is_email_verified||user.email_verified);
-  const phoneOk=!!(user.is_phone_verified||user.phone_verified||user.phone);
+  const phoneOk=!!(user.is_phone_verified||user.phone_verified);
   const kycOk=!!(user.kyc_verified||user.is_id_verified);
   const verifPct=Math.round([emailOk,phoneOk,kycOk].filter(Boolean).length/3*100);
   const earned=BADGE_DEFS.filter(b=>badges.some(badge=>badge.badge_name===b.label&&badge.is_unlocked)||b.check(user));
