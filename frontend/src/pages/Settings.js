@@ -667,7 +667,7 @@ export default function Settings({ user, setUser }) {
                         {phoneVerified || phoneStep === 'done' ? (
                           <div className="px-4 py-2.5 border-2 rounded-xl text-sm font-medium flex items-center justify-between"
                             style={{ borderColor: '#DCFCE7', backgroundColor: C.g50, color: C.g700 }}>
-                            <span>{accountForm.phone || '(verified — loading...)'}</span>
+                            <span>{accountForm.phone || 'Your number has been verified'}</span>
                             <CheckCircle size={14} style={{ color: C.success, flexShrink: 0 }} />
                           </div>
                         ) : phoneStep === 'submitted' ? (
@@ -681,13 +681,13 @@ export default function Settings({ user, setUser }) {
                             onChange={e => setAccountForm({ ...accountForm, phone: e.target.value })}
                             placeholder="+[country code] your number — e.g. +233XXXXXXXXX" className={inputCls} style={inputStyle(accountForm.phone)} />
                         )}
-                        {phoneVerified
+                        {phoneVerified || phoneStep === 'done'
                           ? <p className="text-xs mt-1 flex items-center gap-1" style={{ color: C.g400 }}><Lock size={9} />Phone number locked after verification.</p>
                           : phoneStep === 'submitted'
                             ? <p className="text-xs mt-1 flex items-center gap-1.5 font-bold" style={{ color: '#D97706' }}>⏳ Your number is under review — we'll notify you once it's approved.</p>
                             : <p className="text-xs mt-1" style={{ color: C.g400 }}>Save your profile first, then tap below to submit your number for verification.</p>}
                         {/* Submit-for-review button — no OTP, admin verifies manually */}
-                        {!phoneVerified && phoneStep !== 'submitted' && accountForm.phone && (
+                        {!phoneVerified && phoneStep !== 'submitted' && phoneStep !== 'done' && accountForm.phone && (
                           <div className="mt-2">
                             <button type="button" onClick={handleSubmitPhone} disabled={phoneStep === 'submitting'}
                               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black disabled:opacity-60"
@@ -879,7 +879,7 @@ export default function Settings({ user, setUser }) {
 
                     {/* ── Step 2 — Phone ── */}
                     {(() => {
-                      const done = phoneVerified;
+                      const done = phoneVerified || phoneStep === 'done';
                       const underReview = !done && phoneStep === 'submitted';
                       return (
                         <div className={`p-4 rounded-xl border transition ${done ? 'bg-green-50 border-green-200' : underReview ? 'bg-amber-50 border-amber-200' : emailVerified ? 'border-blue-200 bg-blue-50' : 'bg-gray-50 border-gray-100'}`}>
@@ -896,7 +896,7 @@ export default function Settings({ user, setUser }) {
                               </div>
                               <p className={`text-xs mt-0.5 ${done ? 'text-green-600' : underReview ? 'text-amber-700' : emailVerified ? 'text-blue-600' : 'text-gray-400'}`}>
                                 {done
-                                  ? accountForm.phone ? `${accountForm.phone} verified ✓` : 'Phone number verified ✓'
+                                  ? accountForm.phone ? `${accountForm.phone} — verified ✓` : '✓ Phone verified — you can now trade up to $2,000'
                                   : underReview
                                     ? accountForm.phone ? `${accountForm.phone} — waiting for approval` : 'Your number is saved — waiting for approval'
                                     : 'Submit your phone number to unlock the $2,000 trade limit'}

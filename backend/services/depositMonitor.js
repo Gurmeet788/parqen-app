@@ -311,6 +311,15 @@ class DepositMonitor {
         return; // stop — don't insert a transaction for an uncredited deposit
       }
 
+      // Audit log (fire-and-forget)
+      supabaseAdmin.from('balance_audit').insert({
+        user_id:     userId,
+        change_btc:  depositBTC,
+        new_balance: blockchainBTC,
+        reason:      'DEPOSIT',
+        created_at:  new Date().toISOString(),
+      }).catch(() => {});
+
       // ── Step 6: Update user_wallets.balance_btc ───────────────────────────
       const { data: walletRow } = await supabaseAdmin
         .from('user_wallets').select('balance_btc').eq('user_id', userId).maybeSingle();

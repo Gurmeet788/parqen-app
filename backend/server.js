@@ -100,9 +100,10 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 // ── 6. HD Wallet + Deposit Monitor ────────────────────────────────────────
-const hdWalletService = require('./services/hdWalletService');
-const depositMonitor  = require('./services/depositMonitor');
-const hdWalletRoutes  = require('./routes/hdWalletRoutes');
+const hdWalletService        = require('./services/hdWalletService');
+const depositMonitor         = require('./services/depositMonitor');
+const realtimeDepositService = require('./services/realtimeDepositService');
+const hdWalletRoutes         = require('./routes/hdWalletRoutes');
 const tradeEscrowService    = require('./services/tradeEscrowService');
 const { checkAndAwardBadges } = require('./services/badgeService');
 const { syncAllOfferStatuses } = require('./services/offerStatusService');
@@ -1037,6 +1038,8 @@ app.post('/api/auth/register', async (req, res) => {
           created_at: new Date().toISOString(),
         });
         console.log(`[Register] HD wallet generated for ${newUser.username}: ${hdAddrData.address}`);
+        // Subscribe to real-time WebSocket monitoring immediately
+        realtimeDepositService.subscribeAddress(newUser.id, hdAddrData.address);
       } catch (e) {
         console.error('[Register] HD wallet generation failed:', e.message);
       }
@@ -5505,13 +5508,30 @@ app.listen(PORT, () => {
   // Immediately pause all sell offers whose seller balance is insufficient
   syncAllOfferStatuses().catch(err => console.error('[startup] syncAllOfferStatuses:', err.message));
 
-  // Start deposit monitor background job (mainnet only)
-  if (process.env.HD_NETWORK === 'mainnet') {
-    depositMonitor.start();
-    console.log('🔍 Deposit monitor: MAINNET — polls every 5 min | SMS + Email alerts enabled');
-  } else {
-    console.log('⚠️  Deposit monitor NOT started — HD_NETWORK is not mainnet');
-  }
+  // ── Real-time deposit detection via mempool.space WebSocket ─────────────
+  // Detects deposits within 1-3 seconds of entering mempool, credits on confirmation
+  realtimeDepositService.start().catch(err =>
+    console.error('[RealtimeDeposit] Startup error:', err.message)
+  );
+
+  // 5-minute scanner kept as safety net (catches anything WebSocket misses on reconnect)
+  depositMonitor.start();
+  console.log('🔍 Deposit monitor: MAINNET — polls every 5 min | SMS + Email alerts enabled');
+
+  // ── Auto-cancel expired trades every 60 seconds ───────────────────────────
+  // FIX: processExpiredTrades() existed but was NEVER called — this is the cron
+  const _runExpiredTrades = async () => {
+    try {
+      const count = await tradeEscrowService.processExpiredTrades();
+      if (count > 0) console.log(`[ExpiredTrades] Auto-cancelled ${count} expired trade(s)`);
+    } catch (err) {
+      console.error('[ExpiredTrades] Cron error:', err.message);
+    }
+  };
+  // Run once immediately to catch trades that expired while server was offline
+  _runExpiredTrades();
+  setInterval(_runExpiredTrades, 60 * 1000);
+  console.log('⏱  Expired trade cron: checks every 60 seconds — BTC auto-refunded to seller on expiry');
 });
 
 module.exports = app;

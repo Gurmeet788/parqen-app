@@ -8,6 +8,7 @@ const { createClient } = require('@supabase/supabase-js');
 const hdWallet = require('./hdWalletService');
 const { checkAndAwardBadges } = require('./badgeService');
 const { updateOfferStatus } = require('./offerStatusService');
+const { sendSystemAlert } = require('./pushNotificationService');
 
 // ── Supabase admin (bypasses RLS) ─────────────────────────────────────────────
 const supabaseAdmin = createClient(
@@ -522,6 +523,16 @@ class TradeEscrowService {
         `Trade #${tradeId.slice(0, 8)} completed — ₿${buyerGets.toFixed(8)} received`
     );
 
+    // Audit log (fire-and-forget)
+    supabaseAdmin.from('balance_audit').insert({
+      user_id:     btcReceiverId,
+      change_btc:  buyerGets,
+      new_balance: newReceiverBalance,
+      reason:      'ESCROW_RELEASE',
+      trade_id:    tradeId,
+      created_at:  new Date().toISOString(),
+    }).catch(() => {});
+
     // ── Notify both parties ────────────────────────────────────────────────
     await this.notify(
         btcReceiverId, 'trade', '🎉 Bitcoin Released!',
@@ -611,8 +622,26 @@ class TradeEscrowService {
         .update({ status: 'REFUNDED', released_at: new Date().toISOString() })
         .eq('trade_id', tradeId);
 
-      await this.logTransaction(btcProviderId, 'ESCROW_RELEASE', refundAmount, null,
+      await this.logTransaction(btcProviderId, 'ESCROW_REFUND', refundAmount, null,
         `Refund for cancelled trade #${tradeId.slice(0,8)}`);
+
+      // Push notification to seller
+      sendSystemAlert(
+        btcProviderId,
+        '💸 Escrow Refunded',
+        `Trade #${tradeId.slice(0,8).toUpperCase()} cancelled — ${refundAmount.toFixed(8)} BTC returned to your wallet.`,
+        'https://praqen.com/wallet'
+      ).catch(err => console.error('[Escrow] Refund push error:', err.message));
+
+      // Audit log (fire-and-forget — table may not exist on first deploy)
+      supabaseAdmin.from('balance_audit').insert({
+        user_id:     btcProviderId,
+        change_btc:  refundAmount,
+        new_balance: newProviderBalance,
+        reason:      'ESCROW_REFUND',
+        trade_id:    tradeId,
+        created_at:  new Date().toISOString(),
+      }).catch(() => {});
 
       console.log(`   Refunded ${refundAmount} BTC to provider ${btcProviderId.slice(0,8)}`);
     }
@@ -661,10 +690,12 @@ class TradeEscrowService {
   // Called by a cron job or on server startup
   // ============================================================
   async processExpiredTrades() {
+    // NOTE: PAYMENT_SENT is intentionally excluded — buyer may have already sent
+    // fiat payment and auto-cancelling would refund the seller unfairly.
     const { data: expired, error } = await supabaseAdmin
       .from('trades')
       .select('id')
-      .in('status', ['CREATED', 'FUNDS_LOCKED', 'PAYMENT_SENT'])
+      .in('status', ['CREATED', 'FUNDS_LOCKED'])
       .lt('expires_at', new Date().toISOString());
 
     if (error || !expired || expired.length === 0) return 0;

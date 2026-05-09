@@ -5,9 +5,10 @@
 require('dotenv').config();
 const express      = require('express');
 const router       = express.Router();
-const hdWallet     = require('../services/hdWalletService');
-const depositMonitor = require('../services/depositMonitor');
-const { updateOfferStatus } = require('../services/offerStatusService');
+const hdWallet               = require('../services/hdWalletService');
+const depositMonitor         = require('../services/depositMonitor');
+const realtimeDepositService = require('../services/realtimeDepositService');
+const { updateOfferStatus }  = require('../services/offerStatusService');
 const { createClient } = require('@supabase/supabase-js');
 
 const supabaseAdmin = createClient(
@@ -127,6 +128,9 @@ router.post('/generate-address', verifyToken, async (req, res) => {
       .eq('id', userId);
 
     console.log(`[hdWalletRoutes] Address generated for ${userId.slice(0,8)}: ${addrData.address}`);
+
+    // Subscribe new address to real-time WebSocket monitor immediately
+    realtimeDepositService.subscribeAddress(userId, addrData.address);
 
     res.json({
       success:  true,
@@ -495,6 +499,31 @@ router.get('/info', verifyToken, async (req, res) => {
   try {
     const info = hdWallet.getInfo();
     res.json({ success: true, ...info });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// GET /api/hd-wallet/realtime-status
+// Shows whether the WebSocket deposit monitor is connected
+// Useful for debugging — call this to confirm real-time is live
+// ============================================================
+router.get('/realtime-status', verifyToken, async (req, res) => {
+  try {
+    const status = realtimeDepositService.getStatus();
+    res.json({
+      success: true,
+      realtime: {
+        connected:         status.connected,
+        monitored_wallets: status.monitored_wallets,
+        reconnect_delay_s: status.reconnect_delay_s,
+        message:           status.connected
+          ? `Real-time WebSocket connected — monitoring ${status.monitored_wallets} wallet(s)`
+          : `WebSocket disconnected — reconnecting in ${status.reconnect_delay_s}s. 5-min scanner still active.`,
+      },
+      scanner: depositMonitor.getStatus(),
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
