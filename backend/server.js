@@ -4287,7 +4287,7 @@ app.get('/api/admin/kyc', verifyToken, async (req, res) => {
     const { status = 'pending' } = req.query;
 
     let query = supabaseAdmin.from('users')
-      .select('id, email, username, full_name, kyc_id_type, kyc_id_url, kyc_selfie_url, kyc_status, kyc_submitted_at, created_at, country')
+      .select('id, email, username, full_name, phone, is_phone_verified, kyc_id_type, kyc_id_url, kyc_selfie_url, kyc_status, kyc_submitted_at, created_at, country')
       .order('kyc_submitted_at', { ascending: true, nullsFirst: false });
 
     if (status === 'all') {
@@ -4589,16 +4589,43 @@ app.put('/api/admin/phone-verifications/:id/reject', verifyToken, async (req, re
 app.get('/api/admin/phone/pending', verifyToken, async (req, res) => {
   try {
     const admin = await requireAdmin(req, res); if (!admin) return;
-    const { data, error } = await supabaseAdmin
-      .from('users')
-      .select('id, username, full_name, email, phone, is_phone_verified, created_at, last_login, country, avatar_url')
-      .not('phone', 'is', null)
-      .neq('phone', '')
-      .eq('is_phone_verified', false)
-      .order('created_at', { ascending: false })
-      .limit(200);
-    if (error) return res.status(400).json({ error: error.message });
-    res.json({ users: data || [], total: (data || []).length });
+
+    // Fetch pending users and their submission timestamps in parallel
+    const [usersRes, reqsRes] = await Promise.all([
+      supabaseAdmin
+        .from('users')
+        .select('id, username, full_name, email, phone, is_phone_verified, created_at, last_login, country, avatar_url')
+        .not('phone', 'is', null)
+        .neq('phone', '')
+        .eq('is_phone_verified', false)
+        .order('created_at', { ascending: false })
+        .limit(200),
+      supabaseAdmin
+        .from('phone_verification_requests')
+        .select('user_id, submitted_at, status')
+        .eq('status', 'pending'),
+    ]);
+
+    if (usersRes.error) return res.status(400).json({ error: usersRes.error.message });
+
+    // Map submission timestamps by user_id
+    const submittedAt = new Map(
+      (reqsRes.data || []).map(r => [r.user_id, r.submitted_at])
+    );
+
+    const enriched = (usersRes.data || []).map(u => ({
+      ...u,
+      submitted_at: submittedAt.get(u.id) || null,
+    }));
+
+    // Sort by earliest submission first so oldest waiting users appear at top
+    enriched.sort((a, b) => {
+      const da = new Date(a.submitted_at || a.created_at);
+      const db = new Date(b.submitted_at || b.created_at);
+      return da - db;
+    });
+
+    res.json({ users: enriched, total: enriched.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

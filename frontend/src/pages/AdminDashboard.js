@@ -952,13 +952,18 @@ function PhoneVerifSection() {
             <table className="w-full text-sm">
               <thead style={{ backgroundColor: C.g50 }}>
                 <tr>
-                  {['User / Real Name', 'Phone Number', 'Country', 'Joined', 'Actions'].map(h => (
+                  {['User / Real Name', 'Phone Number', 'Country', 'Submitted', 'Waiting', 'Actions'].map(h => (
                     <th key={h} className="text-left px-4 py-3 text-xs font-black uppercase tracking-wide" style={{ color: C.g500 }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {users.map(u => (
+                {users.map(u => {
+                  const submittedDate = u.submitted_at || u.created_at;
+                  const waitDays = submittedDate
+                    ? Math.floor((Date.now() - new Date(submittedDate)) / 86400000)
+                    : null;
+                  return (
                   <tr key={u.id} className="border-t hover:bg-gray-50 transition" style={{ borderColor: C.g100 }}>
                     {/* User */}
                     <td className="px-4 py-3">
@@ -982,16 +987,30 @@ function PhoneVerifSection() {
                         style={{ backgroundColor: '#FFFBEB', color: '#92400E' }}>
                         {u.phone}
                       </span>
-                      <p className="text-xs mt-1" style={{ color: C.g400 }}>⏳ Awaiting approval</p>
                     </td>
                     {/* Country */}
                     <td className="px-4 py-3 text-xs font-semibold" style={{ color: C.g600 }}>
                       {u.country || '—'}
                     </td>
-                    {/* Joined */}
-                    <td className="px-4 py-3 text-xs" style={{ color: C.g400 }}>
-                      {fmtDate(u.created_at)}<br />
-                      <span>{fmtAge(u.created_at)}</span>
+                    {/* Submitted date */}
+                    <td className="px-4 py-3 text-xs" style={{ color: C.g500 }}>
+                      {u.submitted_at ? (
+                        <>{fmtDate(u.submitted_at)}<br /><span style={{ color: C.g400 }}>{fmtAge(u.submitted_at)}</span></>
+                      ) : (
+                        <span style={{ color: C.g300 }}>—</span>
+                      )}
+                    </td>
+                    {/* Waiting duration */}
+                    <td className="px-4 py-3">
+                      {waitDays !== null && (
+                        <span className="text-xs font-black px-2 py-0.5 rounded-full"
+                          style={{
+                            backgroundColor: waitDays >= 3 ? '#FEF2F2' : waitDays >= 1 ? '#FFFBEB' : '#F0FDF4',
+                            color: waitDays >= 3 ? '#991B1B' : waitDays >= 1 ? '#92400E' : '#166534',
+                          }}>
+                          {waitDays === 0 ? 'Today' : `${waitDays}d`}
+                        </span>
+                      )}
                     </td>
                     {/* Actions */}
                     <td className="px-4 py-3">
@@ -1013,7 +1032,8 @@ function PhoneVerifSection() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1033,6 +1053,8 @@ function KycSection() {
   const [selected, setSelected]    = useState(null);
   const [acting, setActing]        = useState(false);
   const [zoomImg, setZoomImg]      = useState(null);
+  const [rejectTarget, setRejectTarget] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
   const [migrationNeeded, setMigrationNeeded] = useState(false);
   const [migrationHint, setMigrationHint]     = useState('');
   const [backfilling, setBackfilling]         = useState(false);
@@ -1079,14 +1101,23 @@ function KycSection() {
     finally { setActing(false); }
   };
 
-  const reject = async (id) => {
-    const reason = window.prompt('Rejection reason (sent to user):');
-    if (!reason) return;
+  const reject = (u) => {
+    setRejectTarget(u);
+    setRejectReason('');
+  };
+
+  const confirmReject = async () => {
+    if (!rejectTarget) return;
     setActing(true);
     try {
-      await axios.put(`${API_URL}/admin/kyc/${id}/reject`, { reason }, { headers: authH() });
-      toast.success('KYC rejected');
-      setSelected(null); load();
+      await axios.put(`${API_URL}/admin/kyc/${rejectTarget.id}/reject`,
+        { reason: rejectReason || 'Documents unclear or invalid. Please resubmit with clearer photos.' },
+        { headers: authH() });
+      toast.success('KYC rejected — user notified.');
+      setSelected(null);
+      setRejectTarget(null);
+      setRejectReason('');
+      load();
     } catch (e) { toast.error(e.response?.data?.error || 'Failed'); }
     finally { setActing(false); }
   };
@@ -1094,6 +1125,40 @@ function KycSection() {
   return (
     <div className="space-y-4">
       {zoomImg && <ImageModal src={zoomImg.src} label={zoomImg.label} onClose={() => setZoomImg(null)} />}
+
+      {/* KYC Reject reason modal */}
+      {rejectTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
+            <h3 className="font-black text-base mb-1" style={{ color: C.g800 }}>Reject KYC Submission</h3>
+            <p className="text-xs mb-4" style={{ color: C.g500 }}>
+              Rejecting documents for <strong>{rejectTarget.username}</strong>{rejectTarget.full_name ? ` (${rejectTarget.full_name})` : ''}.
+              The user will be notified with your reason.
+            </p>
+            <textarea
+              value={rejectReason}
+              onChange={e => setRejectReason(e.target.value)}
+              placeholder="e.g. Photo blurry, ID not readable, selfie face not visible…"
+              rows={3}
+              className="w-full border rounded-xl p-3 text-sm outline-none mb-4 resize-none"
+              style={{ borderColor: C.g200, color: C.g700 }} />
+            <div className="flex gap-2">
+              <button onClick={() => { setRejectTarget(null); setRejectReason(''); }}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold border"
+                style={{ borderColor: C.g200, color: C.g600 }}>
+                Cancel
+              </button>
+              <button onClick={confirmReject} disabled={acting}
+                className="flex-1 py-2.5 rounded-xl text-sm font-black text-white"
+                style={{ backgroundColor: '#EF4444' }}>
+                {acting ? 'Rejecting…' : '❌ Reject & Notify'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <SectionHead title="KYC Review" sub="Review and approve user identity documents"
         action={
           <div className="flex gap-2 items-center">
@@ -1154,7 +1219,11 @@ UPDATE users SET kyc_status = 'approved' WHERE is_id_verified = true AND kyc_sta
       {loading ? <Spin /> : submissions.length === 0 ? null : (
         <div className="flex gap-4">
           <div className="flex-1 grid grid-cols-1 gap-3">
-            {submissions.map(u => (
+            {submissions.map(u => {
+              const waitDays = u.kyc_submitted_at
+                ? Math.floor((Date.now() - new Date(u.kyc_submitted_at)) / 86400000)
+                : null;
+              return (
               <div key={u.id} onClick={() => setSelected(u)}
                 className="bg-white rounded-2xl border p-4 cursor-pointer hover:shadow-md transition"
                 style={{ borderColor: selected?.id === u.id ? C.forest : C.g200, borderWidth: selected?.id === u.id ? 2 : 1 }}>
@@ -1166,16 +1235,27 @@ UPDATE users SET kyc_status = 'approved' WHERE is_id_verified = true AND kyc_sta
                     <p className="font-black text-sm" style={{ color: C.g800 }}>{u.username}</p>
                     {u.full_name && <p className="text-xs font-semibold" style={{ color: C.mint }}>👤 {u.full_name}</p>}
                     <p className="text-xs truncate" style={{ color: C.g400 }}>{u.email}</p>
+                    {u.country && <p className="text-xs" style={{ color: C.g500 }}>🌍 {u.country}</p>}
                   </div>
-                  <div className="text-right">
+                  <div className="text-right flex flex-col items-end gap-1">
                     <Pill label={u.kyc_status || 'unverified'}
                       color={u.kyc_status === 'approved' ? '#166534' : u.kyc_status === 'rejected' ? '#991B1B' : u.kyc_status === 'pending' ? '#92400E' : '#475569'}
                       bg={u.kyc_status === 'approved' ? '#F0FDF4' : u.kyc_status === 'rejected' ? '#FEF2F2' : u.kyc_status === 'pending' ? '#FFFBEB' : C.g100} />
-                    <p className="text-xs mt-1" style={{ color: C.g400 }}>{u.kyc_id_type || (u.kyc_id_url ? 'Has document' : 'No doc')}</p>
+                    <p className="text-xs" style={{ color: C.g400 }}>{u.kyc_id_type || (u.kyc_id_url ? 'Has doc' : 'No doc')}</p>
+                    {waitDays !== null && (
+                      <span className="text-xs font-black px-1.5 py-0.5 rounded-full"
+                        style={{
+                          backgroundColor: waitDays >= 3 ? '#FEF2F2' : waitDays >= 1 ? '#FFFBEB' : '#F0FDF4',
+                          color: waitDays >= 3 ? '#991B1B' : waitDays >= 1 ? '#92400E' : '#166534',
+                        }}>
+                        {waitDays === 0 ? 'Today' : `${waitDays}d waiting`}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {selected && (
@@ -1196,14 +1276,15 @@ UPDATE users SET kyc_status = 'approved' WHERE is_id_verified = true AND kyc_sta
               <div className="space-y-1.5 mb-4">
                 {[
                   { label:'Real Name',  value: selected.full_name || '—' },
-                  { label:'ID Type',    value: selected.kyc_id_type || '—' },
                   { label:'Country',    value: selected.country || '—' },
-                  { label:'Submitted',  value: fmtAge(selected.kyc_submitted_at) },
+                  { label:'Phone',      value: selected.phone ? `${selected.phone}${selected.is_phone_verified ? ' ✓' : ' (unverified)'}` : '—' },
+                  { label:'ID Type',    value: selected.kyc_id_type || '—' },
+                  { label:'Submitted',  value: selected.kyc_submitted_at ? `${fmtDate(selected.kyc_submitted_at)} (${fmtAge(selected.kyc_submitted_at)})` : '—' },
                   { label:'Status',     value: selected.kyc_status || 'pending' },
                 ].map(r => (
                   <div key={r.label} className="flex justify-between py-1.5 border-b" style={{ borderColor: C.g100 }}>
                     <span className="text-xs" style={{ color: C.g400 }}>{r.label}</span>
-                    <span className="text-xs font-bold" style={{ color: C.g700 }}>{r.value}</span>
+                    <span className="text-xs font-bold text-right max-w-40 truncate" style={{ color: C.g700 }}>{r.value}</span>
                   </div>
                 ))}
               </div>
@@ -1243,9 +1324,9 @@ UPDATE users SET kyc_status = 'approved' WHERE is_id_verified = true AND kyc_sta
                 <div className="flex gap-2">
                   <button disabled={acting} onClick={() => approve(selected.id)}
                     className="flex-1 py-2.5 rounded-xl text-xs font-black" style={{ backgroundColor:'#F0FDF4', color:'#166534' }}>
-                    ✅ Approve
+                    {acting ? '…' : '✅ Approve'}
                   </button>
-                  <button disabled={acting} onClick={() => reject(selected.id)}
+                  <button disabled={acting} onClick={() => reject(selected)}
                     className="flex-1 py-2.5 rounded-xl text-xs font-black" style={{ backgroundColor:'#FEF2F2', color:'#991B1B' }}>
                     ❌ Reject
                   </button>
