@@ -744,17 +744,17 @@ export default function Settings({ user, setUser }) {
 
             {/* ── VERIFICATION ────────────────────────────────────── */}
             {activeTab === 'verification' && (
-              <div className="space-y-5">
+              <div className="space-y-4 max-w-2xl">
                 {verificationSyncing && (
-                  <div className="bg-white rounded-2xl shadow-sm border p-8 flex items-center justify-center gap-3" style={{ borderColor: C.g200 }}>
+                  <div className="bg-white rounded-2xl border p-10 flex items-center justify-center gap-3" style={{ borderColor: C.g200 }}>
                     <RefreshCw size={18} className="animate-spin" style={{ color: C.green }} />
                     <span className="text-sm font-bold" style={{ color: C.g500 }}>Loading verification status…</span>
                   </div>
                 )}
                 {!verificationSyncing && <>
-                {/* Verification level banner */}
+                {/* ── Status banner ── */}
                 <div className="rounded-2xl p-5 border"
-                  style={{ background: `linear-gradient(135deg,${C.forest},${C.green})`, borderColor: C.green }}>
+                  style={{ background: verLevel === 3 ? `linear-gradient(135deg,${C.success},${C.mint})` : `linear-gradient(135deg,${C.forest},${C.green})`, borderColor: 'transparent' }}>
                   <div className="flex items-center gap-3 mb-3">
                     <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
                       <Shield size={24} className="text-white" />
@@ -781,49 +781,8 @@ export default function Settings({ user, setUser }) {
                   </div>
                 </div>
 
-                {/* Verification steps */}
-                <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: verLevel===3 ? C.success : C.g200 }}>
-                  <div className="flex items-center justify-between mb-5">
-                    <h2 className="text-lg font-black" style={{ color: C.forest }}>Verification Steps</h2>
-                    {verLevel===3 && (
-                      <span className="text-xs font-black px-2.5 py-1 rounded-full flex items-center gap-1"
-                        style={{backgroundColor:`${C.success}15`, color:C.success}}>
-                        <Lock size={11}/> All Locked
-                      </span>
-                    )}
-                  </div>
-                  {/* Fully-verified compact summary — replaces individual action cards */}
-                  {verLevel===3 && (
-                    <div className="mb-4 rounded-2xl overflow-hidden border" style={{borderColor:`${C.success}40`}}>
-                      <div className="px-4 py-3 flex items-center gap-3"
-                        style={{background:`linear-gradient(135deg,${C.success},${C.mint})`}}>
-                        <Lock size={16} className="text-white flex-shrink-0"/>
-                        <p className="text-white font-black text-sm">🏆 Account Fully Verified & Locked</p>
-                      </div>
-                      {[
-                        {icon:'📧', label:'Email Address',  value:accountForm.email,  ok:true},
-                        {icon:'📱', label:'Phone Number',   value:accountForm.phone,  ok:true},
-                        {icon:'🪪', label:'Identity (KYC)', value:'ID document verified', ok:true},
-                      ].map(({icon,label,value,ok})=>(
-                        <div key={label} className="flex items-center justify-between px-4 py-3 border-t"
-                          style={{borderColor:`${C.success}20`, backgroundColor:`${C.success}05`}}>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm">{icon}</span>
-                            <div>
-                              <p className="text-xs font-black" style={{color:C.forest}}>{label}</p>
-                              <p className="text-xs" style={{color:C.g500}}>{value}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-black px-2 py-0.5 rounded-full"
-                              style={{backgroundColor:`${C.success}15`, color:C.success}}>✓ Verified</span>
-                            <Lock size={12} style={{color:C.success}}/>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <div className="space-y-3">
+                {/* ── 3-step cards ── */}
+                <div className="space-y-3">
 
                     {/* ── Step 1 — Email ── */}
                     {(() => {
@@ -958,22 +917,23 @@ export default function Settings({ user, setUser }) {
                                 </div>
                               )}
 
-                              {/* Submit button — shown only when phone not yet submitted */}
+                              {/* Input + submit — shown when phone not yet submitted */}
                               {!done && !underReview && emailVerified && (
-                                <div className="mt-3">
-                                  {!accountForm.phone && (
-                                    <p className="text-xs text-blue-600 font-semibold">
-                                      Add your phone number in the <strong>Account</strong> tab first, then come back here.
-                                    </p>
-                                  )}
-                                  {accountForm.phone && (
-                                    <button onClick={handleSubmitPhone} disabled={phoneStep === 'submitting'}
-                                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-60"
-                                      style={{backgroundColor: C.paid}}>
-                                      <Smartphone size={13}/>
-                                      {phoneStep === 'submitting' ? 'Saving…' : `Submit ${accountForm.phone} for Review →`}
-                                    </button>
-                                  )}
+                                <div className="mt-3 space-y-2">
+                                  <input
+                                    type="tel"
+                                    placeholder="+1 234 567 8900"
+                                    value={accountForm.phone || ''}
+                                    onChange={e => setAccountForm({ ...accountForm, phone: e.target.value })}
+                                    className="w-full px-3 py-2 border-2 rounded-xl text-sm focus:outline-none"
+                                    style={{ borderColor: accountForm.phone ? C.green : C.g200, color: C.g800, backgroundColor: 'white' }}
+                                  />
+                                  <button onClick={handleSubmitPhone} disabled={phoneStep === 'submitting' || !accountForm.phone}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-60"
+                                    style={{backgroundColor: C.paid}}>
+                                    <Smartphone size={13}/>
+                                    {phoneStep === 'submitting' ? 'Saving…' : 'Submit for Review →'}
+                                  </button>
                                 </div>
                               )}
                             </div>
@@ -1262,41 +1222,6 @@ export default function Settings({ user, setUser }) {
                       );
                     })()}
 
-                  </div>
-                </div>
-
-                {/* Benefits table */}
-                <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: C.g200 }}>
-                  <h2 className="text-lg font-black mb-4" style={{ color: C.forest }}>Verification Benefits</h2>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b" style={{ borderColor: C.g100 }}>
-                          <th className="text-left pb-3 font-bold text-gray-500">Feature</th>
-                          <th className="text-center pb-3 font-bold text-gray-500">Basic</th>
-                          <th className="text-center pb-3 font-bold text-gray-500">Standard</th>
-                          <th className="text-center pb-3 font-bold text-gray-500">Advanced</th>
-                        </tr>
-                      </thead>
-                      <tbody className="space-y-2">
-                        {[
-                          { feat: 'Trade limit', b: '$100', s: '$2,000', a: 'Unlimited' },
-                          { feat: 'Create offers', b: '✅', s: '✅', a: '✅' },
-                          { feat: 'P2P Trading', b: '✅', s: '✅', a: '✅' },
-                          { feat: 'Gift cards', b: '✅', s: '✅', a: '✅' },
-                          { feat: 'Affiliate program', b: '❌', s: '✅', a: '✅' },
-                          { feat: 'VIP badge', b: '❌', s: '❌', a: '✅' },
-                        ].map(({ feat, b, s, a }) => (
-                          <tr key={feat} className="border-b last:border-0" style={{ borderColor: C.g50 }}>
-                            <td className="py-2.5 font-semibold text-gray-700">{feat}</td>
-                            <td className="py-2.5 text-center text-gray-600">{b}</td>
-                            <td className="py-2.5 text-center text-gray-600">{s}</td>
-                            <td className="py-2.5 text-center font-bold" style={{ color: C.green }}>{a}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
                 </div>
 
                 </>}

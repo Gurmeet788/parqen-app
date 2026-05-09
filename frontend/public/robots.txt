@@ -1,0 +1,122 @@
+# PRAQEN — robots.txt
+# Allowing Google and ALL AI crawlers to discover and index PRAQEN
+
+User-agent: *
+Allow: /
+
+# ── Google ────────────────────────────────────────────────────────────────────
+User-agent: Googlebot
+Allow: /
+User-agent: Googlebot-Image
+Allow: /
+User-agent: Googlebot-News
+Allow: /
+User-agent: Googlebot-Video
+Allow: /
+User-agent: AdsBot-Google
+Allow: /
+User-agent: Google-Extended
+Allow: /
+
+# ── OpenAI (ChatGPT) ──────────────────────────────────────────────────────────
+User-agent: GPTBot
+Allow: /
+User-agent: ChatGPT-User
+Allow: /
+User-agent: OAI-SearchBot
+Allow: /
+
+# ── Anthropic (Claude) ────────────────────────────────────────────────────────
+User-agent: ClaudeBot
+Allow: /
+User-agent: Claude-Web
+Allow: /
+
+# ── Google Gemini / Bard ──────────────────────────────────────────────────────
+User-agent: Gemini
+Allow: /
+User-agent: Bard
+Allow: /
+
+# ── Perplexity AI ─────────────────────────────────────────────────────────────
+User-agent: PerplexityBot
+Allow: /
+
+# ── Microsoft (Copilot, Bing) ─────────────────────────────────────────────────
+User-agent: Bingbot
+Allow: /
+User-agent: Copilot
+Allow: /
+User-agent: AdIdxBot
+Allow: /
+User-agent: MSNBot
+Allow: /
+
+# ── Meta (Facebook, Instagram AI) ────────────────────────────────────────────
+User-agent: FacebookBot
+Allow: /
+User-agent: Meta-ExternalAgent
+Allow: /
+User-agent: InstagramBot
+Allow: /
+
+# ── xAI (Grok) ───────────────────────────────────────────────────────────────
+User-agent: GrokBot
+Allow: /
+User-agent: xAI-Bot
+Allow: /
+
+# ── Apple (Siri, Spotlight) ───────────────────────────────────────────────────
+User-agent: Applebot
+Allow: /
+User-agent: Applebot-Extended
+Allow: /
+
+# ── DuckDuckGo ───────────────────────────────────────────────────────────────
+User-agent: DuckDuckBot
+Allow: /
+User-agent: DuckDuckBot-Https
+Allow: /
+
+# ── Baidu (China) ────────────────────────────────────────────────────────────
+User-agent: Baiduspider
+Allow: /
+User-agent: Baiduspider-image
+Allow: /
+User-agent: Baiduspider-video
+Allow: /
+
+# ── Yandex (Russia) ──────────────────────────────────────────────────────────
+User-agent: YandexBot
+Allow: /
+User-agent: YandexImages
+Allow: /
+User-agent: YandexVideo
+Allow: /
+User-agent: YandexMedia
+Allow: /
+
+# ── Other AI & Data Crawlers ──────────────────────────────────────────────────
+User-agent: Bytespider
+Allow: /
+User-agent: Amazonbot
+Allow: /
+User-agent: CCBot
+Allow: /
+User-agent: PetalBot
+Allow: /
+User-agent: SeekerBot
+Allow: /
+User-agent: Diffbot
+Allow: /
+User-agent: ImagesiftBot
+Allow: /
+
+# ── Disallow sensitive API and internal paths ─────────────────────────────────
+Disallow: /api/
+Disallow: /admin/
+Disallow: /dashboard/
+Disallow: /_next/
+Disallow: /static/
+
+Sitemap: https://praqen.com/sitemap.xml

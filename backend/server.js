@@ -4575,6 +4575,89 @@ app.put('/api/admin/phone-verifications/:id/reject', verifyToken, async (req, re
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Direct user-table phone endpoints (reliable regardless of phone_verification_requests table) ──
+
+// GET /api/admin/phone/pending — users who have a phone but are not yet verified
+app.get('/api/admin/phone/pending', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { data, error } = await supabaseAdmin
+      .from('users')
+      .select('id, username, full_name, email, phone, is_phone_verified, created_at, last_login, country, avatar_url')
+      .not('phone', 'is', null)
+      .neq('phone', '')
+      .eq('is_phone_verified', false)
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ users: data || [], total: (data || []).length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/admin/phone/approve — approve a user's phone number by userId
+app.post('/api/admin/phone/approve', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId required' });
+
+    const { data: user, error } = await supabaseAdmin
+      .from('users')
+      .update({ is_phone_verified: true, phone_verified: true, updated_at: new Date().toISOString() })
+      .eq('id', userId)
+      .select('id, username, phone')
+      .single();
+    if (error) return res.status(400).json({ error: error.message });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Also mark any pending request row as approved
+    await supabaseAdmin.from('phone_verification_requests')
+      .update({ status: 'approved', reviewed_at: new Date().toISOString(), reviewed_by: req.userId })
+      .eq('user_id', userId).catch(() => {});
+
+    await createNotification(userId, 'system', '📱 Phone Number Verified!',
+      'Your phone number has been verified by our team. Your trade limits have been upgraded!',
+      '/settings?tab=verification').catch(() => {});
+    sendSystemAlert(userId, '📱 Phone Verified!',
+      'Your phone number has been verified. Trade limits upgraded!',
+      'https://praqen.com/settings?tab=verification').catch(() => {});
+
+    console.log(`[phone/approve] ✅ Admin ${req.userId.slice(0,8)} approved ${user.phone} for user ${userId.slice(0,8)}`);
+    res.json({ success: true, user });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/admin/phone/reject — reject a user's phone (clears it so they can re-submit)
+app.post('/api/admin/phone/reject', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { userId, reason = 'Phone number could not be verified' } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId required' });
+
+    // Get the phone number before clearing it
+    const { data: existing } = await supabaseAdmin
+      .from('users').select('phone').eq('id', userId).single();
+    const phone = existing?.phone || 'unknown';
+
+    const { error } = await supabaseAdmin
+      .from('users')
+      .update({ phone: null, is_phone_verified: false, phone_verified: false, updated_at: new Date().toISOString() })
+      .eq('id', userId);
+    if (error) return res.status(400).json({ error: error.message });
+
+    await supabaseAdmin.from('phone_verification_requests')
+      .update({ status: 'rejected', reviewed_at: new Date().toISOString(), reviewed_by: req.userId, rejection_reason: reason })
+      .eq('user_id', userId).catch(() => {});
+
+    await createNotification(userId, 'system', '📱 Phone Verification Failed',
+      `Your phone number (${phone}) could not be verified. Reason: ${reason}. Please submit a valid number.`,
+      '/settings?tab=verification').catch(() => {});
+
+    console.log(`[phone/reject] ❌ Admin ${req.userId.slice(0,8)} rejected ${phone} for user ${userId.slice(0,8)}`);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // PUT /api/admin/users/:id/ban — ban a user
 app.put('/api/admin/users/:id/ban', verifyToken, async (req, res) => {
   try {

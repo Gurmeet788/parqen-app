@@ -1,19 +1,22 @@
 // services/depositMonitor.js
 // PRAQEN — Automatic Bitcoin Deposit Monitor
 // Polls every 5 minutes for new deposits to ALL user wallet addresses.
-// When a deposit is confirmed:
-//   1. Updates user_balances.balance_btc
+// Approach: compare on-chain confirmed balance vs DB balance (user_balances).
+// When blockchain > DB a deposit is credited automatically:
+//   1. Updates user_balances.balance_btc + balance_usd
 //   2. Updates user_wallets.balance_btc
-//   3. Inserts into wallet_transactions
+//   3. Inserts into wallet_transactions (type DEPOSIT, status CONFIRMED)
 //   4. Creates in-app notification
-//   5. Sends SMS via Twilio
-//   6. Sends email via Nodemailer
+//   5. Sends OneSignal push notification
+//   6. Sends SMS via Twilio
+//   7. Sends email via Nodemailer
 
 require('dotenv').config();
 const axios      = require('axios');
 const nodemailer = require('nodemailer');
-const { updateOfferStatus } = require('./offerStatusService');
-const { createClient } = require('@supabase/supabase-js');
+const { updateOfferStatus }  = require('./offerStatusService');
+const { sendSystemAlert }    = require('./pushNotificationService');
+const { createClient }       = require('@supabase/supabase-js');
 
 const supabaseAdmin = createClient(
   process.env.SUPABASE_URL,
@@ -21,9 +24,8 @@ const supabaseAdmin = createClient(
 );
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const POLL_INTERVAL_MS    = 5 * 60 * 1000;  // 5 minutes
-const MIN_CONFIRMATIONS   = 1;               // 1 block confirmation = safe to credit
-const DUST_THRESHOLD_SATS = 546;             // ignore sub-dust outputs
+const POLL_INTERVAL_MS    = 5 * 60 * 1000; // 5 minutes
+const DUST_THRESHOLD_SATS = 546;           // ignore sub-dust outputs
 
 // ── Email transporter (Gmail) ─────────────────────────────────────────────────
 const emailTransporter = nodemailer.createTransport({
@@ -44,9 +46,9 @@ try {
   console.warn('[DepositMonitor] Twilio unavailable:', e.message);
 }
 
-// ── Email HTML template for deposit notification ──────────────────────────────
-function depositEmailHtml(username, depositBTC, newBalance, txid) {
-  const explorerUrl = `https://mempool.space/tx/${txid}`;
+// ── Email HTML template ───────────────────────────────────────────────────────
+function depositEmailHtml(username, depositBTC, newBalance, address) {
+  const explorerUrl = `https://mempool.space/address/${address}`;
   const year = new Date().getFullYear();
   return `<!DOCTYPE html>
 <html>
@@ -91,15 +93,9 @@ function depositEmailHtml(username, depositBTC, newBalance, txid) {
               <p style="margin:8px 0 0;font-size:13px;color:#2D6A4F;font-weight:600;">New wallet balance: ₿ ${newBalance.toFixed(8)}</p>
             </div>
 
-            <!-- Transaction link -->
-            <div style="background:#F8FAFC;border-radius:10px;padding:14px 18px;margin-bottom:24px;">
-              <p style="margin:0 0 6px;font-size:11px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:1px;">Transaction ID</p>
-              <p style="margin:0;font-family:monospace;font-size:12px;color:#374151;word-break:break-all;">${txid}</p>
-            </div>
-
             <a href="${explorerUrl}"
                style="display:block;background:#2D6A4F;color:#fff;text-decoration:none;text-align:center;padding:14px 24px;border-radius:10px;font-size:14px;font-weight:800;margin-bottom:20px;">
-              View on Mempool Explorer →
+              View Address on Mempool →
             </a>
 
             <a href="https://praqen.com/wallet"
@@ -133,11 +129,10 @@ function depositEmailHtml(username, depositBTC, newBalance, txid) {
 class DepositMonitor {
 
   constructor() {
-    this.isRunning    = false;
-    this.intervalId   = null;
-    this.network      = null;
-    this.apiBase      = null;
-    this.checkedTxIds = new Set(); // memory cache to prevent double-crediting
+    this.isRunning  = false;
+    this.intervalId = null;
+    this.network    = null;
+    this.apiBase    = null;
   }
 
   // ── Start background polling ───────────────────────────────────────────────
@@ -168,7 +163,7 @@ class DepositMonitor {
     console.log('[DepositMonitor] Stopped');
   }
 
-  // ── One full polling cycle: user wallets + escrow ─────────────────────────
+  // ── One full polling cycle ─────────────────────────────────────────────────
   async runFullCycle() {
     const start = Date.now();
     console.log(`\n[DepositMonitor] ⏱  Cycle start ${new Date().toISOString()}`);
@@ -179,17 +174,17 @@ class DepositMonitor {
     console.log(`[DepositMonitor] ✅ Cycle done in ${Date.now() - start}ms\n`);
   }
 
-  // ── Fetch all wallets to monitor (user_wallets table is authoritative) ─────
+  // ── Fetch all wallets to monitor ───────────────────────────────────────────
   async checkAllUserDeposits() {
     try {
-      // Primary source: user_wallets table (populated by /generate-address endpoint)
+      // Primary source: user_wallets table
       const { data: wallets, error: wErr } = await supabaseAdmin
         .from('user_wallets')
         .select('user_id, btc_address')
         .not('btc_address', 'is', null)
         .neq('btc_address', '');
 
-      // Fallback source: users.bitcoin_wallet_address (older generate path)
+      // Fallback: users.bitcoin_wallet_address (older generate path)
       const { data: users, error: uErr } = await supabaseAdmin
         .from('users')
         .select('id, username, bitcoin_wallet_address')
@@ -200,8 +195,8 @@ class DepositMonitor {
       if (uErr) console.error('[DepositMonitor] users fetch error:', uErr.message);
 
       // Merge both sources, deduplicate by address
-      const seen      = new Set();
-      const toCheck   = [];
+      const seen    = new Set();
+      const toCheck = [];
 
       for (const w of (wallets || [])) {
         if (w.btc_address && !seen.has(w.btc_address)) {
@@ -225,11 +220,11 @@ class DepositMonitor {
 
       for (const entry of toCheck) {
         if (!this.isValidMainnetAddress(entry.address)) {
-          console.log(`[DepositMonitor] ⚠️  Skipping invalid address for user ${entry.userId.slice(0,8)}: ${entry.address.slice(0,16)}…`);
+          console.log(`[DepositMonitor] ⚠️  Skipping invalid address for user ${entry.userId.slice(0, 8)}: ${entry.address.slice(0, 16)}…`);
           continue;
         }
         await this.checkUserDeposit(entry);
-        await this.sleep(600); // 600 ms between calls to respect mempool.space rate limits
+        await this.sleep(600); // respect mempool.space rate limits
       }
 
     } catch (err) {
@@ -237,17 +232,15 @@ class DepositMonitor {
     }
   }
 
-  // ── Validate that an address is a real mainnet address ────────────────────
+  // ── Validate mainnet address ───────────────────────────────────────────────
   isValidMainnetAddress(address) {
     if (!address || typeof address !== 'string') return false;
-    // Native SegWit bc1…
-    if (/^bc1[a-z0-9]{25,87}$/.test(address)) return true;
-    // Legacy 1… or P2SH 3…
-    if (/^[13][a-zA-HJ-NP-Z1-9]{25,34}$/.test(address)) return true;
+    if (/^bc1[a-z0-9]{25,87}$/.test(address)) return true;           // Native SegWit
+    if (/^[13][a-zA-HJ-NP-Z1-9]{25,34}$/.test(address)) return true; // Legacy / P2SH
     return false;
   }
 
-  // ── Check one address for new confirmed deposits ───────────────────────────
+  // ── Check one address for new deposits (balance comparison) ───────────────
   async checkUserDeposit({ userId, address, username }) {
     try {
       // Resolve username if not provided
@@ -257,177 +250,136 @@ class DepositMonitor {
         username = u?.username || userId.slice(0, 8);
       }
 
-      // Fetch full transaction list from mempool.space
-      const resp = await axios.get(`${this.apiBase}/address/${address}/txs`, { timeout: 15000 });
-      const txs  = resp.data || [];
-      if (txs.length === 0) return;
+      // ── Step 1: Fetch on-chain confirmed balance from mempool.space ──────
+      const resp = await axios.get(`${this.apiBase}/address/${address}`, { timeout: 15000 });
+      const chainStats    = resp.data?.chain_stats || {};
+      const blockchainSats = (chainStats.funded_txo_sum || 0) - (chainStats.spent_txo_sum || 0);
+      const blockchainBTC  = parseFloat((blockchainSats / 1e8).toFixed(8));
 
-      // Get current DB balance (prefer user_balances; fall back to user_wallets)
+      // ── Step 2: Fetch current DB balance ─────────────────────────────────
       const { data: balRow } = await supabaseAdmin
-        .from('user_balances').select('balance_btc').eq('user_id', userId).single();
-      let currentBalance = parseFloat(balRow?.balance_btc || 0);
+        .from('user_balances')
+        .select('balance_btc, balance_usd')
+        .eq('user_id', userId)
+        .maybeSingle();
 
-      for (const tx of txs) {
-        const txid = tx.txid;
+      const dbBalanceBTC = parseFloat(balRow?.balance_btc || 0);
 
-        // Memory-level dedupe
-        if (this.checkedTxIds.has(`${userId}_${txid}`)) continue;
+      // ── Step 3: Compare — if blockchain <= DB, nothing new ────────────────
+      // Use small epsilon (1 satoshi) to avoid floating-point false positives
+      if (blockchainBTC <= dbBalanceBTC + 0.000000009) return;
 
-        // Skip unconfirmed
-        if (!tx.status?.confirmed) {
-          console.log(`[DepositMonitor] TX ${txid.slice(0,12)}… unconfirmed — waiting`);
-          continue;
-        }
+      const depositBTC = parseFloat((blockchainBTC - dbBalanceBTC).toFixed(8));
+      if (depositBTC * 1e8 <= DUST_THRESHOLD_SATS) return; // ignore dust
 
-        // DB-level dedupe — prevents double crediting across restarts
-        const { data: existingTx } = await supabaseAdmin
-          .from('wallet_transactions')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('tx_hash', txid)
-          .eq('type', 'DEPOSIT')
-          .maybeSingle();
+      console.log(`\n💰 [DepositMonitor] New deposit detected for user ${username}: ${depositBTC} BTC`);
+      console.log(`   Address   : ${address}`);
+      console.log(`   Blockchain: ${blockchainBTC} BTC | DB was: ${dbBalanceBTC} BTC`);
 
-        if (existingTx) {
-          this.checkedTxIds.add(`${userId}_${txid}`);
-          continue;
-        }
-
-        // Calculate how many satoshis landed at our user's address in this tx
-        let depositSats = 0;
-        for (const vout of (tx.vout || [])) {
-          if (vout.scriptpubkey_address === address) depositSats += vout.value;
-        }
-
-        if (depositSats <= DUST_THRESHOLD_SATS) {
-          this.checkedTxIds.add(`${userId}_${txid}`);
-          continue;
-        }
-
-        const depositBTC = depositSats / 1e8;
-        const newBalance = parseFloat((currentBalance + depositBTC).toFixed(8));
-
-        console.log(`\n💰 [DepositMonitor] Deposit detected!`);
-        console.log(`   User   : ${username} (${userId.slice(0,8)})`);
-        console.log(`   TX     : ${txid}`);
-        console.log(`   Amount : ${depositBTC} BTC`);
-
-        // ── 1. Insert TX record FIRST — if this fails, skip balance update ───
-        // Using upsert on tx_hash to make this idempotent across restarts
-        const { error: txErr } = await supabaseAdmin
-          .from('wallet_transactions')
-          .upsert({
-            user_id:    userId,
-            type:       'DEPOSIT',
-            amount_btc: depositBTC,
-            status:     'CONFIRMED',
-            tx_hash:    txid,
-            notes:      `Confirmed deposit to ${address.slice(0,12)}…`,
-            created_at: new Date().toISOString(),
-          }, { onConflict: 'tx_hash,user_id', ignoreDuplicates: true });
-
-        if (txErr) {
-          console.error(`[DepositMonitor] wallet_transactions insert failed for TX ${txid.slice(0,12)}:`, txErr.message);
-          // Still add to memory cache so we don't retry in this session
-          this.checkedTxIds.add(`${userId}_${txid}`);
-          continue;
-        }
-
-        // ── 2. Update user_balances (btc + usd) ─────────────────────────────
-        // Fetch the BTC/USD price at deposit time so balance_usd stays accurate.
-        // This is the only moment we know the true USD value of the incoming BTC.
-        let btcUsdAtDeposit = 0;
+      // ── Step 4: Fetch BTC/USD price ───────────────────────────────────────
+      let btcUsd = 0;
+      try {
+        const pr = await axios.get(
+          'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd',
+          { timeout: 5000 }
+        );
+        btcUsd = parseFloat(pr.data?.bitcoin?.usd || 0);
+      } catch {
         try {
-          const priceRes = await axios.get(
-            'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd',
-            { timeout: 5000 }
-          );
-          btcUsdAtDeposit = parseFloat(priceRes.data?.bitcoin?.usd || 0);
-        } catch {
-          try {
-            const priceRes2 = await axios.get('https://api.coinbase.com/v2/prices/BTC-USD/spot', { timeout: 5000 });
-            btcUsdAtDeposit = parseFloat(priceRes2.data?.data?.amount || 0);
-          } catch { /* price fetch failed — balance_usd will be updated on next sync */ }
-        }
+          const pr2 = await axios.get('https://api.coinbase.com/v2/prices/BTC-USD/spot', { timeout: 5000 });
+          btcUsd = parseFloat(pr2.data?.data?.amount || 0);
+        } catch { /* price fetch failed — balance_usd will be 0 for this deposit */ }
+      }
 
-        // Get existing balance_usd so we can add the deposit's USD value to it
-        const { data: existingBal } = await supabaseAdmin
-          .from('user_balances').select('balance_usd').eq('user_id', userId).maybeSingle();
-        const depositUsd    = btcUsdAtDeposit > 0 ? parseFloat((depositBTC * btcUsdAtDeposit).toFixed(2)) : 0;
-        const newBalanceUsd = parseFloat((parseFloat(existingBal?.balance_usd || 0) + depositUsd).toFixed(2));
+      const depositUsd       = btcUsd > 0 ? parseFloat((depositBTC * btcUsd).toFixed(2)) : 0;
+      const currentBalanceUsd = parseFloat(balRow?.balance_usd || 0);
+      const newBalanceUsd     = parseFloat((currentBalanceUsd + depositUsd).toFixed(2));
 
-        const { error: balErr } = await supabaseAdmin
-          .from('user_balances')
-          .upsert({
-            user_id:     userId,
-            balance_btc: newBalance,
-            ...(depositUsd > 0 ? { balance_usd: newBalanceUsd } : {}),
-            updated_at:  new Date().toISOString(),
-          });
+      // ── Step 5: Update user_balances ──────────────────────────────────────
+      // FIX: onConflict must be 'user_id' — user_balances has id as PK + UNIQUE(user_id)
+      const { error: balErr } = await supabaseAdmin
+        .from('user_balances')
+        .upsert({
+          user_id:    userId,
+          balance_btc: blockchainBTC,
+          ...(depositUsd > 0 ? { balance_usd: newBalanceUsd } : {}),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
 
-        if (balErr) {
-          console.error(`[DepositMonitor] user_balances update failed for ${username}:`, balErr.message);
-          // Do NOT continue — user_wallets must still be updated below
-        }
+      if (balErr) {
+        console.error(`[DepositMonitor] user_balances update failed for ${username}:`, balErr.message);
+        return; // stop — don't insert a transaction for an uncredited deposit
+      }
 
-        // ── 3. Upsert user_wallets.balance_btc ──────────────────────────────
-        // Use upsert (not update) so the row is CREATED if it doesn't exist.
-        // An update on a missing row silently does nothing, leaving user_wallets at 0.
-        // When escrow later locks and sets user_wallets = user_balances - amount,
-        // it would inflate user_wallets from 0 and show fake BTC to the seller.
-        const { data: walletRow } = await supabaseAdmin
-          .from('user_wallets').select('balance_btc').eq('user_id', userId).maybeSingle();
-        const walletBase    = parseFloat(walletRow?.balance_btc || 0);
-        const walletBalance = parseFloat((walletBase + depositBTC).toFixed(8));
+      // ── Step 6: Update user_wallets.balance_btc ───────────────────────────
+      const { data: walletRow } = await supabaseAdmin
+        .from('user_wallets').select('balance_btc').eq('user_id', userId).maybeSingle();
+      const newWalletBalance = parseFloat((parseFloat(walletRow?.balance_btc || 0) + depositBTC).toFixed(8));
 
-        const { error: walletErr } = await supabaseAdmin
-          .from('user_wallets')
-          .upsert(
-            { user_id: userId, btc_address: address, balance_btc: walletBalance, updated_at: new Date().toISOString() },
-            { onConflict: 'user_id' }
-          );
+      const { error: walletErr } = await supabaseAdmin
+        .from('user_wallets')
+        .upsert(
+          { user_id: userId, btc_address: address, balance_btc: newWalletBalance, updated_at: new Date().toISOString() },
+          { onConflict: 'user_id' }
+        );
+      if (walletErr) console.error(`[DepositMonitor] user_wallets upsert failed for ${username}:`, walletErr.message);
 
-        if (walletErr) {
-          console.error(`[DepositMonitor] user_wallets upsert failed for ${username}:`, walletErr.message);
-        }
+      // ── Step 7: Insert wallet_transaction record ──────────────────────────
+      // wallet_transactions has no unique constraint on tx_hash, so use INSERT not upsert
+      const { error: txErr } = await supabaseAdmin
+        .from('wallet_transactions')
+        .insert({
+          user_id:    userId,
+          type:       'DEPOSIT',
+          amount_btc: depositBTC,
+          amount_usd: depositUsd,
+          status:     'CONFIRMED',
+          notes:      `Auto-detected on-chain deposit to ${address.slice(0, 16)}…`,
+          created_at: new Date().toISOString(),
+        });
+      if (txErr) console.error(`[DepositMonitor] wallet_transactions insert failed:`, txErr.message);
 
-        // ── 4. In-app notification ───────────────────────────────────────────
-        await supabaseAdmin
-          .from('notifications')
-          .insert({
-            user_id:    userId,
-            type:       'wallet',
-            title:      '₿ Bitcoin Received!',
-            message:    `${depositBTC.toFixed(8)} BTC credited to your wallet. Balance: ${newBalance.toFixed(8)} BTC`,
-            action:     '/wallet',
-            is_read:    false,
-            created_at: new Date().toISOString(),
-          });
-
-        // ── 5. Re-evaluate offer status — deposit may restore paused offers ───
-        updateOfferStatus(userId).catch(() => {});
-
-        // ── 6. SMS + Email (fire-and-forget) ──────────────────────────────────
-        Promise.allSettled([
-          this.sendDepositSMS(userId, depositBTC, newBalance),
-          this.sendDepositEmail(userId, username, depositBTC, newBalance, txid),
-        ]).then(results => {
-          results.forEach(r => {
-            if (r.status === 'rejected') console.error('[DepositMonitor] Notification error:', r.reason?.message);
-          });
+      // ── Step 8: In-app notification ───────────────────────────────────────
+      await supabaseAdmin
+        .from('notifications')
+        .insert({
+          user_id:    userId,
+          type:       'wallet',
+          title:      '₿ Bitcoin Received!',
+          message:    `${depositBTC.toFixed(8)} BTC credited to your wallet. Balance: ${blockchainBTC.toFixed(8)} BTC`,
+          action:     '/wallet',
+          is_read:    false,
+          created_at: new Date().toISOString(),
         });
 
-        this.checkedTxIds.add(`${userId}_${txid}`);
-        currentBalance = newBalance;
+      // ── Step 9: Push notification (OneSignal) ─────────────────────────────
+      sendSystemAlert(
+        userId,
+        '₿ Bitcoin Received!',
+        `${depositBTC.toFixed(8)} BTC deposited to your PRAQEN wallet`,
+        'https://praqen.com/wallet'
+      ).catch(err => console.error('[DepositMonitor] Push notification error:', err.message));
 
-        console.log(`✅ [DepositMonitor] Credited ${depositBTC} BTC to ${username} | Balance: ${newBalance.toFixed(8)} BTC`);
-      }
+      // ── Step 10: Re-evaluate offer status ────────────────────────────────
+      updateOfferStatus(userId).catch(() => {});
+
+      // ── Step 11: SMS + Email (fire-and-forget) ────────────────────────────
+      Promise.allSettled([
+        this.sendDepositSMS(userId, depositBTC, blockchainBTC),
+        this.sendDepositEmail(userId, username, depositBTC, blockchainBTC, address),
+      ]).then(results => {
+        results.forEach(r => {
+          if (r.status === 'rejected') console.error('[DepositMonitor] Notification error:', r.reason?.message);
+        });
+      });
+
+      console.log(`✅ [DepositMonitor] Credited ${depositBTC} BTC to ${username} | Balance: ${blockchainBTC.toFixed(8)} BTC`);
 
     } catch (err) {
       if (err.response?.status === 429) {
         console.warn(`[DepositMonitor] Rate limited by mempool.space — will retry next cycle`);
       } else {
-        console.error(`[DepositMonitor] Error checking ${address.slice(0,12)}…:`, err.message);
+        console.error(`[DepositMonitor] Error checking ${address.slice(0, 12)}…:`, err.message);
       }
     }
   }
@@ -441,15 +393,15 @@ class DepositMonitor {
 
     const phone = user.phone.startsWith('+') ? user.phone : `+${user.phone}`;
     await twilioClient.messages.create({
-      body: `[PRAQEN ⚡] ₿${depositBTC.toFixed(8)} BTC received! New balance: ₿${newBalance.toFixed(8)}. View your wallet: https://praqen.com/wallet`,
+      body: `[PRAQEN ⚡] ₿${depositBTC.toFixed(8)} BTC received! New balance: ₿${newBalance.toFixed(8)}. View: https://praqen.com/wallet`,
       from: process.env.TWILIO_PHONE,
       to:   phone,
     });
-    console.log(`📱 [DepositMonitor] SMS sent to user ${userId.slice(0,8)}`);
+    console.log(`📱 [DepositMonitor] SMS sent to user ${userId.slice(0, 8)}`);
   }
 
   // ── Email notification ─────────────────────────────────────────────────────
-  async sendDepositEmail(userId, username, depositBTC, newBalance, txid) {
+  async sendDepositEmail(userId, username, depositBTC, newBalance, address) {
     const { data: user } = await supabaseAdmin
       .from('users').select('email, username').eq('id', userId).single();
     if (!user?.email) return;
@@ -459,9 +411,9 @@ class DepositMonitor {
       from:    '"PRAQEN" <kendevdash@gmail.com>',
       to:      user.email,
       subject: `₿ ${depositBTC.toFixed(8)} BTC received — PRAQEN`,
-      html:    depositEmailHtml(displayName, depositBTC, newBalance, txid),
+      html:    depositEmailHtml(displayName, depositBTC, newBalance, address),
     });
-    console.log(`📧 [DepositMonitor] Email sent to user ${userId.slice(0,8)} (${user.email})`);
+    console.log(`📧 [DepositMonitor] Email sent to user ${userId.slice(0, 8)} (${user.email})`);
   }
 
   // ── Monitor escrow addresses for active trades ─────────────────────────────
@@ -499,7 +451,7 @@ class DepositMonitor {
 
       if (confirmedBTC < requiredBTC || requiredBTC === 0) return;
 
-      console.log(`\n🔒 [DepositMonitor] Escrow funded — trade ${tradeId.slice(0,8)}`);
+      console.log(`\n🔒 [DepositMonitor] Escrow funded — trade ${tradeId.slice(0, 8)}`);
       console.log(`   Required: ${requiredBTC} BTC | Received: ${confirmedBTC} BTC`);
 
       await supabaseAdmin
@@ -517,23 +469,22 @@ class DepositMonitor {
           user_id:    uid,
           type:       'trade',
           title:      '🔒 Escrow Funded!',
-          message:    `Trade #${tradeId.slice(0,8).toUpperCase()} is ACTIVE — Bitcoin is locked in escrow.`,
+          message:    `Trade #${tradeId.slice(0, 8).toUpperCase()} is ACTIVE — Bitcoin is locked in escrow.`,
           action:     `/trade/${tradeId}`,
           is_read:    false,
           created_at: new Date().toISOString(),
         });
       }
 
-      console.log(`✅ [DepositMonitor] Trade ${tradeId.slice(0,8)} → FUNDS_LOCKED\n`);
+      console.log(`✅ [DepositMonitor] Trade ${tradeId.slice(0, 8)} → FUNDS_LOCKED\n`);
     } catch (err) {
-      console.error(`[DepositMonitor] Escrow check error trade ${tradeId.slice(0,8)}:`, err.message);
+      console.error(`[DepositMonitor] Escrow check error trade ${tradeId.slice(0, 8)}:`, err.message);
     }
   }
 
   // ── Manual check for one user (called by /api/hd-wallet/check-deposit) ─────
   async checkAddressNow(userId) {
-    // Try user_wallets first, fall back to users table
-    let address = null;
+    let address  = null;
     let username = null;
 
     const { data: wallet } = await supabaseAdmin
@@ -565,11 +516,10 @@ class DepositMonitor {
   // ── Status info ───────────────────────────────────────────────────────────
   getStatus() {
     return {
-      running:          this.isRunning,
-      network:          this.network,
+      running:           this.isRunning,
+      network:           this.network,
       poll_interval_min: POLL_INTERVAL_MS / 1000 / 60,
-      txs_cached:       this.checkedTxIds.size,
-      api:              this.apiBase,
+      api:               this.apiBase,
     };
   }
 
