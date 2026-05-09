@@ -842,10 +842,10 @@ export default function Profile({userId:propUserId}){
                         {emailOk?'✅ Email verified':'❌ Email not verified'}
                       </span>
                     </div>
-                    <p className="text-xs mt-0.5 truncate" style={{color:C.g500}}>
+                    <p className="text-xs mt-0.5" style={{color:C.g500}}>
                       {emailOk
                         ?`${user.email||''}  — required to create offers & trade`
-                        :'Not verified yet'}
+                        :'Not verified yet. Go to Settings → Verification to verify your email.'}
                     </p>
                   </div>
                   {emailOk && <Lock size={14} style={{color:C.success, flexShrink:0}}/>}
@@ -872,12 +872,12 @@ export default function Profile({userId:propUserId}){
                         {phoneOk ? '✅ Phone verified' : user.phone ? '⏳ Under Review' : '⚠️ Not Added'}
                       </span>
                     </div>
-                    <p className="text-xs mt-0.5 truncate" style={{color:C.g500}}>
+                    <p className="text-xs mt-0.5" style={{color:C.g500}}>
                       {phoneOk
                         ? `${user.phone||''}  — verified`
                         : user.phone
                           ? `${user.phone} — waiting for approval`
-                          : 'Not submitted yet'}
+                          : 'Not submitted yet. Go to Settings → Verification to add your phone number.'}
                     </p>
                   </div>
                   {phoneOk
@@ -904,7 +904,11 @@ export default function Profile({userId:propUserId}){
                       </span>
                     </div>
                     <p className="text-xs mt-0.5" style={{color:C.g500}}>
-                      {kycOk?'ID verified — Advanced & VIP limits unlocked':user.kyc_status==='pending'?'Documents submitted — waiting for approval':'Not submitted yet'}
+                      {kycOk
+                        ? 'ID verified — Advanced & VIP limits unlocked'
+                        : user.kyc_status==='pending'
+                          ? 'Documents submitted — waiting for approval'
+                          : 'Not submitted yet. Go to Settings → Verification to upload your ID.'}
                     </p>
                   </div>
                   {kycOk

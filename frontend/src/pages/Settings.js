@@ -1127,7 +1127,7 @@ export default function Settings({ user, setUser }) {
                                     </div>
                                   )}
 
-                                  {/* Step C: Upload selfie */}
+                                  {/* Step C: Face photo / selfie */}
                                   {kycIdType && kycFiles.id && (
                                     <div className={`rounded-xl border-2 p-4 transition ${kycFiles.selfie ? 'border-green-300 bg-green-50' : 'border-dashed border-purple-200 bg-purple-50'}`}>
                                       <div className="flex items-center gap-2 mb-3">
@@ -1135,16 +1135,16 @@ export default function Settings({ user, setUser }) {
                                           {kycFiles.selfie ? '✓' : '3'}
                                         </div>
                                         <div>
-                                          <p className="text-xs font-black text-gray-700">Selfie holding your ID</p>
-                                          <p className="text-xs text-gray-400">Hold your {KYC_ID_TYPES.find(t => t.value === kycIdType)?.label} clearly visible next to your face</p>
+                                          <p className="text-xs font-black text-gray-700">Take or upload a selfie</p>
+                                          <p className="text-xs text-gray-400">A clear photo of your face — no ID required</p>
                                         </div>
                                       </div>
                                       <div className="mb-3 px-3 py-2.5 rounded-lg text-xs" style={{ backgroundColor: '#F3E8FF', color: '#6B21A8', border: '1px solid #E9D5FF' }}>
                                         <strong>Tips for a good selfie:</strong>
                                         <ul className="mt-1 space-y-0.5 list-disc list-inside">
-                                          <li>Good lighting — avoid dark or blurry photos</li>
-                                          <li>Hold the ID open so the details are readable</li>
-                                          <li>Your full face must be visible</li>
+                                          <li>Good lighting — face should be clearly visible</li>
+                                          <li>Look straight at the camera</li>
+                                          <li>No sunglasses or hats — plain background is best</li>
                                         </ul>
                                       </div>
                                       <label className="flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed cursor-pointer hover:border-purple-400 transition bg-white"
@@ -1152,15 +1152,16 @@ export default function Settings({ user, setUser }) {
                                         <Camera size={18} style={{ color: kycFiles.selfie ? C.success : '#7C3AED', flexShrink: 0 }} />
                                         <div className="flex-1 min-w-0">
                                           <p className="text-xs font-bold" style={{ color: kycFiles.selfie ? C.success : '#4C1D95' }}>
-                                            {kycFiles.selfie ? `✓ ${kycFiles.selfie.name}` : 'Tap to upload selfie with your ID'}
+                                            {kycFiles.selfie ? `✓ ${kycFiles.selfie.name}` : 'Tap to take or upload a selfie'}
                                           </p>
-                                          {!kycFiles.selfie && <p className="text-xs text-gray-400">Face + ID in one photo · JPG or PNG</p>}
+                                          {!kycFiles.selfie && <p className="text-xs text-gray-400">Opens camera on mobile · JPG or PNG</p>}
                                         </div>
                                         {kycFiles.selfie && (
                                           <button type="button" onClick={e => { e.preventDefault(); setKycFiles(f => ({...f, selfie: null})); setKycStep('upload_selfie'); }}
                                             className="text-xs text-red-400 font-bold hover:text-red-600">Remove</button>
                                         )}
-                                        <input type="file" accept="image/*" className="hidden"
+                                        {/* capture="user" opens front camera on mobile */}
+                                        <input type="file" accept="image/*" capture="user" className="hidden"
                                           onChange={e => {
                                             const f = e.target.files[0] || null;
                                             setKycFiles(prev => ({...prev, selfie: f}));
