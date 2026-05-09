@@ -123,4 +123,45 @@ async function sendSystemAlert(userId, title, message, url) {
   });
 }
 
-module.exports = { sendTradeAlert, sendSystemAlert };
+/**
+ * Send a push notification to ALL subscribed users at once.
+ * Uses OneSignal's "All" segment — one API call, no user-ID list needed.
+ * @param {string} title
+ * @param {string} message
+ * @param {string} [url]
+ */
+async function sendBroadcastPush(title, message, url) {
+  if (!isConfigured()) {
+    console.error('[Push] OneSignal not configured — skipping broadcast');
+    return;
+  }
+
+  const body = {
+    app_id:            APP_ID,
+    headings:          { en: title },
+    contents:          { en: message },
+    included_segments: ['All'],
+    url:               url || 'https://praqen.com',
+  };
+
+  console.error(`[Push] Broadcast to ALL — title: ${title}`);
+
+  try {
+    const response = await axios.post('https://onesignal.com/api/v1/notifications', body, {
+      headers: {
+        Authorization:  `Key ${API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 10000,
+    });
+    const { id, recipients, errors } = response.data || {};
+    console.error(`[Push] Broadcast delivered — id: ${id} | recipients: ${recipients}`);
+    if (errors) console.error('[Push] OneSignal broadcast errors:', JSON.stringify(errors));
+    return response.data;
+  } catch (e) {
+    const detail = e.response?.data || e.message;
+    console.error('[Push] OneSignal broadcast error:', JSON.stringify(detail));
+  }
+}
+
+module.exports = { sendTradeAlert, sendSystemAlert, sendBroadcastPush };

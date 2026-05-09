@@ -27,7 +27,7 @@ const TWILIO_PHONE = (process.env.TWILIO_PHONE || '').split(',')[0].trim();
 const TWILIO_WA_FROM = process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886'; // sandbox default
 
 // ── OneSignal Push Notifications ────────────────────────────────────────────
-const { sendTradeAlert, sendSystemAlert } = require('./services/pushNotificationService');
+const { sendTradeAlert, sendSystemAlert, sendBroadcastPush } = require('./services/pushNotificationService');
 
 // ── Africa's Talking (primary SMS for African numbers) ───────────────────────
 let atSms = null;
@@ -4410,19 +4410,27 @@ app.delete('/api/admin/listings/:id', verifyToken, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/admin/broadcast — send notification to all users
+// POST /api/admin/broadcast — send in-app + push notification to all users
 app.post('/api/admin/broadcast', verifyToken, async (req, res) => {
   try {
     const admin = await requireAdmin(req, res); if (!admin) return;
-    const { title, message, type = 'system' } = req.body;
+    const { title, message, type = 'system', url } = req.body;
     if (!title || !message) return res.status(400).json({ error: 'title and message required' });
+
     const { data: users } = await supabaseAdmin.from('users').select('id').eq('account_status', 'active');
     if (!users?.length) return res.json({ success: true, sent: 0 });
+
+    // ── In-app notifications (batched DB inserts) ─────────────────────────
     const notifications = users.map(u => ({ user_id: u.id, type, title, message, is_read: false, created_at: new Date() }));
-    // Insert in batches of 100
     for (let i = 0; i < notifications.length; i += 100) {
       await supabaseAdmin.from('notifications').insert(notifications.slice(i, i + 100));
     }
+
+    // ── Push notification to ALL subscribed devices (one OneSignal call) ──
+    sendBroadcastPush(title, message, url || 'https://praqen.com').catch(e =>
+      console.error('[broadcast] push failed:', e.message)
+    );
+
     res.json({ success: true, sent: users.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
