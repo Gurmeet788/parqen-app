@@ -270,6 +270,8 @@ export default function Settings({ user, setUser }) {
         setPhoneVerified(phoneOk);
         if (emailOk) { localStorage.removeItem('prq_email_resend'); setEmailResendCount(0); }
         if (phoneOk) { localStorage.removeItem('prq_phone_resend'); setPhoneResendCount(0); localStorage.removeItem('prq_phone_step'); setPhoneStep('done'); }
+        // Sync phone number into the form so Account tab and Verification tab show the real number
+        if (fresh.phone) setAccountForm(prev => ({ ...prev, phone: fresh.phone }));
         if (setUser) setUser(u => ({ ...u, ...fresh }));
         const stored = JSON.parse(localStorage.getItem('user') || '{}');
         localStorage.setItem('user', JSON.stringify({ ...stored, ...fresh }));
@@ -293,6 +295,7 @@ export default function Settings({ user, setUser }) {
           setEmailVerified(!!(fresh.is_email_verified || fresh.email_verified));
           setPhoneVerified(!!(fresh.is_phone_verified || fresh.phone_verified));
           setKycVerified(!!(fresh.kyc_verified || fresh.is_id_verified));
+          if (fresh.phone) setAccountForm(prev => ({ ...prev, phone: fresh.phone }));
           if (fresh.kyc_status) { setKycStatus(fresh.kyc_status); if (fresh.kyc_status === 'pending') setKycSubmitted(true); }
           if (fresh.kyc_id_type) setKycSubmittedType(fresh.kyc_id_type);
         }).catch(() => {});
@@ -352,9 +355,15 @@ export default function Settings({ user, setUser }) {
     }
     setPhoneStep('submitting');
     try {
-      await axios.post(`${API_URL}/users/submit-phone`, { phone }, { headers: authH() });
+      const r = await axios.post(`${API_URL}/users/submit-phone`, { phone }, { headers: authH() });
+      const savedPhone = r.data.phone || phone;
       setPhoneStep('submitted');
       localStorage.setItem('prq_phone_step', 'submitted');
+      // Persist confirmed phone so the UI always shows the real number
+      setAccountForm(prev => ({ ...prev, phone: savedPhone }));
+      if (setUser) setUser(prev => ({ ...prev, phone: savedPhone }));
+      const stored = JSON.parse(localStorage.getItem('user') || '{}');
+      localStorage.setItem('user', JSON.stringify({ ...stored, phone: savedPhone }));
       toast.success('📱 Phone number submitted! We\'ll notify you once it\'s approved.');
     } catch (e) {
       const serverMsg = e?.response?.data?.error || '';
@@ -658,13 +667,13 @@ export default function Settings({ user, setUser }) {
                         {phoneVerified || phoneStep === 'done' ? (
                           <div className="px-4 py-2.5 border-2 rounded-xl text-sm font-medium flex items-center justify-between"
                             style={{ borderColor: '#DCFCE7', backgroundColor: C.g50, color: C.g700 }}>
-                            <span>{accountForm.phone}</span>
+                            <span>{accountForm.phone || '(verified — loading...)'}</span>
                             <CheckCircle size={14} style={{ color: C.success, flexShrink: 0 }} />
                           </div>
                         ) : phoneStep === 'submitted' ? (
                           <div className="px-4 py-2.5 border-2 rounded-xl text-sm font-medium flex items-center justify-between"
                             style={{ borderColor: '#FDE68A', backgroundColor: '#FFFBEB', color: C.g700 }}>
-                            <span>{accountForm.phone}</span>
+                            <span>{accountForm.phone || '(number saved — under review)'}</span>
                             <Clock size={14} style={{ color: '#D97706', flexShrink: 0 }} />
                           </div>
                         ) : (
@@ -887,9 +896,9 @@ export default function Settings({ user, setUser }) {
                               </div>
                               <p className={`text-xs mt-0.5 ${done ? 'text-green-600' : underReview ? 'text-amber-700' : emailVerified ? 'text-blue-600' : 'text-gray-400'}`}>
                                 {done
-                                  ? `${accountForm.phone || 'Phone'} verified ✓`
+                                  ? accountForm.phone ? `${accountForm.phone} verified ✓` : 'Phone number verified ✓'
                                   : underReview
-                                    ? `${accountForm.phone || 'Your number'} is saved — being reviewed by our team`
+                                    ? accountForm.phone ? `${accountForm.phone} — waiting for approval` : 'Your number is saved — waiting for approval'
                                     : 'Submit your phone number to unlock the $2,000 trade limit'}
                               </p>
 

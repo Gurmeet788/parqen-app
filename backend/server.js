@@ -4609,6 +4609,19 @@ app.post('/api/admin/phone/approve', verifyToken, async (req, res) => {
     const { userId } = req.body;
     if (!userId) return res.status(400).json({ error: 'userId required' });
 
+    // If users.phone is null (submission bug), recover it from phone_verification_requests
+    const { data: existingUser } = await supabaseAdmin
+      .from('users').select('phone').eq('id', userId).single();
+    if (!existingUser?.phone) {
+      const { data: pvr } = await supabaseAdmin
+        .from('phone_verification_requests').select('phone').eq('user_id', userId).single();
+      if (pvr?.phone) {
+        await supabaseAdmin.from('users')
+          .update({ phone: pvr.phone }).eq('id', userId).catch(() => {});
+        console.log(`[phone/approve] recovered missing phone ${pvr.phone} for user ${userId.slice(0,8)}`);
+      }
+    }
+
     const { data: user, error } = await supabaseAdmin
       .from('users')
       .update({ is_phone_verified: true, phone_verified: true, updated_at: new Date().toISOString() })
