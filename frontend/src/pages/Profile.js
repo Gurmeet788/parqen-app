@@ -793,22 +793,6 @@ export default function Profile({userId:propUserId}){
               <div className="h-2.5 rounded-full bg-white/20"><div className="h-2.5 rounded-full" style={{width:`${verifPct}%`,backgroundColor:C.gold}}/></div>
             </div>
 
-            {own&&!emailOk&&(
-              <div className="flex items-center gap-3 p-3 rounded-xl border" style={{borderColor:'#FCA5A5',backgroundColor:'#FEF2F2'}}>
-                <AlertTriangle size={14} style={{color:C.danger,flexShrink:0}}/>
-                <p className="text-xs" style={{color:'#991B1B'}}>
-                  <strong>Email not verified.</strong> You need to verify your email to create offers and open trades.
-                </p>
-              </div>
-            )}
-            {own&&emailOk&&!phoneOk&&(
-              <div className="flex items-center gap-3 p-3 rounded-xl border" style={{borderColor:'#FCD34D',backgroundColor:'#FFFBEB'}}>
-                <Info size={14} style={{color:'#D97706',flexShrink:0}}/>
-                <p className="text-xs" style={{color:'#92400E'}}>
-                  <strong>Phone is optional.</strong> Add your phone number in Settings to unlock higher trade limits and SMS alerts.
-                </p>
-              </div>
-            )}
             <div className="bg-white rounded-2xl border shadow-sm p-4"
               style={{borderColor: verifPct===100 ? C.success : C.g200}}>
               <div className="flex items-center justify-between mb-1">
@@ -824,7 +808,7 @@ export default function Profile({userId:propUserId}){
                 style={{color: verifPct===100 ? C.success : C.g400}}>
                 {verifPct===100
                   ? '✅ All 3 verifications complete — your account is fully unlocked!'
-                  : 'Complete all steps in Settings to unlock higher trade limits.'}
+                  : 'Go to Settings → Verification to complete your profile.'}
               </p>
 
               {/* Fully-verified celebration banner */}
@@ -861,17 +845,10 @@ export default function Profile({userId:propUserId}){
                     <p className="text-xs mt-0.5 truncate" style={{color:C.g500}}>
                       {emailOk
                         ?`${user.email||''}  — required to create offers & trade`
-                        :'Verify your email to start trading on PRAQEN'}
+                        :'Not verified yet'}
                     </p>
                   </div>
-                  {emailOk
-                    ? <Lock size={14} style={{color:C.success, flexShrink:0}}/>
-                    : own&&(
-                        <button onClick={()=>navigate('/settings?tab=verification')}
-                          className="px-3 py-2 rounded-xl text-white text-xs font-black flex-shrink-0"
-                          style={{backgroundColor:C.danger}}>Verify Email →</button>
-                      )
-                  }
+                  {emailOk && <Lock size={14} style={{color:C.success, flexShrink:0}}/>}
                 </div>
 
                 {/* Phone */}
@@ -899,17 +876,15 @@ export default function Profile({userId:propUserId}){
                       {phoneOk
                         ? `${user.phone||''}  — verified`
                         : user.phone
-                          ? `${user.phone} — being reviewed by our team`
-                          : 'Add phone in Settings to unlock higher trade limits'}
+                          ? `${user.phone} — waiting for approval`
+                          : 'Not submitted yet'}
                     </p>
                   </div>
                   {phoneOk
                     ? <Lock size={14} style={{color:C.success, flexShrink:0}}/>
                     : user.phone
                       ? <Clock size={14} style={{color:'#D97706', flexShrink:0}}/>
-                      : own && <button onClick={()=>navigate('/settings?tab=verification')}
-                          className="px-3 py-2 rounded-xl text-white text-xs font-black flex-shrink-0"
-                          style={{backgroundColor:'#D97706'}}>Add →</button>
+                      : null
                   }
                 </div>
 
@@ -929,16 +904,14 @@ export default function Profile({userId:propUserId}){
                       </span>
                     </div>
                     <p className="text-xs mt-0.5" style={{color:C.g500}}>
-                      {kycOk?'ID verified — Advanced & VIP limits unlocked':user.kyc_status==='pending'?'Your documents are under review (24–48 hrs)':'National ID / Passport + selfie — unlocks $10,000 limit'}
+                      {kycOk?'ID verified — Advanced & VIP limits unlocked':user.kyc_status==='pending'?'Documents submitted — waiting for approval':'Not submitted yet'}
                     </p>
                   </div>
                   {kycOk
                     ? <Lock size={14} style={{color:C.success, flexShrink:0}}/>
                     : user.kyc_status==='pending'
                       ? <Clock size={16} style={{color:C.warn,flexShrink:0}}/>
-                      : own && <button onClick={()=>navigate('/settings?tab=verification')}
-                          className="px-3 py-2 rounded-xl text-white text-xs font-black flex-shrink-0"
-                          style={{backgroundColor:C.gold}}>Verify →</button>
+                      : null
                   }
                 </div>
               </div>
@@ -961,17 +934,6 @@ export default function Profile({userId:propUserId}){
               </div>
             </div>
 
-            {verifPct<100&&own&&(
-              <div className="p-4 rounded-2xl border-2 flex items-start gap-3" style={{borderColor:C.warn,backgroundColor:'#FFFBEB'}}>
-                <AlertTriangle size={16} style={{color:C.warn,flexShrink:0,marginTop:1}}/>
-                <div>
-                  <p className="text-sm font-black mb-0.5" style={{color:'#92400E'}}>Verification Incomplete</p>
-                  <p className="text-xs leading-relaxed" style={{color:'#B45309'}}>
-                    Complete all 3 steps to unlock <strong>High Trust Score</strong>, <strong>Advanced trade limits ($10,000+)</strong>, and the <strong>Verified Identity badge</strong>.
-                  </p>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
