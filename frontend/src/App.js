@@ -1,5 +1,6 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useParams, useNavigate } from 'react-router-dom';
+import { HelmetProvider } from 'react-helmet-async';
 import { RatesProvider } from './contexts/RatesContext';
 import axios from 'axios';
 import { identifyUser, unidentifyUser } from './utils/notifications';
@@ -222,6 +223,7 @@ function App() {
   if (loading) return <PageLoader />;
 
   return (
+    <HelmetProvider>
     <RatesProvider>
     <Router>
       <AppShell>
@@ -301,6 +303,7 @@ function App() {
       </AppShell>
     </Router>
     </RatesProvider>
+    </HelmetProvider>
   );
 }
 

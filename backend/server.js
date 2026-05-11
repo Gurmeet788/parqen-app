@@ -743,16 +743,33 @@ async function createAffiliateEarning(tradeId, buyerId, tradeAmountBtc, tradeAmo
 
 async function ensureWallet(userId, username) {
   const { data: user, error } = await supabaseAdmin.from('users')
-    .select('coinbase_wallet_id, bitcoin_wallet_address, coinbase_wallet_address, username').eq('id', userId).single();
+    .select('bitcoin_wallet_address, username').eq('id', userId).single();
   if (error) throw new Error('User not found');
-  const existingAddress = user.bitcoin_wallet_address || user.coinbase_wallet_address;
-  if (existingAddress && user.coinbase_wallet_id) return { walletId: user.coinbase_wallet_id, address: existingAddress, isNew: false };
-  const wallet = await coinbaseWallet.createWallet(userId, username || user.username || `user-${userId.slice(0, 8)}`);
-  await supabaseAdmin.from('users').update({
-    coinbase_wallet_id: wallet.walletId, bitcoin_wallet_address: wallet.address,
-    coinbase_wallet_address: wallet.address, wallet_created_at: new Date().toISOString(),
-  }).eq('id', userId);
-  return { walletId: wallet.walletId, address: wallet.address, isNew: true };
+
+  // Always use HD wallet — derive address from master seed + userId
+  const hdWallet = require('./services/hdWalletService');
+  const addrData = hdWallet.generateUserAddress(userId);
+  const address  = addrData.address;
+
+  // If the stored address already matches the HD wallet address, nothing to do
+  if (user.bitcoin_wallet_address === address) {
+    return { address, isNew: false };
+  }
+
+  // Save HD wallet address to both tables
+  await Promise.all([
+    supabaseAdmin.from('users').update({
+      bitcoin_wallet_address: address,
+      updated_at: new Date().toISOString(),
+    }).eq('id', userId),
+    supabaseAdmin.from('user_wallets').upsert({
+      user_id:     userId,
+      btc_address: address,
+      updated_at:  new Date().toISOString(),
+    }, { onConflict: 'user_id' }),
+  ]);
+
+  return { address, isNew: true };
 }
 
 async function lockFundsInEscrow(tradeId, sellerId, buyerId, amountBtc) {
@@ -781,12 +798,20 @@ async function lockFundsInEscrow(tradeId, sellerId, buyerId, amountBtc) {
 }
 
 async function releaseFundsToBuyer(tradeId, buyerId, amountBtc, tradeAmountUsd) {
-  const { data: escrow, error: escrowError } = await supabaseAdmin.from('escrow_locks').select('*').eq('trade_id', tradeId).single();
-  if (escrowError || !escrow) throw new Error('Escrow record not found');
-  if (escrow.status !== 'LOCKED') throw new Error(`Escrow status is ${escrow.status}, cannot release`);
+  // Atomically claim the escrow — prevents double-release from retries or concurrent calls
+  const { data: claimedRows, error: claimErr } = await supabaseAdmin
+    .from('escrow_locks')
+    .update({ status: 'RELEASING' })
+    .eq('trade_id', tradeId)
+    .eq('status', 'LOCKED')
+    .select('id');
+  if (claimErr) throw new Error(`Failed to claim escrow: ${claimErr.message}`);
+  if (!claimedRows || claimedRows.length === 0) throw new Error('Escrow already released or not in LOCKED state');
+
   const { data: buyerBalance } = await supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', buyerId).single();
   const newBuyerBalance = parseFloat(buyerBalance?.balance_btc || 0) + parseFloat(amountBtc);
   await supabaseAdmin.from('user_balances').upsert({ user_id: buyerId, balance_btc: newBuyerBalance, updated_at: new Date() });
+  await supabaseAdmin.from('user_wallets').update({ balance_btc: newBuyerBalance, updated_at: new Date() }).eq('user_id', buyerId);
   await supabaseAdmin.from('escrow_locks').update({ status: 'RELEASED', released_at: new Date() }).eq('trade_id', tradeId);
   await supabaseAdmin.from('trades').update({ status: 'COMPLETED', completed_at: new Date() }).eq('id', tradeId);
   await createAffiliateEarning(tradeId, buyerId, amountBtc, tradeAmountUsd);
@@ -1059,17 +1084,27 @@ app.post('/api/auth/register', async (req, res) => {
       })();
     }
 
-    // 4. Coinbase wallet (non-critical, slow external API — fully background)
-    coinbaseWallet.createWallet(newUser.id, username)
-      .then(async (wallet) => {
-        await supabaseAdmin.from('users').update({
-          coinbase_wallet_id:      wallet.walletId,
-          coinbase_wallet_address: wallet.address,
-          wallet_created_at:       new Date(),
-        }).eq('id', newUser.id);
-        console.log(`[Register] Coinbase wallet created for ${newUser.username}: ${wallet.address}`);
-      })
-      .catch(e => console.error('[Register] Coinbase wallet failed (non-critical):', e.message));
+    // 4. HD wallet address — assign immediately on registration
+    try {
+      const hdWallet  = require('./services/hdWalletService');
+      const addrData  = hdWallet.generateUserAddress(newUser.id);
+      await Promise.all([
+        supabaseAdmin.from('users').update({
+          bitcoin_wallet_address: addrData.address,
+          wallet_created_at:      new Date().toISOString(),
+        }).eq('id', newUser.id),
+        supabaseAdmin.from('user_wallets').upsert({
+          user_id:          newUser.id,
+          btc_address:      addrData.address,
+          balance_btc:      0,
+          last_onchain_btc: 0,
+          updated_at:       new Date().toISOString(),
+        }, { onConflict: 'user_id' }),
+      ]);
+      console.log(`[Register] HD wallet address assigned for ${newUser.username}: ${addrData.address}`);
+    } catch (e) {
+      console.error('[Register] HD wallet address failed (non-critical):', e.message);
+    }
 
   } catch (error) {
     console.error('[Register] Unexpected error:', error);
@@ -5022,10 +5057,21 @@ app.get('/api/wallet', verifyToken, async (req, res) => {
 
 app.post('/api/wallet/create-address', verifyToken, async (req, res) => {
   try {
-    const { data: user } = await supabaseAdmin.from('users').select('username').eq('id', req.userId).single();
-    const wallet = await coinbaseWallet.createWallet(req.userId, user?.username || 'user');
-    await supabaseAdmin.from('users').update({ coinbase_wallet_id: wallet.walletId, bitcoin_wallet_address: wallet.address, coinbase_wallet_address: wallet.address, wallet_created_at: new Date().toISOString() }).eq('id', req.userId);
-    res.json({ success: true, address: wallet.address, walletId: wallet.walletId, message: 'New Bitcoin address generated successfully' });
+    const hdWallet = require('./services/hdWalletService');
+    const addrData = hdWallet.generateUserAddress(req.userId);
+    await Promise.all([
+      supabaseAdmin.from('users').update({
+        bitcoin_wallet_address: addrData.address,
+        wallet_created_at: new Date().toISOString(),
+      }).eq('id', req.userId),
+      supabaseAdmin.from('user_wallets').upsert({
+        user_id:          req.userId,
+        btc_address:      addrData.address,
+        last_onchain_btc: 0,
+        updated_at:       new Date().toISOString(),
+      }, { onConflict: 'user_id' }),
+    ]);
+    res.json({ success: true, address: addrData.address, message: 'New Bitcoin address generated successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -5033,18 +5079,18 @@ app.post('/api/wallet/create-address', verifyToken, async (req, res) => {
 
 app.post('/api/wallet/check-payment', verifyToken, async (req, res) => {
   try {
-    const { data: user } = await supabaseAdmin.from('users').select('coinbase_wallet_id, bitcoin_wallet_address').eq('id', req.userId).single();
-    if (!user?.coinbase_wallet_id) return res.status(400).json({ error: 'No wallet found. Please create a wallet first.' });
-    const payment = await coinbaseWallet.checkPayment(user.coinbase_wallet_id);
-    if (payment.confirmed && payment.amount > 0) {
-      const { data: currentBal } = await supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', req.userId).single();
-      const newBal = parseFloat(currentBal?.balance_btc || 0) + payment.amount;
-      await supabaseAdmin.from('user_balances').upsert({ user_id: req.userId, balance_btc: newBal, updated_at: new Date() });
-      await supabaseAdmin.from('wallet_transactions').insert({ user_id: req.userId, type: 'DEPOSIT', amount_btc: payment.amount, status: 'CONFIRMED', tx_hash: payment.txHash, coinbase_tx_id: user.coinbase_wallet_id, created_at: new Date() }).maybeSingle();
-      res.json({ success: true, confirmed: true, amount_btc: payment.amount, tx_hash: payment.txHash, new_balance: newBal, message: `Deposit confirmed: ${payment.amount} BTC received` });
-    } else {
-      res.json({ success: true, confirmed: false, message: 'No confirmed payment yet. Payments can take 10–60 minutes to confirm.' });
-    }
+    // Replaced Coinbase CDP payment check with HD wallet deposit monitor
+    const depositMonitor = require('./services/depositMonitor');
+    const result = await depositMonitor.checkAddressNow(req.userId);
+    res.json({
+      success:     true,
+      confirmed:   result.balance_btc > 0,
+      balance_btc: result.balance_btc,
+      address:     result.address,
+      message:     result.balance_btc > 0
+        ? `Balance: ${result.balance_btc.toFixed(8)} BTC`
+        : 'No confirmed deposits yet. Bitcoin confirmations take 10–60 minutes.',
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

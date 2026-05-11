@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRates } from '../contexts/RatesContext';
 import { useNavigate, Link } from 'react-router-dom';
+import SEO from '../components/SEO';
 import axios from 'axios';
 import {
   CheckCircle, RefreshCw, AlertTriangle,
@@ -988,7 +989,9 @@ export default function GiftCards({user}) {
 
   return (
     <div className="min-h-screen flex flex-col pb-0 overflow-x-hidden"
-      style={{backgroundColor:C.g100,fontFamily:"'DM Sans',sans-serif"}}>      <style>{`
+      style={{backgroundColor:C.g100,fontFamily:"'DM Sans',sans-serif"}}>
+      <SEO />
+      <style>{`
         @keyframes slideUp{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}
         input[type=number]::-webkit-inner-spin-button,
         input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}

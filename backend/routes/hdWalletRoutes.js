@@ -118,16 +118,24 @@ router.post('/generate-address', verifyToken, async (req, res) => {
     const userId  = req.userId;
     const addrData = hdWallet.generateUserAddress(userId);
 
-    // Save to users table
-    await supabaseAdmin
-      .from('users')
-      .update({
+    // Save to BOTH tables so deposit monitor, wallet page, and escrow all
+    // read the same HD-wallet-controlled address. Saving only to users caused
+    // user_wallets to keep the old Coinbase CDP address, which Coinbase sweeps.
+    await Promise.all([
+      supabaseAdmin.from('users').update({
         bitcoin_wallet_address: addrData.address,
         updated_at: new Date().toISOString(),
-      })
-      .eq('id', userId);
+      }).eq('id', userId),
 
-    console.log(`[hdWalletRoutes] Address generated for ${userId.slice(0,8)}: ${addrData.address}`);
+      supabaseAdmin.from('user_wallets').upsert({
+        user_id:          userId,
+        btc_address:      addrData.address,
+        last_onchain_btc: 0,   // fresh address — no on-chain history yet
+        updated_at:       new Date().toISOString(),
+      }, { onConflict: 'user_id' }),
+    ]);
+
+    console.log(`[hdWalletRoutes] HD address saved for ${userId.slice(0,8)}: ${addrData.address}`);
 
     // Subscribe new address to real-time WebSocket monitor immediately
     realtimeDepositService.subscribeAddress(userId, addrData.address);

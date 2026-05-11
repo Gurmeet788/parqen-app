@@ -256,25 +256,36 @@ class DepositMonitor {
       const blockchainSats = (chainStats.funded_txo_sum || 0) - (chainStats.spent_txo_sum || 0);
       const blockchainBTC  = parseFloat((blockchainSats / 1e8).toFixed(8));
 
-      // ── Step 2: Fetch current DB balance ─────────────────────────────────
+      // ── Step 2: Fetch last KNOWN on-chain balance (not the operational balance)
+      // CRITICAL: We compare against last_onchain_btc, NOT balance_btc.
+      // balance_btc goes up/down with internal escrow operations (locks, releases,
+      // refunds) — those are off-chain and must never be used as a deposit baseline.
+      // last_onchain_btc only ever increases when real Bitcoin arrives on-chain.
+      const { data: walletRow } = await supabaseAdmin
+        .from('user_wallets')
+        .select('last_onchain_btc, balance_btc')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      const lastOnchainBTC = parseFloat(walletRow?.last_onchain_btc || 0);
+
+      // ── Step 3: Compare on-chain vs last known on-chain ──────────────────
+      // Use small epsilon (1 satoshi) to avoid floating-point false positives
+      if (blockchainBTC <= lastOnchainBTC + 0.000000009) return;
+
+      const depositBTC = parseFloat((blockchainBTC - lastOnchainBTC).toFixed(8));
+      if (depositBTC * 1e8 <= DUST_THRESHOLD_SATS) return; // ignore dust
+
+      console.log(`\n💰 [DepositMonitor] New deposit detected for user ${username}: ${depositBTC} BTC`);
+      console.log(`   Address        : ${address}`);
+      console.log(`   Blockchain now : ${blockchainBTC} BTC | Last on-chain: ${lastOnchainBTC} BTC`);
+
+      // Fetch current operational balance to add the deposit on top
       const { data: balRow } = await supabaseAdmin
         .from('user_balances')
         .select('balance_btc, balance_usd')
         .eq('user_id', userId)
         .maybeSingle();
-
-      const dbBalanceBTC = parseFloat(balRow?.balance_btc || 0);
-
-      // ── Step 3: Compare — if blockchain <= DB, nothing new ────────────────
-      // Use small epsilon (1 satoshi) to avoid floating-point false positives
-      if (blockchainBTC <= dbBalanceBTC + 0.000000009) return;
-
-      const depositBTC = parseFloat((blockchainBTC - dbBalanceBTC).toFixed(8));
-      if (depositBTC * 1e8 <= DUST_THRESHOLD_SATS) return; // ignore dust
-
-      console.log(`\n💰 [DepositMonitor] New deposit detected for user ${username}: ${depositBTC} BTC`);
-      console.log(`   Address   : ${address}`);
-      console.log(`   Blockchain: ${blockchainBTC} BTC | DB was: ${dbBalanceBTC} BTC`);
 
       // ── Step 4: Fetch BTC/USD price ───────────────────────────────────────
       let btcUsd = 0;
@@ -292,18 +303,43 @@ class DepositMonitor {
       }
 
       const depositUsd       = btcUsd > 0 ? parseFloat((depositBTC * btcUsd).toFixed(2)) : 0;
+      const currentBalanceBTC = parseFloat(balRow?.balance_btc || 0);
       const currentBalanceUsd = parseFloat(balRow?.balance_usd || 0);
+      // Add the new deposit ON TOP of the existing operational balance (not replace it)
+      const newBalanceBTC     = parseFloat((currentBalanceBTC + depositBTC).toFixed(8));
       const newBalanceUsd     = parseFloat((currentBalanceUsd + depositUsd).toFixed(2));
 
-      // ── Step 5: Update user_balances ──────────────────────────────────────
-      // FIX: onConflict must be 'user_id' — user_balances has id as PK + UNIQUE(user_id)
+      // ── Step 5a: Claim this deposit by recording last_onchain_btc FIRST ────
+      // This is the idempotency guard. Once last_onchain_btc = blockchainBTC,
+      // the next poll will not detect the same deposit again, even if the
+      // balance credit below fails. Without this guard, a failed user_wallets
+      // upsert would leave last_onchain_btc unchanged, causing the deposit
+      // monitor to re-credit the same BTC on every subsequent poll.
+      const { error: claimErr } = await supabaseAdmin
+        .from('user_wallets')
+        .upsert(
+          {
+            user_id:          userId,
+            btc_address:      address,
+            last_onchain_btc: blockchainBTC,
+            updated_at:       new Date().toISOString(),
+          },
+          { onConflict: 'user_id' }
+        );
+
+      if (claimErr) {
+        console.error(`[DepositMonitor] Failed to claim deposit for ${username} (last_onchain_btc not updated):`, claimErr.message);
+        return; // abort — do not credit balance if we cannot mark deposit as seen
+      }
+
+      // ── Step 5b: Update user_balances ────────────────────────────────────
       const { error: balErr } = await supabaseAdmin
         .from('user_balances')
         .upsert({
-          user_id:    userId,
-          balance_btc: blockchainBTC,
+          user_id:     userId,
+          balance_btc: newBalanceBTC,
           ...(depositUsd > 0 ? { balance_usd: newBalanceUsd } : {}),
-          updated_at: new Date().toISOString(),
+          updated_at:  new Date().toISOString(),
         }, { onConflict: 'user_id' });
 
       if (balErr) {
@@ -315,23 +351,21 @@ class DepositMonitor {
       supabaseAdmin.from('balance_audit').insert({
         user_id:     userId,
         change_btc:  depositBTC,
-        new_balance: blockchainBTC,
+        new_balance: newBalanceBTC,
         reason:      'DEPOSIT',
         created_at:  new Date().toISOString(),
       }).catch(() => {});
 
-      // ── Step 6: Update user_wallets.balance_btc ───────────────────────────
-      const { data: walletRow } = await supabaseAdmin
-        .from('user_wallets').select('balance_btc').eq('user_id', userId).maybeSingle();
-      const newWalletBalance = parseFloat((parseFloat(walletRow?.balance_btc || 0) + depositBTC).toFixed(8));
+      // ── Step 6: Sync user_wallets balance_btc ────────────────────────────────
+      // last_onchain_btc was already saved in Step 5a. Only update balance_btc here.
+      const currentWalletBTC = parseFloat(walletRow?.balance_btc || 0);
+      const newWalletBalance = parseFloat((currentWalletBTC + depositBTC).toFixed(8));
 
       const { error: walletErr } = await supabaseAdmin
         .from('user_wallets')
-        .upsert(
-          { user_id: userId, btc_address: address, balance_btc: newWalletBalance, updated_at: new Date().toISOString() },
-          { onConflict: 'user_id' }
-        );
-      if (walletErr) console.error(`[DepositMonitor] user_wallets upsert failed for ${username}:`, walletErr.message);
+        .update({ balance_btc: newWalletBalance, updated_at: new Date().toISOString() })
+        .eq('user_id', userId);
+      if (walletErr) console.error(`[DepositMonitor] user_wallets balance sync failed for ${username}:`, walletErr.message);
 
       // ── Step 7: Insert wallet_transaction record ──────────────────────────
       // wallet_transactions has no unique constraint on tx_hash, so use INSERT not upsert
@@ -355,7 +389,7 @@ class DepositMonitor {
           user_id:    userId,
           type:       'wallet',
           title:      '₿ Bitcoin Received!',
-          message:    `${depositBTC.toFixed(8)} BTC credited to your wallet. Balance: ${blockchainBTC.toFixed(8)} BTC`,
+          message:    `${depositBTC.toFixed(8)} BTC credited to your wallet. Balance: ${newBalanceBTC.toFixed(8)} BTC`,
           action:     '/wallet',
           is_read:    false,
           created_at: new Date().toISOString(),
@@ -382,7 +416,7 @@ class DepositMonitor {
         });
       });
 
-      console.log(`✅ [DepositMonitor] Credited ${depositBTC} BTC to ${username} | Balance: ${blockchainBTC.toFixed(8)} BTC`);
+      console.log(`✅ [DepositMonitor] Credited ${depositBTC} BTC to ${username} | Operational balance: ${newBalanceBTC.toFixed(8)} BTC | On-chain: ${blockchainBTC.toFixed(8)} BTC`);
 
     } catch (err) {
       if (err.response?.status === 429) {

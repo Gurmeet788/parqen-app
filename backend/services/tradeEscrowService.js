@@ -388,6 +388,22 @@ class TradeEscrowService {
 
     console.log(`🔓 Release reference: ${releaseTxHash}`);
 
+    // ── Atomically claim the escrow lock before touching any balance ──────────
+    // UPDATE WHERE status = 'LOCKED' is a single atomic DB operation.
+    // If two requests race, only one will match the WHERE clause and get rows
+    // back. The other gets an empty result and throws, preventing double-credit.
+    const { data: claimedRows, error: claimErr } = await supabaseAdmin
+        .from('escrow_locks')
+        .update({ status: 'RELEASING' })
+        .eq('trade_id', tradeId)
+        .eq('status', 'LOCKED')
+        .select('id');
+
+    if (claimErr) throw new Error(`Failed to claim escrow lock: ${claimErr.message}`);
+    if (!claimedRows || claimedRows.length === 0) {
+        throw new Error('Escrow already released or being released by a concurrent request — no action taken');
+    }
+
     // ── Credit the BTC receiver's balance (user_balances + user_wallets) ────
     const { data: currentBal } = await supabaseAdmin
         .from('user_balances')

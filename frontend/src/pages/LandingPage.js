@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import SEO from '../components/SEO';
 import {
   ArrowRight, Shield, Zap, Globe, Bitcoin, Gift,
   ChevronDown, Lock, TrendingUp, TrendingDown, Users,
@@ -113,7 +114,9 @@ export default function LandingPage({ user }) {
   const goTo = path => navigate(path);
 
   return (
-    <div className="overflow-x-hidden" style={{fontFamily:"'DM Sans',sans-serif",background:'#fff',maxWidth:'100vw'}}>      <style>{`
+    <div className="overflow-x-hidden" style={{fontFamily:"'DM Sans',sans-serif",background:'#fff',maxWidth:'100vw'}}>
+      <SEO />
+      <style>{`
         *, *::before, *::after { box-sizing: border-box; }
         html, body { overscroll-behavior-y: none; }
         @keyframes slideUp{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:translateY(0)}}

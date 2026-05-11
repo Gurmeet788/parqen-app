@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
+import SEO from '../components/SEO';
 import axios from 'axios';
 import { API_URL } from '../App';
 import {
@@ -199,6 +200,7 @@ export default function Login({ onLogin }) {
 
   return (
     <>
+      <SEO />
       <style>{`
         * {
           margin: 0;

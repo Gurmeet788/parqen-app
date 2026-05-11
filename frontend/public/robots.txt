@@ -116,7 +116,24 @@ Allow: /
 Disallow: /api/
 Disallow: /admin/
 Disallow: /dashboard/
+Disallow: /wallet/
+Disallow: /settings/
+Disallow: /my-trades/
+Disallow: /my-listings/
+Disallow: /moderator/
 Disallow: /_next/
 Disallow: /static/
+
+# ── Disallow filter and pagination URLs (prevent crawl budget waste) ──────────
+# These URL patterns create near-duplicate pages with no unique content.
+# The canonical clean URLs (e.g. /buy-bitcoin) are indexed instead.
+Disallow: /*?page=
+Disallow: /*?sort=
+Disallow: /*?filter=
+Disallow: /*?currency=
+Disallow: /*?amount=
+Disallow: /*?country=
+Disallow: /*?ref=
+Disallow: /*?message=
 
 Sitemap: https://praqen.com/sitemap.xml

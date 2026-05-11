@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
+import SEO from '../components/SEO';
 import axios from 'axios';
 import { API_URL } from '../App';
 import {
@@ -365,6 +366,7 @@ export default function Register({ onLogin }) {
 
   return (
     <>
+      <SEO />
       <style>{`
         * {
           margin: 0;
