@@ -1909,8 +1909,9 @@ app.post('/api/users/verify-phone-otp', verifyToken, async (req, res) => {
 // POST /api/kyc/upload — receive base64 ID + selfie, store in Supabase Storage, set status pending
 app.post('/api/kyc/upload', verifyToken, async (req, res) => {
   try {
-    const { idImage, selfieImage, idType = 'national_id' } = req.body;
+    const { idImage, idImageBack, selfieImage, idType = 'national_id' } = req.body;
     if (!idImage || !selfieImage) return res.status(400).json({ error: 'ID photo and selfie are both required' });
+    if (!idImageBack) return res.status(400).json({ error: 'Back of ID card is required — please upload both front and back' });
 
     const userId    = req.userId;
     const timestamp = Date.now();
@@ -1919,21 +1920,30 @@ app.post('/api/kyc/upload', verifyToken, async (req, res) => {
     const toBuffer = (b64) => Buffer.from(b64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
 
     let idUrl      = null;
+    let idBackUrl  = null;
     let selfieUrl  = null;
 
     // Try Supabase Storage upload (bucket: kyc-documents)
     try {
       const { error: idErr } = await supabaseAdmin.storage
         .from('kyc-documents')
-        .upload(`${userId}/id_${timestamp}.jpg`, toBuffer(idImage), { contentType: 'image/jpeg', upsert: true });
+        .upload(`${userId}/id_front_${timestamp}.jpg`, toBuffer(idImage), { contentType: 'image/jpeg', upsert: true });
+
+      const { error: idBackErr } = await supabaseAdmin.storage
+        .from('kyc-documents')
+        .upload(`${userId}/id_back_${timestamp}.jpg`, toBuffer(idImageBack), { contentType: 'image/jpeg', upsert: true });
 
       const { error: selfieErr } = await supabaseAdmin.storage
         .from('kyc-documents')
         .upload(`${userId}/selfie_${timestamp}.jpg`, toBuffer(selfieImage), { contentType: 'image/jpeg', upsert: true });
 
       if (!idErr) {
-        const { data: { publicUrl } } = supabaseAdmin.storage.from('kyc-documents').getPublicUrl(`${userId}/id_${timestamp}.jpg`);
+        const { data: { publicUrl } } = supabaseAdmin.storage.from('kyc-documents').getPublicUrl(`${userId}/id_front_${timestamp}.jpg`);
         idUrl = publicUrl;
+      }
+      if (!idBackErr) {
+        const { data: { publicUrl } } = supabaseAdmin.storage.from('kyc-documents').getPublicUrl(`${userId}/id_back_${timestamp}.jpg`);
+        idBackUrl = publicUrl;
       }
       if (!selfieErr) {
         const { data: { publicUrl } } = supabaseAdmin.storage.from('kyc-documents').getPublicUrl(`${userId}/selfie_${timestamp}.jpg`);
@@ -1945,12 +1955,13 @@ app.post('/api/kyc/upload', verifyToken, async (req, res) => {
 
     // Always mark user as pending regardless of storage success
     await supabaseAdmin.from('users').update({
-      kyc_status:       'pending',
-      kyc_id_type:      idType,
-      kyc_submitted_at: new Date().toISOString(),
-      kyc_id_url:       idUrl,
-      kyc_selfie_url:   selfieUrl,
-      updated_at:       new Date().toISOString(),
+      kyc_status:        'pending',
+      kyc_id_type:       idType,
+      kyc_submitted_at:  new Date().toISOString(),
+      kyc_id_url:        idUrl,
+      kyc_id_back_url:   idBackUrl,
+      kyc_selfie_url:    selfieUrl,
+      updated_at:        new Date().toISOString(),
     }).eq('id', userId);
 
     // In-app notification for user
@@ -3227,9 +3238,14 @@ app.post('/api/trades/:id/mark-paid', verifyToken, async (req, res) => {
     const allowedStatuses = ['CREATED', 'FUNDS_LOCKED', 'ESCROW', 'ACTIVE', 'OPEN'];
     if (!allowedStatuses.includes(trade.status)) return res.status(400).json({ error: `Cannot mark as paid — trade status is ${trade.status}` });
 
+    // Atomic update — only flips to PAYMENT_SENT if status is still in allowedStatuses.
+    // Prevents a race where auto-cancel fires between our status check above and this write.
     const { data, error } = await supabaseAdmin.from('trades')
       .update({ status: 'PAYMENT_SENT', buyer_confirmed: true, buyer_confirmed_at: new Date() })
-      .eq('id', req.params.id).select().single();
+      .eq('id', req.params.id)
+      .in('status', allowedStatuses)
+      .select().single();
+    if (!data) return res.status(409).json({ error: 'Trade status changed before payment could be confirmed. Please refresh and try again.' });
     if (error) return res.status(400).json({ error: error.message });
 
     // Notify whoever needs to act next
@@ -3312,18 +3328,38 @@ app.post('/api/trades/:id/cancel', verifyToken, async (req, res) => {
     if (!authorized) return res.status(403).json({ error: 'Not authorized to cancel this trade' });
     const cancellableStatuses = ['CREATED', 'FUNDS_LOCKED', 'ESCROW', 'ACTIVE', 'OPEN', 'PAYMENT_SENT', 'PAID'];
     if (!cancellableStatuses.includes(trade.status)) return res.status(400).json({ error: `Trade cannot be cancelled — status is ${trade.status}` });
-    const { data: escrow } = await supabaseAdmin.from('escrow_locks').select('*').eq('trade_id', req.params.id).single();
-    if (escrow && escrow.status === 'LOCKED') {
-      // escrow.seller_id holds the btcProviderId (buyer in gift card trades, seller in BTC trades)
-      const btcProviderId = escrow.seller_id || trade.seller_id;
-      const { data: providerBalance } = await supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', btcProviderId).single();
-      const newProviderBalance = parseFloat(providerBalance?.balance_btc || 0) + parseFloat(escrow.amount_btc);
-      await supabaseAdmin.from('user_balances').update({ balance_btc: newProviderBalance, updated_at: new Date() }).eq('user_id', btcProviderId);
+    // Atomically claim the escrow — prevents double refund if two cancel requests race
+    const { data: claimedEscrow } = await supabaseAdmin
+      .from('escrow_locks')
+      .update({ status: 'REFUNDING', released_at: new Date().toISOString() })
+      .eq('trade_id', req.params.id)
+      .eq('status', 'LOCKED')
+      .select('*');
+
+    if (claimedEscrow && claimedEscrow.length > 0) {
+      const esc           = claimedEscrow[0];
+      const btcProviderId = esc.seller_id || trade.seller_id;
+      const refundAmount  = parseFloat(esc.amount_btc || trade.amount_btc || 0);
+
+      const { error: rpcErr } = await supabaseAdmin.rpc('increment_balance_btc', {
+        p_user_id: btcProviderId,
+        p_amount:  refundAmount,
+      });
+      if (rpcErr) {
+        const { data: providerBalance } = await supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', btcProviderId).single();
+        const newProviderBalance = parseFloat((parseFloat(providerBalance?.balance_btc || 0) + refundAmount).toFixed(8));
+        await supabaseAdmin.from('user_balances').update({ balance_btc: newProviderBalance, updated_at: new Date() }).eq('user_id', btcProviderId);
+      }
       await supabaseAdmin.from('escrow_locks').update({ status: 'REFUNDED' }).eq('trade_id', req.params.id);
     }
+
+    // Atomic trade cancel — only flips if still in a cancellable status
     const { data, error } = await supabaseAdmin.from('trades')
       .update({ status: 'CANCELLED', cancel_reason: reason || 'Trade opener cancelled', cancelled_at: new Date() })
-      .eq('id', req.params.id).select().single();
+      .eq('id', req.params.id)
+      .in('status', cancellableStatuses)
+      .select().single();
+    if (!data) return res.status(409).json({ error: 'Trade status changed — cancel was blocked.' });
     if (error) return res.status(400).json({ error: error.message });
 
     // Notify both parties about cancellation
@@ -3373,40 +3409,59 @@ app.post('/api/trades/:id/auto-cancel', async (req, res) => {
     if (!trade) return res.status(404).json({ error: 'Trade not found' });
 
     // Disputed trades are locked — only a moderator can resolve them.
-    // Reject the cancellation regardless of who or what called this endpoint.
     if (trade.status === 'DISPUTED') {
       console.error(`[Auto-cancel] Blocked — trade ${tradeId.slice(0,8)} is DISPUTED. Moderator must give final verdict.`);
       return res.status(403).json({ error: 'Cannot cancel a disputed trade. A moderator must give the final verdict.' });
     }
 
-    const cancellableStatuses = ['CREATED', 'FUNDS_LOCKED', 'ESCROW', 'ACTIVE', 'OPEN', 'PAYMENT_SENT'];
+    // Payment already marked — buyer has paid, trade is locked until seller releases or dispute resolves.
+    if (['PAYMENT_SENT', 'PAID'].includes(trade.status)) {
+      console.error(`[Auto-cancel] Blocked — trade ${tradeId.slice(0,8)} status is ${trade.status}. Cannot auto-cancel after payment marked.`);
+      return res.status(403).json({ error: 'Cannot auto-cancel after buyer has marked payment. Seller must release Bitcoin or open a dispute.' });
+    }
+
+    const cancellableStatuses = ['CREATED', 'FUNDS_LOCKED', 'ESCROW', 'ACTIVE', 'OPEN'];
     if (!cancellableStatuses.includes(trade.status)) {
       return res.json({ success: true, message: `Trade already in status: ${trade.status}` });
     }
 
-    // Refund BTC back to whoever locked it
-    const { data: escrow } = await supabaseAdmin
-      .from('escrow_locks').select('*').eq('trade_id', tradeId).single();
+    // ── Atomically claim the escrow (UPDATE WHERE status='LOCKED') ────────────
+    // This prevents concurrent auto-cancel calls from both refunding the same escrow.
+    // Only the request that flips status LOCKED→REFUNDING proceeds; all others skip.
+    const { data: claimedEscrow } = await supabaseAdmin
+      .from('escrow_locks')
+      .update({ status: 'REFUNDING', released_at: new Date().toISOString() })
+      .eq('trade_id', tradeId)
+      .eq('status', 'LOCKED')
+      .select('*');
 
-    if (escrow && escrow.status === 'LOCKED') {
-      // escrow.seller_id = btcProviderId (set correctly for both BTC and gift card trades)
-      const btcProviderId = escrow.seller_id || trade.seller_id;
-      const refundAmount  = parseFloat(escrow.amount_btc || trade.amount_btc || 0);
+    if (claimedEscrow && claimedEscrow.length > 0) {
+      const esc           = claimedEscrow[0];
+      const btcProviderId = esc.seller_id || trade.seller_id;
+      const refundAmount  = parseFloat(esc.amount_btc || trade.amount_btc || 0);
 
-      const { data: providerBal } = await supabaseAdmin
-        .from('user_balances').select('balance_btc').eq('user_id', btcProviderId).single();
+      // Atomic balance increment via Supabase RPC to avoid read-modify-write race with depositMonitor
+      const { error: rpcErr } = await supabaseAdmin.rpc('increment_balance_btc', {
+        p_user_id: btcProviderId,
+        p_amount:  refundAmount,
+      });
 
-      const newBalance = parseFloat((parseFloat(providerBal?.balance_btc || 0) + refundAmount).toFixed(8));
+      if (rpcErr) {
+        // RPC not available — fall back to read-modify-write (less safe but better than losing funds)
+        console.warn('[Auto-cancel] increment_balance_btc RPC unavailable, using fallback:', rpcErr.message);
+        const { data: providerBal } = await supabaseAdmin
+          .from('user_balances').select('balance_btc').eq('user_id', btcProviderId).single();
+        const newBalance = parseFloat((parseFloat(providerBal?.balance_btc || 0) + refundAmount).toFixed(8));
+        await supabaseAdmin.from('user_balances')
+          .update({ balance_btc: newBalance, updated_at: new Date().toISOString() })
+          .eq('user_id', btcProviderId);
+      }
 
-      await supabaseAdmin.from('user_balances')
-        .update({ balance_btc: newBalance, updated_at: new Date().toISOString() })
-        .eq('user_id', btcProviderId);
-
+      // Mark escrow fully refunded
       await supabaseAdmin.from('escrow_locks')
-        .update({ status: 'REFUNDED', released_at: new Date().toISOString() })
+        .update({ status: 'REFUNDED' })
         .eq('trade_id', tradeId);
 
-      // Log the refund
       await supabaseAdmin.from('wallet_transactions').insert({
         user_id:    btcProviderId,
         type:       'ESCROW_RELEASE',
@@ -3417,13 +3472,24 @@ app.post('/api/trades/:id/auto-cancel', async (req, res) => {
       });
 
       console.log(`✅ Auto-cancel: refunded ${refundAmount} BTC to ${btcProviderId.slice(0,8)}`);
+    } else {
+      console.log(`[Auto-cancel] Escrow already claimed/refunded for trade ${tradeId.slice(0,8)} — skipping balance update`);
     }
 
-    // Mark trade as cancelled
+    // ── Atomically cancel the trade — only if still in a cancellable status ──
+    // The .in() guard prevents overwriting PAYMENT_SENT/COMPLETED if status changed
+    // between our earlier check and now (race window).
     const { data, error } = await supabaseAdmin.from('trades')
       .update({ status: 'CANCELLED', cancel_reason: reason || '30-minute payment window expired', cancelled_at: new Date().toISOString() })
-      .eq('id', tradeId).select().single();
+      .eq('id', tradeId)
+      .in('status', cancellableStatuses)
+      .select().single();
 
+    if (!data) {
+      // Status changed to a protected state (PAYMENT_SENT etc.) in the race window — abort.
+      console.warn(`[Auto-cancel] Trade ${tradeId.slice(0,8)} status changed before cancel update — blocked.`);
+      return res.json({ success: true, message: 'Trade moved to a protected status — cancel aborted.' });
+    }
     if (error) return res.status(400).json({ error: error.message });
 
     // Notify both parties
@@ -4247,7 +4313,7 @@ app.get('/api/admin/users', verifyToken, async (req, res) => {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { search = '', status = '', page = 1, limit = 50 } = req.query;
     let query = supabaseAdmin.from('users')
-      .select('id, email, username, full_name, phone, avatar_url, account_status, is_admin, is_moderator, is_email_verified, is_id_verified, is_phone_verified, kyc_status, kyc_id_type, kyc_submitted_at, total_trades, completion_rate, average_rating, positive_feedback, negative_feedback, badge, referral_code, total_referrals, created_at, last_login, last_seen_at, country', { count: 'exact' })
+      .select('id, email, username, full_name, phone, phone_number, avatar_url, account_status, is_admin, is_moderator, is_email_verified, is_id_verified, is_phone_verified, kyc_status, kyc_id_type, kyc_submitted_at, kyc_id_url, kyc_id_back_url, kyc_selfie_url, kyc_rejection_reason, total_trades, completion_rate, average_rating, positive_feedback, negative_feedback, badge, referral_code, total_referrals, created_at, last_login, last_seen_at, country', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range((page - 1) * limit, page * limit - 1);
     if (search) query = query.or(`username.ilike.%${search}%,email.ilike.%${search}%,full_name.ilike.%${search}%,phone.ilike.%${search}%`);
@@ -4325,7 +4391,7 @@ app.get('/api/admin/kyc', verifyToken, async (req, res) => {
     const { status = 'pending' } = req.query;
 
     let query = supabaseAdmin.from('users')
-      .select('id, email, username, full_name, phone, is_phone_verified, kyc_id_type, kyc_id_url, kyc_selfie_url, kyc_status, kyc_submitted_at, created_at, country')
+      .select('id, email, username, full_name, phone, is_phone_verified, kyc_id_type, kyc_id_url, kyc_id_back_url, kyc_selfie_url, kyc_status, kyc_submitted_at, created_at, country')
       .order('kyc_submitted_at', { ascending: true, nullsFirst: false });
 
     if (status === 'all') {

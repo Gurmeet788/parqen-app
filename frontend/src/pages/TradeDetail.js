@@ -899,15 +899,18 @@ export default function TradeDetail({user}) {
     if(!user){navigate('/login');return;}
     if(!id)return;
     loadAll();
+    const sendHb=()=>axios.post(`${API_URL}/users/heartbeat`,{},{headers:authH()}).catch(()=>{});
+    sendHb();
     const iv=setInterval(()=>{refreshTrade();loadMessages();},5000);
     const tv=setInterval(()=>{fetchTyping();},2000);
-    return()=>{clearInterval(iv);clearInterval(tv);};
+    const hb=setInterval(sendHb,30000);
+    return()=>{clearInterval(iv);clearInterval(tv);clearInterval(hb);};
   },[id,user]);
 
   useEffect(()=>{
-    // Disputed trades are frozen — only the moderator can give a final verdict.
-    // Never show a countdown or trigger auto-cancel while a dispute is open.
-    if(!trade?.created_at||!isActive||isDisputed)return;
+    // Freeze timer once buyer has marked payment — trade is locked until seller releases or dispute resolves.
+    // Disputed trades are also frozen — only the moderator can give a final verdict.
+    if(!trade?.created_at||!isActive||isDisputed||isPaid)return;
     // Parse timestamps as UTC — Supabase returns TIMESTAMP cols without 'Z', causing local-time misparse
     const toUTC = s => s ? new Date(/[Z+]/.test(s) ? s : s + 'Z') : null;
     // Use the stored expires_at (authoritative). Fallback to created_at + time_limit for old trades.
@@ -919,14 +922,14 @@ export default function TradeDetail({user}) {
       setTimeLeft(rem);
       // Never auto-cancel a disputed trade — isDisputed check above already prevents
       // this effect from running, but isEscrow is kept as a second guard.
-      if(rem<=0 && isEscrow && !isDisputed && !autoCancelled.current){
+      if(rem<=0 && isEscrow && !isDisputed && !isPaid && !autoCancelled.current){
         autoCancelled.current = true;
         clearInterval(iv);
         autoCancel();
       }
     },1000);
     return()=>clearInterval(iv);
-  },[trade?.expires_at,trade?.created_at,status]);
+  },[trade?.expires_at,trade?.created_at,status,isPaid]);
 
   useEffect(()=>{
     const alreadyDone = trade?.user_gave_feedback || localStorage.getItem('fb_done_'+id);
@@ -972,7 +975,10 @@ export default function TradeDetail({user}) {
     if(!id)return;
     try{
       const r=await axios.get(`${API_URL}/trades/${id}`,{headers:authH()});
-      setTrade(r.data.trade);
+      const t=r.data.trade;
+      setTrade(t);
+      if(t.seller) setSeller(t.seller);
+      if(t.buyer)  setBuyer(t.buyer);
     }catch{}
   };
 
@@ -1198,6 +1204,15 @@ export default function TradeDetail({user}) {
     (gcBrand && !BTCBrands.includes(gcBrand)) ||
     trade?.listing?.listing_type?.includes('GIFT_CARD')
   );
+  const isSellFlow = isSeller && !isGiftCardTrade;
+  const T = isSellFlow ? {
+    primary: '#D97706', dark: '#B45309',
+    grad: 'linear-gradient(135deg, #D97706, #F59E0B)',
+  } : {
+    primary: C.forest, dark: C.green,
+    grad: `linear-gradient(135deg, ${C.forest}, ${C.green})`,
+  };
+
   const showMarkPaid  = isGiftCardTrade ? (isSeller&&isEscrow&&isActive) : (isBuyer&&isEscrow&&isActive);
   const showRelease   = isGiftCardTrade ? (isBuyer&&isPaid&&isActive)    : (isSeller&&isPaid&&isActive);
   const showDispute   = isActive&&!isDisputed&&(isBuyer||isSeller);
@@ -1475,7 +1490,7 @@ export default function TradeDetail({user}) {
 
               {/* ── TRADE HEADER ─────────────────────────────────── */}
               <div className="flex-shrink-0 border-b overflow-hidden"
-                style={{borderColor:C.g100, background:`linear-gradient(135deg,${C.forest} 0%,${C.green} 100%)`}}>
+                style={{borderColor:C.g100, background:T.grad}}>
 
                 {/* Top row: avatar + name + timer */}
                 <div className="flex items-center justify-between gap-2 px-3 pt-2 pb-2">
@@ -1485,7 +1500,7 @@ export default function TradeDetail({user}) {
                     <div className="relative flex-shrink-0">
                       <Avatar user={cp} size={28} radius="rounded-lg"/>
                       <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2"
-                        style={{borderColor:C.forest,backgroundColor:cpOnline?C.online:C.g400}}/>
+                        style={{borderColor:T.dark,backgroundColor:cpOnline?C.online:C.g400}}/>
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -1522,14 +1537,14 @@ export default function TradeDetail({user}) {
                   {/* PAY | RECEIVE side by side */}
                   <div className="grid grid-cols-2 gap-2 mb-2">
                     <div>
-                      <p className="text-white/60 font-semibold mb-0.5 text-xs">💵 You Pay</p>
-                      <p className="text-base font-black text-white leading-tight">{sym}{fmt(userPays, 0)}</p>
-                      <p className="text-white/60 font-semibold mt-0.5 text-xs">{cur} · {payMethod}</p>
+                      <p className="text-white/60 font-semibold mb-0.5 text-xs">{isSellFlow ? '₿ You Send' : '💵 You Pay'}</p>
+                      <p className="text-base font-black leading-tight" style={{color: isSellFlow ? C.gold : '#fff'}}>{isSellFlow ? `₿ ${btcReceived.toFixed(8)}` : `${sym}${fmt(userPays, 0)}`}</p>
+                      <p className="text-white/60 font-semibold mt-0.5 text-xs">{isSellFlow ? 'Bitcoin' : `${cur} · ${payMethod}`}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-white/60 font-semibold mb-0.5 text-xs">🛒 You Receive</p>
-                      <p className="text-base font-black leading-tight" style={{color:C.gold}}>₿ {btcReceived.toFixed(8)}</p>
-                      <p className="text-white/60 font-semibold mt-0.5 text-xs">≈ {sym}{fmt(btcValueInLocal, 2)} {cur}</p>
+                      <p className="text-white/60 font-semibold mb-0.5 text-xs">{isSellFlow ? '💰 You Receive' : '🛒 You Receive'}</p>
+                      <p className="text-base font-black text-white leading-tight">{isSellFlow ? `${sym}${fmt(userPays, 0)}` : `₿ ${btcReceived.toFixed(8)}`}</p>
+                      <p className="text-white/60 font-semibold mt-0.5 text-xs">{isSellFlow ? `${cur} · ${payMethod}` : `≈ ${sym}${fmt(btcValueInLocal, 2)} ${cur}`}</p>
                     </div>
                   </div>
 
@@ -1647,21 +1662,91 @@ export default function TradeDetail({user}) {
                     const isOpen   =/trade.*open|escrow.*lock|btc.*locked|opened/i.test(text);
                     const isDisp   =/disput|moderator|support.*review/i.test(text);
 
-                    let grad, iconBg, iconColor, textColor, icon, label;
-                    if(isDisp)   {grad='linear-gradient(135deg,#7F1D1D,#DC2626)';iconBg='#FEF2F2';iconColor='#DC2626';textColor='#fff';icon='🚨';label='DISPUTE';}
-                    else if(isDanger){grad='linear-gradient(135deg,#450a0a,#991B1B)';iconBg='#FEE2E2';iconColor='#EF4444';textColor='#fff';icon='❌';label='CANCELLED';}
-                    else if(isSuccess){grad='linear-gradient(135deg,#052e16,#166534)';iconBg='#DCFCE7';iconColor='#16A34A';textColor='#fff';icon='✅';label='COMPLETED';}
-                    else if(isPmt)   {grad='linear-gradient(135deg,#1e1b4b,#3730A3)';iconBg='#EDE9FE';iconColor='#6D28D9';textColor='#fff';icon='💰';label='PAYMENT';}
-                    else if(isWarn)  {grad='linear-gradient(135deg,#431407,#C2410C)';iconBg='#FED7AA';iconColor='#EA580C';textColor='#fff';icon='⚠️';label='ALERT';}
-                    else if(isOpen)  {grad='linear-gradient(135deg,#0c1a10,#1B4332)';iconBg='#D1FAE5';iconColor='#059669';textColor='#fff';icon='🔒';label='TRADE OPEN';}
-                    else             {grad='linear-gradient(135deg,#1e293b,#334155)';iconBg='#E2E8F0';iconColor='#64748B';textColor='#fff';icon='ℹ️';label='INFO';}
+                    /* ── PAYMENT CONFIRMED — hero card ─────────────────── */
+                    if(isPmt) return(
+                      <div key={i} className="flex justify-center my-4 px-1">
+                        <div className="w-full max-w-[95%] rounded-2xl overflow-hidden"
+                          style={{
+                            background:'linear-gradient(145deg,#78350F,#B45309,#D97706)',
+                            boxShadow:'0 0 0 2px #FCD34D, 0 8px 32px rgba(180,83,9,0.55)',
+                            animation:'pmtPulse 2.4s ease-in-out infinite',
+                          }}>
+                          {/* top bar */}
+                          <div className="flex items-center justify-between px-4 py-2.5"
+                            style={{borderBottom:'1px solid rgba(255,255,255,0.15)'}}>
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-lg flex-shrink-0"
+                                style={{background:'rgba(255,255,255,0.18)',border:'1.5px solid rgba(255,255,255,0.35)'}}>
+                                💰
+                              </div>
+                              <span className="font-black text-white text-xs tracking-[0.15em] uppercase">Payment Confirmed</span>
+                            </div>
+                            <span className="text-xs font-semibold" style={{color:'rgba(255,255,255,0.5)'}}>{ts}</span>
+                          </div>
+                          {/* body */}
+                          <div className="px-4 py-3">
+                            <p className="text-sm font-black text-white leading-snug">{text}</p>
+                            <div className="mt-2.5 px-3 py-2 rounded-xl text-xs font-black"
+                              style={{
+                                background: isSeller
+                                  ? 'linear-gradient(90deg,rgba(255,255,255,0.22),rgba(255,255,255,0.1))'
+                                  : 'rgba(0,0,0,0.18)',
+                                color:'#FEF9C3',
+                                border:'1px solid rgba(255,255,255,0.2)',
+                              }}>
+                              {isBuyer
+                                ? '✓ You marked payment sent. Awaiting seller confirmation.'
+                                : isSeller
+                                  ? '⚡ ACTION REQUIRED — Check your account now, then release Bitcoin.'
+                                  : '💰 Payment step confirmed.'}
+                            </div>
+                          </div>
+                        </div>
+                        <style>{`@keyframes pmtPulse{0%,100%{box-shadow:0 0 0 2px #FCD34D,0 8px 32px rgba(180,83,9,0.55);}50%{box-shadow:0 0 0 3px #FBBF24,0 12px 40px rgba(217,119,6,0.75);}}`}</style>
+                      </div>
+                    );
 
-                    const pmtHint=isPmt?(isBuyer?'✓ Payment sent. Seller is now verifying your transfer.':isSeller?'⚡ Check your account. Confirm receipt then release Bitcoin.':null):null;
+                    /* ── TRADE COMPLETE — celebration card ─────────────── */
+                    if(isSuccess) return(
+                      <div key={i} className="flex justify-center my-4 px-1">
+                        <div className="w-full max-w-[95%] rounded-2xl overflow-hidden"
+                          style={{
+                            background:'linear-gradient(145deg,#052e16,#065F46,#059669)',
+                            boxShadow:'0 0 0 2px #6EE7B7, 0 8px 32px rgba(5,150,105,0.55)',
+                          }}>
+                          <div className="flex items-center justify-between px-4 py-2.5"
+                            style={{borderBottom:'1px solid rgba(255,255,255,0.15)'}}>
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-lg flex-shrink-0"
+                                style={{background:'rgba(255,255,255,0.18)',border:'1.5px solid rgba(255,255,255,0.35)'}}>
+                                🎉
+                              </div>
+                              <span className="font-black text-white text-xs tracking-[0.15em] uppercase">Trade Complete</span>
+                            </div>
+                            <span className="text-xs font-semibold" style={{color:'rgba(255,255,255,0.5)'}}>{ts}</span>
+                          </div>
+                          <div className="px-4 py-3">
+                            <p className="text-sm font-black text-white leading-snug">{text}</p>
+                            <div className="mt-2.5 px-3 py-2 rounded-xl text-xs font-black"
+                              style={{background:'rgba(255,255,255,0.12)',color:'#A7F3D0',border:'1px solid rgba(255,255,255,0.2)'}}>
+                              ✅ Bitcoin has left escrow. Leave feedback to help the community!
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+
+                    /* ── other system banners (generic) ─────────────────── */
+                    let grad, iconBg, icon, label;
+                    if(isDisp)  {grad='linear-gradient(135deg,#7F1D1D,#DC2626)';iconBg='#FEF2F2';icon='🚨';label='DISPUTE';}
+                    else if(isDanger){grad='linear-gradient(135deg,#450a0a,#991B1B)';iconBg='#FEE2E2';icon='❌';label='CANCELLED';}
+                    else if(isWarn)  {grad='linear-gradient(135deg,#431407,#C2410C)';iconBg='#FED7AA';icon='⚠️';label='ALERT';}
+                    else if(isOpen)  {grad='linear-gradient(135deg,#0c1a10,#1B4332)';iconBg='#D1FAE5';icon='🔒';label='TRADE OPEN';}
+                    else             {grad='linear-gradient(135deg,#1e293b,#334155)';iconBg='#E2E8F0';icon='ℹ️';label='INFO';}
 
                     return(
                       <div key={i} className="flex justify-center my-3 px-1">
                         <div className="w-full max-w-[95%] rounded-2xl overflow-hidden shadow-lg">
-                          {/* coloured header bar */}
                           <div className="flex items-center gap-2.5 px-3.5 py-2" style={{background:grad}}>
                             <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-base" style={{backgroundColor:iconBg}}>
                               {icon}
@@ -1669,15 +1754,8 @@ export default function TradeDetail({user}) {
                             <span className="text-xs font-black tracking-widest flex-1" style={{color:'rgba(255,255,255,0.85)',letterSpacing:'0.08em'}}>{label}</span>
                             <span className="text-xs font-semibold" style={{color:'rgba(255,255,255,0.5)'}}>{ts}</span>
                           </div>
-                          {/* message body */}
-                          <div className="px-4 py-2.5" style={{background:'rgba(0,0,0,0.03)',borderTop:'none'}}>
+                          <div className="px-4 py-2.5" style={{background:'rgba(0,0,0,0.03)'}}>
                             <p className="text-xs font-semibold leading-relaxed" style={{color:'#1E293B'}}>{text}</p>
-                            {pmtHint&&(
-                              <div className="mt-2 px-3 py-1.5 rounded-xl text-xs font-bold"
-                                style={{background:isBuyer?'linear-gradient(90deg,#EDE9FE,#DDD6FE)':'linear-gradient(90deg,#FEF3C7,#FDE68A)',color:isBuyer?'#4C1D95':'#92400E'}}>
-                                {pmtHint}
-                              </div>
-                            )}
                           </div>
                         </div>
                       </div>

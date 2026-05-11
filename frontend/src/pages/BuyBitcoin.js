@@ -355,10 +355,10 @@ function OfferCard({listing, btcPriceUSD, onViewSeller, onBuy, liked, onToggleLi
         </div>
         <div className="border-l pl-3" style={{borderColor:C.g100}}>
           <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{color:C.g500}}>YOU RECEIVE</p>
-          <p className="font-black leading-tight" style={{color:C.gold, fontSize: btcReceived < 0.001 ? '14px' : '20px'}}>
-            ₿{fBtc(btcReceived)}
+          <p className="text-2xl font-black leading-tight truncate" style={{color:C.g800}}>
+            {sym}{fmt(parseFloat((btcReceived * btcPriceUSD * usdRate).toFixed(2)))} {cur}
           </p>
-          <p className="text-xs font-semibold mt-0.5" style={{color:C.g400}}>Bitcoin</p>
+          <p className="text-xs font-semibold mt-0.5" style={{color:C.gold}}>₿{fBtc(btcReceived)}</p>
         </div>
       </div>
 

@@ -366,23 +366,27 @@ function OfferCard({listing, btcPriceUSD, onViewBuyer, onSell}) {
           <p className="font-black leading-tight" style={{color:C.gold, fontSize: exampleBtc < 0.001 ? '14px' : '20px'}}>
             ₿{fBtc(exampleBtc)}
           </p>
-          <p className="text-xs font-semibold mt-0.5" style={{color:C.g400}}>Bitcoin</p>
+          {/* Market value of the BTC sent — strips out buyer's margin so it differs from YOU RECEIVE */}
+          <p className="text-xs font-semibold mt-0.5" style={{color:C.g600}}>
+            {sym}{fmt(parseFloat((exampleBtc * btcPriceUSD * usdRate).toFixed(2)))} {cur}
+          </p>
+          <p className="text-xs font-semibold mt-0" style={{color:C.g400}}>Bitcoin</p>
         </div>
         <div className="border-l pl-3" style={{borderColor:C.g100}}>
           <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{color:C.g500}}>YOU RECEIVE</p>
           <p className="text-2xl font-black leading-tight truncate" style={{color:C.g800}}>
-            {sym}{fmt(exampleRecv)}
+            {sym}{fmt(exampleRecv)} {cur}
           </p>
-          <p className="text-xs font-semibold mt-0.5" style={{color:C.g400}}>{cur}</p>
+          <p className="text-xs font-semibold mt-0.5" style={{color:C.g400}}>Cash payment</p>
         </div>
       </div>
 
       {/* ─ Rate + margin ─────────────────────────────────────── */}
-      <div className="px-4 pb-2 flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold truncate" style={{color:C.g600}}>
+      <div className="px-4 pb-2">
+        <p className="text-xs font-semibold" style={{color:C.g600}}>
           Rate: {sym}{fmt(rateLocal)}/BTC
         </p>
-        <span className="font-semibold px-2 py-0.5 rounded flex-shrink-0"
+        <span className="inline-block mt-1 font-semibold px-2 py-0.5 rounded"
           style={{backgroundColor:marginBg, color:'#fff', fontSize:'10px'}}>
           {marginLabel}
         </span>

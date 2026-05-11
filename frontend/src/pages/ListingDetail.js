@@ -177,6 +177,28 @@ const loadAll = useCallback(async () => {
 
   // ── Derived values ──────────────────────────────────────────────────────────
   const isGiftCard = listing.listing_type?.toUpperCase().includes('GIFT');
+  // BUY listing = visitor is selling their BTC → they RECEIVE fiat, PAY BTC
+  // SELL listing = visitor is buying BTC → they PAY fiat, RECEIVE BTC
+  const isVisitorSelling = !isGiftCard && (listing.listing_type === 'BUY' || listing.listing_type === 'BUY_BITCOIN');
+
+  // Theme colours — amber for sell flow, forest-green for buy flow
+  const T = isVisitorSelling ? {
+    primary:  '#D97706',
+    dark:     '#B45309',
+    grad:     'linear-gradient(135deg, #D97706, #F59E0B)',
+    mist:     '#FFFBEB',
+    border:   '#FDE68A60',
+    shadow:   'rgba(180,83,9,0.30)',
+    shadowLg: 'rgba(180,83,9,0.40)',
+  } : {
+    primary:  C.forest,
+    dark:     C.green,
+    grad:     `linear-gradient(135deg, ${C.forest}, ${C.green})`,
+    mist:     C.mist,
+    border:   `${C.sage}60`,
+    shadow:   'rgba(27,67,50,0.25)',
+    shadowLg: 'rgba(27,67,50,0.40)',
+  };
 
   const cur      = listing.currency || 'USD';
   const sym      = listing.currency_symbol || CUR_SYM[cur] || '$';
@@ -383,9 +405,9 @@ const loadAll = useCallback(async () => {
         {/* ── Seller card ── */}
         <div style={{ background: '#fff', borderRadius: 18, marginBottom: 14, border: `1px solid ${C.g200}`, overflow: 'hidden', boxShadow: '0 2px 12px rgba(27,67,50,0.06)' }}>
 
-          {/* Green header bar */}
-          <div style={{ background: `linear-gradient(135deg, ${C.forest}, ${C.green})`, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 11, fontWeight: 800, color: 'rgba(255,255,255,0.7)', letterSpacing: 1 }}>SELLER</span>
+          {/* Header bar */}
+          <div style={{ background: T.grad, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: 'rgba(255,255,255,0.7)', letterSpacing: 1 }}>{isVisitorSelling ? 'BUYER' : 'SELLER'}</span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 800, color: isOnline ? '#6EE7B7' : 'rgba(255,255,255,0.5)' }}>
               <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: isOnline ? '#6EE7B7' : 'rgba(255,255,255,0.3)', display: 'inline-block' }} />
               {isOnline ? 'Online Now' : `Seen ${lastSeen}`}
@@ -639,7 +661,7 @@ const loadAll = useCallback(async () => {
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: 11, color: C.g400, fontWeight: 700, marginBottom: 2 }}>LIMIT</div>
-                <div style={{ fontSize: 13, fontWeight: 800, color: C.forest }}>{sym}{fmt(minLocal, 0)} – {sym}{fmt(maxLocal, 0)}</div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: T.primary }}>{sym}{fmt(minLocal, 0)} – {sym}{fmt(maxLocal, 0)}</div>
               </div>
             </div>
 
@@ -650,7 +672,7 @@ const loadAll = useCallback(async () => {
                 {/* Label row with MIN / MAX quick-fill chips */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                   <label style={{ fontSize: 12, fontWeight: 800, color: C.g600 }}>
-                    YOU PAY ({cur})
+                    {isVisitorSelling ? `YOU RECEIVE (${cur})` : `YOU PAY (${cur})`}
                   </label>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button
@@ -658,8 +680,8 @@ const loadAll = useCallback(async () => {
                       onClick={() => { setPayAmt(String(Math.ceil(minLocal))); setTradeError(''); }}
                       style={{
                         fontSize: 11, fontWeight: 800, cursor: 'pointer',
-                        color: C.forest, background: C.mist,
-                        border: `1.5px solid ${C.sage}60`,
+                        color: T.primary, background: T.mist,
+                        border: `1.5px solid ${T.border}`,
                         borderRadius: 7, padding: '4px 10px', lineHeight: 1,
                         transition: 'all 0.15s',
                       }}>
@@ -670,10 +692,10 @@ const loadAll = useCallback(async () => {
                       onClick={() => { setPayAmt(String(Math.floor(maxLocal))); setTradeError(''); }}
                       style={{
                         fontSize: 11, fontWeight: 900, cursor: 'pointer',
-                        color: '#fff', background: `linear-gradient(135deg, ${C.forest}, ${C.green})`,
+                        color: '#fff', background: T.grad,
                         border: 'none',
                         borderRadius: 7, padding: '4px 10px', lineHeight: 1,
-                        boxShadow: '0 2px 8px rgba(27,67,50,0.25)',
+                        boxShadow: `0 2px 8px ${T.shadow}`,
                         transition: 'all 0.15s',
                       }}>
                       MAX {sym}{fmt(maxLocal, 0)}
@@ -691,7 +713,7 @@ const loadAll = useCallback(async () => {
                       width: '100%', boxSizing: 'border-box',
                       paddingLeft: 36, paddingRight: 56, paddingTop: 16, paddingBottom: 16,
                       fontSize: 22, fontWeight: 900,
-                      border: `2px solid ${payAmtNum > 0 && (payAmtNum < minLocal || payAmtNum > maxLocal) ? C.danger : payAmtNum > 0 ? C.green : C.g200}`,
+                      border: `2px solid ${payAmtNum > 0 && (payAmtNum < minLocal || payAmtNum > maxLocal) ? C.danger : payAmtNum > 0 ? T.primary : C.g200}`,
                       borderRadius: 14, outline: 'none', color: C.g800,
                     }}
                   />
@@ -702,9 +724,9 @@ const loadAll = useCallback(async () => {
               </div>
 
               {/* You receive */}
-              <div style={{ background: C.mist, borderRadius: 14, padding: '14px 16px', marginBottom: 16, border: `1px solid ${C.green}20` }}>
+              <div style={{ background: T.mist, borderRadius: 14, padding: '14px 16px', marginBottom: 16, border: `1px solid ${T.primary}20` }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <span style={{ fontSize: 11, fontWeight: 800, color: C.g500 }}>YOU RECEIVE</span>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: C.g500 }}>{isVisitorSelling ? 'YOU PAY' : 'YOU RECEIVE'}</span>
                   <span style={{ fontSize: 11, fontWeight: 800, color: '#fff', background: margin > 0 ? C.danger : margin < 0 ? C.success : C.g400, borderRadius: 20, padding: '2px 8px' }}>
                     {margin === 0 ? 'Market' : margin > 0 ? `+${margin}%` : `${margin}%`}
                   </span>
@@ -714,10 +736,12 @@ const loadAll = useCallback(async () => {
                     <span style={{ color: '#fff', fontWeight: 900, fontSize: 13 }}>₿</span>
                   </div>
                   <div>
-                    <div style={{ fontSize: 22, fontWeight: 900, color: C.forest, lineHeight: 1 }}>
-                      {btcAfterFee > 0 ? fmtBtc(btcAfterFee) : <span style={{ color: C.g300 }}>0.00000000</span>}
+                    <div style={{ fontSize: 22, fontWeight: 900, color: T.primary, lineHeight: 1 }}>
+                      {fiatEquivalent > 0 ? `${sym}${fmt(fiatEquivalent, 2)} ${cur}` : <span style={{ color: C.g300 }}>0.00 {cur}</span>}
                     </div>
-                    {fiatEquivalent > 0 && <div style={{ fontSize: 11, color: C.g400, fontWeight: 600, marginTop: 2 }}>≈ {sym}{fmt(fiatEquivalent, 2)} {cur}</div>}
+                    <div style={{ fontSize: 11, color: C.g400, fontWeight: 600, marginTop: 2 }}>
+                      ₿ {btcAfterFee > 0 ? fmtBtc(btcAfterFee) : '0.00000000'}
+                    </div>
                   </div>
                   {quoteFetching && <RefreshCw size={13} color={C.g300} style={{ marginLeft: 'auto' }} className="animate-spin" />}
                 </div>
@@ -760,18 +784,18 @@ const loadAll = useCallback(async () => {
                 style={{
                   width: '100%', padding: '16px', borderRadius: 14, border: 'none', cursor: 'pointer',
                   background: submitting || !payAmt || payAmtNum <= 0 || payAmtNum < minLocal || payAmtNum > maxLocal
-                    ? C.g200 : `linear-gradient(135deg, ${C.forest}, ${C.green})`,
+                    ? C.g200 : T.grad,
                   color: submitting || !payAmt || payAmtNum <= 0 || payAmtNum < minLocal || payAmtNum > maxLocal
                     ? C.g400 : '#fff',
                   boxShadow: (!submitting && payAmt && payAmtNum >= minLocal && payAmtNum <= maxLocal)
-                    ? '0 6px 24px rgba(27,67,50,0.4)' : 'none',
+                    ? `0 6px 24px ${T.shadowLg}` : 'none',
                   fontWeight: 900, fontSize: 15,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                   transition: 'all 0.2s',
                 }}>
                 {submitting
                   ? <><RefreshCw size={15} className="animate-spin" /> Opening trade…</>
-                  : <><Lock size={14} /> Proceed to Payment <ArrowRight size={14} /></>}
+                  : <><Lock size={14} /> {isVisitorSelling ? 'SELL BITCOIN' : 'Proceed to Payment'} <ArrowRight size={14} /></>}
               </button>
               )}
 

@@ -291,6 +291,7 @@ function UsersSection() {
   const [filter, setFilter]   = useState('');
   const [selected, setSelected] = useState(null);
   const [acting, setActing]   = useState(false);
+  const [zoomImg, setZoomImg] = useState(null);
   const LIMIT = 20;
 
   const load = useCallback(async () => {
@@ -329,6 +330,7 @@ function UsersSection() {
 
   return (
     <div className="space-y-4">
+      {zoomImg && <ImageModal src={zoomImg.src} label={zoomImg.label} onClose={() => setZoomImg(null)} />}
       <SectionHead title={`Users (${fmt(total)})`} sub="Manage user accounts, roles, and verification" />
 
       {/* Filters */}
@@ -393,7 +395,7 @@ function UsersSection() {
                           {u.is_email_verified && <span title="Email verified" className="text-xs">📧</span>}
                           {u.is_phone_verified
                             ? <span title="Phone verified" className="text-xs">📱</span>
-                            : u.phone && <span title="Phone pending review" className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-black" style={{ backgroundColor:'#FFFBEB', color:'#92400E' }}>📱 Pending</span>}
+                            : u.phone_number && <span title="Phone pending review" className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-black" style={{ backgroundColor:'#FFFBEB', color:'#92400E' }}>📱 Pending</span>}
                           {u.is_id_verified
                             ? <span title="KYC verified" className="text-xs">🪪</span>
                             : u.kyc_status === 'pending' && <span title="KYC pending review" className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-black" style={{ backgroundColor:'#F5F3FF', color:'#6D28D9' }}>🪪 Pending</span>}
@@ -466,9 +468,9 @@ function UsersSection() {
               {/* Phone number row — always visible so admin can see the number before approving */}
               <div className="flex items-center justify-between py-1.5 border-b" style={{ borderColor: C.g100 }}>
                 <span className="text-xs" style={{ color: C.g400 }}>Phone</span>
-                {selected.phone
+                {selected.phone_number
                   ? <span className="text-xs font-bold" style={{ color: selected.is_phone_verified ? C.success : '#D97706' }}>
-                      {selected.phone}{!selected.is_phone_verified && ' ⏳'}
+                      {selected.phone_number}{!selected.is_phone_verified && ' ⏳'}
                     </span>
                   : <span className="text-xs" style={{ color: C.g400 }}>—</span>}
               </div>
@@ -483,7 +485,76 @@ function UsersSection() {
               )}
             </div>
 
-            <div className="space-y-2">
+            {/* ── KYC ID images ── */}
+            {(selected.kyc_id_url || selected.kyc_id_back_url || selected.kyc_selfie_url) && (
+              <div className="mt-3 space-y-2">
+                <p className="text-xs font-black uppercase tracking-wider" style={{ color: C.g400 }}>
+                  🪪 Identity Documents
+                </p>
+                {selected.kyc_id_url && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-bold" style={{ color: C.g500 }}>ID Front</span>
+                      <button
+                        onClick={() => setZoomImg({ src: selected.kyc_id_url, label: `${selected.username} — ID Document` })}
+                        className="flex items-center gap-1 text-xs font-bold hover:opacity-70 transition"
+                        style={{ color: C.forest, background: 'none', border: 'none', cursor: 'pointer' }}>
+                        <Maximize2 size={11} /> View
+                      </button>
+                    </div>
+                    <div
+                      onClick={() => setZoomImg({ src: selected.kyc_id_url, label: `${selected.username} — ID Document` })}
+                      className="w-full rounded-xl overflow-hidden border cursor-zoom-in"
+                      style={{ borderColor: C.g200, height: 110, backgroundColor: C.g50 }}>
+                      <img src={selected.kyc_id_url} alt="ID" className="w-full h-full object-cover"
+                        onError={e => { e.target.style.display = 'none'; e.target.parentNode.style.display = 'flex'; e.target.parentNode.style.alignItems = 'center'; e.target.parentNode.style.justifyContent = 'center'; e.target.parentNode.innerHTML = '<span style="font-size:11px;color:#94A3B8">Image unavailable</span>'; }} />
+                    </div>
+                  </div>
+                )}
+                {selected.kyc_id_back_url && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-bold" style={{ color: C.g500 }}>ID Back</span>
+                      <button
+                        onClick={() => setZoomImg({ src: selected.kyc_id_back_url, label: `${selected.username} — ID Back` })}
+                        className="flex items-center gap-1 text-xs font-bold hover:opacity-70 transition"
+                        style={{ color: C.forest, background: 'none', border: 'none', cursor: 'pointer' }}>
+                        <Maximize2 size={11} /> View
+                      </button>
+                    </div>
+                    <div
+                      onClick={() => setZoomImg({ src: selected.kyc_id_back_url, label: `${selected.username} — ID Back` })}
+                      className="w-full rounded-xl overflow-hidden border cursor-zoom-in"
+                      style={{ borderColor: C.g200, height: 110, backgroundColor: C.g50 }}>
+                      <img src={selected.kyc_id_back_url} alt="ID Back" className="w-full h-full object-cover"
+                        onError={e => { e.target.style.display = 'none'; e.target.parentNode.style.display = 'flex'; e.target.parentNode.style.alignItems = 'center'; e.target.parentNode.style.justifyContent = 'center'; e.target.parentNode.innerHTML = '<span style="font-size:11px;color:#94A3B8">Image unavailable</span>'; }} />
+                    </div>
+                  </div>
+                )}
+                {selected.kyc_selfie_url && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-bold" style={{ color: C.g500 }}>Selfie Photo</span>
+                      <button
+                        onClick={() => setZoomImg({ src: selected.kyc_selfie_url, label: `${selected.username} — Selfie` })}
+                        className="flex items-center gap-1 text-xs font-bold hover:opacity-70 transition"
+                        style={{ color: C.forest, background: 'none', border: 'none', cursor: 'pointer' }}>
+                        <Maximize2 size={11} /> View
+                      </button>
+                    </div>
+                    <div
+                      onClick={() => setZoomImg({ src: selected.kyc_selfie_url, label: `${selected.username} — Selfie` })}
+                      className="w-full rounded-xl overflow-hidden border cursor-zoom-in"
+                      style={{ borderColor: C.g200, height: 110, backgroundColor: C.g50 }}>
+                      <img src={selected.kyc_selfie_url} alt="Selfie" className="w-full h-full object-cover"
+                        onError={e => { e.target.style.display = 'none'; e.target.parentNode.style.display = 'flex'; e.target.parentNode.style.alignItems = 'center'; e.target.parentNode.style.justifyContent = 'center'; e.target.parentNode.innerHTML = '<span style="font-size:11px;color:#94A3B8">Image unavailable</span>'; }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-2 mt-3">
               {/* Verify Email */}
               {!selected.is_email_verified && (
                 <button disabled={acting} onClick={async () => {
@@ -502,10 +573,10 @@ function UsersSection() {
                 </button>
               )}
               {/* Verify Phone */}
-              {!selected.is_phone_verified && selected.phone && (
+              {!selected.is_phone_verified && selected.phone_number && (
                 <div>
                   <p className="text-xs mb-1.5 px-0.5" style={{ color: C.g400 }}>
-                    Number submitted: <span className="font-black" style={{ color: C.g700 }}>{selected.phone}</span>
+                    Number submitted: <span className="font-black" style={{ color: C.g700 }}>{selected.phone_number}</span>
                   </p>
                   <button disabled={acting} onClick={async () => {
                     setActing(true);
@@ -523,7 +594,7 @@ function UsersSection() {
                   </button>
                 </div>
               )}
-              {!selected.is_phone_verified && !selected.phone && (
+              {!selected.is_phone_verified && !selected.phone_number && (
                 <div className="w-full py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5"
                   style={{ backgroundColor: C.g50, color: C.g400, border: `1px dashed ${C.g200}` }}>
                   <Phone size={12} /> No phone submitted
@@ -917,7 +988,7 @@ function PhoneVerifSection() {
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
             <h3 className="font-black text-base mb-1" style={{ color: C.g800 }}>Reject Phone Number</h3>
             <p className="text-xs mb-4" style={{ color: C.g500 }}>
-              Rejecting <strong>{rejectTarget.phone}</strong> for <strong>{rejectTarget.username}</strong>.
+              Rejecting <strong>{rejectTarget.phone_number}</strong> for <strong>{rejectTarget.username}</strong>.
               The number will be cleared so they can re-submit.
             </p>
             <textarea
@@ -985,7 +1056,7 @@ function PhoneVerifSection() {
                     <td className="px-4 py-3">
                       <span className="font-black text-sm px-2 py-1 rounded-lg"
                         style={{ backgroundColor: '#FFFBEB', color: '#92400E' }}>
-                        {u.phone}
+                        {u.phone_number}
                       </span>
                     </td>
                     {/* Country */}
@@ -1024,7 +1095,7 @@ function PhoneVerifSection() {
                         </button>
                         <button
                           disabled={acting === u.id}
-                          onClick={() => { setRejectTarget({ id: u.id, phone: u.phone, username: u.username }); setRejectReason(''); }}
+                          onClick={() => { setRejectTarget({ id: u.id, phone_number: u.phone_number, username: u.username }); setRejectReason(''); }}
                           className="px-3 py-1.5 rounded-lg text-xs font-black transition hover:opacity-80 flex items-center gap-1"
                           style={{ backgroundColor: '#FEF2F2', color: '#991B1B' }}>
                           <XCircle size={11} /> Reject
@@ -1277,7 +1348,7 @@ UPDATE users SET kyc_status = 'approved' WHERE is_id_verified = true AND kyc_sta
                 {[
                   { label:'Real Name',  value: selected.full_name || '—' },
                   { label:'Country',    value: selected.country || '—' },
-                  { label:'Phone',      value: selected.phone ? `${selected.phone}${selected.is_phone_verified ? ' ✓' : ' (unverified)'}` : '—' },
+                  { label:'Phone',      value: selected.phone_number ? `${selected.phone_number}${selected.is_phone_verified ? ' ✓' : ' (unverified)'}` : '—' },
                   { label:'ID Type',    value: selected.kyc_id_type || '—' },
                   { label:'Submitted',  value: selected.kyc_submitted_at ? `${fmtDate(selected.kyc_submitted_at)} (${fmtAge(selected.kyc_submitted_at)})` : '—' },
                   { label:'Status',     value: selected.kyc_status || 'pending' },
@@ -1292,15 +1363,30 @@ UPDATE users SET kyc_status = 'approved' WHERE is_id_verified = true AND kyc_sta
               {selected.kyc_id_url && (
                 <div className="mb-3">
                   <div className="flex items-center justify-between mb-1">
-                    <p className="text-xs font-black" style={{ color: C.g500 }}>ID Document</p>
-                    <button onClick={() => setZoomImg({ src: selected.kyc_id_url, label: `${selected.username} — ID Document` })}
+                    <p className="text-xs font-black" style={{ color: C.g500 }}>ID Front</p>
+                    <button onClick={() => setZoomImg({ src: selected.kyc_id_url, label: `${selected.username} — ID Front` })}
                       className="flex items-center gap-1 text-xs font-bold hover:opacity-70 transition" style={{ color: C.forest }}>
                       <Maximize2 size={11} /> Enlarge
                     </button>
                   </div>
-                  <div onClick={() => setZoomImg({ src: selected.kyc_id_url, label: `${selected.username} — ID Document` })}
+                  <div onClick={() => setZoomImg({ src: selected.kyc_id_url, label: `${selected.username} — ID Front` })}
                     className="block w-full h-32 rounded-xl bg-gray-100 overflow-hidden border cursor-zoom-in" style={{ borderColor: C.g200 }}>
-                    <img src={selected.kyc_id_url} alt="ID" className="w-full h-full object-cover" onError={e => e.target.style.display='none'} />
+                    <img src={selected.kyc_id_url} alt="ID Front" className="w-full h-full object-cover" onError={e => e.target.style.display='none'} />
+                  </div>
+                </div>
+              )}
+              {selected.kyc_id_back_url && (
+                <div className="mb-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs font-black" style={{ color: C.g500 }}>ID Back</p>
+                    <button onClick={() => setZoomImg({ src: selected.kyc_id_back_url, label: `${selected.username} — ID Back` })}
+                      className="flex items-center gap-1 text-xs font-bold hover:opacity-70 transition" style={{ color: C.forest }}>
+                      <Maximize2 size={11} /> Enlarge
+                    </button>
+                  </div>
+                  <div onClick={() => setZoomImg({ src: selected.kyc_id_back_url, label: `${selected.username} — ID Back` })}
+                    className="block w-full h-32 rounded-xl bg-gray-100 overflow-hidden border cursor-zoom-in" style={{ borderColor: C.g200 }}>
+                    <img src={selected.kyc_id_back_url} alt="ID Back" className="w-full h-full object-cover" onError={e => e.target.style.display='none'} />
                   </div>
                 </div>
               )}
