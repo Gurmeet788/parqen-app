@@ -28,7 +28,7 @@ export default function Home({ user }) {
   const name = user?.username || user?.name || 'Trader';
 
   return (
-    <div className="min-h-screen pb-24 md:pb-8 overflow-x-hidden"
+    <div className="min-h-screen pb-24 md:pb-8"
       style={{ fontFamily: "'DM Sans', sans-serif", backgroundColor: C.g50 }}>      <style>{`
         @keyframes slideUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
         .slide { animation: slideUp .35s ease both; }

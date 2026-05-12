@@ -29,7 +29,7 @@ const fmtBtc = n => parseFloat(n||0).toFixed(8);
 function fmtAge(d) {
   if (!d) return '—';
   const s = (Date.now() - new Date(d)) / 1000;
-  if (s < 60)    return 'Active now';
+  if (s < 300)   return 'Online';
   if (s < 3600)  return `${~~(s/60)}m ago`;
   if (s < 86400) return `${~~(s/3600)}h ago`;
   return `${~~(s/86400)}d ago`;
@@ -120,11 +120,11 @@ const loadAll = useCallback(async () => {
     }
   }, [loading, listing]);
 
-  // Lock body scroll while sheet is open
+  // Lock body scroll only while the bottom sheet is actually open
   useEffect(() => {
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = popupOpen ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
-  }, []);
+  }, [popupOpen]);
 
   const isOwner = user && listing && user.id === listing.seller_id;
 
@@ -236,8 +236,8 @@ const loadAll = useCallback(async () => {
   const pmRaw    = listing.payment_method || (Array.isArray(listing.payment_methods) ? listing.payment_methods[0] : '') || '';
 
   const trades         = parseInt(seller?.total_trades || 0);
-  const lastSeen       = fmtAge(seller?.last_login || seller?.last_seen_at || seller?.updated_at);
-  const isOnline       = (seller?.last_login || seller?.last_seen_at) && (Date.now() - new Date(seller.last_login || seller.last_seen_at)) / 1000 < 300;
+  const lastSeen       = fmtAge(seller?.last_seen_at || seller?.last_login || seller?.updated_at);
+  const isOnline       = seller?.last_seen_at && (Date.now() - new Date(seller.last_seen_at)) / 1000 < 300;
   const posFeedback    = parseInt(seller?.positive_feedback || 0);
   const negFeedback    = parseInt(seller?.negative_feedback || 0);
   const totalFeedback  = parseInt(seller?.total_feedback_count || posFeedback + negFeedback || 0);

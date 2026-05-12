@@ -2,21 +2,150 @@
 @tailwind components;
 @tailwind utilities;
 
-* {
+/* ── Reset ─────────────────────────────────────────────────────── */
+*, *::before, *::after {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  /* Remove tap highlight flash on all touch devices */
+  -webkit-tap-highlight-color: transparent;
 }
 
+/* ── HTML root ──────────────────────────────────────────────────── */
+html {
+  /* Prevent iOS text inflation on landscape rotate */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* Smooth scrolling everywhere */
+  scroll-behavior: smooth;
+  /* Prevent horizontal scroll at the root */
+  overflow-x: clip;
+}
+
+/* ── Body ───────────────────────────────────────────────────────── */
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Prevent horizontal scroll */
+  overflow-x: clip;
+  max-width: 100vw;
+  /* Prevent pull-to-refresh bounce on iOS */
+  overscroll-behavior-y: none;
 }
 
+/* ── Code font ──────────────────────────────────────────────────── */
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+}
+
+/* ── Images ─────────────────────────────────────────────────────── */
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* ── Touch interactions ─────────────────────────────────────────── */
+/* Removes 300ms click delay on mobile browsers */
+button,
+[role="button"],
+a,
+input,
+select,
+textarea,
+label {
+  touch-action: manipulation;
+}
+
+/* ── iOS input zoom prevention ──────────────────────────────────── */
+/* iOS Safari auto-zooms when an input font-size is below 16px.
+   This forces 16px minimum on phones without breaking desktop. */
+@media (max-width: 767px) {
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="tel"],
+  input[type="number"],
+  input[type="search"],
+  input[type="url"],
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* ── Safe area inset utilities (iPhone X+ notch/home bar) ───────── */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Used by AppShell to clear the fixed BottomNav (60px) + home indicator on mobile only */
+@media (max-width: 767px) {
+  .pb-nav-mobile {
+    padding-bottom: calc(60px + env(safe-area-inset-bottom));
+  }
+}
+
+.pb-nav-safe {
+  padding-bottom: calc(60px + env(safe-area-inset-bottom));
+}
+
+.mb-nav-safe {
+  margin-bottom: calc(60px + env(safe-area-inset-bottom));
+}
+
+/* ── Hide scrollbars (cross-browser) ───────────────────────────── */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Thin styled scrollbar for dropdowns/lists ─────────────────── */
+.thin-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.thin-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.thin-scroll::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+}
+
+/* ── Prevent text overflow on small screens ─────────────────────── */
+.text-overflow-safe {
+  overflow-wrap: break-word;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+/* ── Mobile-only visibility ─────────────────────────────────────── */
+@media (min-width: 768px) {
+  .mobile-only {
+    display: none !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .desktop-only {
+    display: none !important;
+  }
+}
+
+/* ── Animated gradient shimmer (skeleton loaders) ───────────────── */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.shimmer {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
 }

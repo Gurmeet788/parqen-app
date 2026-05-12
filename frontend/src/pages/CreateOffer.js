@@ -621,7 +621,7 @@ export default function CreateOffer() {
 
   // ── Main render ───────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen py-4 px-3" style={{ backgroundColor: C.mist, fontFamily: "'DM Sans',sans-serif", overflowX:'hidden', width:'100%', boxSizing:'border-box' }}>      <style>{`
+    <div className="min-h-screen py-4 px-3" style={{ backgroundColor: C.mist, fontFamily: "'DM Sans',sans-serif", width:'100%', boxSizing:'border-box' }}>      <style>{`
         @keyframes slideUp { from{transform:translateY(100%);opacity:0} to{transform:translateY(0);opacity:1} }
         * { -webkit-tap-highlight-color: transparent; }
         input, select, textarea { font-size: 16px !important; }

@@ -558,8 +558,8 @@ export default function MyListings({ user }) {
   );
 
   return (
-    <div className="min-h-screen flex flex-col" style={{backgroundColor:C.g50,fontFamily:"'DM Sans',sans-serif",overflowX:'hidden'}}>
-      <div className="flex-1 max-w-3xl mx-auto w-full px-3 sm:px-4 py-5 space-y-4">
+    <div className="min-h-screen flex flex-col" style={{backgroundColor:C.g50,fontFamily:"'DM Sans',sans-serif"}}>
+      <div className="max-w-3xl mx-auto w-full px-3 sm:px-4 py-5 space-y-4">
 
         {/* ── HEADER ── */}
         <div className="flex items-center justify-between gap-2">

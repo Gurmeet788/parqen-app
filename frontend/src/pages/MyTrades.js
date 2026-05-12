@@ -564,7 +564,7 @@ export default function MyTrades({user}) {
       )}
 
 
-      <div className="flex-1 max-w-5xl mx-auto w-full px-4 py-5 space-y-5">
+      <div className="max-w-5xl mx-auto w-full px-4 py-5 space-y-5">
 
         {/* ── HEADER ─────────────────────────────────────────── */}
         <div className="flex items-center justify-between flex-wrap gap-3">

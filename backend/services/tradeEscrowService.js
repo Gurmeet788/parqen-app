@@ -287,6 +287,7 @@ class TradeEscrowService {
         status:              'PAYMENT_SENT',
         buyer_confirmed:     true,
         buyer_confirmed_at:  new Date().toISOString(),
+        expires_at:          null,
       })
       .eq('id', tradeId);
 
@@ -592,56 +593,59 @@ class TradeEscrowService {
       return { success: false, message: `Trade cannot be cancelled — status is ${trade.status}` };
     }
 
-    // ── Refund seller if funds were locked ─────────────────────────────────
-    const { data: escrow } = await supabaseAdmin
+    // ── Atomically claim the escrow (UPDATE WHERE status='LOCKED') ────────────
+    // A single DB operation — only one concurrent request can flip LOCKED→REFUNDING.
+    // Prevents double-refund if frontend auto-cancel and server cron race each other.
+    const { data: claimedEscrow } = await supabaseAdmin
       .from('escrow_locks')
-      .select('*')
+      .update({ status: 'REFUNDING', released_at: new Date().toISOString() })
       .eq('trade_id', tradeId)
-      .single();
+      .eq('status', 'LOCKED')
+      .select('*');
 
-    if (escrow && escrow.status === 'LOCKED') {
-      const refundAmount = parseFloat(escrow.amount_btc || trade.escrow_amount || trade.amount_btc || 0);
+    if (claimedEscrow && claimedEscrow.length > 0) {
+      const esc = claimedEscrow[0];
+      const refundAmount  = parseFloat(esc.amount_btc || trade.escrow_amount || trade.amount_btc || 0);
+      // escrow.seller_id stores the btcProviderId (whoever locked funds — could be buyer in gift-card trades)
+      const btcProviderId = esc.seller_id || trade.seller_id;
+      const refundUsd     = parseFloat(parseFloat(trade.amount_usd || 0).toFixed(2));
 
-      // escrow.seller_id holds the btcProviderId (buyer in gift card trades, seller in BTC trades)
-      const btcProviderId = escrow.seller_id || trade.seller_id;
+      // Read both balance tables in parallel — they can be out of sync
+      const [{ data: providerBal }, { data: walletRow }] = await Promise.all([
+        supabaseAdmin.from('user_balances').select('balance_btc, balance_usd').eq('user_id', btcProviderId).maybeSingle(),
+        supabaseAdmin.from('user_wallets').select('balance_btc').eq('user_id', btcProviderId).maybeSingle(),
+      ]);
 
-      const { data: providerBal } = await supabaseAdmin
-        .from('user_balances')
-        .select('balance_btc, balance_usd')
-        .eq('user_id', btcProviderId)
-        .single();
+      const newBalBtc = parseFloat((parseFloat(providerBal?.balance_btc || 0) + refundAmount).toFixed(8));
+      const newBalUsd = parseFloat((parseFloat(providerBal?.balance_usd || 0) + refundUsd).toFixed(2));
+      // user_wallets must be incremented from ITS OWN current value — not from user_balances.
+      // The two tables can diverge (e.g. a fresh deposit credited to user_wallets but not yet
+      // synced to user_balances).  Setting user_wallets = user_balances value would erase that deposit.
+      const newWalBtc = parseFloat((parseFloat(walletRow?.balance_btc || 0) + refundAmount).toFixed(8));
 
-      const newProviderBalance = parseFloat((parseFloat(providerBal?.balance_btc || 0) + refundAmount).toFixed(8));
-      // Restore balance_usd proportionally: refund the USD equivalent of the returned BTC.
-      // Use the trade's amount_usd as the source of truth for the USD value being returned.
-      const refundUsd = parseFloat((parseFloat(trade.amount_usd || 0)).toFixed(2));
-      const newProviderUsd = parseFloat((parseFloat(providerBal?.balance_usd || 0) + refundUsd).toFixed(2));
+      // Upsert user_balances — creates the row if it somehow doesn't exist yet
+      await supabaseAdmin.from('user_balances').upsert({
+        user_id:     btcProviderId,
+        balance_btc: newBalBtc,
+        balance_usd: newBalUsd,
+        updated_at:  new Date().toISOString(),
+      });
 
-      await supabaseAdmin
-        .from('user_balances')
-        .update({
-          balance_btc: newProviderBalance,
-          balance_usd: newProviderUsd,
-          updated_at:  new Date().toISOString(),
-        })
-        .eq('user_id', btcProviderId);
+      // Sync user_wallets so both tables reflect the returned BTC
+      if (walletRow) {
+        await supabaseAdmin.from('user_wallets')
+          .update({ balance_btc: newWalBtc, updated_at: new Date().toISOString() })
+          .eq('user_id', btcProviderId);
+      }
 
-      // Sync user_wallets so refund shows immediately on wallet page
-      await supabaseAdmin
-        .from('user_wallets')
-        .update({ balance_btc: newProviderBalance, updated_at: new Date().toISOString() })
-        .eq('user_id', btcProviderId);
-
-      // Mark escrow as refunded
-      await supabaseAdmin
-        .from('escrow_locks')
-        .update({ status: 'REFUNDED', released_at: new Date().toISOString() })
+      // Mark escrow fully refunded
+      await supabaseAdmin.from('escrow_locks')
+        .update({ status: 'REFUNDED' })
         .eq('trade_id', tradeId);
 
       await this.logTransaction(btcProviderId, 'ESCROW_REFUND', refundAmount, null,
         `Refund for cancelled trade #${tradeId.slice(0,8)}`);
 
-      // Push notification to seller
       sendSystemAlert(
         btcProviderId,
         '💸 Escrow Refunded',
@@ -649,17 +653,18 @@ class TradeEscrowService {
         'https://praqen.com/wallet'
       ).catch(err => console.error('[Escrow] Refund push error:', err.message));
 
-      // Audit log (fire-and-forget — table may not exist on first deploy)
       supabaseAdmin.from('balance_audit').insert({
         user_id:     btcProviderId,
         change_btc:  refundAmount,
-        new_balance: newProviderBalance,
+        new_balance: newBalBtc,
         reason:      'ESCROW_REFUND',
         trade_id:    tradeId,
         created_at:  new Date().toISOString(),
       }).catch(() => {});
 
       console.log(`   Refunded ${refundAmount} BTC to provider ${btcProviderId.slice(0,8)}`);
+    } else {
+      console.log(`[cancelTrade] Escrow already claimed or not LOCKED for trade ${tradeId.slice(0,8)} — skipping refund`);
     }
 
     // ── Update trade status ────────────────────────────────────────────────
@@ -708,11 +713,14 @@ class TradeEscrowService {
   async processExpiredTrades() {
     // NOTE: PAYMENT_SENT is intentionally excluded — buyer may have already sent
     // fiat payment and auto-cancelling would refund the seller unfairly.
+    // 5-minute grace buffer: only cancel trades that expired MORE than 5 minutes ago.
+    // This gives buyers who paid just before the timer ended a window to click "Mark Paid".
+    const graceDeadline = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     const { data: expired, error } = await supabaseAdmin
       .from('trades')
       .select('id')
       .in('status', ['CREATED', 'FUNDS_LOCKED'])
-      .lt('expires_at', new Date().toISOString());
+      .lt('expires_at', graceDeadline);
 
     if (error || !expired || expired.length === 0) return 0;
 

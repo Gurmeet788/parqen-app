@@ -518,19 +518,43 @@ export default function Settings({ user, setUser }) {
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: C.mist, fontFamily: "'DM Sans',sans-serif" }}>
 
-      <div className="flex-1 max-w-5xl mx-auto w-full px-4 py-8">
+      <div className="max-w-5xl mx-auto w-full px-4 py-4 md:py-8">
 
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-black" style={{ color: C.forest, fontFamily: "'Syne',sans-serif" }}>Settings</h1>
+        <div className="mb-4 md:mb-8">
+          <h1 className="text-2xl md:text-3xl font-black" style={{ color: C.forest, fontFamily: "'Syne',sans-serif" }}>Settings</h1>
           <p className="text-sm mt-1" style={{ color: C.g500 }}>Manage your account, security and preferences</p>
         </div>
 
-        <div className="flex flex-col md:flex-row gap-6">
+        <div className="flex flex-col md:flex-row gap-4 md:gap-6">
 
           {/* Sidebar tabs */}
           <div className="md:w-52 flex-shrink-0">
-            <div className="bg-white rounded-2xl shadow-sm border overflow-hidden" style={{ borderColor: C.g200 }}>
+
+            {/* Mobile: horizontal scrollable pill tab bar */}
+            <div className="md:hidden flex gap-2 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1">
+              {TABS.map(({ id, icon: Icon, label }) => (
+                <button key={id} onClick={() => setActiveTab(id)}
+                  className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold whitespace-nowrap transition"
+                  style={{
+                    backgroundColor: activeTab === id ? C.green : C.white,
+                    color: activeTab === id ? '#fff' : C.g500,
+                    border: `1.5px solid ${activeTab === id ? C.green : C.g200}`,
+                  }}>
+                  <Icon size={13} style={{ flexShrink: 0 }} />
+                  {label}
+                </button>
+              ))}
+              <button onClick={handleLogout}
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold whitespace-nowrap"
+                style={{ backgroundColor: '#FEF2F2', color: '#EF4444', border: '1.5px solid #FECACA' }}>
+                <LogOut size={13} style={{ flexShrink: 0 }} />
+                Logout
+              </button>
+            </div>
+
+            {/* Desktop: vertical sidebar */}
+            <div className="hidden md:block bg-white rounded-2xl shadow-sm border overflow-hidden" style={{ borderColor: C.g200 }}>
               {TABS.map(({ id, icon: Icon, label }) => (
                 <button key={id} onClick={() => setActiveTab(id)}
                   className="w-full flex items-center gap-3 px-4 py-3 text-left transition border-b last:border-0 hover:bg-gray-50"

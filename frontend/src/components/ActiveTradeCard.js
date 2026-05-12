@@ -38,8 +38,11 @@ function sanitizeLimitMins(raw) {
   return Math.min(480, Math.max(5, n));
 }
 
-// Returns effective expires_at — validates server value against expected deadline
+// Returns effective expires_at — validates server value against expected deadline.
+// Returns null when expires_at is explicitly null (trade marked paid — timer permanently stopped).
 function resolveExpiresAt(expiresAt, createdAt, limitMins) {
+  // null means the server intentionally cleared it (buyer marked paid) — honour that
+  if (expiresAt === null) return null;
   const computed = createdAt
     ? new Date(new Date(createdAt).getTime() + (limitMins || 30) * 60 * 1000).toISOString()
     : null;
@@ -275,12 +278,14 @@ export default function ActiveTradeCard({ trade, onExpire, pageColor }) {
 
   return (
     <>
+      <style>{`@keyframes pmtBorderPulse{0%,100%{box-shadow:0 0 0 2px rgba(37,99,235,0.25),0 2px 12px rgba(0,0,0,0.08);}50%{box-shadow:0 0 0 3px rgba(37,99,235,0.5),0 4px 20px rgba(37,99,235,0.18);}}`}</style>
       <div className="rounded-2xl mb-3 overflow-hidden"
         style={{
           background: '#FFFFFF',
-          border: `1.5px solid ${cfg.statusColor}30`,
-          borderLeft: `4px solid ${btnColor}`,
+          border: trade.status === 'PAYMENT_SENT' ? '1.5px solid #2563EB50' : `1.5px solid ${cfg.statusColor}30`,
+          borderLeft: trade.status === 'PAYMENT_SENT' ? '4px solid #2563EB' : `4px solid ${btnColor}`,
           boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+          animation: trade.status === 'PAYMENT_SENT' ? 'pmtBorderPulse 2.5s ease-in-out infinite' : undefined,
         }}>
 
         {/* ── Row 0: Market label + your role ── */}
@@ -294,17 +299,32 @@ export default function ActiveTradeCard({ trade, onExpire, pageColor }) {
           </span>
         </div>
 
-        {/* ── Row 1: Status badge + countdown ── */}
+        {/* ── Row 1: Status badge + countdown (timer stops once buyer marks paid) ── */}
         <div className="flex items-center justify-between px-4 pt-1.5 pb-2 gap-2">
           <span className="text-[11px] font-black px-3 py-1 rounded-full flex-shrink-0"
             style={{ backgroundColor: cfg.statusBg, color: cfg.statusColor }}>
             {cfg.label}
           </span>
-          <TradeTimer
-            expiresAt={effectiveExpiresAt}
-            timeLimitMins={timeLimitMins}
-            onExpire={() => onExpire?.(trade.id)}
-          />
+          {/* Timer only counts for unfunded/active escrow — stops the moment payment is marked */}
+          {['CREATED', 'FUNDS_LOCKED'].includes(trade.status) && (
+            <TradeTimer
+              expiresAt={effectiveExpiresAt}
+              timeLimitMins={timeLimitMins}
+              onExpire={() => onExpire?.(trade.id)}
+            />
+          )}
+          {trade.status === 'PAYMENT_SENT' && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-black px-2.5 py-1 rounded-full"
+              style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8' }}>
+              🔒 Awaiting Release
+            </span>
+          )}
+          {trade.status === 'DISPUTED' && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-black px-2.5 py-1 rounded-full"
+              style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}>
+              ⚖️ In Review
+            </span>
+          )}
         </div>
 
         {/* ── Row 2: Counterparty info ── */}
@@ -347,6 +367,17 @@ export default function ActiveTradeCard({ trade, onExpire, pageColor }) {
         {/* ── Divider ── */}
         <div className="mx-4 mb-3" style={{ height: '1px', backgroundColor: '#F1F5F9' }} />
 
+        {/* ── Payment-sent banner ── only for PAYMENT_SENT status ── */}
+        {trade.status === 'PAYMENT_SENT' && (
+          <div className="mx-4 mb-3 px-3 py-2 rounded-xl flex items-center gap-2"
+            style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+            <span className="text-base flex-shrink-0">✅</span>
+            <p className="text-[11px] font-black leading-tight" style={{ color: '#1E40AF' }}>
+              Payment sent — awaiting Bitcoin release from {cp.username || 'seller'}
+            </p>
+          </div>
+        )}
+
         {/* ── Row 3: You Pay → You Receive ── */}
         <div className="px-4 pb-3 flex items-stretch gap-2">
           <div className="flex-1 rounded-xl px-3 py-2.5" style={{ backgroundColor: '#F8FAFC' }}>
@@ -382,8 +413,8 @@ export default function ActiveTradeCard({ trade, onExpire, pageColor }) {
         <button
           onClick={() => navigate(`/trade/${trade.id}`)}
           className="w-full py-3 text-white text-xs font-black tracking-widest uppercase flex items-center justify-center gap-2 hover:opacity-90 active:opacity-80 transition-opacity"
-          style={{ backgroundColor: btnColor }}>
-          Attend to Trade
+          style={{ backgroundColor: trade.status === 'PAYMENT_SENT' ? '#2563EB' : btnColor }}>
+          {trade.status === 'PAYMENT_SENT' ? 'Open Trade' : 'Attend to Trade'}
           <ArrowRight size={13} />
         </button>
       </div>

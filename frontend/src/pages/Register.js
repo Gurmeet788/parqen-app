@@ -381,13 +381,6 @@ export default function Register({ onLogin }) {
           background: #F0F9F4;
           overscroll-behavior: none;
           -webkit-overflow-scrolling: touch;
-          height: 100%;
-          width: 100%;
-          overflow-x: hidden;
-        }
-
-        #root {
-          min-height: 100%;
         }
 
         .register-layout {

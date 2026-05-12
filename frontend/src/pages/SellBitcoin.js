@@ -933,7 +933,10 @@ export default function SellBitcoin({user}) {
     const fetchTrades = () => axios.get(`${API_URL}/trades/active`, { headers: h }).then(res => {
       if (res.data.success) {
         const now = Date.now();
-        setActiveTrades((res.data.trades||[]).filter(t => !t.expires_at || toUTC(t.expires_at).getTime() > now));
+        setActiveTrades((res.data.trades||[]).filter(t =>
+          ['PAYMENT_SENT','DISPUTED'].includes(t.status) ||
+          !t.expires_at || toUTC(t.expires_at).getTime() > now
+        ));
       }
     }).catch(() => {});
     Promise.all([
@@ -1004,7 +1007,9 @@ export default function SellBitcoin({user}) {
     return list;
   };
 
-  const handleTradeExpire = (id) => setActiveTrades(prev => prev.filter(t => t.id !== id));
+  const handleTradeExpire = (id) => setActiveTrades(prev => prev.filter(t =>
+    t.id !== id || ['PAYMENT_SENT','DISPUTED'].includes(t.status)
+  ));
 
   const handleSell = (id) => {
     if (!user) { navigate('/login?message=Please log in to start trading'); return; }
@@ -1022,7 +1027,7 @@ export default function SellBitcoin({user}) {
   const hasFilters  = selPayment!=='all' || sellAmt || selCountry.code!=='ALL' || selCurrency.code!=='USD' || !!traderSearch.trim();
 
   return (
-    <div className="min-h-screen flex flex-col pb-0 overflow-x-hidden"
+    <div className="min-h-screen flex flex-col pb-0"
       style={{backgroundColor:C.g100, fontFamily:"'DM Sans',sans-serif"}}>
       <SEO />
       <style>{`
@@ -1066,7 +1071,7 @@ export default function SellBitcoin({user}) {
       </div>
 
       {/* ══ 2. TAB NAVIGATION ══════════════════════════════════ */}
-      <div className="bg-white border-b sticky top-0 z-30 flex-shrink-0" style={{borderColor:C.g200}}>
+      <div className="bg-white border-b sticky top-16 z-30 flex-shrink-0" style={{borderColor:C.g200}}>
         {/* 3 equal tabs — always fits any phone */}
         <div className="flex w-full">
           {[
@@ -1346,7 +1351,7 @@ export default function SellBitcoin({user}) {
       )}
 
       {/* ══ 4. OFFER GRID ══════════════════════════════════════ */}
-      <div className="flex-1 max-w-7xl mx-auto w-full px-3 py-3 space-y-3" style={{WebkitOverflowScrolling:'touch'}}>
+      <div className="max-w-7xl mx-auto w-full px-3 py-3 space-y-3">
 
         <div className="flex items-center justify-between flex-wrap gap-2">
           <p className="text-xs font-semibold" style={{color:C.g500}}>

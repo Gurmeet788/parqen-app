@@ -101,7 +101,7 @@ function AppShell({ children }) {
   const location = useLocation();
   const isTradeRoute = location.pathname.startsWith('/trade/');
   return (
-    <div className={`min-h-screen bg-gray-50${isTradeRoute ? '' : ' pb-16 md:pb-0'}`}>
+    <div className={`min-h-screen${isTradeRoute ? '' : ' pb-nav-mobile'}`}>
       {children}
     </div>
   );

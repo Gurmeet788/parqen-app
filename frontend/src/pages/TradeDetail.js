@@ -446,7 +446,7 @@ function ProfilePopup({user, label, trade, onClose}) {
   const flagEmoji  = isoToFlag(locCC);
 
   // Last active
-  const rawSeen    = fmtAge(u.last_login || u.updated_at);
+  const rawSeen    = fmtAge(u.last_seen_at || u.last_login || u.updated_at);
   const isOnline   = rawSeen === 'Online';
 
   const TABS = [
@@ -917,12 +917,14 @@ export default function TradeDetail({user}) {
     const deadline = trade.expires_at
       ? toUTC(trade.expires_at).getTime()
       : toUTC(trade.created_at).getTime() + (Math.max(trade?.listing?.time_limit||0, trade?.time_limit||0, 30)) * 60 * 1000;
+    // 5-minute grace period: after timer hits 0, buyer still has 300s to click "Mark Paid"
+    // before the trade is auto-cancelled. Backend cron also uses the same grace buffer.
+    const GRACE_SECS = 300;
     const iv=setInterval(()=>{
-      const rem=Math.max(0, Math.floor((deadline - Date.now()) / 1000));
-      setTimeLeft(rem);
-      // Never auto-cancel a disputed trade — isDisputed check above already prevents
-      // this effect from running, but isEscrow is kept as a second guard.
-      if(rem<=0 && isEscrow && !isDisputed && !isPaid && !autoCancelled.current){
+      const raw = Math.floor((deadline - Date.now()) / 1000);
+      setTimeLeft(Math.max(0, raw));
+      // Auto-cancel only fires after the full grace period AND only for unpaid+escrow trades
+      if(raw < -GRACE_SECS && isEscrow && !isDisputed && !isPaid && !autoCancelled.current){
         autoCancelled.current = true;
         clearInterval(iv);
         autoCancel();
@@ -1013,7 +1015,7 @@ export default function TradeDetail({user}) {
   };
 
   const postSys=async(text)=>{
-    try{await axios.post(`${API_URL}/messages`,{tradeId:id,message:text},{headers:authH()});await loadMessages();}catch{}
+    try{await axios.post(`${API_URL}/messages`,{tradeId:id,message:text,isSystem:true},{headers:authH()});await loadMessages();}catch{}
   };
 
   const sendMessage=async(e)=>{
@@ -1047,6 +1049,9 @@ export default function TradeDetail({user}) {
   const markPaid=async()=>{
     setShowPayConfirm(false);
     setSubmitting(true);
+    // Block auto-cancel IMMEDIATELY — before the API round-trip completes.
+    // The timer interval uses a stale closure; autoCancelled ref is always current.
+    autoCancelled.current = true;
     try{
       await axios.post(`${API_URL}/trades/${id}/mark-paid`,{},{headers:authH()});
       const sysMsg = isGiftCardTrade
@@ -1055,7 +1060,11 @@ export default function TradeDetail({user}) {
       await postSys(sysMsg);
       toast.success(isGiftCardTrade ? 'Code sent! Waiting for buyer to verify.' : 'Payment confirmed!');
       await loadTrade();
-    }catch(e){toast.error(e?.response?.data?.error||'Failed');}
+    }catch(e){
+      // Only unblock auto-cancel if the trade hasn't actually been paid yet
+      if(!['PAYMENT_SENT','PAID'].includes(trade?.status)) autoCancelled.current = false;
+      toast.error(e?.response?.data?.error||'Failed');
+    }
     finally{setSubmitting(false);}
   };
 
@@ -1087,9 +1096,20 @@ export default function TradeDetail({user}) {
   };
 
   const autoCancel=async()=>{
+    // Always fetch fresh trade state before auto-cancelling — interval closures are stale.
+    // If the buyer marked paid (even a second ago), the API will block the cancel anyway,
+    // but we skip the call entirely to avoid noisy 403 errors.
     try{
-      await axios.post(`${API_URL}/trades/${id}/auto-cancel`,{reason:'30-minute payment window expired'},{headers:authH()});
-      await postSys('⏰ Time expired — 30-minute payment window closed. Trade cancelled and Bitcoin returned to seller\'s wallet.');
+      const { data: fresh } = await axios.get(`${API_URL}/trades/${id}`,{headers:authH()});
+      const freshStatus = (fresh?.trade?.status || fresh?.status || '').toUpperCase();
+      if(['PAYMENT_SENT','PAID','COMPLETED','CANCELLED','DISPUTED'].includes(freshStatus)){
+        console.log('[autoCancel] Skipped — live status is', freshStatus);
+        return;
+      }
+    }catch(_){}
+    try{
+      await axios.post(`${API_URL}/trades/${id}/auto-cancel`,{reason:'Payment window expired'},{headers:authH()});
+      await postSys('⏰ Payment window closed. Trade cancelled and Bitcoin returned to seller\'s wallet.');
       toast.warning('⏰ Time expired — Bitcoin returned to seller wallet');
       await loadTrade();
     }catch(e){console.error('Auto cancel error:',e);}
@@ -1186,7 +1206,7 @@ export default function TradeDetail({user}) {
   // Counterparty
   const cp         = isBuyer?seller:buyer;
   const cpBadge    = deriveBadge(cp);
-  const cpSeen     = fmtAge(cp?.last_login||cp?.updated_at);
+  const cpSeen     = fmtAge(cp?.last_seen_at || cp?.last_login || cp?.updated_at);
   const cpOnline   = cpSeen==='Online';
   const cpPos      = parseInt(cp?.positive_feedback||0);
   const cpNeg      = parseInt(cp?.negative_feedback||0);
@@ -1234,7 +1254,7 @@ export default function TradeDetail({user}) {
     <div className="min-h-screen flex flex-col" style={{backgroundColor:C.g50,fontFamily:"'DM Sans',sans-serif"}}>
 
       {/* ── MAIN CONTENT ─────────────────────────────────────────────────── */}
-      <div className="flex-1 max-w-7xl mx-auto w-full px-3 py-3 pb-4">
+      <div className="max-w-7xl mx-auto w-full px-3 py-3 pb-4">
 
         <div className="grid lg:grid-cols-12 gap-3 lg:[height:calc(100vh-56px)]">
 
@@ -1564,24 +1584,64 @@ export default function TradeDetail({user}) {
 
                 </div>
 
-                {/* ── Prominent Timer Banner ── */}
-                {isActive&&(
-                  <div className={urgent?'animate-pulse':''} style={{
+                {/* ── Prominent Timer Banner — hidden once payment is marked ── */}
+                {isActive&&!isPaid&&(
+                  timeLeft===0
+                  ? (
+                    /* Grace period: timer hit 0 but buyer may have already sent payment */
+                    <div className="animate-pulse" style={{
+                      display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:4,
+                      padding:'10px 12px',
+                      backgroundColor:'#78350F',
+                      borderTop:'1px solid rgba(255,255,255,0.08)',
+                    }}>
+                      <div style={{display:'flex',alignItems:'center',gap:8}}>
+                        <Timer size={14} style={{color:'#FCD34D',flexShrink:0}}/>
+                        <span style={{fontWeight:900,color:'#FCD34D',fontSize:13,letterSpacing:'0.04em',lineHeight:1}}>
+                          Time's up — already paid? Tap Mark Paid now
+                        </span>
+                      </div>
+                      <span style={{color:'rgba(255,255,255,0.45)',fontSize:9,lineHeight:1}}>
+                        Trade will close shortly if payment is not confirmed
+                      </span>
+                    </div>
+                  ) : (
+                    <div className={urgent?'animate-pulse':''} style={{
+                      display:'flex',alignItems:'center',justifyContent:'center',gap:10,
+                      padding:'10px 12px',
+                      backgroundColor: urgent ? C.danger : 'rgba(0,0,0,0.28)',
+                      borderTop:'1px solid rgba(255,255,255,0.08)',
+                    }}>
+                      <Timer size={15} style={{color: urgent ? '#fff' : C.gold, flexShrink:0}}/>
+                      <span style={{fontWeight:900,color:'#fff',fontSize:22,letterSpacing:'0.06em',lineHeight:1}}>
+                        {fmtTimer(timeLeft)}
+                      </span>
+                      <div style={{display:'flex',flexDirection:'column',gap:1}}>
+                        <span style={{color:'rgba(255,255,255,0.5)',fontSize:10,fontWeight:600,lineHeight:1}}>
+                          {urgent ? '⚠️ Pay now!' : `${timeLimit} min limit`}
+                        </span>
+                        <span style={{color:'rgba(255,255,255,0.35)',fontSize:9,lineHeight:1}}>
+                          BTC returns to seller on expiry
+                        </span>
+                      </div>
+                    </div>
+                  )
+                )}
+                {/* ── Payment-locked banner — replaces timer once buyer marks paid ── */}
+                {isActive&&isPaid&&(
+                  <div style={{
                     display:'flex',alignItems:'center',justifyContent:'center',gap:10,
                     padding:'10px 12px',
-                    backgroundColor: timeLeft===0 ? '#7f1d1d' : urgent ? C.danger : 'rgba(0,0,0,0.28)',
-                    borderTop:'1px solid rgba(255,255,255,0.08)',
+                    background:'linear-gradient(90deg,#065F46,#047857)',
+                    borderTop:'1px solid rgba(255,255,255,0.10)',
                   }}>
-                    <Timer size={15} style={{color: urgent||timeLeft===0 ? '#fff' : C.gold, flexShrink:0}}/>
-                    <span style={{fontWeight:900,color:'#fff',fontSize:22,letterSpacing:'0.06em',lineHeight:1}}>
-                      {timeLeft===0 ? 'EXPIRED' : fmtTimer(timeLeft)}
-                    </span>
+                    <Lock size={14} style={{color:'#6EE7B7',flexShrink:0}}/>
                     <div style={{display:'flex',flexDirection:'column',gap:1}}>
-                      <span style={{color:'rgba(255,255,255,0.5)',fontSize:10,fontWeight:600,lineHeight:1}}>
-                        {timeLeft===0 ? '⚠️ Trade cancelled' : urgent ? '⚠️ Pay now!' : `${timeLimit} min limit`}
+                      <span style={{fontWeight:900,color:'#fff',fontSize:13,letterSpacing:'0.04em',lineHeight:1}}>
+                        TRADE LOCKED — Payment Confirmed
                       </span>
-                      <span style={{color:'rgba(255,255,255,0.35)',fontSize:9,lineHeight:1}}>
-                        {timeLeft===0 ? 'BTC returned to seller' : 'BTC returns to seller on expiry'}
+                      <span style={{color:'rgba(255,255,255,0.6)',fontSize:9,lineHeight:1}}>
+                        {isSellFlow ? 'Verify payment in your account, then release Bitcoin' : 'Awaiting seller to release Bitcoin'}
                       </span>
                     </div>
                   </div>
@@ -1667,8 +1727,8 @@ export default function TradeDetail({user}) {
                       <div key={i} className="flex justify-center my-4 px-1">
                         <div className="w-full max-w-[95%] rounded-2xl overflow-hidden"
                           style={{
-                            background:'linear-gradient(145deg,#78350F,#B45309,#D97706)',
-                            boxShadow:'0 0 0 2px #FCD34D, 0 8px 32px rgba(180,83,9,0.55)',
+                            background:'linear-gradient(145deg,#7F1D1D,#B91C1C,#DC2626)',
+                            boxShadow:'0 0 0 2px #FCA5A5, 0 8px 32px rgba(220,38,38,0.55)',
                             animation:'pmtPulse 2.4s ease-in-out infinite',
                           }}>
                           {/* top bar */}
@@ -1691,7 +1751,7 @@ export default function TradeDetail({user}) {
                                 background: isSeller
                                   ? 'linear-gradient(90deg,rgba(255,255,255,0.22),rgba(255,255,255,0.1))'
                                   : 'rgba(0,0,0,0.18)',
-                                color:'#FEF9C3',
+                                color:'#FECACA',
                                 border:'1px solid rgba(255,255,255,0.2)',
                               }}>
                               {isBuyer
@@ -1702,7 +1762,7 @@ export default function TradeDetail({user}) {
                             </div>
                           </div>
                         </div>
-                        <style>{`@keyframes pmtPulse{0%,100%{box-shadow:0 0 0 2px #FCD34D,0 8px 32px rgba(180,83,9,0.55);}50%{box-shadow:0 0 0 3px #FBBF24,0 12px 40px rgba(217,119,6,0.75);}}`}</style>
+                        <style>{`@keyframes pmtPulse{0%,100%{box-shadow:0 0 0 2px #FCA5A5,0 8px 32px rgba(220,38,38,0.55);}50%{box-shadow:0 0 0 3px #F87171,0 12px 40px rgba(220,38,38,0.75);}}`}</style>
                       </div>
                     );
 

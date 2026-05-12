@@ -54,9 +54,14 @@ const FLAGS = {
 const fmt = (n,d=0)=>new Intl.NumberFormat('en-US',{minimumFractionDigits:0,maximumFractionDigits:d}).format(n||0);
 const fmtAge = (d)=>{
   if(!d)return'Recently';
-  const diff=Math.floor((Date.now()-new Date(d))/(1000*60*60*24));
-  if(diff<1)return'Today';if(diff<30)return`${diff}d ago`;
-  if(diff<365)return`${Math.floor(diff/30)}mo ago`;return`${Math.floor(diff/365)}y ago`;
+  const s=(Date.now()-new Date(d))/1000;
+  if(s<300)return'Online now';
+  if(s<3600)return`${~~(s/60)}m ago`;
+  if(s<86400)return`${~~(s/3600)}h ago`;
+  const diff=Math.floor(s/86400);
+  if(diff<30)return`${diff}d ago`;
+  if(diff<365)return`${Math.floor(diff/30)}mo ago`;
+  return`${Math.floor(diff/365)}y ago`;
 };
 
 function calcTrust(u,reviews){
@@ -257,7 +262,7 @@ export default function Profile({userId:propUserId}){
   const displayFlag = FLAGS[userCC] || toEmojiFlag(userCC) || '🌍';
 
   return(
-    <div className="min-h-screen pb-0" style={{backgroundColor:C.mist,fontFamily:"'DM Sans',sans-serif",overflowX:'hidden',width:'100%',maxWidth:'100vw'}}>
+    <div className="min-h-screen pb-0" style={{backgroundColor:C.mist,fontFamily:"'DM Sans',sans-serif",width:'100%',maxWidth:'100vw'}}>
       {/* ── PROFILE CARD ──────────────────────────────────────────────────── */}
       <div className="pt-4 pb-0 px-3 sm:px-5 lg:px-8" style={{backgroundColor:C.mist,boxSizing:'border-box'}}>
         <div style={{maxWidth:'100%',width:'100%',margin:'0 auto'}} className="lg:max-w-5xl">
@@ -926,7 +931,7 @@ export default function Profile({userId:propUserId}){
               <div className="space-y-2.5">
                 {[
                   {icon:MapPin,     label:'Registered Country', value:`${displayFlag} ${user.country||'Ghana'}`, color:C.paid},
-                  {icon:Clock,      label:'Last Login',          value:fmtAge(user.last_login||user.updated_at),            color:C.success},
+                  {icon:Clock,      label:'Last Active',          value:fmtAge(user.last_seen_at||user.last_login||user.updated_at),  color:C.success},
                   {icon:Smartphone, label:'Device Access',       value:'Mobile & Web Browser',                              color:C.purple},
                   {icon:Globe,      label:'Language',            value:'English',                                            color:C.g500},
                 ].map(({icon:Icon,label,value,color})=>(

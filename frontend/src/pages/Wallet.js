@@ -779,7 +779,7 @@ export default function WalletPage({ user }) {
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: C.g50, fontFamily: "'DM Sans',sans-serif" }}>
 
-      <div className="flex-1 max-w-2xl mx-auto w-full px-3 sm:px-4 py-4 sm:py-6 space-y-3 sm:space-y-4">
+      <div className="max-w-2xl mx-auto w-full px-3 sm:px-4 py-4 sm:py-6 space-y-3 sm:space-y-4">
 
         {/* ── WALLET CARD ──────────────────────────────────────────── */}
         <div className="rounded-3xl overflow-hidden shadow-lg relative"

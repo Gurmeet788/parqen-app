@@ -974,7 +974,10 @@ export default function BuyBitcoin({user}) {
     const fetchTrades = () => axios.get(`${API_URL}/trades/active`, { headers: h }).then(res => {
       if (res.data.success) {
         const now = Date.now();
-        setActiveTrades((res.data.trades||[]).filter(t => !t.expires_at || toUTC(t.expires_at).getTime() > now));
+        setActiveTrades((res.data.trades||[]).filter(t =>
+          ['PAYMENT_SENT','DISPUTED'].includes(t.status) ||
+          !t.expires_at || toUTC(t.expires_at).getTime() > now
+        ));
       }
     }).catch(() => {});
     // All independent fetches fire in parallel on mount
@@ -1037,7 +1040,9 @@ export default function BuyBitcoin({user}) {
     return list;
   };
 
-  const handleTradeExpire = (id) => setActiveTrades(prev => prev.filter(t => t.id !== id));
+  const handleTradeExpire = (id) => setActiveTrades(prev => prev.filter(t =>
+    t.id !== id || ['PAYMENT_SENT','DISPUTED'].includes(t.status)
+  ));
 
   const handleCreateOffer = () => {
     if (!user) { navigate('/login?message=Please log in to create an offer'); return; }
@@ -1070,7 +1075,7 @@ export default function BuyBitcoin({user}) {
   const hasFilters = selPayment !== 'all' || buyAmt || selCountry.code !== 'ALL' || selCurrency.code !== 'USD' || !!traderSearch.trim();
 
   return (
-    <div className="min-h-screen flex flex-col pb-0 overflow-x-hidden"
+    <div className="min-h-screen flex flex-col pb-0"
       style={{backgroundColor:C.g100, fontFamily:"'DM Sans',sans-serif"}}>
       <SEO />
       <style>{`
@@ -1116,7 +1121,7 @@ export default function BuyBitcoin({user}) {
       </div>
 
       {/* ══ 2. TAB NAVIGATION ══════════════════════════════════ */}
-      <div className="bg-white border-b sticky top-0 z-30 flex-shrink-0" style={{borderColor:C.g200}}>
+      <div className="bg-white border-b sticky top-16 z-30 flex-shrink-0" style={{borderColor:C.g200}}>
         <div className="flex w-full">
           {[
             {label:'Buy BTC',    path:'/buy-bitcoin',  active:true,  color:'#1B4332'},
@@ -1427,7 +1432,7 @@ export default function BuyBitcoin({user}) {
       )}
 
       {/* ══ 4. OFFER GRID ══════════════════════════════════════ */}
-      <div className="flex-1 max-w-7xl mx-auto w-full px-3 py-3 space-y-3" style={{WebkitOverflowScrolling:'touch'}}>
+      <div className="max-w-7xl mx-auto w-full px-3 py-3 space-y-3">
 
         <div className="flex items-center justify-between flex-wrap gap-2">
           <p className="text-xs font-semibold" style={{color:C.g500}}>

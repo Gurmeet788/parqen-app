@@ -4,6 +4,10 @@ module.exports = {
   ],
   theme: {
     extend: {
+      screens: {
+        'xs': '360px',   // Small phones (360px+) — use xs:classname
+        '3xl': '1600px', // Very wide desktops
+      },
       colors: {
         'slate': {
           900: '#0f172a',
@@ -18,6 +22,13 @@ module.exports = {
           500: '#f59e0b',
           600: '#d97706',
         },
+      },
+      spacing: {
+        'nav': '60px',    // BottomNav height
+        'navbar': '64px', // Top Navbar height
+      },
+      minHeight: {
+        'screen-nav': 'calc(100vh - 64px)', // Below top navbar
       },
     },
   },

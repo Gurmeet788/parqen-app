@@ -114,7 +114,7 @@ export default function LandingPage({ user }) {
   const goTo = path => navigate(path);
 
   return (
-    <div className="overflow-x-hidden" style={{fontFamily:"'DM Sans',sans-serif",background:'#fff',maxWidth:'100vw'}}>
+    <div style={{fontFamily:"'DM Sans',sans-serif",background:'#fff',maxWidth:'100vw',width:'100%'}}>
       <SEO />
       <style>{`
         *, *::before, *::after { box-sizing: border-box; }

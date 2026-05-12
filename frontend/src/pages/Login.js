@@ -213,9 +213,6 @@ export default function Login({ onLogin }) {
           -webkit-font-smoothing: antialiased;
           background: #F0F9F4;
           overscroll-behavior: none;
-          height: 100%;
-          width: 100%;
-          overflow-x: hidden;
         }
 
         .login-layout {

@@ -300,7 +300,7 @@ function UsersSection() {
       const r = await axios.get(`${API_URL}/admin/users`, { headers: authH(), params: { search, status: filter, page, limit: LIMIT } });
       setUsers(r.data.users || []);
       setTotal(r.data.total || 0);
-    } catch { toast.error('Failed to load users'); }
+    } catch (err) { toast.error(err.response?.data?.error || 'Failed to load users'); }
     finally { setLoading(false); }
   }, [search, filter, page]);
 

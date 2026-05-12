@@ -2853,8 +2853,8 @@ app.get('/api/my-trades', verifyToken, async (req, res) => {
          buyer_id, seller_id, created_at, expires_at, completed_at, cancelled_at,
          buyer_confirmed, cancel_reason,
          listing:listing_id(id, listing_type, gift_card_brand, payment_method, time_limit, currency, currency_symbol),
-         buyer:buyer_id(id, username, avatar_url, badge, total_trades, completion_rate, positive_feedback, negative_feedback, last_login, country),
-         seller:seller_id(id, username, avatar_url, badge, total_trades, completion_rate, positive_feedback, negative_feedback, last_login, country)`,
+         buyer:buyer_id(id, username, avatar_url, badge, total_trades, completion_rate, positive_feedback, negative_feedback, last_login, last_seen_at, country),
+         seller:seller_id(id, username, avatar_url, badge, total_trades, completion_rate, positive_feedback, negative_feedback, last_login, last_seen_at, country)`,
         { count: 'exact' }
       )
       .or(`buyer_id.eq.${req.userId},seller_id.eq.${req.userId}`)
@@ -2892,7 +2892,7 @@ app.get('/api/trades/active', verifyToken, async (req, res) => {
 app.get('/api/trades/:id', verifyToken, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin.from('trades')
-      .select(`*, listing:listing_id(*), buyer:buyer_id(id, username, avatar_url, average_rating, total_trades, completion_rate, last_login, badge, positive_feedback, negative_feedback, country), seller:seller_id(id, username, avatar_url, average_rating, total_trades, completion_rate, last_login, badge, positive_feedback, negative_feedback, country)`)
+      .select(`*, listing:listing_id(*), buyer:buyer_id(id, username, avatar_url, average_rating, total_trades, completion_rate, last_login, last_seen_at, badge, positive_feedback, negative_feedback, country), seller:seller_id(id, username, avatar_url, average_rating, total_trades, completion_rate, last_login, last_seen_at, badge, positive_feedback, negative_feedback, country)`)
       .eq('id', req.params.id).single();
     if (error) return res.status(404).json({ error: 'Trade not found' });
     if (data.buyer_id !== req.userId && data.seller_id !== req.userId) return res.status(403).json({ error: 'Unauthorized' });
@@ -3240,8 +3240,9 @@ app.post('/api/trades/:id/mark-paid', verifyToken, async (req, res) => {
 
     // Atomic update — only flips to PAYMENT_SENT if status is still in allowedStatuses.
     // Prevents a race where auto-cancel fires between our status check above and this write.
+    // expires_at is cleared so no cron job or timer can ever expire a paid trade.
     const { data, error } = await supabaseAdmin.from('trades')
-      .update({ status: 'PAYMENT_SENT', buyer_confirmed: true, buyer_confirmed_at: new Date() })
+      .update({ status: 'PAYMENT_SENT', buyer_confirmed: true, buyer_confirmed_at: new Date(), expires_at: null })
       .eq('id', req.params.id)
       .in('status', allowedStatuses)
       .select().single();
@@ -3340,17 +3341,29 @@ app.post('/api/trades/:id/cancel', verifyToken, async (req, res) => {
       const esc           = claimedEscrow[0];
       const btcProviderId = esc.seller_id || trade.seller_id;
       const refundAmount  = parseFloat(esc.amount_btc || trade.amount_btc || 0);
+      const refundUsd     = parseFloat(parseFloat(trade.amount_usd || 0).toFixed(2));
 
-      const { error: rpcErr } = await supabaseAdmin.rpc('increment_balance_btc', {
-        p_user_id: btcProviderId,
-        p_amount:  refundAmount,
+      // Read both balance tables in parallel
+      const [{ data: providerBal }, { data: walletRow }] = await Promise.all([
+        supabaseAdmin.from('user_balances').select('balance_btc, balance_usd').eq('user_id', btcProviderId).maybeSingle(),
+        supabaseAdmin.from('user_wallets').select('balance_btc').eq('user_id', btcProviderId).maybeSingle(),
+      ]);
+      const newBalBtc = parseFloat((parseFloat(providerBal?.balance_btc || 0) + refundAmount).toFixed(8));
+      const newBalUsd = parseFloat((parseFloat(providerBal?.balance_usd || 0) + refundUsd).toFixed(2));
+      const newWalBtc = parseFloat((parseFloat(walletRow?.balance_btc || 0) + refundAmount).toFixed(8));
+
+      // Upsert so the row is created if it somehow doesn't exist
+      await supabaseAdmin.from('user_balances').upsert({
+        user_id: btcProviderId, balance_btc: newBalBtc, balance_usd: newBalUsd, updated_at: new Date().toISOString(),
       });
-      if (rpcErr) {
-        const { data: providerBalance } = await supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', btcProviderId).single();
-        const newProviderBalance = parseFloat((parseFloat(providerBalance?.balance_btc || 0) + refundAmount).toFixed(8));
-        await supabaseAdmin.from('user_balances').update({ balance_btc: newProviderBalance, updated_at: new Date() }).eq('user_id', btcProviderId);
+      // Sync user_wallets — increment from its own current value (not from user_balances)
+      if (walletRow) {
+        await supabaseAdmin.from('user_wallets')
+          .update({ balance_btc: newWalBtc, updated_at: new Date().toISOString() })
+          .eq('user_id', btcProviderId);
       }
       await supabaseAdmin.from('escrow_locks').update({ status: 'REFUNDED' }).eq('trade_id', req.params.id);
+      console.log(`[cancel] Refunded ${refundAmount} BTC to ${btcProviderId.slice(0,8)}`);
     }
 
     // Atomic trade cancel — only flips if still in a cancellable status
@@ -3402,108 +3415,29 @@ app.post('/api/trades/:id/cancel', verifyToken, async (req, res) => {
 
 app.post('/api/trades/:id/auto-cancel', async (req, res) => {
   try {
-    const { reason } = req.body;
     const tradeId = req.params.id;
+    const { reason } = req.body;
 
-    const { data: trade } = await supabaseAdmin.from('trades').select('*').eq('id', tradeId).single();
+    // Quick status check — guard before delegating to the escrow service
+    const { data: trade } = await supabaseAdmin.from('trades').select('id, status').eq('id', tradeId).single();
     if (!trade) return res.status(404).json({ error: 'Trade not found' });
 
-    // Disputed trades are locked — only a moderator can resolve them.
     if (trade.status === 'DISPUTED') {
-      console.error(`[Auto-cancel] Blocked — trade ${tradeId.slice(0,8)} is DISPUTED. Moderator must give final verdict.`);
       return res.status(403).json({ error: 'Cannot cancel a disputed trade. A moderator must give the final verdict.' });
     }
-
-    // Payment already marked — buyer has paid, trade is locked until seller releases or dispute resolves.
     if (['PAYMENT_SENT', 'PAID'].includes(trade.status)) {
-      console.error(`[Auto-cancel] Blocked — trade ${tradeId.slice(0,8)} status is ${trade.status}. Cannot auto-cancel after payment marked.`);
+      console.error(`[Auto-cancel] Blocked — trade ${tradeId.slice(0,8)} is ${trade.status}. Cannot auto-cancel after payment marked.`);
       return res.status(403).json({ error: 'Cannot auto-cancel after buyer has marked payment. Seller must release Bitcoin or open a dispute.' });
     }
-
-    const cancellableStatuses = ['CREATED', 'FUNDS_LOCKED', 'ESCROW', 'ACTIVE', 'OPEN'];
-    if (!cancellableStatuses.includes(trade.status)) {
-      return res.json({ success: true, message: `Trade already in status: ${trade.status}` });
+    if (['CANCELLED', 'COMPLETED'].includes(trade.status)) {
+      return res.json({ success: true, message: `Trade already ${trade.status.toLowerCase()}.` });
     }
 
-    // ── Atomically claim the escrow (UPDATE WHERE status='LOCKED') ────────────
-    // This prevents concurrent auto-cancel calls from both refunding the same escrow.
-    // Only the request that flips status LOCKED→REFUNDING proceeds; all others skip.
-    const { data: claimedEscrow } = await supabaseAdmin
-      .from('escrow_locks')
-      .update({ status: 'REFUNDING', released_at: new Date().toISOString() })
-      .eq('trade_id', tradeId)
-      .eq('status', 'LOCKED')
-      .select('*');
+    // Delegate to the centralized escrow service — handles atomic escrow claim,
+    // upsert on user_balances, user_wallets sync, audit log, and notifications.
+    const result = await tradeEscrowService.cancelTrade(tradeId, reason || '30-minute payment window expired');
+    res.json(result);
 
-    if (claimedEscrow && claimedEscrow.length > 0) {
-      const esc           = claimedEscrow[0];
-      const btcProviderId = esc.seller_id || trade.seller_id;
-      const refundAmount  = parseFloat(esc.amount_btc || trade.amount_btc || 0);
-
-      // Atomic balance increment via Supabase RPC to avoid read-modify-write race with depositMonitor
-      const { error: rpcErr } = await supabaseAdmin.rpc('increment_balance_btc', {
-        p_user_id: btcProviderId,
-        p_amount:  refundAmount,
-      });
-
-      if (rpcErr) {
-        // RPC not available — fall back to read-modify-write (less safe but better than losing funds)
-        console.warn('[Auto-cancel] increment_balance_btc RPC unavailable, using fallback:', rpcErr.message);
-        const { data: providerBal } = await supabaseAdmin
-          .from('user_balances').select('balance_btc').eq('user_id', btcProviderId).single();
-        const newBalance = parseFloat((parseFloat(providerBal?.balance_btc || 0) + refundAmount).toFixed(8));
-        await supabaseAdmin.from('user_balances')
-          .update({ balance_btc: newBalance, updated_at: new Date().toISOString() })
-          .eq('user_id', btcProviderId);
-      }
-
-      // Mark escrow fully refunded
-      await supabaseAdmin.from('escrow_locks')
-        .update({ status: 'REFUNDED' })
-        .eq('trade_id', tradeId);
-
-      await supabaseAdmin.from('wallet_transactions').insert({
-        user_id:    btcProviderId,
-        type:       'ESCROW_RELEASE',
-        amount_btc: refundAmount,
-        status:     'CONFIRMED',
-        notes:      `Auto-cancel refund — trade #${tradeId.slice(0,8)} (30 min expired)`,
-        created_at: new Date().toISOString(),
-      });
-
-      console.log(`✅ Auto-cancel: refunded ${refundAmount} BTC to ${btcProviderId.slice(0,8)}`);
-    } else {
-      console.log(`[Auto-cancel] Escrow already claimed/refunded for trade ${tradeId.slice(0,8)} — skipping balance update`);
-    }
-
-    // ── Atomically cancel the trade — only if still in a cancellable status ──
-    // The .in() guard prevents overwriting PAYMENT_SENT/COMPLETED if status changed
-    // between our earlier check and now (race window).
-    const { data, error } = await supabaseAdmin.from('trades')
-      .update({ status: 'CANCELLED', cancel_reason: reason || '30-minute payment window expired', cancelled_at: new Date().toISOString() })
-      .eq('id', tradeId)
-      .in('status', cancellableStatuses)
-      .select().single();
-
-    if (!data) {
-      // Status changed to a protected state (PAYMENT_SENT etc.) in the race window — abort.
-      console.warn(`[Auto-cancel] Trade ${tradeId.slice(0,8)} status changed before cancel update — blocked.`);
-      return res.json({ success: true, message: 'Trade moved to a protected status — cancel aborted.' });
-    }
-    if (error) return res.status(400).json({ error: error.message });
-
-    // Notify both parties
-    for (const uid of [trade.buyer_id, trade.seller_id].filter(Boolean)) {
-      await supabaseAdmin.from('notifications').insert({
-        user_id: uid, type: 'trade', is_read: false,
-        title:   '⏰ Trade Expired',
-        message: `Trade #${tradeId.slice(0,8).toUpperCase()} cancelled — 30-minute window expired. Bitcoin returned to seller wallet.`,
-        action:  `/trade/${tradeId}`,
-        created_at: new Date().toISOString(),
-      });
-    }
-
-    res.json({ success: true, trade: data });
   } catch (error) {
     console.error('Auto-cancel error:', error);
     res.status(500).json({ error: error.message });
@@ -3516,16 +3450,24 @@ app.post('/api/trades/:id/auto-cancel', async (req, res) => {
 
 app.post('/api/messages', verifyToken, async (req, res) => {
   try {
-    const { tradeId, message } = req.body;
+    const { tradeId, message, isSystem } = req.body;
     if (!tradeId || !message) return res.status(400).json({ error: 'Missing required fields' });
     const { data: trade, error: tradeError } = await supabaseAdmin.from('trades').select('buyer_id, seller_id, status').eq('id', tradeId).single();
     if (tradeError || !trade) return res.status(404).json({ error: 'Trade not found' });
+    const isParticipant = trade.buyer_id === req.userId || trade.seller_id === req.userId;
     const recipientId = trade.buyer_id === req.userId ? trade.seller_id : trade.buyer_id;
     const { data: userData } = await supabaseAdmin.from('users').select('is_moderator, is_admin').eq('id', req.userId).single();
     const senderRole = (userData?.is_moderator || userData?.is_admin) ? 'moderator' : 'user';
+    // isSystem: only trusted if the sender is a participant in this trade
+    const useSystem = isSystem && isParticipant;
     const { data, error } = await supabaseAdmin.from('messages').insert([{
-      trade_id: tradeId, sender_id: req.userId, recipient_id: recipientId,
-      message_text: message, message_type: 'CHAT', sender_role: senderRole, created_at: new Date(),
+      trade_id:     tradeId,
+      sender_id:    useSystem ? null : req.userId,
+      recipient_id: useSystem ? null : recipientId,
+      message_text: message,
+      message_type: useSystem ? 'SYSTEM' : 'CHAT',
+      sender_role:  useSystem ? 'system' : senderRole,
+      created_at:   new Date(),
     }]).select();
     if (error) return res.status(400).json({ error: error.message });
     res.json({ success: true, message: data[0] });
@@ -4313,7 +4255,7 @@ app.get('/api/admin/users', verifyToken, async (req, res) => {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { search = '', status = '', page = 1, limit = 50 } = req.query;
     let query = supabaseAdmin.from('users')
-      .select('id, email, username, full_name, phone, phone_number, avatar_url, account_status, is_admin, is_moderator, is_email_verified, is_id_verified, is_phone_verified, kyc_status, kyc_id_type, kyc_submitted_at, kyc_id_url, kyc_id_back_url, kyc_selfie_url, kyc_rejection_reason, total_trades, completion_rate, average_rating, positive_feedback, negative_feedback, badge, referral_code, total_referrals, created_at, last_login, last_seen_at, country', { count: 'exact' })
+      .select('*', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range((page - 1) * limit, page * limit - 1);
     if (search) query = query.or(`username.ilike.%${search}%,email.ilike.%${search}%,full_name.ilike.%${search}%,phone.ilike.%${search}%`);
@@ -4391,7 +4333,7 @@ app.get('/api/admin/kyc', verifyToken, async (req, res) => {
     const { status = 'pending' } = req.query;
 
     let query = supabaseAdmin.from('users')
-      .select('id, email, username, full_name, phone, is_phone_verified, kyc_id_type, kyc_id_url, kyc_id_back_url, kyc_selfie_url, kyc_status, kyc_submitted_at, created_at, country')
+      .select('*')
       .order('kyc_submitted_at', { ascending: true, nullsFirst: false });
 
     if (status === 'all') {
@@ -4536,6 +4478,27 @@ app.post('/api/admin/broadcast', verifyToken, async (req, res) => {
     );
 
     res.json({ success: true, sent: users.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/admin/broadcast-email — send email broadcast to all users
+app.post('/api/admin/broadcast-email', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { subject, htmlBody, broadcastType = 'broadcast' } = req.body;
+    if (!subject || !htmlBody) return res.status(400).json({ error: 'subject and htmlBody required' });
+
+    // Run in background — can take minutes for large user lists
+    res.json({ success: true, message: 'Email broadcast started in background. Check server logs for progress.' });
+
+    setImmediate(async () => {
+      try {
+        const result = await emailService.sendBroadcastToAllUsers(subject, htmlBody, broadcastType);
+        console.log(`[broadcast-email] ✅ Done — sent:${result.sent} failed:${result.failed} total:${result.total}`);
+      } catch (e) {
+        console.error('[broadcast-email] ❌ Failed:', e.message);
+      }
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

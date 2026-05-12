@@ -7,6 +7,7 @@
 ALTER TABLE users ADD COLUMN IF NOT EXISTS kyc_status          VARCHAR(20)  DEFAULT NULL;  -- 'pending' | 'approved' | 'rejected'
 ALTER TABLE users ADD COLUMN IF NOT EXISTS kyc_id_type         VARCHAR(50)  DEFAULT NULL;  -- 'ghana_card' | 'passport' etc.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS kyc_id_url          TEXT         DEFAULT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS kyc_id_back_url     TEXT         DEFAULT NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS kyc_selfie_url      TEXT         DEFAULT NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS kyc_submitted_at    TIMESTAMPTZ  DEFAULT NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS kyc_approved_at     TIMESTAMPTZ  DEFAULT NULL;

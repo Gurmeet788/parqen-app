@@ -1057,9 +1057,9 @@ export default function Dashboard({ user }) {
               </>
             ) : lastRefresh ? (
               <>
-                <span className="w-2 h-2 rounded-full" style={{backgroundColor:C.online}}/>
+                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{backgroundColor:C.online}}/>
                 <span className="text-xs font-bold" style={{color:C.online}}>Active &amp; Online</span>
-                <span className="text-xs" style={{color:C.g400}}>· Last synced {lastRefresh.toLocaleTimeString()}</span>
+                <span className="text-xs hidden xs:inline" style={{color:C.g400}}>· {lastRefresh.toLocaleTimeString()}</span>
               </>
             ) : (
               <>
