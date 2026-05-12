@@ -1056,8 +1056,11 @@ export default function TradeDetail({user}) {
       await axios.post(`${API_URL}/trades/${id}/mark-paid`,{},{headers:authH()});
       const sysMsg = isGiftCardTrade
         ? '🎁 Seller sent the gift card code. Buyer: verify the code and release Bitcoin.'
-        : '💰 Buyer confirmed payment sent. Seller: verify and release Bitcoin.';
+        : '💰 Payment confirmed — Buyer is waiting. Seller: verify receipt and release Bitcoin.';
       await postSys(sysMsg);
+      if(!isGiftCardTrade){
+        await postSys('⏳ Payment confirmed — waiting for seller to verify and release your Bitcoin.');
+      }
       toast.success(isGiftCardTrade ? 'Code sent! Waiting for buyer to verify.' : 'Payment confirmed!');
       await loadTrade();
     }catch(e){
@@ -1718,7 +1721,7 @@ export default function TradeDetail({user}) {
                     const isSuccess=/complet|released|btc.*released|verified|unlock/i.test(text);
                     const isDanger =/cancel|expired|refund|failed/i.test(text);
                     const isWarn   =/warning|urgent|expir|time.*left|5 minute/i.test(text);
-                    const isPmt    =/payment.*sent|buyer.*paid|mark.*paid|sent.*payment|confirmed payment/i.test(text);
+                    const isPmt    =/payment.*sent|buyer.*paid|mark.*paid|sent.*payment|confirmed payment|payment.*confirm|payment confirmed/i.test(text);
                     const isOpen   =/trade.*open|escrow.*lock|btc.*locked|opened/i.test(text);
                     const isDisp   =/disput|moderator|support.*review/i.test(text);
 
@@ -1744,15 +1747,15 @@ export default function TradeDetail({user}) {
                             <span className="text-xs font-semibold" style={{color:'rgba(255,255,255,0.5)'}}>{ts}</span>
                           </div>
                           {/* body */}
-                          <div className="px-4 py-3">
-                            <p className="text-sm font-black text-white leading-snug">{text}</p>
+                          <div className="px-4 py-3" style={{background:'rgba(255,255,255,0.97)'}}>
+                            <p className="text-sm font-black leading-snug" style={{color:'#DC2626'}}>{text}</p>
                             <div className="mt-2.5 px-3 py-2 rounded-xl text-xs font-black"
                               style={{
                                 background: isSeller
-                                  ? 'linear-gradient(90deg,rgba(255,255,255,0.22),rgba(255,255,255,0.1))'
-                                  : 'rgba(0,0,0,0.18)',
-                                color:'#FECACA',
-                                border:'1px solid rgba(255,255,255,0.2)',
+                                  ? 'rgba(220,38,38,0.08)'
+                                  : 'rgba(220,38,38,0.05)',
+                                color:'#991B1B',
+                                border:'1px solid rgba(220,38,38,0.25)',
                               }}>
                               {isBuyer
                                 ? '✓ You marked payment sent. Awaiting seller confirmation.'

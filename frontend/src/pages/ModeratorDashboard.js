@@ -129,10 +129,10 @@ function ConfirmResolutionModal({ decision, tradeId, btcAmount, usdAmount, buyer
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" style={{ backgroundColor:'rgba(0,0,0,0.75)' }}>
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden" style={{ maxHeight:'90vh' }}>
 
         {/* Header band */}
-        <div className="px-6 py-5 flex items-center gap-3" style={{ backgroundColor: cfg.bg, borderBottom:`3px solid ${cfg.borderColor}` }}>
+        <div className="px-6 py-5 flex items-center gap-3 flex-shrink-0" style={{ backgroundColor: cfg.bg, borderBottom:`3px solid ${cfg.borderColor}` }}>
           <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor:'white', boxShadow:`0 0 0 2px ${cfg.borderColor}` }}>
             <Gavel size={24} style={{ color: cfg.color }} />
           </div>
@@ -145,7 +145,8 @@ function ConfirmResolutionModal({ decision, tradeId, btcAmount, usdAmount, buyer
           </span>
         </div>
 
-        <div className="px-6 py-5 space-y-4">
+        {/* Scrollable body */}
+        <div className="px-6 py-5 space-y-4 overflow-y-auto flex-1">
           {/* Trade summary */}
           <div className="grid grid-cols-2 gap-3">
             {[
@@ -194,20 +195,20 @@ function ConfirmResolutionModal({ decision, tradeId, btcAmount, usdAmount, buyer
               I confirm this is my honest and final ruling, sworn under the PRAQEN Moderator Code of Conduct.
             </p>
           </label>
+        </div>
 
-          {/* Buttons */}
-          <div className="flex gap-3 pt-1">
-            <button onClick={onCancel} disabled={submitting}
-              className="flex-1 py-3 rounded-xl text-sm font-black border-2 transition hover:bg-gray-50 disabled:opacity-40"
-              style={{ borderColor:'#e5e7eb', color:'#6b7280' }}>
-              ← Go Back
-            </button>
-            <button onClick={onConfirm} disabled={!sworn || submitting}
-              className="flex-1 py-3 rounded-xl text-sm font-black text-white flex items-center justify-center gap-2 transition disabled:opacity-40"
-              style={{ backgroundColor: sworn && !submitting ? cfg.color : '#9ca3af' }}>
-              {submitting ? <><RefreshCw size={14} className="animate-spin" /> Processing…</> : <><Gavel size={14} /> Seal & Confirm Ruling</>}
-            </button>
-          </div>
+        {/* Sticky footer — always visible */}
+        <div className="px-6 py-4 flex gap-3 flex-shrink-0 border-t" style={{ borderColor:'#e5e7eb', backgroundColor:'white' }}>
+          <button onClick={onCancel} disabled={submitting}
+            className="flex-1 py-3 rounded-xl text-sm font-black border-2 transition hover:bg-gray-50 disabled:opacity-40"
+            style={{ borderColor:'#e5e7eb', color:'#6b7280' }}>
+            ← Go Back
+          </button>
+          <button onClick={onConfirm} disabled={!sworn || submitting}
+            className="flex-1 py-3 rounded-xl text-sm font-black text-white flex items-center justify-center gap-2 transition disabled:opacity-40"
+            style={{ backgroundColor: sworn && !submitting ? cfg.color : '#9ca3af' }}>
+            {submitting ? <><RefreshCw size={14} className="animate-spin" /> Processing…</> : <><Gavel size={14} /> {decision === 'BUYER_WINS' ? '🔓 Release Bitcoin to Buyer' : decision === 'SELLER_WINS' ? '↩ Return Bitcoin to Seller' : 'Seal & Confirm Ruling'}</>}
+          </button>
         </div>
       </div>
     </div>
