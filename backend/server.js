@@ -47,7 +47,8 @@ try {
 } catch (atInitErr) {
   console.error('[AT] Init error:', atInitErr.message);
 }
-const CoinbaseWalletService = require('./services/coinbaseWallet');
+// CoinbaseWalletService REMOVED — Coinbase held custody of private keys.
+// All wallet operations now use hdWalletService (self-custody, keys in .env MNEMONIC).
 const quoteService          = require('./services/quoteService');
 const { E, S }              = require('./utils/apiErrors');
 const emailService          = require('./services/emailService');
@@ -92,7 +93,23 @@ const supabaseAdmin = createClient(
 );
 
 // ── 4. Other services ──────────────────────────────────────────────────────
-const coinbaseWallet = new CoinbaseWalletService();
+
+// Compute a seller's public display name based on their name_display preference.
+// 'full'    → Samuel Kwame
+// 'initial' → Samuel K.
+// 'hide'    → username only
+function computeDisplayName(user) {
+  if (!user) return '';
+  const mode = user.name_display || (user.hide_full_name ? 'hide' : 'full');
+  const full = (user.full_name || '').trim();
+  if (mode === 'hide' || !full) return user.username || '';
+  if (mode === 'initial') {
+    const parts = full.split(/\s+/);
+    if (parts.length < 2) return full;
+    return parts[0] + ' ' + parts.slice(1).map(p => p[0] + '.').join(' ');
+  }
+  return full; // 'full'
+}
 
 // ── 5. Express ─────────────────────────────────────────────────────────────
 const app = express();
@@ -105,6 +122,7 @@ const depositMonitor         = require('./services/depositMonitor');
 const realtimeDepositService = require('./services/realtimeDepositService');
 const hdWalletRoutes         = require('./routes/hdWalletRoutes');
 const tradeEscrowService    = require('./services/tradeEscrowService');
+const balanceIntegrity      = require('./services/balanceIntegrityService');
 const { checkAndAwardBadges } = require('./services/badgeService');
 const { syncAllOfferStatuses } = require('./services/offerStatusService');
 app.use('/api/hd-wallet', hdWalletRoutes);
@@ -129,11 +147,19 @@ async function detectAndSaveCountry(userId, req) {
     const geoRes = await fetch(`https://ipapi.co/${ip}/json/`, { signal: AbortSignal.timeout(4000) });
     const geo    = await geoRes.json();
     if (geo?.country_code && geo.country_code.length === 2) {
-      await supabaseAdmin.from('users')
-        .update({ country: geo.country_code.toUpperCase(), last_ip: ip })
-        .eq('id', userId)
-        .is('country', null);  // only set if not already chosen by user
-      console.log(`[GeoIP] user ${String(userId).slice(0,8)} → ${geo.country_code} (${ip})`);
+      const cc   = geo.country_code.toUpperCase();
+      const city = geo.city || null;
+      const name = geo.country_name || null;
+      const loc  = city ? `${name} (${city})` : name;
+
+      // Always refresh city/name/last_ip so profile stays current
+      const alwaysUpdate = { city, country_name: name, last_seen_location: loc, last_ip: ip };
+      await supabaseAdmin.from('users').update(alwaysUpdate).eq('id', userId);
+
+      // Set country code only if not already stored (preserve manual selections)
+      await supabaseAdmin.from('users').update({ country: cc }).eq('id', userId).is('country', null);
+
+      console.log(`[GeoIP] user ${String(userId).slice(0,8)} → ${cc}${city ? ` / ${city}` : ''} (${ip})`);
     }
   } catch (_) { /* geo lookup failure never breaks login */ }
 }
@@ -558,10 +584,16 @@ function generateMockWallet() {
   return '';
 }
 
-// ── Is this a real Bitcoin address or an old mock hex string? ─────────────
+// ── Is this a MAINNET-only Bitcoin address? ───────────────────────────────
+// SECURITY: tb1/mn/2 are TESTNET prefixes — NEVER allow on mainnet.
+// Sending mainnet BTC to a testnet address = permanent irreversible loss.
 function isRealBtcAddress(addr) {
   if (!addr || typeof addr !== 'string') return false;
-  return /^(bc1|tb1|[13mn2])[a-zA-HJ-NP-Z0-9]{25,62}$/.test(addr);
+  // bc1q / bc1p = native SegWit mainnet ONLY
+  // 1... = legacy P2PKH mainnet ONLY
+  // 3... = P2SH mainnet ONLY
+  // tb1, m, n, 2 are TESTNET — explicitly BLOCKED
+  return /^(bc1[a-z0-9]{25,87}|[13][a-zA-HJ-NP-Z1-9]{25,34})$/.test(addr);
 }
 
 // ── Upgrade a user's fake mock address to a real HD wallet address ────────
@@ -772,66 +804,11 @@ async function ensureWallet(userId, username) {
   return { address, isNew: true };
 }
 
-async function lockFundsInEscrow(tradeId, sellerId, buyerId, amountBtc) {
-  const { data: buyerBalance, error: buyerBalanceError } = await supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', buyerId).single();
-  if (buyerBalanceError || !buyerBalance) throw new Error('Buyer balance not found');
-  const currentBuyerBalance = parseFloat(buyerBalance.balance_btc || 0);
-  const amount = parseFloat(amountBtc);
-  if (currentBuyerBalance < amount) throw new Error(`Insufficient balance. Buyer has ${currentBuyerBalance} BTC, needs ${amount} BTC`);
-  await supabaseAdmin.from('user_balances').update({ balance_btc: currentBuyerBalance - amount, updated_at: new Date() }).eq('user_id', buyerId);
-  const SELLER_COMMISSION_RATE = 0.01;
-  const sellerCommission = amount * SELLER_COMMISSION_RATE;
-  const { data: sellerBalance } = await supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', sellerId).single();
-  const currentSellerBalance = parseFloat(sellerBalance?.balance_btc || 0);
-  await supabaseAdmin.from('user_balances').update({ balance_btc: currentSellerBalance - sellerCommission, updated_at: new Date() }).eq('user_id', sellerId);
-  const { error: escrowError } = await supabaseAdmin.from('escrow_locks').insert([{
-    trade_id: tradeId, seller_id: sellerId, buyer_id: buyerId, amount_btc: amount, status: 'LOCKED', locked_at: new Date(),
-  }]);
-  if (escrowError) {
-    await supabaseAdmin.from('user_balances').update({ balance_btc: currentBuyerBalance, updated_at: new Date() }).eq('user_id', buyerId);
-    await supabaseAdmin.from('user_balances').update({ balance_btc: currentSellerBalance, updated_at: new Date() }).eq('user_id', sellerId);
-    throw new Error(escrowError.message);
-  }
-  const { error: tradeError } = await supabaseAdmin.from('trades').update({ status: 'FUNDS_LOCKED', escrow_locked_at: new Date(), escrow_amount: amount }).eq('id', tradeId);
-  if (tradeError) throw new Error(tradeError.message);
-  return { success: true, amountLocked: amount, commissionCharged: sellerCommission };
-}
-
-async function releaseFundsToBuyer(tradeId, buyerId, amountBtc, tradeAmountUsd) {
-  // Atomically claim the escrow — prevents double-release from retries or concurrent calls
-  const { data: claimedRows, error: claimErr } = await supabaseAdmin
-    .from('escrow_locks')
-    .update({ status: 'RELEASING' })
-    .eq('trade_id', tradeId)
-    .eq('status', 'LOCKED')
-    .select('id');
-  if (claimErr) throw new Error(`Failed to claim escrow: ${claimErr.message}`);
-  if (!claimedRows || claimedRows.length === 0) throw new Error('Escrow already released or not in LOCKED state');
-
-  const { data: buyerBalance } = await supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', buyerId).single();
-  const newBuyerBalance = parseFloat(buyerBalance?.balance_btc || 0) + parseFloat(amountBtc);
-  await supabaseAdmin.from('user_balances').upsert({ user_id: buyerId, balance_btc: newBuyerBalance, updated_at: new Date() });
-  await supabaseAdmin.from('user_wallets').update({ balance_btc: newBuyerBalance, updated_at: new Date() }).eq('user_id', buyerId);
-  await supabaseAdmin.from('escrow_locks').update({ status: 'RELEASED', released_at: new Date() }).eq('trade_id', tradeId);
-  await supabaseAdmin.from('trades').update({ status: 'COMPLETED', completed_at: new Date() }).eq('id', tradeId);
-  await createAffiliateEarning(tradeId, buyerId, amountBtc, tradeAmountUsd);
-
-  // Send trade confirmation emails to buyer and seller (fire and forget)
-  Promise.resolve().then(async () => {
-    try {
-      const { data: trade } = await supabaseAdmin.from('trades').select('*').eq('id', tradeId).single();
-      const sellerId = escrow?.seller_id;
-      const [buyerRes, sellerRes] = await Promise.all([
-        supabaseAdmin.from('users').select('id, email, username').eq('id', buyerId).single(),
-        sellerId ? supabaseAdmin.from('users').select('id, email, username').eq('id', sellerId).single() : Promise.resolve({ data: null }),
-      ]);
-      if (buyerRes.data?.email)  emailService.sendTradeConfirmationEmail(buyerRes.data,  trade, 'buyer').catch(() => {});
-      if (sellerRes.data?.email) emailService.sendTradeConfirmationEmail(sellerRes.data, trade, 'seller').catch(() => {});
-    } catch (_) {}
-  }).catch(() => {});
-
-  return { success: true };
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// LEGACY lockFundsInEscrow() and releaseFundsToBuyer() REMOVED.
+// All escrow operations must go through tradeEscrowService (imported at line 107).
+// Using these old functions caused double-balance-credits and missing wallet syncs.
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ============================================================
 // AUTH MIDDLEWARE
@@ -1709,66 +1686,110 @@ app.post('/api/users/verify-email-code', verifyToken, async (req, res) => {
   }
 });
 
-// POST /api/users/send-phone-otp — send SMS OTP to a phone number (authenticated)
+// POST /api/users/send-phone-otp
+// method: 'email'     -> 6-digit code sent to the user's registered email
+// method: 'whatsapp'  -> 6-digit code sent via Twilio WhatsApp
+// Phone is NOT saved here — it is saved only when the user successfully verifies (verify-phone-otp).
 app.post('/api/users/send-phone-otp', verifyToken, async (req, res) => {
   try {
-    const { phone } = req.body;
+    const { phone, method = 'email' } = req.body;
     if (!phone) return res.status(400).json({ error: 'Phone number required' });
+    if (!['email', 'whatsapp'].includes(method)) {
+      return res.status(400).json({ error: 'Delivery method must be "email" or "whatsapp"' });
+    }
 
-    const e164 = phone.startsWith('+') ? phone : `+${phone.replace(/^0/, '')}`;
+    // Normalise: strip spaces/dashes/parens, add + if missing, strip leading 0
+    const cleaned = String(phone).replace(/[\s\-()]/g, '');
+    const e164    = cleaned.startsWith('+') ? cleaned : `+${cleaned.replace(/^0+/, '')}`;
+
+    if (!/^\+[1-9]\d{6,14}$/.test(e164)) {
+      return res.status(400).json({ error: 'Invalid phone number. Use international format, e.g. +233XXXXXXXXX for Ghana or +234XXXXXXXXXX for Nigeria.' });
+    }
 
     const limit = checkPhoneRateLimit(e164);
     if (limit.blocked) return res.status(429).json({ error: limit.error });
 
-    // One phone = one account (allow if already belongs to THIS user)
-    const { data: existing } = await supabaseAdmin.from('users').select('id').eq('phone', e164).neq('id', req.userId).maybeSingle();
-    if (existing) return res.status(400).json({ error: 'This phone number is already registered to another account.' });
-
-    const otp       = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-    // Store in BOTH memory (fast) and database (survives restarts)
-    otpStore.set(e164, { otp, expires: expiresAt.getTime() });
-    await supabaseAdmin.from('otp_codes').insert({
-      phone: e164, code: otp, expires_at: expiresAt.toISOString(), used: false,
-    }).throwOnError().catch(dbErr => console.warn('[send-phone-otp] DB store warn:', dbErr.message));
-
-    console.log(`[send-phone-otp] OTP for ${e164}: ${otp}`);
-
-    let smsSent = false;
-    let smsError = null;
-    try {
-      await sendSmsOtp(e164, `[PRAQEN] Your verification code is: ${otp}. Valid for 10 minutes. Never share this code.`);
-      smsSent = true;
-    } catch (smsErr) {
-      smsError = smsErr;
-      console.error('[send-phone-otp] SMS failed:', smsErr.message, 'code:', smsErr.code);
+    // Block only if THIS number is VERIFIED on another account (unverified is OK)
+    const { data: claimedByOther } = await supabaseAdmin.from('users')
+      .select('id').eq('phone', e164).eq('is_phone_verified', true).neq('id', req.userId).maybeSingle();
+    if (claimedByOther) {
+      return res.status(400).json({ error: 'This phone number is already verified on another account.' });
     }
+
+    // Generate OTP and store in memory (primary) — DB store is best-effort
+    const otp       = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresMs = Date.now() + 10 * 60 * 1000;
+    otpStore.set(e164, { otp, expires: expiresMs });
+
+    // Best-effort DB backup so OTP survives a server restart
+    supabaseAdmin.from('otp_codes').insert({
+      phone: e164, code: otp, expires_at: new Date(expiresMs).toISOString(), used: false,
+    }).then(() => {}).catch(dbErr => console.warn('[send-phone-otp] DB backup warn:', dbErr.message));
 
     recordPhoneRequest(e164);
     const isDev = process.env.NODE_ENV !== 'production';
+    console.log(`[send-phone-otp] method=${method} e164=${e164}`);
 
-    if (smsSent) {
-      return res.json({ success: true, message: 'OTP sent to your phone', devCode: isDev ? otp : undefined });
+    // ── Email ──────────────────────────────────────────────────────────────────
+    if (method === 'email') {
+      const { data: userRow, error: userErr } = await supabaseAdmin
+        .from('users').select('email').eq('id', req.userId).single();
+      if (userErr) {
+        console.error('[send-phone-otp] DB lookup failed:', userErr.message);
+        return res.status(500).json({ error: 'Could not look up your account. Please try again.' });
+      }
+      if (!userRow?.email) {
+        return res.status(400).json({ error: 'No email address found on your account.' });
+      }
+      try {
+        await sendVerificationEmail(userRow.email, otp);
+        console.log(`[send-phone-otp] Email OTP → ${userRow.email}`);
+        return res.json({
+          success: true,
+          message: `Verification code sent to ${userRow.email}`,
+          devCode: isDev ? otp : undefined,
+        });
+      } catch (emailErr) {
+        console.error('[send-phone-otp] Email send error:', emailErr.message);
+        return res.status(500).json({
+          error: 'Email delivery failed. Check your spam folder or try the WhatsApp option.',
+          devCode: isDev ? otp : undefined,
+        });
+      }
     }
 
-    // SMS failed — give actionable error
-    let userMsg = 'Could not send SMS to this number. Please check the number is correct and in international format (e.g. +233XXXXXXXXX), then try again.';
-    if (smsError?.code === 21211 || smsError?.code === 21212) userMsg = 'Invalid phone number. Use international format — e.g. +233XXXXXXXXX for Ghana, +234XXXXXXXXXX for Nigeria.';
-    else if (smsError?.code === 21608) userMsg = 'SMS to this region is unavailable right now. Please email support@praqen.com with your number and we will verify you manually.';
-    else if (smsError?.code === 21614) userMsg = 'This number cannot receive SMS. Try a different number.';
-    else if (smsError?.code === 20003) userMsg = 'SMS configuration error. Please contact support@praqen.com.';
-    else if (smsError?.code === 21610) userMsg = 'This number has opted out of SMS messages.';
+    // ── WhatsApp ───────────────────────────────────────────────────────────────
+    if (method === 'whatsapp') {
+      if (!twilioClient) {
+        return res.status(500).json({
+          error: 'WhatsApp is not configured on this server. Please use the email option.',
+          devCode: isDev ? otp : undefined,
+        });
+      }
+      try {
+        await twilioClient.messages.create({
+          body: `*PRAQEN Phone Verification*\n\nYour code: *${otp}*\n\nValid 10 minutes. Never share this code.`,
+          from: TWILIO_WA_FROM,
+          to:   `whatsapp:${e164}`,
+        });
+        console.log(`[send-phone-otp] WhatsApp OTP → ${e164}`);
+        return res.json({
+          success: true,
+          message: 'Code sent via WhatsApp',
+          devCode: isDev ? otp : undefined,
+        });
+      } catch (waErr) {
+        console.error('[send-phone-otp] WhatsApp error:', waErr.message);
+        return res.status(500).json({
+          error: 'WhatsApp delivery failed. Please use the email option instead.',
+          devCode: isDev ? otp : undefined,
+        });
+      }
+    }
 
-    return res.status(500).json({
-      error: userMsg,
-      code: smsError?.code || null,
-      devCode: isDev ? otp : undefined,
-      _hint: isDev ? 'Dev mode: use devCode to bypass SMS and verify directly' : undefined,
-    });
   } catch (err) {
-    console.error('[send-phone-otp] unexpected error:', err.message);
-    res.status(500).json({ error: 'Could not send OTP. Please try again.' });
+    console.error('[send-phone-otp] OUTER ERROR:', err.message, err.stack);
+    res.status(500).json({ error: `OTP send failed: ${err.message}` });
   }
 });
 
@@ -1862,13 +1883,21 @@ app.post('/api/users/verify-phone-otp', verifyToken, async (req, res) => {
     const { phone, otp } = req.body;
     if (!phone || !otp) return res.status(400).json({ error: 'Phone and OTP required' });
 
-    const e164 = phone.startsWith('+') ? phone : `+${phone.replace(/^0/, '')}`;
-    const code = String(otp).trim();
+    // Normalise phone the same way send-phone-otp does (strip spaces/dashes, add +, remove leading 0)
+    const cleaned = String(phone).replace(/[\s\-()]/g, '');
+    const e164    = cleaned.startsWith('+') ? cleaned : `+${cleaned.replace(/^0+/, '')}`;
+    const code    = String(otp).trim();
 
     if (code.length !== 6) return res.status(400).json({ error: 'Enter the full 6-digit code' });
 
-    const limit = checkPhoneRateLimit(e164);
-    if (limit.blocked) return res.status(429).json({ error: limit.error });
+    // Only block if the account is locked due to too many failed attempts.
+    // Do NOT apply the send-cooldown here — the user just received an OTP and
+    // needs to verify it immediately, often within the same 60-second window.
+    const limRec = phoneRateLimits.get(e164);
+    if (limRec?.lockedUntil && Date.now() < limRec.lockedUntil) {
+      const mins = Math.ceil((limRec.lockedUntil - Date.now()) / 60000);
+      return res.status(429).json({ error: `Too many failed attempts. Try again in ${mins} minute(s).` });
+    }
 
     // ── Check in-memory first (fast path) ─────────────────────────────────
     const stored = otpStore.get(e164);
@@ -1906,11 +1935,11 @@ app.post('/api/users/verify-phone-otp', verifyToken, async (req, res) => {
   }
 });
 
-// POST /api/kyc/upload — receive base64 ID + selfie, store in Supabase Storage, set status pending
+// POST /api/kyc/upload — receive base64 ID front + back, store in Supabase Storage, set status pending
 app.post('/api/kyc/upload', verifyToken, async (req, res) => {
   try {
-    const { idImage, idImageBack, selfieImage, idType = 'national_id' } = req.body;
-    if (!idImage || !selfieImage) return res.status(400).json({ error: 'ID photo and selfie are both required' });
+    const { idImage, idImageBack, idType = 'national_id' } = req.body;
+    if (!idImage)     return res.status(400).json({ error: 'Front of ID card is required' });
     if (!idImageBack) return res.status(400).json({ error: 'Back of ID card is required — please upload both front and back' });
 
     const userId    = req.userId;
@@ -1919,9 +1948,8 @@ app.post('/api/kyc/upload', verifyToken, async (req, res) => {
     // Strip base64 prefix and convert to buffer
     const toBuffer = (b64) => Buffer.from(b64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
 
-    let idUrl      = null;
-    let idBackUrl  = null;
-    let selfieUrl  = null;
+    let idUrl     = null;
+    let idBackUrl = null;
 
     // Try Supabase Storage upload (bucket: kyc-documents)
     try {
@@ -1933,10 +1961,6 @@ app.post('/api/kyc/upload', verifyToken, async (req, res) => {
         .from('kyc-documents')
         .upload(`${userId}/id_back_${timestamp}.jpg`, toBuffer(idImageBack), { contentType: 'image/jpeg', upsert: true });
 
-      const { error: selfieErr } = await supabaseAdmin.storage
-        .from('kyc-documents')
-        .upload(`${userId}/selfie_${timestamp}.jpg`, toBuffer(selfieImage), { contentType: 'image/jpeg', upsert: true });
-
       if (!idErr) {
         const { data: { publicUrl } } = supabaseAdmin.storage.from('kyc-documents').getPublicUrl(`${userId}/id_front_${timestamp}.jpg`);
         idUrl = publicUrl;
@@ -1945,24 +1969,32 @@ app.post('/api/kyc/upload', verifyToken, async (req, res) => {
         const { data: { publicUrl } } = supabaseAdmin.storage.from('kyc-documents').getPublicUrl(`${userId}/id_back_${timestamp}.jpg`);
         idBackUrl = publicUrl;
       }
-      if (!selfieErr) {
-        const { data: { publicUrl } } = supabaseAdmin.storage.from('kyc-documents').getPublicUrl(`${userId}/selfie_${timestamp}.jpg`);
-        selfieUrl = publicUrl;
-      }
     } catch (storageErr) {
       console.warn('[kyc/upload] Storage upload failed (bucket may not exist):', storageErr.message);
     }
 
     // Always mark user as pending regardless of storage success
-    await supabaseAdmin.from('users').update({
+    const { error: dbErr } = await supabaseAdmin.from('users').update({
       kyc_status:        'pending',
       kyc_id_type:       idType,
       kyc_submitted_at:  new Date().toISOString(),
       kyc_id_url:        idUrl,
       kyc_id_back_url:   idBackUrl,
-      kyc_selfie_url:    selfieUrl,
+      kyc_selfie_url:    null,
       updated_at:        new Date().toISOString(),
     }).eq('id', userId);
+    if (dbErr) {
+      console.error('[kyc/upload] DB update failed:', dbErr.message);
+      // If columns missing, try minimal update
+      const { error: minErr } = await supabaseAdmin.from('users').update({
+        kyc_status: 'pending',
+        updated_at: new Date().toISOString(),
+      }).eq('id', userId);
+      if (minErr) {
+        console.error('[kyc/upload] Minimal DB update also failed — run admin_columns.sql migration:', minErr.message);
+        return res.status(500).json({ error: 'Database not ready. Please run the admin_columns.sql migration.' });
+      }
+    }
 
     // In-app notification for user
     await supabaseAdmin.from('notifications').insert({
@@ -1986,16 +2018,23 @@ app.post('/api/kyc/upload', verifyToken, async (req, res) => {
 // GET /api/kyc/status — returns current KYC status for the logged-in user
 app.get('/api/kyc/status', verifyToken, async (req, res) => {
   try {
-    const { data, error } = await supabaseAdmin.from('users')
-      .select('kyc_status, kyc_id_type, kyc_submitted_at, kyc_id_url, kyc_selfie_url, kyc_rejection_reason, is_id_verified')
+    let { data, error } = await supabaseAdmin.from('users')
+      .select('kyc_status, kyc_id_type, kyc_submitted_at, kyc_id_url, kyc_id_back_url, kyc_rejection_reason, is_id_verified')
       .eq('id', req.userId).single();
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      // Columns may not exist yet — fall back to minimal query
+      const fallback = await supabaseAdmin.from('users')
+        .select('is_id_verified, kyc_status')
+        .eq('id', req.userId).single();
+      if (fallback.error) return res.status(500).json({ error: fallback.error.message });
+      data = fallback.data;
+    }
     res.json({
       kyc_status:          data?.kyc_status          || null,
       kyc_id_type:         data?.kyc_id_type         || null,
       kyc_submitted_at:    data?.kyc_submitted_at    || null,
       kyc_id_url:          data?.kyc_id_url          || null,
-      kyc_selfie_url:      data?.kyc_selfie_url      || null,
+      kyc_id_back_url:     data?.kyc_id_back_url     || null,
       kyc_rejection_reason:data?.kyc_rejection_reason|| null,
       is_id_verified:      data?.is_id_verified      || false,
     });
@@ -2089,7 +2128,7 @@ app.get('/api/users/profile', verifyToken, async (req, res) => {
     let extraFields = {};
     try {
       const { data: extra } = await supabaseAdmin.from('users')
-        .select('email_verified, is_phone_verified, phone_verified, kyc_verified, kyc_status, kyc_id_type, kyc_submitted_at, kyc_id_url, kyc_selfie_url, kyc_rejection_reason, username_changed, preferred_currency, preferred_language, hide_full_name, referral_code, total_referrals, referral_earnings_btc')
+        .select('email_verified, is_phone_verified, phone_verified, kyc_verified, kyc_status, kyc_id_type, kyc_submitted_at, kyc_id_url, kyc_selfie_url, kyc_rejection_reason, username_changed, preferred_currency, preferred_language, timezone, hide_full_name, name_display, city, country_name, last_seen_location, referral_code, total_referrals, referral_earnings_btc')
         .eq('id', req.userId).single();
       if (extra) extraFields = extra;
     } catch {}
@@ -2166,7 +2205,7 @@ app.get('/api/users/:userId', async (req, res) => {
 
 app.put('/api/users/profile', verifyToken, async (req, res) => {
   try {
-    const { username, full_name, fullName, bio, location, website, phone, hide_full_name } = req.body;
+    const { username, full_name, fullName, bio, location, website, phone, hide_full_name, name_display } = req.body;
 
     // Fetch current user to enforce rules
     const { data: current } = await supabaseAdmin.from('users').select('username, full_name, username_changed_at, is_id_verified, full_name_changed_at').eq('id', req.userId).single();
@@ -2202,9 +2241,21 @@ app.put('/api/users/profile', verifyToken, async (req, res) => {
     if (website        !== undefined) updateData.website        = website;
     if (phone          !== undefined) updateData.phone          = phone;
     if (hide_full_name !== undefined) updateData.hide_full_name = hide_full_name;
+    if (name_display   !== undefined) updateData.name_display   = name_display;
     updateData.updated_at = new Date().toISOString();
 
-    const { data, error } = await supabaseAdmin.from('users').update(updateData).eq('id', req.userId).select().single();
+    let { data, error } = await supabaseAdmin.from('users').update(updateData).eq('id', req.userId).select().single();
+    // Retry up to 3 times, stripping any column the DB says doesn't exist
+    for (let i = 0; i < 3 && error; i++) {
+      const missing = error.message?.match(/['"]?([\w_]+)['"]?\s+column[^']*(?:schema cache|not found|does not exist)/i) ||
+                     error.message?.match(/find the ['"]?([\w_]+)['"]?\s+column/i);
+      if (!missing) break;
+      const col = missing[1];
+      if (!updateData[col]) break;
+      console.warn(`[profile PUT] Column '${col}' not in schema — retrying without it`);
+      delete updateData[col];
+      ({ data, error } = await supabaseAdmin.from('users').update(updateData).eq('id', req.userId).select().single());
+    }
     if (error) return res.status(400).json({ error: error.message });
     res.json({ success: true, user: data });
   } catch (error) {
@@ -2388,9 +2439,9 @@ app.get('/api/listings', async (req, res) => {
       amount_usd, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local,
       time_limit, trade_instructions, listing_terms, description, created_at,
       card_values, card_type, face_value,
-      users:seller_id(id, username, average_rating, total_trades, completion_rate,
+      users:seller_id(id, username, full_name, name_display, hide_full_name, average_rating, total_trades, completion_rate,
         avatar_url, is_id_verified, is_email_verified, last_login, last_seen_at, created_at,
-        total_feedback_count, positive_feedback, negative_feedback, country, bio, badge)
+        total_feedback_count, positive_feedback, negative_feedback, country, country_name, city, bio, badge)
     `).eq('status', 'ACTIVE').order('created_at', { ascending: false });
     if (brand) query = query.ilike('gift_card_brand', `%${brand}%`);
     if (minPrice) query = query.gte('bitcoin_price', parseFloat(minPrice));
@@ -2439,6 +2490,13 @@ app.get('/api/listings', async (req, res) => {
         return sellerBtc * btcPriceVal >= 10;
       });
     }
+
+    // Attach display_name to each listing's embedded users object
+    listings = listings.map(l => {
+      if (!l.users) return l;
+      const u = Array.isArray(l.users) ? l.users[0] : l.users;
+      return { ...l, users: { ...u, display_name: computeDisplayName(u) } };
+    });
 
     setCached(cacheKey, listings);
     res.json({ listings });
@@ -2602,12 +2660,12 @@ app.get('/api/offers', async (req, res) => {
 
     const { data: users, error: userError } = await supabaseAdmin
       .from('users')
-      .select('id, username, badge, country, total_trades, positive_feedback, negative_feedback, average_rating, avatar_url, last_seen_at, last_login, completion_rate')
+      .select('id, username, full_name, name_display, hide_full_name, badge, country, country_name, city, total_trades, positive_feedback, negative_feedback, average_rating, avatar_url, last_seen_at, last_login, completion_rate')
       .in('id', userIds);
 
     if (userError) throw userError;
 
-    const userMap = Object.fromEntries((users || []).map(u => [u.id, u]));
+    const userMap = Object.fromEntries((users || []).map(u => [u.id, { ...u, display_name: computeDisplayName(u) }]));
 
     // Fetch BTC balances for SELL offer owners so we can hide low-balance offers
     const sellSellerIds = [...new Set(
@@ -3321,61 +3379,26 @@ app.post('/api/trades/:id/cancel', verifyToken, async (req, res) => {
     const { reason } = req.body;
     const { data: trade, error: fetchError } = await supabaseAdmin.from('trades').select('*').eq('id', req.params.id).single();
     if (fetchError || !trade) return res.status(404).json({ error: 'Trade not found' });
-    // Trade opener = buyer when trade_type is BUY, seller when trade_type is SELL
+
+    // Authorization: trade opener OR buyer after marking paid
     const tradeOpener = (trade.trade_type || '').toUpperCase() === 'BUY' ? trade.buyer_id : trade.seller_id;
-    const isPostPay = ['PAYMENT_SENT', 'PAID'].includes(trade.status);
-    // After marking paid the buyer can still cancel (changed mind before seller releases BTC)
-    const authorized = tradeOpener === req.userId || (isPostPay && trade.buyer_id === req.userId);
+    const isPostPay   = ['PAYMENT_SENT', 'PAID'].includes(trade.status);
+    const authorized  = tradeOpener === req.userId || (isPostPay && trade.buyer_id === req.userId);
     if (!authorized) return res.status(403).json({ error: 'Not authorized to cancel this trade' });
+
     const cancellableStatuses = ['CREATED', 'FUNDS_LOCKED', 'ESCROW', 'ACTIVE', 'OPEN', 'PAYMENT_SENT', 'PAID'];
     if (!cancellableStatuses.includes(trade.status)) return res.status(400).json({ error: `Trade cannot be cancelled — status is ${trade.status}` });
-    // Atomically claim the escrow — prevents double refund if two cancel requests race
-    const { data: claimedEscrow } = await supabaseAdmin
-      .from('escrow_locks')
-      .update({ status: 'REFUNDING', released_at: new Date().toISOString() })
-      .eq('trade_id', req.params.id)
-      .eq('status', 'LOCKED')
-      .select('*');
 
-    if (claimedEscrow && claimedEscrow.length > 0) {
-      const esc           = claimedEscrow[0];
-      const btcProviderId = esc.seller_id || trade.seller_id;
-      const refundAmount  = parseFloat(esc.amount_btc || trade.amount_btc || 0);
-      const refundUsd     = parseFloat(parseFloat(trade.amount_usd || 0).toFixed(2));
+    // Delegate ALL escrow release + balance refund + trade status update to the
+    // escrow service. It uses an atomic DB claim (WHERE status='LOCKED') so even
+    // if the auto-cancel cron fires at the same instant, only one refund happens.
+    const result = await tradeEscrowService.cancelTrade(req.params.id, reason || 'Trade opener cancelled');
+    if (!result.success) return res.status(409).json({ error: result.message });
 
-      // Read both balance tables in parallel
-      const [{ data: providerBal }, { data: walletRow }] = await Promise.all([
-        supabaseAdmin.from('user_balances').select('balance_btc, balance_usd').eq('user_id', btcProviderId).maybeSingle(),
-        supabaseAdmin.from('user_wallets').select('balance_btc').eq('user_id', btcProviderId).maybeSingle(),
-      ]);
-      const newBalBtc = parseFloat((parseFloat(providerBal?.balance_btc || 0) + refundAmount).toFixed(8));
-      const newBalUsd = parseFloat((parseFloat(providerBal?.balance_usd || 0) + refundUsd).toFixed(2));
-      const newWalBtc = parseFloat((parseFloat(walletRow?.balance_btc || 0) + refundAmount).toFixed(8));
+    // Fetch the updated trade for the response
+    const { data: updatedTrade } = await supabaseAdmin.from('trades').select('*').eq('id', req.params.id).single();
 
-      // Upsert so the row is created if it somehow doesn't exist
-      await supabaseAdmin.from('user_balances').upsert({
-        user_id: btcProviderId, balance_btc: newBalBtc, balance_usd: newBalUsd, updated_at: new Date().toISOString(),
-      });
-      // Sync user_wallets — increment from its own current value (not from user_balances)
-      if (walletRow) {
-        await supabaseAdmin.from('user_wallets')
-          .update({ balance_btc: newWalBtc, updated_at: new Date().toISOString() })
-          .eq('user_id', btcProviderId);
-      }
-      await supabaseAdmin.from('escrow_locks').update({ status: 'REFUNDED' }).eq('trade_id', req.params.id);
-      console.log(`[cancel] Refunded ${refundAmount} BTC to ${btcProviderId.slice(0,8)}`);
-    }
-
-    // Atomic trade cancel — only flips if still in a cancellable status
-    const { data, error } = await supabaseAdmin.from('trades')
-      .update({ status: 'CANCELLED', cancel_reason: reason || 'Trade opener cancelled', cancelled_at: new Date() })
-      .eq('id', req.params.id)
-      .in('status', cancellableStatuses)
-      .select().single();
-    if (!data) return res.status(409).json({ error: 'Trade status changed — cancel was blocked.' });
-    if (error) return res.status(400).json({ error: error.message });
-
-    // Notify both parties about cancellation
+    // Build notification text
     const { data: cancellerUser } = await supabaseAdmin.from('users').select('username').eq('id', req.userId).single();
     const cancellerName = cancellerUser?.username || 'Trader';
     const fmtC   = n => new Intl.NumberFormat('en-US',{maximumFractionDigits:0}).format(n||0);
@@ -3385,7 +3408,7 @@ app.post('/api/trades/:id/cancel', verifyToken, async (req, res) => {
     const cDisp  = cLocal > 0 ? `${fmtC(cLocal)} ${cCur}` : `$${fmtC(trade.amount_usd)} USD`;
     const cancelMsg = `${cancellerName} cancelled the trade · ${cDisp} via ${cPM}`;
     const otherId   = req.userId === trade.buyer_id ? trade.seller_id : trade.buyer_id;
-    res.json({ success: true, trade: data });
+    res.json({ success: true, trade: updatedTrade || trade });
 
     setImmediate(async () => {
       try {
@@ -3612,25 +3635,30 @@ app.post('/api/admin/disputes/:id/resolve', verifyToken, async (req, res) => {
     if (!isAdmin) return res.status(403).json({ error: 'Access denied' });
     const { data: trade } = await supabaseAdmin.from('trades').select('*').eq('id', req.params.id).single();
     if (!trade) return res.status(404).json({ error: 'Trade not found' });
-    let msg = '';
-    if (resolution === 'BUYER_WINS') {
-      await releaseFundsToBuyer(trade.id, trade.buyer_id, trade.amount_btc, trade.amount_usd);
-      msg = '✅ Resolved: BUYER WINS — Bitcoin released to buyer.';
-    } else if (resolution === 'SELLER_WINS') {
-      await supabaseAdmin.from('trades').update({ status: 'COMPLETED', dispute_resolution: 'SELLER_WINS', dispute_notes: notes, resolved_by: req.userId, resolved_at: new Date() }).eq('id', req.params.id);
-      msg = '✅ Resolved: SELLER WINS — Funds remain with seller.';
-    } else if (resolution === 'CANCEL') {
-      const { data: escrow } = await supabaseAdmin.from('escrow_locks').select('*').eq('trade_id', trade.id).single();
-      if (escrow?.status === 'LOCKED') {
-        const { data: sb } = await supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', trade.seller_id).single();
-        await supabaseAdmin.from('user_balances').update({ balance_btc: parseFloat(sb?.balance_btc || 0) + parseFloat(escrow.amount_btc) }).eq('user_id', trade.seller_id);
-        await supabaseAdmin.from('escrow_locks').update({ status: 'REFUNDED' }).eq('trade_id', trade.id);
-      }
-      await supabaseAdmin.from('trades').update({ status: 'CANCELLED', dispute_resolution: 'CANCEL', dispute_notes: notes, resolved_by: req.userId, resolved_at: new Date() }).eq('id', req.params.id);
-      msg = '❌ Resolved: Trade cancelled. Funds returned to seller.';
+
+    // Delegate ALL balance moves to tradeEscrowService.resolveDispute().
+    // This is the ONLY safe path — it uses atomic escrow claims, syncs both
+    // user_balances and user_wallets, logs to wallet_transactions and balance_audit.
+    await tradeEscrowService.resolveDispute(trade.id, resolution, req.userId, notes);
+
+    const msgMap = {
+      BUYER_WINS:  '✅ Resolved: BUYER WINS — Bitcoin released to buyer.',
+      SELLER_WINS: '✅ Resolved: SELLER WINS — Bitcoin returned to seller.',
+      CANCEL:      '❌ Resolved: Trade cancelled — Bitcoin returned to seller.',
+    };
+    const msg = msgMap[resolution] || `Resolved: ${resolution}`;
+
+    await supabaseAdmin.from('messages').insert([{
+      trade_id:     req.params.id,
+      sender_id:    req.userId,
+      message_text: `👨‍⚖️ Moderator resolved dispute.\nDecision: ${resolution}\nNotes: ${notes || 'None'}\n${msg}`,
+      message_type: 'SYSTEM',
+      sender_role:  'moderator',
+      created_at:   new Date(),
+    }]);
+    for (const uid of [trade.buyer_id, trade.seller_id]) {
+      await createNotification(uid, 'support', '⚖️ Dispute Resolved', `Trade #${trade.id.slice(0, 8)} dispute resolved: ${resolution}`, `/trade/${trade.id}`);
     }
-    await supabaseAdmin.from('messages').insert([{ trade_id: req.params.id, sender_id: req.userId, message_text: `👨‍⚖️ Moderator resolved dispute.\nDecision: ${resolution}\nNotes: ${notes || 'None'}\n${msg}`, message_type: 'SYSTEM', sender_role: 'moderator', created_at: new Date() }]);
-    for (const uid of [trade.buyer_id, trade.seller_id]) await createNotification(uid, 'support', '⚖️ Dispute Resolved', `Trade #${trade.id.slice(0, 8)} dispute resolved: ${resolution}`, `/trade/${trade.id}`);
     res.json({ success: true, message: `Dispute resolved: ${resolution}` });
 
     // Email both parties about the resolution
@@ -4417,6 +4445,60 @@ app.put('/api/admin/kyc/:userId/reject', verifyToken, async (req, res) => {
     } catch (_) {}
     res.json({ success: true, user: updated });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/admin/kyc/:userId/image?type=front|back
+// Fetches the KYC image from Supabase Storage using the service role key and streams it
+// to the admin browser — avoids exposing private bucket URLs directly.
+app.get('/api/admin/kyc/:userId/image', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { userId } = req.params;
+    const { type = 'front' } = req.query; // 'front' | 'back'
+
+    // Look up the stored URL to extract the storage path
+    const { data: user, error: userErr } = await supabaseAdmin
+      .from('users')
+      .select('kyc_id_url, kyc_id_back_url')
+      .eq('id', userId)
+      .single();
+
+    if (userErr || !user) return res.status(404).json({ error: 'User not found' });
+
+    const storedUrl = type === 'back' ? user.kyc_id_back_url : user.kyc_id_url;
+    if (!storedUrl) return res.status(404).json({ error: 'Image not found' });
+
+    // Extract the object path from the full Supabase Storage URL
+    // URL format: https://<project>.supabase.co/storage/v1/object/public/kyc-documents/<path>
+    //         OR: https://<project>.supabase.co/storage/v1/object/sign/kyc-documents/<path>
+    const match = storedUrl.match(/\/(?:public|sign)\/kyc-documents\/(.+?)(?:\?|$)/);
+    if (!match) return res.status(400).json({ error: 'Cannot parse image path' });
+    const storagePath = match[1];
+
+    // Download via admin client (bypasses RLS)
+    const { data: fileData, error: dlErr } = await supabaseAdmin.storage
+      .from('kyc-documents')
+      .download(storagePath);
+
+    if (dlErr || !fileData) {
+      // Fallback: generate a short-lived signed URL and redirect
+      const { data: signedData, error: signErr } = await supabaseAdmin.storage
+        .from('kyc-documents')
+        .createSignedUrl(storagePath, 300); // 5 minutes
+      if (signErr || !signedData?.signedUrl) return res.status(500).json({ error: 'Failed to load image' });
+      return res.redirect(signedData.signedUrl);
+    }
+
+    // Stream the image buffer back to the admin browser
+    const arrayBuffer = await fileData.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    res.set('Content-Type', 'image/jpeg');
+    res.set('Cache-Control', 'private, max-age=300');
+    res.send(buffer);
+  } catch (e) {
+    console.error('[admin/kyc/image]', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // GET /api/admin/listings/all — all listings
@@ -5361,10 +5443,11 @@ app.post('/api/wallet/send', verifyToken, async (req, res) => {
       return res.status(400).json({ error: 'Address and a positive amount are required' });
     }
 
-    // Validate Bitcoin address format (legacy, P2SH, bech32, testnet)
-    const btcAddressRe = /^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,87}$|^(tb1|[mn2])[a-zA-HJ-NP-Z0-9]{25,87}$/;
+    // SECURITY: Mainnet-only validation. tb1/m/n/2 are testnet — blocked permanently.
+    // Sending real BTC to a testnet address causes permanent, unrecoverable fund loss.
+    const btcAddressRe = /^(bc1[a-z0-9]{25,87}|[13][a-zA-HJ-NP-Z1-9]{25,34})$/;
     if (!btcAddressRe.test(address)) {
-      return res.status(400).json({ error: 'Invalid Bitcoin address format' });
+      return res.status(400).json({ error: 'Invalid Bitcoin address. Only mainnet addresses accepted (bc1..., 1..., 3...).' });
     }
 
     const amount = parseFloat(amountBtc);
@@ -5593,8 +5676,10 @@ app.listen(PORT, () => {
   depositMonitor.start();
   console.log('🔍 Deposit monitor: MAINNET — polls every 5 min | SMS + Email alerts enabled');
 
+  // ── Daily balance integrity check ─────────────────────────────────────────
+  balanceIntegrity.start();
+
   // ── Auto-cancel expired trades every 60 seconds ───────────────────────────
-  // FIX: processExpiredTrades() existed but was NEVER called — this is the cron
   const _runExpiredTrades = async () => {
     try {
       const count = await tradeEscrowService.processExpiredTrades();

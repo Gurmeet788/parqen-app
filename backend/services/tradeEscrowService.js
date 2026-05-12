@@ -405,55 +405,26 @@ class TradeEscrowService {
         throw new Error('Escrow already released or being released by a concurrent request — no action taken');
     }
 
-    // ── Credit the BTC receiver's balance (user_balances + user_wallets) ────
-    const { data: currentBal } = await supabaseAdmin
-        .from('user_balances')
-        .select('balance_btc, balance_usd')
-        .eq('user_id', btcReceiverId)
-        .single();
-
-    const newReceiverBalance = parseFloat(
-        (parseFloat(currentBal?.balance_btc || 0) + buyerGets).toFixed(8)
-    );
-    // Credit USD: use the trade's recorded USD amount (net of 0.5% fee) so balance_usd
-    // stays accurate and the wallet page shows the correct dollar value.
+    // ── ONE atomic DB call: credit receiver + fee + mark escrow released + complete trade ──
+    // praqen_release_escrow() runs as a single PostgreSQL transaction.
+    // If ANY step fails, ALL steps roll back — tables can never go out of sync.
     const buyerGetsUsd = parseFloat(((parseFloat(tradeData.amount_usd || 0)) * 0.995).toFixed(2));
-    const newReceiverUsd = parseFloat(
-        (parseFloat(currentBal?.balance_usd || 0) + buyerGetsUsd).toFixed(2)
-    );
+    const { error: releaseErr } = await supabaseAdmin.rpc('praqen_release_escrow', {
+      p_trade_id:    tradeId,
+      p_receiver_id: btcReceiverId,
+      p_company_id:  COMPANY_WALLET_ID,
+      p_amount_btc:  amount,
+      p_fee_btc:     platformFee,
+      p_amount_usd:  buyerGetsUsd,
+      p_tx_hash:     releaseTxHash,
+    });
 
-    const { error: balError } = await supabaseAdmin
-        .from('user_balances')
-        .upsert({
-            user_id:     btcReceiverId,
-            balance_btc: newReceiverBalance,
-            balance_usd: newReceiverUsd,
-            updated_at:  new Date().toISOString(),
-        });
+    if (releaseErr) throw new Error(`Atomic escrow release failed: ${releaseErr.message}`);
 
-    if (balError) throw new Error(`Balance update failed: ${balError.message}`);
-
-    // Also sync user_wallets so the wallet page shows the updated balance
-    await supabaseAdmin
-        .from('user_wallets')
-        .update({ balance_btc: newReceiverBalance, updated_at: new Date().toISOString() })
-        .eq('user_id', btcReceiverId);
-
-    // ── Mark escrow lock as released ───────────────────────────────────────
-    await supabaseAdmin
-        .from('escrow_locks')
-        .update({ status: 'RELEASED', released_at: new Date().toISOString() })
-        .eq('trade_id', tradeId);
-
-    // ── Complete the trade ─────────────────────────────────────────────────
+    // Trade and escrow are now updated inside the DB function — skip redundant updates.
     const { error: tradeUpdateError } = await supabaseAdmin
         .from('trades')
-        .update({
-            status:            'COMPLETED',
-            completed_at:      new Date().toISOString(),
-            buyer_btc_txhash:  releaseTxHash,
-            fee_status:        'PENDING',
-        })
+        .update({ buyer_btc_txhash: releaseTxHash })
         .eq('id', tradeId);
 
     if (tradeUpdateError) {
@@ -603,48 +574,22 @@ class TradeEscrowService {
       .eq('status', 'LOCKED')
       .select('*');
 
-    if (claimedEscrow && claimedEscrow.length > 0) {
-      const esc = claimedEscrow[0];
-      const refundAmount  = parseFloat(esc.amount_btc || trade.escrow_amount || trade.amount_btc || 0);
-      // escrow.seller_id stores the btcProviderId (whoever locked funds — could be buyer in gift-card trades)
-      const btcProviderId = esc.seller_id || trade.seller_id;
-      const refundUsd     = parseFloat(parseFloat(trade.amount_usd || 0).toFixed(2));
+    // ── ONE atomic DB call: refund provider + mark escrow refunded + cancel trade ──
+    // praqen_refund_escrow() runs as a single PostgreSQL transaction.
+    // If ANY step fails, ALL steps roll back — tables can never go out of sync.
+    const esc           = (await supabaseAdmin.from('escrow_locks').select('*').eq('trade_id', tradeId).maybeSingle()).data;
+    const refundAmount  = parseFloat(esc?.amount_btc || trade.escrow_amount || trade.amount_btc || 0);
+    const btcProviderId = esc?.seller_id || trade.seller_id;
 
-      // Read both balance tables in parallel — they can be out of sync
-      const [{ data: providerBal }, { data: walletRow }] = await Promise.all([
-        supabaseAdmin.from('user_balances').select('balance_btc, balance_usd').eq('user_id', btcProviderId).maybeSingle(),
-        supabaseAdmin.from('user_wallets').select('balance_btc').eq('user_id', btcProviderId).maybeSingle(),
-      ]);
-
-      const newBalBtc = parseFloat((parseFloat(providerBal?.balance_btc || 0) + refundAmount).toFixed(8));
-      const newBalUsd = parseFloat((parseFloat(providerBal?.balance_usd || 0) + refundUsd).toFixed(2));
-      // user_wallets must be incremented from ITS OWN current value — not from user_balances.
-      // The two tables can diverge (e.g. a fresh deposit credited to user_wallets but not yet
-      // synced to user_balances).  Setting user_wallets = user_balances value would erase that deposit.
-      const newWalBtc = parseFloat((parseFloat(walletRow?.balance_btc || 0) + refundAmount).toFixed(8));
-
-      // Upsert user_balances — creates the row if it somehow doesn't exist yet
-      await supabaseAdmin.from('user_balances').upsert({
-        user_id:     btcProviderId,
-        balance_btc: newBalBtc,
-        balance_usd: newBalUsd,
-        updated_at:  new Date().toISOString(),
+    if (refundAmount > 0 && btcProviderId) {
+      const { error: refundErr } = await supabaseAdmin.rpc('praqen_refund_escrow', {
+        p_trade_id:    tradeId,
+        p_provider_id: btcProviderId,
+        p_amount_btc:  refundAmount,
+        p_reason:      reason || 'Trade cancelled',
       });
 
-      // Sync user_wallets so both tables reflect the returned BTC
-      if (walletRow) {
-        await supabaseAdmin.from('user_wallets')
-          .update({ balance_btc: newWalBtc, updated_at: new Date().toISOString() })
-          .eq('user_id', btcProviderId);
-      }
-
-      // Mark escrow fully refunded
-      await supabaseAdmin.from('escrow_locks')
-        .update({ status: 'REFUNDED' })
-        .eq('trade_id', tradeId);
-
-      await this.logTransaction(btcProviderId, 'ESCROW_REFUND', refundAmount, null,
-        `Refund for cancelled trade #${tradeId.slice(0,8)}`);
+      if (refundErr) throw new Error(`Atomic escrow refund failed: ${refundErr.message}`);
 
       sendSystemAlert(
         btcProviderId,
@@ -653,18 +598,9 @@ class TradeEscrowService {
         'https://praqen.com/wallet'
       ).catch(err => console.error('[Escrow] Refund push error:', err.message));
 
-      supabaseAdmin.from('balance_audit').insert({
-        user_id:     btcProviderId,
-        change_btc:  refundAmount,
-        new_balance: newBalBtc,
-        reason:      'ESCROW_REFUND',
-        trade_id:    tradeId,
-        created_at:  new Date().toISOString(),
-      }).catch(() => {});
-
       console.log(`   Refunded ${refundAmount} BTC to provider ${btcProviderId.slice(0,8)}`);
     } else {
-      console.log(`[cancelTrade] Escrow already claimed or not LOCKED for trade ${tradeId.slice(0,8)} — skipping refund`);
+      console.log(`[cancelTrade] No escrow to refund for trade ${tradeId.slice(0,8)}`);
     }
 
     // ── Update trade status ────────────────────────────────────────────────
@@ -687,14 +623,14 @@ class TradeEscrowService {
     console.log(`✅ Trade ${tradeId.slice(0,8)} cancelled`);
 
     // Refund restored the BTC provider's balance — re-evaluate their offer status
-    if (escrow) {
-      const btcProviderId = escrow.seller_id || trade.seller_id;
+    if (claimedEscrow && claimedEscrow.length > 0) {
+      const btcProviderId = claimedEscrow[0].seller_id || trade.seller_id;
       if (btcProviderId) updateOfferStatus(btcProviderId).catch(() => {});
     }
 
     return {
       success: true,
-      message: `Trade cancelled. ${escrow ? 'Funds returned to seller.' : ''}`,
+      message: `Trade cancelled. ${claimedEscrow && claimedEscrow.length > 0 ? 'Funds returned to seller.' : ''}`,
     };
   }
 
@@ -778,8 +714,20 @@ class TradeEscrowService {
         resolved_at:        new Date().toISOString(),
       }).eq('id', tradeId);
 
+    } else if (resolution === 'CANCEL') {
+      // Refund BTC to seller (whoever locked it), mark as CANCELLED
+      await this.cancelTrade(tradeId, `Dispute resolved — CANCELLED by moderator. ${notes || ''}`);
+
+      await supabaseAdmin.from('trades').update({
+        status:             'CANCELLED',
+        dispute_resolution: 'CANCEL',
+        dispute_notes:      notes,
+        resolved_by:        moderatorId,
+        resolved_at:        new Date().toISOString(),
+      }).eq('id', tradeId);
+
     } else {
-      throw new Error(`Unknown resolution: ${resolution}. Use BUYER_WINS or SELLER_WINS`);
+      throw new Error(`Unknown resolution: ${resolution}. Use BUYER_WINS, SELLER_WINS, or CANCEL`);
     }
 
     console.log(`✅ Dispute resolved: ${resolution}`);

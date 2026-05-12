@@ -154,7 +154,20 @@ export default function Marketplace({ user }) {
                 {seller.username?.charAt(0).toUpperCase() || 'U'}
               </div>
               <div>
-                <p className="font-bold text-gray-900">{seller.username || 'Anonymous'}</p>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <p className="font-bold text-gray-900">{seller.display_name || seller.username || 'Anonymous'}</p>
+                  {(seller.country_name || seller.country) && (
+                    <span className="text-xs text-gray-500 font-semibold">
+                      {(() => {
+                        const cc = (seller.country_code || seller.country || '').toUpperCase();
+                        const flag = cc.length === 2
+                          ? cc.replace(/./g, c => String.fromCodePoint(0x1F1E0 + c.charCodeAt(0) - 65))
+                          : '';
+                        return `${seller.country_name || seller.country} ${flag}`;
+                      })()}
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-2 text-sm">
                   <div className="flex items-center gap-1">
                     <Star size={14} className="fill-yellow-400 text-yellow-400" />

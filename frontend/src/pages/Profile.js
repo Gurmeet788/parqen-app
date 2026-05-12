@@ -43,12 +43,21 @@ const BADGE_DEFS = [
 
 // FLAGS object for real country emoji flags
 const FLAGS = {
-  GH:'🇬🇭', NG:'🇳🇬', KE:'🇰🇪', ZA:'🇿🇦', UG:'🇺🇬', TZ:'🇹🇿', 
-  US:'🇺🇸', GB:'🇬🇧', EU:'🇪🇺', CM:'🇨🇲', SN:'🇸🇳', ZM:'🇿🇲', 
+  GH:'🇬🇭', NG:'🇳🇬', KE:'🇰🇪', ZA:'🇿🇦', UG:'🇺🇬', TZ:'🇹🇿',
+  US:'🇺🇸', GB:'🇬🇧', EU:'🇪🇺', CM:'🇨🇲', SN:'🇸🇳', ZM:'🇿🇲',
   MZ:'🇲🇿', MW:'🇲🇼', RW:'🇷🇼', BI:'🇧🇮', DJ:'🇩🇯', ER:'🇪🇷',
   ET:'🇪🇹', SO:'🇸🇴', SS:'🇸🇸', SD:'🇸🇩', TD:'🇹🇩', CF:'🇨🇫',
   CD:'🇨🇩', CG:'🇨🇬', GA:'🇬🇦', GQ:'🇬🇶', AO:'🇦🇴', NA:'🇳🇦',
   BW:'🇧🇼', ZW:'🇿🇼', LS:'🇱🇸', SZ:'🇸🇿'
+};
+
+// Fallback country names for when DB country_name is missing
+const COUNTRY_NAMES = {
+  GH:'Ghana', NG:'Nigeria', KE:'Kenya', ZA:'South Africa', UG:'Uganda',
+  TZ:'Tanzania', US:'United States', GB:'United Kingdom', CM:'Cameroon',
+  SN:'Senegal', ZM:'Zambia', MZ:'Mozambique', MW:'Malawi', RW:'Rwanda',
+  ET:'Ethiopia', CD:'DR Congo', AO:'Angola', NA:'Namibia', BW:'Botswana',
+  ZW:'Zimbabwe', LS:'Lesotho', SZ:'Eswatini', GH:'Ghana',
 };
 
 const fmt = (n,d=0)=>new Intl.NumberFormat('en-US',{minimumFractionDigits:0,maximumFractionDigits:d}).format(n||0);
@@ -318,24 +327,29 @@ export default function Profile({userId:propUserId}){
                       <button onClick={()=>{navigator.clipboard.writeText(user.id||'');toast.success('ID copied!');}} className="hover:opacity-70"><Copy size={10}/></button>
                     </span>
                     <span style={{color:'#D1D5DB'}}>·</span>
-                    <span className="font-bold" style={{color:'#6B7280'}}>
-                      Location: {user.location||'Unknown'} {displayFlag}
+                    <span className="font-bold flex items-center gap-1" style={{color:'#6B7280'}}>
+                      <MapPin size={11} style={{flexShrink:0}}/>
+                      {(() => {
+                        const name = user.country_name || COUNTRY_NAMES[userCC] || user.country || 'Unknown';
+                        const city = user.city;
+                        return city ? `${name} (${city})` : name;
+                      })()} {displayFlag}
                     </span>
                   </div>
 
                   {/* Verification rows */}
                   <div className="flex flex-col gap-1 mb-2">
                     {[
-                      {ok:emailOk, label:'Email'},
-                      {ok:phoneOk, label:'Phone', flag:true},
-                      {ok:kycOk,   label:'ID',    flag:true},
+                      {ok:emailOk, label:'Email verified',  flag:null},
+                      {ok:phoneOk, label:'Phone verified',  flag:FLAGS[phoneCC]||displayFlag},
+                      {ok:kycOk,   label:'ID verified',     flag:FLAGS[kycCC]||displayFlag},
                     ].map(({ok,label,flag})=>(
-                      <div key={label} className="flex items-center gap-2">
+                      <div key={label} className="flex items-center gap-1.5">
                         {ok
-                          ?<CheckCircle size={14} style={{color:'#10B981',flexShrink:0}}/>
-                          :<div style={{width:14,height:14,borderRadius:'50%',border:'2px solid #D1D5DB',flexShrink:0}}/>}
+                          ?<CheckCircle size={13} style={{color:'#10B981',flexShrink:0}}/>
+                          :<div style={{width:13,height:13,borderRadius:'50%',border:'2px solid #D1D5DB',flexShrink:0}}/>}
                         <span style={{fontSize:12,fontWeight:500,color:ok?'#374151':'#9CA3AF'}}>
-                          {label} {ok?'verified':'unverified'}{flag?` ${displayFlag}`:''}
+                          {label}{flag && ok ? ` ${flag}` : ''}
                         </span>
                       </div>
                     ))}

@@ -32,6 +32,23 @@ function verifyToken(req, res, next) {
   }
 }
 
+// ── Live BTC price helper — USD is always computed, never read from DB ────────
+async function getLiveBtcPrice() {
+    try {
+        const r = await fetch('https://api.coinbase.com/v2/prices/BTC-USD/spot');
+        const d = await r.json();
+        const p = parseFloat(d.data.amount);
+        if (p > 0) return p;
+    } catch { /* fall through */ }
+    try {
+        const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
+        const d = await r.json();
+        const p = parseFloat(d.bitcoin?.usd);
+        if (p > 0) return p;
+    } catch { /* fall through */ }
+    return 88000; // last-resort fallback
+}
+
 // ============================================================
 // GET /api/hd-wallet/wallet
 // Returns user's BTC address + balance
@@ -41,10 +58,13 @@ router.get('/wallet', verifyToken, async (req, res) => {
     try {
         const userId = req.userId;
 
-        // Fetch user_wallets and user_balances in parallel — both needed for accurate display
-        const [{ data: walletRow }, { data: balancesRow }] = await Promise.all([
-            supabaseAdmin.from('user_wallets').select('btc_address, balance_btc').eq('user_id', userId).single(),
-            supabaseAdmin.from('user_balances').select('balance_btc, balance_usd').eq('user_id', userId).single(),
+        // Fetch wallet data and live BTC price in parallel — USD is always computed fresh
+        const [[{ data: walletRow }, { data: balancesRow }], liveBtcPrice] = await Promise.all([
+            Promise.all([
+                supabaseAdmin.from('user_wallets').select('btc_address, balance_btc').eq('user_id', userId).single(),
+                supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', userId).single(),
+            ]),
+            getLiveBtcPrice(),
         ]);
 
         let address = walletRow?.btc_address || null;
@@ -55,9 +75,9 @@ router.get('/wallet', verifyToken, async (req, res) => {
             balance = parseFloat(balancesRow.balance_btc);
         }
 
-        // balance_usd from user_balances is the authoritative stored USD value — never
-        // calculate USD dynamically from a live price feed, which causes display drift.
-        const balance_usd = parseFloat(balancesRow?.balance_usd || 0);
+        // USD is always computed from live price — never read from the DB column (which can be stale or 0)
+        // balance_btc is never modified here, only used for the USD calculation
+        const balance_usd = parseFloat((balance * liveBtcPrice).toFixed(2));
 
         // Escrow locks — sum BTC locked as seller in active trades
         const { data: escrowData } = await supabaseAdmin
@@ -98,7 +118,7 @@ router.get('/wallet', verifyToken, async (req, res) => {
             balance_btc:   total_btc,     // total = available + locked (for "Total Balance" display)
             locked_btc:    locked_btc,
             available_btc: available_btc, // what user can actually spend/withdraw
-            balance_usd:   balance_usd,   // stored USD value — use this, never recalculate from live price
+            balance_usd:   balance_usd,   // dynamically computed: balance_btc * live_btc_price (never from DB)
             network:       network,
             has_address:   !!address,
             transactions:  txs || [],
@@ -260,6 +280,15 @@ router.post('/send', verifyToken, async (req, res) => {
 
     if (!toAddress || !amountBtc || parseFloat(amountBtc) <= 0) {
       return res.status(400).json({ error: 'Invalid address or amount' });
+    }
+
+    // SECURITY: Mainnet-only address check.
+    // tb1 / m / n / 2 are TESTNET prefixes — sending real BTC there = permanent loss.
+    const MAINNET_ADDRESS_RE = /^(bc1[a-z0-9]{25,87}|[13][a-zA-HJ-NP-Z1-9]{25,34})$/;
+    if (!MAINNET_ADDRESS_RE.test(toAddress.trim())) {
+      return res.status(400).json({
+        error: 'Invalid Bitcoin address. Only mainnet addresses are accepted (bc1..., 1..., 3...). Testnet addresses are blocked.',
+      });
     }
 
     const amount = parseFloat(amountBtc);

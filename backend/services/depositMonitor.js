@@ -332,55 +332,22 @@ class DepositMonitor {
         return; // abort — do not credit balance if we cannot mark deposit as seen
       }
 
-      // ── Step 5b: Update user_balances ────────────────────────────────────
-      const { error: balErr } = await supabaseAdmin
-        .from('user_balances')
-        .upsert({
-          user_id:     userId,
-          balance_btc: newBalanceBTC,
-          ...(depositUsd > 0 ? { balance_usd: newBalanceUsd } : {}),
-          updated_at:  new Date().toISOString(),
-        }, { onConflict: 'user_id' });
+      // ── Step 5b: ONE atomic DB call — credit both tables + log transaction + audit ──
+      // praqen_credit_balance() runs as a single PostgreSQL transaction.
+      // Both user_balances AND user_wallets update together or neither does.
+      // This permanently prevents the two tables from ever going out of sync on deposit.
+      const { error: creditErr } = await supabaseAdmin.rpc('praqen_credit_balance', {
+        p_user_id: userId,
+        p_btc:     depositBTC,
+        p_usd:     depositUsd,
+        p_type:    'DEPOSIT',
+        p_notes:   `On-chain deposit to ${address.slice(0, 16)}…`,
+      });
 
-      if (balErr) {
-        console.error(`[DepositMonitor] user_balances update failed for ${username}:`, balErr.message);
-        return; // stop — don't insert a transaction for an uncredited deposit
+      if (creditErr) {
+        console.error(`[DepositMonitor] Atomic credit failed for ${username}:`, creditErr.message);
+        return;
       }
-
-      // Audit log (fire-and-forget)
-      supabaseAdmin.from('balance_audit').insert({
-        user_id:     userId,
-        change_btc:  depositBTC,
-        new_balance: newBalanceBTC,
-        reason:      'DEPOSIT',
-        created_at:  new Date().toISOString(),
-      }).catch(() => {});
-
-      // ── Step 6: Sync user_wallets balance_btc ────────────────────────────────
-      // last_onchain_btc was already saved in Step 5a. Only update balance_btc here.
-      const currentWalletBTC = parseFloat(walletRow?.balance_btc || 0);
-      const newWalletBalance = parseFloat((currentWalletBTC + depositBTC).toFixed(8));
-
-      const { error: walletErr } = await supabaseAdmin
-        .from('user_wallets')
-        .update({ balance_btc: newWalletBalance, updated_at: new Date().toISOString() })
-        .eq('user_id', userId);
-      if (walletErr) console.error(`[DepositMonitor] user_wallets balance sync failed for ${username}:`, walletErr.message);
-
-      // ── Step 7: Insert wallet_transaction record ──────────────────────────
-      // wallet_transactions has no unique constraint on tx_hash, so use INSERT not upsert
-      const { error: txErr } = await supabaseAdmin
-        .from('wallet_transactions')
-        .insert({
-          user_id:    userId,
-          type:       'DEPOSIT',
-          amount_btc: depositBTC,
-          amount_usd: depositUsd,
-          status:     'CONFIRMED',
-          notes:      `Auto-detected on-chain deposit to ${address.slice(0, 16)}…`,
-          created_at: new Date().toISOString(),
-        });
-      if (txErr) console.error(`[DepositMonitor] wallet_transactions insert failed:`, txErr.message);
 
       // ── Step 8: In-app notification ───────────────────────────────────────
       await supabaseAdmin

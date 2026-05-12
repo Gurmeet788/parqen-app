@@ -298,9 +298,14 @@ function OfferCard({listing, btcPriceUSD, onViewBuyer, onSell}) {
               <button onClick={onViewBuyer}
                 className="font-black text-sm hover:underline leading-tight truncate"
                 style={{color:C.g800, maxWidth:'130px'}}>
-                {u.username||'Buyer'}
+                {u.display_name || u.username || 'Buyer'}
               </button>
               {isVerified(u) && <BadgeCheck size={14} style={{color:'#3B82F6', flexShrink:0}}/>}
+              {(u.country_name || u.country) && (
+                <span className="text-xs font-semibold flex-shrink-0" style={{color:C.g500}}>
+                  · {u.country_name || u.country}
+                </span>
+              )}
               <span className={`inline-flex items-center gap-px font-medium px-1 py-0 rounded-full border flex-shrink-0 ${badge.animate ? 'shadow-md' : ''}`}
                 style={{background:badge.bg, borderColor:badge.borderColor, fontSize:'8px', boxShadow: badge.glow ? `0 0 8px ${badge.glow}` : undefined}}>
                 <span style={{color:badge.iconColor||badge.textColor}}>{badge.icon}</span>
@@ -511,11 +516,15 @@ function BuyerModal({buyer, listing, onClose, onTrade, btcPriceUSD}) {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-                <span className="font-black text-white text-base leading-tight truncate">{u.username || 'Buyer'}</span>
+                <span className="font-black text-white text-base leading-tight truncate">{u.display_name || u.username || 'Buyer'}</span>
                 {kycOk && <BadgeCheck size={15} style={{color:'#93C5FD', flexShrink:0}}/>}
               </div>
               <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
                 <CountryFlag countryCode={ccCode} className="w-4 h-3 rounded-sm"/>
+                {(u.country_name || u.country) && (
+                  <span className="text-white/80 text-xs font-bold">{u.country_name || u.country}</span>
+                )}
+                <span className="text-white/40 text-xs">·</span>
                 <span className="text-white/60 text-xs">{seen.online ? '🟢 Active now' : seen.label}</span>
               </div>
               <span className={`inline-flex items-center gap-px px-2 py-0.5 rounded-full border text-xs font-black ${badge.animate ? 'shadow' : ''}`}

@@ -758,8 +758,8 @@ export default function WalletPage({ user }) {
   const balance      = parseFloat(walletData?.balance_btc   || 0); // total (available + locked)
   const lockedBal    = parseFloat(lockedBtc                 || 0);
   const availableBal = parseFloat(walletData?.available_btc ?? balance); // already deducted server-side
-  // Use the stored DB value — never recalculate from a live price feed which can drift
-  const balUsd       = parseFloat(walletData?.balance_usd   || 0) || balance * (btcPrice || 88000);
+  // Always compute USD from live BTC price — the DB balance_usd column can be stale or 0
+  const balUsd       = balance * (btcPrice || 88000);
   const network = walletData?.network || 'mainnet';
 
   const fxRate   = displayCurrency === 'USD' ? 1 : (USD_RATES?.[displayCurrency] || 1);

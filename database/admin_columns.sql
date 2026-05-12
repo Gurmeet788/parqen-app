@@ -31,6 +31,18 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS country             VARCHAR(100) DEFA
 -- Notifications: read_at column
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS read_at     TIMESTAMPTZ  DEFAULT NULL;
 
+-- Name display preference ('full' | 'initial' | 'hide')
+ALTER TABLE users ADD COLUMN IF NOT EXISTS hide_full_name   BOOLEAN     DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS name_display     VARCHAR(10) DEFAULT 'full';
+
+-- IP-based location columns (populated on login via ipapi.co — display only)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS city               VARCHAR(100) DEFAULT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS country_name       VARCHAR(100) DEFAULT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_location TEXT         DEFAULT NULL;
+
+-- Backfill from existing hide_full_name boolean
+UPDATE users SET name_display = 'hide' WHERE hide_full_name = true AND name_display = 'full';
+
 -- Backfill kyc_status from existing is_id_verified
 UPDATE users SET kyc_status = 'approved' WHERE is_id_verified = true AND kyc_status IS NULL;
 

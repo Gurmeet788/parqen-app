@@ -1056,11 +1056,8 @@ export default function TradeDetail({user}) {
       await axios.post(`${API_URL}/trades/${id}/mark-paid`,{},{headers:authH()});
       const sysMsg = isGiftCardTrade
         ? '🎁 Seller sent the gift card code. Buyer: verify the code and release Bitcoin.'
-        : '💰 Payment confirmed — Buyer is waiting. Seller: verify receipt and release Bitcoin.';
+        : '⏳ Payment confirmed — waiting for seller to verify and release your Bitcoin.';
       await postSys(sysMsg);
-      if(!isGiftCardTrade){
-        await postSys('⏳ Payment confirmed — waiting for seller to verify and release your Bitcoin.');
-      }
       toast.success(isGiftCardTrade ? 'Code sent! Waiting for buyer to verify.' : 'Payment confirmed!');
       await loadTrade();
     }catch(e){

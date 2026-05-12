@@ -166,13 +166,13 @@ export default function Settings({ user, setUser }) {
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [showPw, setShowPw] = useState({ current: false, new: false, confirm: false });
 
-  // Preferences
-  const [prefs, setPrefs] = useState({
-    nameDisplay: 'full',      // full | initial | hide
-    currency: 'GHS',
-    language: 'en',
-    timezone: 'Africa/Accra',
-  });
+  // Preferences — lazy-init from localStorage so selections survive navigation/re-renders
+  const [prefs, setPrefs] = useState(() => ({
+    nameDisplay: localStorage.getItem('praqen_name_display') || 'full',
+    currency:    localStorage.getItem('praqen_currency')     || 'GHS',
+    language:    localStorage.getItem('praqen_language')     || 'en',
+    timezone:    localStorage.getItem('praqen_timezone')     || 'Africa/Accra',
+  }));
 
   // Notifications
   const [notifs, setNotifs] = useState({
@@ -186,14 +186,18 @@ export default function Settings({ user, setUser }) {
   // Hide full name toggle
   const [hideFullName, setHideFullName] = useState(false);
 
-  // Phone verification flow — manual review, no OTP
-  // 'idle' → user hasn't submitted yet
-  // 'submitting' → API call in flight
-  // 'submitted' → saved & awaiting admin approval (persisted to localStorage)
+  // Phone verification flow — instant OTP (email or WhatsApp)
+  // 'idle'      → ready to enter phone + pick delivery method
+  // 'sending'   → API call to send OTP in flight
+  // 'otp'       → OTP sent, waiting for user to enter code
+  // 'verifying' → checking the code
+  // 'done'      → phone verified
   const [phoneStep, setPhoneStep] = useState(() => {
     if (user?.is_phone_verified || user?.phone_verified) return 'done';
-    return localStorage.getItem('prq_phone_step') === 'submitted' ? 'submitted' : 'idle';
+    return 'idle';
   });
+  const [phoneOtpMethod, setPhoneOtpMethod] = useState('email'); // 'email' | 'whatsapp'
+  const [phoneOtpCode,   setPhoneOtpCode]   = useState('');
 
   // Email verification flow (inline in Account tab)
   const [emailVerifyStep,   setEmailVerifyStep]   = useState('idle'); // idle | otp | verifying
@@ -201,14 +205,32 @@ export default function Settings({ user, setUser }) {
   const [emailCodeLoading,  setEmailCodeLoading]  = useState(false);
 
   // KYC upload — multi-step flow
+  // Lazy-init from DEDICATED praqen_kyc key (never overwritten by profile API merge)
   const [kycIdType,         setKycIdType]         = useState('');
-  const [kycFiles,          setKycFiles]          = useState({ front: null, back: null, selfie: null });
+  const [kycFiles,          setKycFiles]          = useState({ front: null, back: null });
   const [kycStep,           setKycStep]           = useState('select');
   const [kycLoading,        setKycLoading]        = useState(false);
-  const [kycSubmitted,      setKycSubmitted]      = useState(false);
-  const [kycStatus,         setKycStatus]         = useState(user?.kyc_status || null);
-  const [kycSubmittedType,  setKycSubmittedType]  = useState(user?.kyc_id_type || null);
-  const [kycSubmittedAt,    setKycSubmittedAt]    = useState(user?.kyc_submitted_at || null);
+  const [kycSubmitted, setKycSubmitted] = useState(() => {
+    const kyc = JSON.parse(localStorage.getItem('praqen_kyc') || '{}');
+    const ls  = JSON.parse(localStorage.getItem('user') || '{}');
+    const status = kyc.status || ls.kyc_status || user?.kyc_status;
+    return status === 'pending';
+  });
+  const [kycStatus, setKycStatus] = useState(() => {
+    const kyc = JSON.parse(localStorage.getItem('praqen_kyc') || '{}');
+    const ls  = JSON.parse(localStorage.getItem('user') || '{}');
+    return kyc.status || ls.kyc_status || user?.kyc_status || null;
+  });
+  const [kycSubmittedType, setKycSubmittedType] = useState(() => {
+    const kyc = JSON.parse(localStorage.getItem('praqen_kyc') || '{}');
+    const ls  = JSON.parse(localStorage.getItem('user') || '{}');
+    return kyc.id_type || ls.kyc_id_type || user?.kyc_id_type || null;
+  });
+  const [kycSubmittedAt, setKycSubmittedAt] = useState(() => {
+    const kyc = JSON.parse(localStorage.getItem('praqen_kyc') || '{}');
+    const ls  = JSON.parse(localStorage.getItem('user') || '{}');
+    return kyc.submitted_at || ls.kyc_submitted_at || user?.kyc_submitted_at || null;
+  });
   const [kycRejectedReason, setKycRejectedReason] = useState(user?.kyc_rejection_reason || null);
 
   const KYC_ID_TYPES = [
@@ -233,11 +255,8 @@ export default function Settings({ user, setUser }) {
   useEffect(() => {
     if (!user) { navigate('/login'); return; }
     setAccountForm({ username: user.username || '', fullName: user.full_name || '', email: user.email || '', phone: user.phone || '', bio: user.bio || '' });
-    setPrefs(p => ({
-      ...p,
-      currency: user.preferred_currency || localStorage.getItem('praqen_currency') || 'GHS',
-      language: user.preferred_language || localStorage.getItem('praqen_language') || 'en',
-    }));
+    // NOTE: prefs are NOT synced here — synced once from DB in the mount effect below
+    // so that a subsequent setUser() call never resets a user's unsaved dropdown selection.
     // Seed hideFullName from user object or localStorage
     const saved = localStorage.getItem('hide_full_name');
     if (saved !== null) {
@@ -269,9 +288,21 @@ export default function Settings({ user, setUser }) {
         setEmailVerified(emailOk);
         setPhoneVerified(phoneOk);
         if (emailOk) { localStorage.removeItem('prq_email_resend'); setEmailResendCount(0); }
-        if (phoneOk) { localStorage.removeItem('prq_phone_resend'); setPhoneResendCount(0); localStorage.removeItem('prq_phone_step'); setPhoneStep('done'); }
+        if (phoneOk) { localStorage.removeItem('prq_phone_resend'); setPhoneResendCount(0); setPhoneStep('done'); setPhoneOtpCode(''); }
         // Sync phone number into the form so Account tab and Verification tab show the real number
         if (fresh.phone) setAccountForm(prev => ({ ...prev, phone: fresh.phone }));
+        // Sync preferences from DB once on mount — update localStorage so they survive refreshes
+        setPrefs(p => {
+          const currency    = fresh.preferred_currency || p.currency;
+          const language    = fresh.preferred_language || p.language;
+          const timezone    = fresh.timezone || fresh.preferred_timezone || p.timezone;
+          const nameDisplay = fresh.name_display || (fresh.hide_full_name ? 'hide' : null) || p.nameDisplay;
+          if (currency)    localStorage.setItem('praqen_currency',      currency);
+          if (language)    localStorage.setItem('praqen_language',      language);
+          if (timezone)    localStorage.setItem('praqen_timezone',      timezone);
+          if (nameDisplay) localStorage.setItem('praqen_name_display',  nameDisplay);
+          return { ...p, currency, language, timezone, nameDisplay };
+        });
         if (setUser) setUser(u => ({ ...u, ...fresh }));
         const stored = JSON.parse(localStorage.getItem('user') || '{}');
         localStorage.setItem('user', JSON.stringify({ ...stored, ...fresh }));
@@ -280,12 +311,33 @@ export default function Settings({ user, setUser }) {
       const kyc = kycRes.data;
       const isVerified = !!(kyc.is_id_verified || kyc.kyc_status === 'approved');
       setKycVerified(isVerified);
-      if (kyc.kyc_status) setKycStatus(kyc.kyc_status);
-      if (kyc.kyc_id_type) setKycSubmittedType(kyc.kyc_id_type);
-      if (kyc.kyc_submitted_at) setKycSubmittedAt(kyc.kyc_submitted_at);
       if (kyc.kyc_rejection_reason) setKycRejectedReason(kyc.kyc_rejection_reason);
-      // If already submitted before, mark as submitted so pending banner shows
-      if (kyc.kyc_status === 'pending') setKycSubmitted(true);
+
+      // Read existing dedicated KYC key — merge API values in, but only when non-null
+      const kycStored = JSON.parse(localStorage.getItem('praqen_kyc') || '{}');
+      if (kyc.kyc_status) {
+        setKycStatus(kyc.kyc_status);
+        kycStored.status = kyc.kyc_status;
+      }
+      if (kyc.kyc_id_type) {
+        setKycSubmittedType(kyc.kyc_id_type);
+        kycStored.id_type = kyc.kyc_id_type;
+      }
+      if (kyc.kyc_submitted_at) {
+        setKycSubmittedAt(kyc.kyc_submitted_at);
+        kycStored.submitted_at = kyc.kyc_submitted_at;
+      }
+      // pending → show banner; approved → clear banner; null → keep whatever was stored
+      if (kyc.kyc_status === 'pending') {
+        setKycSubmitted(true);
+        kycStored.status = 'pending';
+      } else if (kyc.kyc_status === 'approved') {
+        setKycSubmitted(false);
+        localStorage.removeItem('praqen_kyc');
+      }
+      if (kyc.kyc_status !== 'approved') {
+        localStorage.setItem('praqen_kyc', JSON.stringify(kycStored));
+      }
     }).catch(() => {
       // Fallback: try profile alone if KYC endpoint fails (column may not exist yet)
       axios.get(`${API_URL}/users/profile`, { headers: authH() })
@@ -296,8 +348,19 @@ export default function Settings({ user, setUser }) {
           setPhoneVerified(!!(fresh.is_phone_verified || fresh.phone_verified));
           setKycVerified(!!(fresh.kyc_verified || fresh.is_id_verified));
           if (fresh.phone) setAccountForm(prev => ({ ...prev, phone: fresh.phone }));
-          if (fresh.kyc_status) { setKycStatus(fresh.kyc_status); if (fresh.kyc_status === 'pending') setKycSubmitted(true); }
-          if (fresh.kyc_id_type) setKycSubmittedType(fresh.kyc_id_type);
+          if (fresh.kyc_status) {
+            setKycStatus(fresh.kyc_status);
+            if (fresh.kyc_status === 'pending') {
+              setKycSubmitted(true);
+              const kycFallback = JSON.parse(localStorage.getItem('praqen_kyc') || '{}');
+              kycFallback.status = 'pending';
+              localStorage.setItem('praqen_kyc', JSON.stringify(kycFallback));
+            } else if (fresh.kyc_status === 'approved') {
+              setKycSubmitted(false);
+              localStorage.removeItem('praqen_kyc');
+            }
+          }
+          if (fresh.kyc_id_type) { setKycSubmittedType(fresh.kyc_id_type); }
         }).catch(() => {});
     }).finally(() => setVerificationSyncing(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -305,7 +368,7 @@ export default function Settings({ user, setUser }) {
   const handleAccountUpdate = async (e) => {
     e.preventDefault(); setLoading(true);
     // Never overwrite a submitted/verified phone via the generic Save Changes button
-    const phoneIsLocked = phoneVerified || phoneStep === 'submitted' || phoneStep === 'done';
+    const phoneIsLocked = phoneVerified || phoneStep === 'done';
     try {
       const payload = { username: accountForm.username, fullName: accountForm.fullName, bio: accountForm.bio };
       if (!phoneIsLocked) payload.phone = accountForm.phone;
@@ -342,47 +405,60 @@ export default function Settings({ user, setUser }) {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token'); localStorage.removeItem('user');
+    localStorage.removeItem('token'); localStorage.removeItem('user'); localStorage.removeItem('praqen_kyc');
     toast.info('Logged out'); navigate('/login');
   };
 
-  const handleSubmitPhone = async () => {
-    const phone = accountForm.phone.trim();
+  const handleSendPhoneOtp = async () => {
+    // Clean the phone: strip spaces, dashes, parens before sending
+    const raw   = accountForm.phone || '';
+    const phone = raw.trim().replace(/[\s\-()]/g, '');
     if (!phone) { toast.error('Please enter your phone number first'); return; }
     if (!phone.startsWith('+')) {
-      toast.error('Please include your country code, e.g. +233XXXXXXXXX for Ghana, +234XXXXXXXXXX for Nigeria');
+      toast.error('Please include your country code, e.g. +233 for Ghana, +234 for Nigeria');
       return;
     }
-    setPhoneStep('submitting');
+    // Sync cleaned version back to the form so verify call uses exact same string
+    setAccountForm(prev => ({ ...prev, phone }));
+    setPhoneStep('sending');
     try {
-      const r = await axios.post(`${API_URL}/users/submit-phone`, { phone }, { headers: authH() });
-      const savedPhone = r.data.phone || phone;
-      setPhoneStep('submitted');
-      localStorage.setItem('prq_phone_step', 'submitted');
-      // Persist confirmed phone so the UI always shows the real number
-      setAccountForm(prev => ({ ...prev, phone: savedPhone }));
-      if (setUser) setUser(prev => ({ ...prev, phone: savedPhone }));
-      const stored = JSON.parse(localStorage.getItem('user') || '{}');
-      localStorage.setItem('user', JSON.stringify({ ...stored, phone: savedPhone }));
-      toast.success('📱 Phone number submitted! We\'ll notify you once it\'s approved.');
-    } catch (e) {
-      const serverMsg = e?.response?.data?.error || '';
-      if (serverMsg.toLowerCase().includes('already registered to another account')) {
-        toast.error('⚠️ This number is already linked to a different account. Please use another number.');
-        setPhoneStep('idle');
-      } else if (serverMsg.toLowerCase().includes('already been submitted')) {
-        // Already submitted before — treat as submitted state
-        setPhoneStep('submitted');
-        localStorage.setItem('prq_phone_step', 'submitted');
-      } else if (serverMsg) {
-        // Real server error with a message — show it and let user try again
-        toast.error(serverMsg);
-        setPhoneStep('idle');
+      const r = await axios.post(`${API_URL}/users/send-phone-otp`, { phone, method: phoneOtpMethod }, { headers: authH() });
+      setPhoneStep('otp');
+      if (r.data?.devCode) {
+        setPhoneOtpCode(r.data.devCode);
+        toast.info(`Dev: code auto-filled (${r.data.devCode})`, { autoClose: 8000 });
       } else {
-        // Network/unknown error — show generic message, let user retry
-        toast.error('Could not connect to server. Please check your internet and try again.');
+        const msg = phoneOtpMethod === 'email'
+          ? 'Code sent to your email! Check inbox and spam folder.'
+          : 'Code sent via WhatsApp!';
+        toast.success(msg);
+      }
+    } catch (e) {
+      const errData = e?.response?.data;
+      if (errData?.devCode) {
+        setPhoneOtpCode(errData.devCode);
+        setPhoneStep('otp');
+        toast.warning(`Send failed — dev code auto-filled: ${errData.devCode}`, { autoClose: 10000 });
+      } else {
+        toast.error(errData?.error || 'Failed to send code. Please try again.');
         setPhoneStep('idle');
       }
+    }
+  };
+
+  const handleVerifyPhoneOtp = async () => {
+    if (phoneOtpCode.length < 6) { toast.error('Enter the full 6-digit code'); return; }
+    setPhoneStep('verifying');
+    try {
+      await axios.post(`${API_URL}/users/verify-phone-otp`,
+        { phone: accountForm.phone, otp: phoneOtpCode },
+        { headers: authH() }
+      );
+      toast.success('Phone number verified! ✅');
+      markPhoneVerifiedLocally(accountForm.phone);
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Invalid or expired code. Tap Resend to get a new one.');
+      setPhoneStep('otp');
     }
   };
 
@@ -432,12 +508,29 @@ export default function Settings({ user, setUser }) {
     }
   };
 
-  const toggleFullName = async (hide) => {
-    setHideFullName(hide);
-    localStorage.setItem('hide_full_name', hide ? 'true' : 'false');
+  const [nameDisplaySaving, setNameDisplaySaving] = useState(false);
+  const [nameDisplaySaved,  setNameDisplaySaved]  = useState(false);
+
+  const saveNameDisplay = async () => {
+    const mode = prefs.nameDisplay; // 'full' | 'initial' | 'hide'
+    setNameDisplaySaving(true);
+    setNameDisplaySaved(false);
     try {
-      await axios.put(`${API_URL}/users/profile`, { hide_full_name: hide }, { headers: authH() });
-    } catch { /* non-critical — local state already updated */ }
+      await axios.put(`${API_URL}/users/profile`, {
+        name_display: mode,
+      }, { headers: authH() });
+      setHideFullName(mode === 'hide');
+      localStorage.setItem('hide_full_name', mode === 'hide' ? 'true' : 'false');
+      localStorage.setItem('praqen_name_display', mode);
+      if (setUser) setUser(u => ({ ...u, name_display: mode, hide_full_name: mode === 'hide' }));
+      toast.success('Name display saved ✅');
+      setNameDisplaySaved(true);
+      setTimeout(() => setNameDisplaySaved(false), 3000);
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Failed to save — please try again');
+    } finally {
+      setNameDisplaySaving(false);
+    }
   };
 
   const markPhoneVerifiedLocally = (phone) => {
@@ -458,31 +551,34 @@ export default function Settings({ user, setUser }) {
   });
 
   const handleKycSubmit = async () => {
-    if (!kycFiles.front || !kycFiles.back || !kycFiles.selfie || !kycIdType) {
-      toast.error('Please upload the front, back of your ID card and a selfie');
+    if (!kycFiles.front || !kycFiles.back || !kycIdType) {
+      toast.error('Please upload both the front and back of your ID card');
       return;
     }
     setKycLoading(true);
     setKycStep('processing');
     try {
-      const [idImage, idImageBack, selfieImage] = await Promise.all([
+      const [idImage, idImageBack] = await Promise.all([
         fileToBase64(kycFiles.front),
         fileToBase64(kycFiles.back),
-        fileToBase64(kycFiles.selfie),
       ]);
       await axios.post(`${API_URL}/kyc/upload`,
-        { idImage, idImageBack, selfieImage, idType: kycIdType },
+        { idImage, idImageBack, idType: kycIdType },
         { headers: authH() }
       );
       toast.success("Documents received! We'll review within 24 hours. ✅");
+      const submittedAt = new Date().toISOString();
       setKycSubmitted(true);
       setKycStatus('pending');
       setKycSubmittedType(kycIdType);
-      setKycSubmittedAt(new Date().toISOString());
+      setKycSubmittedAt(submittedAt);
       setKycStep('done');
-      // Persist to localStorage so pending state survives navigation
-      const stored = JSON.parse(localStorage.getItem('user') || '{}');
-      localStorage.setItem('user', JSON.stringify({ ...stored, kyc_status: 'pending', kyc_id_type: kycIdType }));
+      // Save to dedicated key — cannot be overwritten by profile API merge
+      localStorage.setItem('praqen_kyc', JSON.stringify({
+        status:       'pending',
+        id_type:      kycIdType,
+        submitted_at: submittedAt,
+      }));
     } catch (e) {
       toast.error(e?.response?.data?.error || 'Failed to submit KYC');
       setKycStep('ready');
@@ -496,7 +592,8 @@ export default function Settings({ user, setUser }) {
       await axios.put(`${API_URL}/users/preferences`, prefs, { headers: authH() });
       localStorage.setItem('praqen_currency', prefs.currency);
       localStorage.setItem('praqen_language', prefs.language);
-      if (setUser) setUser(u => ({ ...u, preferred_currency: prefs.currency, preferred_language: prefs.language }));
+      localStorage.setItem('praqen_timezone', prefs.timezone);
+      if (setUser) setUser(u => ({ ...u, preferred_currency: prefs.currency, preferred_language: prefs.language, timezone: prefs.timezone }));
       toast.success('Preferences saved!');
     } catch (e) { toast.error('Failed to save preferences'); }
     finally { setLoading(false); }
@@ -683,23 +780,15 @@ export default function Settings({ user, setUser }) {
                           Phone Number
                           {phoneVerified || phoneStep === 'done'
                             ? <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#ECFDF5', color: C.success }}>✓ Verified</span>
-                            : phoneStep === 'submitted'
-                              ? <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#FEF3C7', color: '#D97706' }}>⏳ Under Review</span>
-                              : accountForm.phone
-                                ? <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#FFF7ED', color: C.warn }}>⚠ Unverified</span>
-                                : null}
+                            : accountForm.phone
+                              ? <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#FFF7ED', color: C.warn }}>⚠ Unverified</span>
+                              : null}
                         </label>
                         {phoneVerified || phoneStep === 'done' ? (
                           <div className="px-4 py-2.5 border-2 rounded-xl text-sm font-medium flex items-center justify-between"
                             style={{ borderColor: '#DCFCE7', backgroundColor: C.g50, color: C.g700 }}>
                             <span>{accountForm.phone || 'Your number has been verified'}</span>
                             <CheckCircle size={14} style={{ color: C.success, flexShrink: 0 }} />
-                          </div>
-                        ) : phoneStep === 'submitted' ? (
-                          <div className="px-4 py-2.5 border-2 rounded-xl text-sm font-medium flex items-center justify-between"
-                            style={{ borderColor: '#FDE68A', backgroundColor: '#FFFBEB', color: C.g700 }}>
-                            <span>{accountForm.phone || '(number saved — under review)'}</span>
-                            <Clock size={14} style={{ color: '#D97706', flexShrink: 0 }} />
                           </div>
                         ) : (
                           <input type="tel" value={accountForm.phone}
@@ -708,20 +797,7 @@ export default function Settings({ user, setUser }) {
                         )}
                         {phoneVerified || phoneStep === 'done'
                           ? <p className="text-xs mt-1 flex items-center gap-1" style={{ color: C.g400 }}><Lock size={9} />Phone number locked after verification.</p>
-                          : phoneStep === 'submitted'
-                            ? <p className="text-xs mt-1 flex items-center gap-1.5 font-bold" style={{ color: '#D97706' }}>⏳ Your number is under review — we'll notify you once it's approved.</p>
-                            : <p className="text-xs mt-1" style={{ color: C.g400 }}>Save your profile first, then tap below to submit your number for verification.</p>}
-                        {/* Submit-for-review button — no OTP, admin verifies manually */}
-                        {!phoneVerified && phoneStep !== 'submitted' && phoneStep !== 'done' && accountForm.phone && (
-                          <div className="mt-2">
-                            <button type="button" onClick={handleSubmitPhone} disabled={phoneStep === 'submitting'}
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black disabled:opacity-60"
-                              style={{ backgroundColor: C.paid, color: 'white' }}>
-                              <Smartphone size={11} />
-                              {phoneStep === 'submitting' ? 'Saving…' : 'Submit for Verification →'}
-                            </button>
-                          </div>
-                        )}
+                          : <p className="text-xs mt-1" style={{ color: C.g400 }}>Go to the Verification tab to verify your phone number instantly.</p>}
                       </div>
                     </div>
 
@@ -756,22 +832,60 @@ export default function Settings({ user, setUser }) {
                 <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: C.g200 }}>
                   <h2 className="text-lg font-black mb-1" style={{ color: C.forest }}>Name Display</h2>
                   <p className="text-xs text-gray-400 mb-4">How your name appears to other traders on the platform</p>
-                  <div className="space-y-2">
-                    {[
-                      { val: 'full', label: 'Show full name', desc: 'e.g. Samuel Kwame', example: accountForm.fullName || 'Samuel Kwame' },
-                      { val: 'initial', label: 'Show first name and last initial', desc: 'e.g. Samuel K.', example: accountForm.fullName ? accountForm.fullName.split(' ').map((w, i) => i === 0 ? w : w[0] + '.').join(' ') : 'Samuel K.' },
-                      { val: 'hide', label: 'Hide full name', desc: 'Only username is shown', example: accountForm.username || 'samuel123' },
-                    ].map(({ val, label, desc, example }) => (
+
+                  {/* Options */}
+                  <div className="space-y-2 mb-4">
+                    {(() => {
+                      const full    = accountForm.fullName || user?.full_name || '';
+                      const initial = full
+                        ? full.trim().split(/\s+/).map((w, i) => i === 0 ? w : w[0] + '.').join(' ')
+                        : 'Samuel K.';
+                      return [
+                        { val: 'full',    label: 'Show full name',                   desc: 'Your full name is visible to all traders', example: full || 'Samuel Kwame' },
+                        { val: 'initial', label: 'Show first name and last initial', desc: 'Only first name + last initial shown',      example: initial },
+                        { val: 'hide',    label: 'Hide full name',                   desc: 'Only your username is shown',               example: accountForm.username || user?.username || 'samuel123' },
+                      ];
+                    })().map(({ val, label, desc, example }) => (
                       <label key={val} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition ${prefs.nameDisplay === val ? 'border-green-300 bg-green-50' : 'border-gray-100 hover:border-gray-200'}`}>
-                        <input type="radio" name="nameDisplay" value={val} checked={prefs.nameDisplay === val} onChange={() => { setPrefs({ ...prefs, nameDisplay: val }); toggleFullName(val === 'hide'); }} className="accent-green-600" />
-                        <div className="flex-1">
+                        <input type="radio" name="nameDisplay" value={val} checked={prefs.nameDisplay === val}
+                          onChange={() => setPrefs(p => ({ ...p, nameDisplay: val }))}
+                          className="accent-green-600" />
+                        <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold text-gray-800">{label}</p>
                           <p className="text-xs text-gray-500">{desc}</p>
                         </div>
-                        <span className="text-xs font-mono px-2 py-0.5 rounded-lg bg-gray-100 text-gray-600">{example}</span>
+                        <span className="text-xs font-mono px-2 py-0.5 rounded-lg flex-shrink-0" style={{ backgroundColor: C.g100, color: C.g600 }}>{example}</span>
                       </label>
                     ))}
                   </div>
+
+                  {/* Live preview */}
+                  <div className="mb-4 px-4 py-3 rounded-xl border" style={{ backgroundColor: C.mist, borderColor: C.g200 }}>
+                    <p className="text-xs font-bold mb-1" style={{ color: C.g500 }}>Preview — what traders see:</p>
+                    <p className="text-sm font-black" style={{ color: C.forest }}>
+                      {(() => {
+                        const full = accountForm.fullName || user?.full_name || '';
+                        const username = accountForm.username || user?.username || '';
+                        if (prefs.nameDisplay === 'hide' || !full) return username;
+                        if (prefs.nameDisplay === 'initial') {
+                          const parts = full.trim().split(/\s+/);
+                          return parts.length < 2 ? full : parts[0] + ' ' + parts.slice(1).map(p => p[0] + '.').join(' ');
+                        }
+                        return full;
+                      })()}
+                    </p>
+                  </div>
+
+                  {/* Save button */}
+                  <button onClick={saveNameDisplay} disabled={nameDisplaySaving}
+                    className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-white font-bold text-sm hover:opacity-90 disabled:opacity-50 transition"
+                    style={{ backgroundColor: nameDisplaySaved ? C.success : C.green }}>
+                    {nameDisplaySaving
+                      ? <><RefreshCw size={15} className="animate-spin"/> Saving…</>
+                      : nameDisplaySaved
+                        ? <><CheckCircle size={15}/> Saved!</>
+                        : <><Save size={15}/> Save Name Display</>}
+                  </button>
                 </div>
               </>
             )}
@@ -905,75 +1019,116 @@ export default function Settings({ user, setUser }) {
                     {/* ── Step 2 — Phone ── */}
                     {(() => {
                       const done = phoneVerified || phoneStep === 'done';
-                      const underReview = !done && phoneStep === 'submitted';
                       return (
-                        <div className={`p-4 rounded-xl border transition ${done ? 'bg-green-50 border-green-200' : underReview ? 'bg-amber-50 border-amber-200' : emailVerified ? 'border-blue-200 bg-blue-50' : 'bg-gray-50 border-gray-100'}`}>
+                        <div className={`p-4 rounded-xl border transition ${done ? 'bg-green-50 border-green-200' : emailVerified ? 'border-blue-200 bg-blue-50' : 'bg-gray-50 border-gray-100'}`}>
                           <div className="flex items-start gap-4">
-                            <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0 ${done ? 'bg-green-500 text-white' : underReview ? 'bg-amber-400 text-white' : emailVerified ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
-                              {done ? <CheckCircle size={18}/> : underReview ? <Clock size={18}/> : 2}
+                            <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0 ${done ? 'bg-green-500 text-white' : emailVerified ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
+                              {done ? <CheckCircle size={18}/> : 2}
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <p className={`font-bold text-sm ${done ? 'text-green-800' : underReview ? 'text-amber-800' : emailVerified ? 'text-blue-800' : 'text-gray-600'}`}>Phone Number</p>
-                                <span className={`text-xs font-black px-2 py-0.5 rounded-full ${done ? 'bg-green-200 text-green-800' : underReview ? 'bg-amber-200 text-amber-800' : 'bg-gray-200 text-gray-600'}`}>
-                                  {done ? '✓ Verified' : underReview ? '⏳ Under Review' : 'Not Submitted'}
+                                <p className={`font-bold text-sm ${done ? 'text-green-800' : emailVerified ? 'text-blue-800' : 'text-gray-600'}`}>Phone Number</p>
+                                <span className={`text-xs font-black px-2 py-0.5 rounded-full ${done ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-600'}`}>
+                                  {done ? '✓ Verified' : 'Not Verified'}
                                 </span>
                               </div>
-                              <p className={`text-xs mt-0.5 ${done ? 'text-green-600' : underReview ? 'text-amber-700' : emailVerified ? 'text-blue-600' : 'text-gray-400'}`}>
+                              <p className={`text-xs mt-0.5 ${done ? 'text-green-600' : emailVerified ? 'text-blue-600' : 'text-gray-400'}`}>
                                 {done
-                                  ? accountForm.phone ? `${accountForm.phone} — verified ✓` : '✓ Phone verified — you can now trade up to $2,000'
-                                  : underReview
-                                    ? accountForm.phone ? `${accountForm.phone} — waiting for approval` : 'Your number is saved — waiting for approval'
-                                    : 'Submit your phone number to unlock the $2,000 trade limit'}
+                                  ? accountForm.phone ? `${accountForm.phone} — verified ✓` : 'Phone verified — you can now trade up to $2,000 ✓'
+                                  : 'Add your phone number to unlock the $2,000 trade limit'}
                               </p>
 
-                              {/* Under-review panel — shown immediately after submission */}
-                              {underReview && (
-                                <div className="mt-3 rounded-xl border overflow-hidden" style={{borderColor:'#FDE68A'}}>
-                                  <div className="px-4 py-2.5 flex items-center gap-2" style={{backgroundColor:'#FEF3C7', borderBottom:'1px solid #FDE68A'}}>
-                                    <Smartphone size={13} style={{color:'#D97706', flexShrink:0}}/>
-                                    <p className="text-xs font-black" style={{color:'#92400E'}}>📱 Phone Number Under Review</p>
-                                  </div>
-                                  <div className="px-4 py-3 space-y-2" style={{backgroundColor:'#FFFBEB'}}>
-                                    <p className="text-xs leading-relaxed" style={{color:'#78350F'}}>
-                                      We have received <strong>{accountForm.phone}</strong> and our team is reviewing it.
-                                      You will get a notification once your number is approved — usually within <strong>24 hours</strong>.
-                                    </p>
-                                    <p className="text-xs font-semibold" style={{color:'#92400E'}}>
-                                      No action needed on your end. Sit tight! 🙂
-                                    </p>
-                                    <a href="mailto:hello@hellopraqen.com"
-                                      className="inline-flex items-center gap-1.5 text-xs font-black mt-1"
-                                      style={{color:'#D97706'}}>
-                                      <Mail size={11}/> hello@hellopraqen.com
-                                    </a>
-                                  </div>
+                              {/* OTP flow — only shown when email verified and phone not yet done */}
+                              {!done && emailVerified && (
+                                <div className="mt-3 space-y-2">
+
+                                  {/* Idle: enter phone + pick method + send */}
+                                  {phoneStep === 'idle' && (
+                                    <>
+                                      <input
+                                        type="tel"
+                                        placeholder="+233 XX XXX XXXX"
+                                        value={accountForm.phone || ''}
+                                        onChange={e => setAccountForm({ ...accountForm, phone: e.target.value })}
+                                        className="w-full px-3 py-2 border-2 rounded-xl text-sm focus:outline-none"
+                                        style={{ borderColor: accountForm.phone ? C.green : C.g200, color: C.g800, backgroundColor: 'white' }}
+                                      />
+                                      <p className="text-xs font-bold" style={{ color: '#1e40af' }}>How would you like to receive your code?</p>
+                                      <div className="flex gap-2">
+                                        <button
+                                          onClick={() => setPhoneOtpMethod('email')}
+                                          className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border-2 text-xs font-black transition ${phoneOtpMethod === 'email' ? 'border-blue-500 bg-blue-50 text-blue-800' : 'border-gray-200 bg-white text-gray-500'}`}>
+                                          <Mail size={12}/> 📧 My Email
+                                        </button>
+                                        <button
+                                          onClick={() => setPhoneOtpMethod('whatsapp')}
+                                          className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border-2 text-xs font-black transition ${phoneOtpMethod === 'whatsapp' ? 'border-green-500 bg-green-50 text-green-800' : 'border-gray-200 bg-white text-gray-500'}`}>
+                                          💬 WhatsApp
+                                        </button>
+                                      </div>
+                                      <button
+                                        onClick={handleSendPhoneOtp}
+                                        disabled={!accountForm.phone}
+                                        className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-60"
+                                        style={{ backgroundColor: C.paid }}>
+                                        <Smartphone size={13}/>
+                                        Send Verification Code →
+                                      </button>
+                                    </>
+                                  )}
+
+                                  {/* Sending spinner */}
+                                  {phoneStep === 'sending' && (
+                                    <div className="flex items-center gap-2 text-xs font-bold" style={{ color: '#1e40af' }}>
+                                      <RefreshCw size={13} className="animate-spin"/>
+                                      Sending your code…
+                                    </div>
+                                  )}
+
+                                  {/* OTP code input */}
+                                  {(phoneStep === 'otp' || phoneStep === 'verifying') && (
+                                    <>
+                                      <p className="text-xs" style={{ color: '#1e40af' }}>
+                                        {phoneOtpMethod === 'email'
+                                          ? 'Code sent to your email — check inbox and spam folder:'
+                                          : `Code sent via WhatsApp to ${accountForm.phone}:`}
+                                      </p>
+                                      <div className="flex gap-2 flex-wrap items-center">
+                                        <input
+                                          type="text" inputMode="numeric" maxLength={6}
+                                          placeholder="000000" value={phoneOtpCode}
+                                          onChange={e => setPhoneOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                          className="px-3 py-2 border-2 rounded-xl text-sm font-black focus:outline-none w-36"
+                                          style={{ borderColor: '#3b82f6', letterSpacing: '0.2em', color: C.g800 }}
+                                          autoFocus
+                                        />
+                                        <button
+                                          onClick={handleVerifyPhoneOtp}
+                                          disabled={phoneStep === 'verifying' || phoneOtpCode.length < 6}
+                                          className="px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-50"
+                                          style={{ backgroundColor: C.success }}>
+                                          {phoneStep === 'verifying' ? 'Verifying…' : '✓ Verify'}
+                                        </button>
+                                        <button
+                                          onClick={() => { setPhoneStep('idle'); setPhoneOtpCode(''); }}
+                                          className="text-xs underline text-gray-400">
+                                          Resend
+                                        </button>
+                                      </div>
+                                    </>
+                                  )}
                                 </div>
                               )}
 
-                              {/* Input + submit — shown when phone not yet submitted */}
-                              {!done && !underReview && emailVerified && (
-                                <div className="mt-3 space-y-2">
-                                  <input
-                                    type="tel"
-                                    placeholder="+1 234 567 8900"
-                                    value={accountForm.phone || ''}
-                                    onChange={e => setAccountForm({ ...accountForm, phone: e.target.value })}
-                                    className="w-full px-3 py-2 border-2 rounded-xl text-sm focus:outline-none"
-                                    style={{ borderColor: accountForm.phone ? C.green : C.g200, color: C.g800, backgroundColor: 'white' }}
-                                  />
-                                  <button onClick={handleSubmitPhone} disabled={phoneStep === 'submitting' || !accountForm.phone}
-                                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-60"
-                                    style={{backgroundColor: C.paid}}>
-                                    <Smartphone size={13}/>
-                                    {phoneStep === 'submitting' ? 'Saving…' : 'Submit for Review →'}
-                                  </button>
-                                </div>
+                              {/* Locked behind email — must verify email first */}
+                              {!done && !emailVerified && (
+                                <p className="text-xs mt-2 font-bold" style={{ color: '#94a3b8' }}>
+                                  Complete email verification first (Step 1).
+                                </p>
                               )}
                             </div>
                             {done
                               ? <CheckCircle size={16} className="text-green-500 flex-shrink-0 mt-0.5"/>
-                              : underReview ? <Clock size={16} style={{color:'#D97706', flexShrink:0, marginTop:2}}/>
                               : emailVerified ? null
                               : <Clock size={16} className="text-gray-300 flex-shrink-0 mt-0.5"/>}
                           </div>
@@ -998,20 +1153,20 @@ export default function Settings({ user, setUser }) {
                           kycVerified  ? 'bg-green-50 border-green-200' :
                           kycRejected  ? 'bg-red-50 border-red-200' :
                           kycPending   ? 'bg-amber-50 border-amber-200' :
-                          (phoneVerified || phoneStep === 'submitted') ? 'border-blue-200 bg-blue-50' : 'bg-gray-50 border-gray-100'
+                          phoneVerified ? 'border-blue-200 bg-blue-50' : 'bg-gray-50 border-gray-100'
                         }`}>
                           <div className="flex items-start gap-4">
                             <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0 ${
                               kycVerified  ? 'bg-green-500 text-white' :
                               kycRejected  ? 'bg-red-500 text-white' :
                               kycPending   ? 'bg-amber-400 text-white' :
-                              (phoneVerified || phoneStep === 'submitted') ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'
+                              phoneVerified ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'
                             }`}>
                               {kycVerified ? <CheckCircle size={18}/> : kycPending ? <Clock size={18}/> : kycRejected ? '✕' : 3}
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <p className={`font-bold text-sm ${kycVerified ? 'text-green-800' : kycRejected ? 'text-red-800' : kycPending ? 'text-amber-800' : (phoneVerified || phoneStep === 'submitted') ? 'text-blue-800' : 'text-gray-600'}`}>
+                                <p className={`font-bold text-sm ${kycVerified ? 'text-green-800' : kycRejected ? 'text-red-800' : kycPending ? 'text-amber-800' : phoneVerified ? 'text-blue-800' : 'text-gray-600'}`}>
                                   Identity (KYC)
                                 </p>
                                 <span className={`text-xs font-black px-2 py-0.5 rounded-full ${
@@ -1023,11 +1178,11 @@ export default function Settings({ user, setUser }) {
                                   {kycVerified ? '✓ Verified' : kycRejected ? '✗ Rejected' : kycPending ? '⏳ Under Review' : 'Advanced'}
                                 </span>
                               </div>
-                              <p className={`text-xs mt-0.5 ${kycVerified ? 'text-green-600' : kycRejected ? 'text-red-600' : kycPending ? 'text-amber-700' : (phoneVerified || phoneStep === 'submitted') ? 'text-blue-600' : 'text-gray-400'}`}>
+                              <p className={`text-xs mt-0.5 ${kycVerified ? 'text-green-600' : kycRejected ? 'text-red-600' : kycPending ? 'text-amber-700' : phoneVerified ? 'text-blue-600' : 'text-gray-400'}`}>
                                 {kycVerified  ? 'Identity verified — unlimited trading unlocked ✓' :
                                  kycRejected  ? 'Your documents were not accepted — please re-submit' :
                                  kycPending   ? 'Documents received and under review by our team' :
-                                 'Upload your government ID + selfie for unlimited trading'}
+                                 'Upload your government ID (front + back) for unlimited trading'}
                               </p>
 
                               {/* ── KYC PENDING BANNER ── */}
@@ -1049,11 +1204,11 @@ export default function Settings({ user, setUser }) {
                                     )}
                                     <div className="flex items-center gap-2">
                                       <CheckCircle size={12} style={{color:'#D97706', flexShrink:0}}/>
-                                      <span className="text-xs font-semibold" style={{color:'#92400E'}}>ID document uploaded ✓</span>
+                                      <span className="text-xs font-semibold" style={{color:'#92400E'}}>ID front uploaded ✓</span>
                                     </div>
                                     <div className="flex items-center gap-2">
                                       <CheckCircle size={12} style={{color:'#D97706', flexShrink:0}}/>
-                                      <span className="text-xs font-semibold" style={{color:'#92400E'}}>Selfie uploaded ✓</span>
+                                      <span className="text-xs font-semibold" style={{color:'#92400E'}}>ID back uploaded ✓</span>
                                     </div>
                                     {submittedAgo && (
                                       <div className="flex items-center gap-2">
@@ -1089,7 +1244,11 @@ export default function Settings({ user, setUser }) {
                                       Please re-submit your documents with clearer, well-lit photos. Make sure all text on the ID is readable.
                                     </p>
                                     <button
-                                      onClick={() => { setKycStatus(null); setKycSubmitted(false); setKycStep('select'); setKycFiles({id:null, selfie:null}); setKycIdType(''); }}
+                                      onClick={() => {
+                                        setKycStatus(null); setKycSubmitted(false);
+                                        setKycStep('select'); setKycFiles({ front: null, back: null }); setKycIdType('');
+                                        localStorage.removeItem('praqen_kyc');
+                                      }}
                                       className="w-full mt-1 py-2 rounded-xl text-xs font-black"
                                       style={{backgroundColor:'#EF4444', color:'#fff'}}>
                                       Re-submit KYC Documents
@@ -1099,7 +1258,7 @@ export default function Settings({ user, setUser }) {
                               )}
 
                               {/* KYC multi-step upload form */}
-                              {!kycVerified && !kycPending && (phoneVerified || phoneStep === 'submitted') && (
+                              {!kycVerified && !kycPending && phoneVerified && (
                                 <div className="mt-4 space-y-4">
 
                                   {/* Step A: Select ID type */}
@@ -1115,7 +1274,7 @@ export default function Settings({ user, setUser }) {
                                       onChange={e => {
                                         setKycIdType(e.target.value);
                                         if (e.target.value) setKycStep('upload_id');
-                                        setKycFiles({ front: null, back: null, selfie: null });
+                                        setKycFiles({ front: null, back: null });
                                       }}
                                       className="w-full px-3 py-2.5 border-2 rounded-xl text-sm font-semibold focus:outline-none transition"
                                       style={{ borderColor: kycIdType ? C.success : C.g200, color: C.g800, backgroundColor: 'white' }}>
@@ -1196,44 +1355,6 @@ export default function Settings({ user, setUser }) {
                                           onChange={e => {
                                             const f = e.target.files[0] || null;
                                             setKycFiles(prev => ({...prev, back: f}));
-                                            if (f) setKycStep('upload_selfie');
-                                          }} />
-                                      </label>
-                                    </div>
-                                  )}
-
-                                  {/* Step D: Selfie */}
-                                  {kycIdType && kycFiles.front && kycFiles.back && (
-                                    <div className={`rounded-xl border-2 p-4 transition ${kycFiles.selfie ? 'border-green-300 bg-green-50' : 'border-dashed border-purple-200 bg-purple-50'}`}>
-                                      <div className="flex items-center gap-2 mb-2">
-                                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${kycFiles.selfie ? 'bg-green-500 text-white' : 'bg-purple-500 text-white'}`}>
-                                          {kycFiles.selfie ? '✓' : '4'}
-                                        </div>
-                                        <div>
-                                          <p className="text-xs font-black text-gray-700">Face photo (selfie)</p>
-                                          <p className="text-xs text-gray-400">A clear photo of your face holding your ID</p>
-                                        </div>
-                                      </div>
-                                      <div className="mb-2 px-3 py-2 rounded-lg text-xs" style={{ backgroundColor: '#F3E8FF', color: '#6B21A8', border: '1px solid #E9D5FF' }}>
-                                        <strong>Tips:</strong> Good lighting · Face clearly visible · Hold your ID next to your face · No sunglasses
-                                      </div>
-                                      <label className="flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed cursor-pointer hover:border-purple-400 transition bg-white"
-                                        style={{ borderColor: kycFiles.selfie ? C.success : '#C4B5FD' }}>
-                                        <Camera size={18} style={{ color: kycFiles.selfie ? C.success : '#7C3AED', flexShrink: 0 }} />
-                                        <div className="flex-1 min-w-0">
-                                          <p className="text-xs font-bold" style={{ color: kycFiles.selfie ? C.success : '#4C1D95' }}>
-                                            {kycFiles.selfie ? `✓ ${kycFiles.selfie.name}` : 'Tap to take or upload selfie'}
-                                          </p>
-                                          {!kycFiles.selfie && <p className="text-xs text-gray-400">Opens camera on mobile · JPG or PNG</p>}
-                                        </div>
-                                        {kycFiles.selfie && (
-                                          <button type="button" onClick={e => { e.preventDefault(); setKycFiles(f => ({...f, selfie: null})); setKycStep('upload_selfie'); }}
-                                            className="text-xs text-red-400 font-bold hover:text-red-600">Remove</button>
-                                        )}
-                                        <input type="file" accept="image/*" capture="user" className="hidden"
-                                          onChange={e => {
-                                            const f = e.target.files[0] || null;
-                                            setKycFiles(prev => ({...prev, selfie: f}));
                                             if (f) setKycStep('ready');
                                           }} />
                                       </label>
@@ -1250,11 +1371,11 @@ export default function Settings({ user, setUser }) {
                                   )}
 
                                   {/* Submit button */}
-                                  {kycIdType && kycFiles.front && kycFiles.back && kycFiles.selfie && kycStep !== 'processing' && (
+                                  {kycIdType && kycFiles.front && kycFiles.back && kycStep !== 'processing' && (
                                     <div className="rounded-xl border-2 border-green-200 bg-green-50 p-4">
                                       <div className="flex items-center gap-2 mb-3">
                                         <CheckCircle size={16} className="text-green-600 flex-shrink-0" />
-                                        <p className="text-xs font-black text-green-800">All 4 documents uploaded — ready to submit</p>
+                                        <p className="text-xs font-black text-green-800">All documents uploaded — ready to submit</p>
                                       </div>
                                       <div className="space-y-1 mb-4">
                                         <div className="flex items-center gap-2 text-xs text-green-700">
@@ -1268,10 +1389,6 @@ export default function Settings({ user, setUser }) {
                                         <div className="flex items-center gap-2 text-xs text-green-700">
                                           <CheckCircle size={11} className="text-green-500 flex-shrink-0" />
                                           <span>ID back: {kycFiles.back.name}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2 text-xs text-green-700">
-                                          <CheckCircle size={11} className="text-green-500 flex-shrink-0" />
-                                          <span>Selfie: {kycFiles.selfie.name}</span>
                                         </div>
                                       </div>
                                       <button onClick={handleKycSubmit} disabled={kycLoading}

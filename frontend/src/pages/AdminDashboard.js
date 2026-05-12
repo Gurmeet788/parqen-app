@@ -59,6 +59,65 @@ const statusColor = (s) => {
   return m[s] || '#94A3B8';
 };
 
+// ─── KYC Image Block — fetches via backend proxy so private storage buckets work ──
+function KycImageBlock({ userId, type, label, large, onZoom }) {
+  const [src, setSrc] = React.useState(null);
+  const [status, setStatus] = React.useState('loading'); // loading | ok | error
+
+  React.useEffect(() => {
+    if (!userId) return;
+    const proxyUrl = `${API_URL}/admin/kyc/${userId}/image?type=${type}`;
+    const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
+    fetch(proxyUrl, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => {
+        if (!r.ok) throw new Error(`${r.status}`);
+        return r.blob();
+      })
+      .then(blob => {
+        setSrc(URL.createObjectURL(blob));
+        setStatus('ok');
+      })
+      .catch(() => setStatus('error'));
+    return () => { if (src) URL.revokeObjectURL(src); };
+  }, [userId, type]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const height = large ? 128 : 110;
+  return (
+    <div className="mb-3">
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-xs font-black" style={{ color: C.g500 }}>{label}</p>
+        {status === 'ok' && (
+          <button onClick={() => onZoom(src)}
+            className="flex items-center gap-1 text-xs font-bold hover:opacity-70 transition" style={{ color: C.forest }}>
+            <Maximize2 size={11} /> Enlarge
+          </button>
+        )}
+      </div>
+      <div
+        onClick={() => status === 'ok' && onZoom(src)}
+        className={`w-full rounded-xl overflow-hidden border flex items-center justify-center ${status === 'ok' ? 'cursor-zoom-in' : ''}`}
+        style={{ borderColor: C.g200, height, backgroundColor: C.g50 }}>
+        {status === 'loading' && (
+          <div className="flex flex-col items-center gap-1">
+            <div className="w-5 h-5 border-2 rounded-full animate-spin" style={{ borderColor:`${C.forest}20`, borderTopColor:C.forest }} />
+            <span className="text-xs" style={{ color: C.g400 }}>Loading…</span>
+          </div>
+        )}
+        {status === 'error' && (
+          <div className="flex flex-col items-center gap-1 px-3 text-center">
+            <span className="text-xl">🖼️</span>
+            <span className="text-xs font-semibold" style={{ color: C.g400 }}>Image not available</span>
+            <span className="text-xs" style={{ color: C.g400 }}>Storage bucket may be private or file missing</span>
+          </div>
+        )}
+        {status === 'ok' && (
+          <img src={src} alt={label} className="w-full h-full object-cover" />
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Spinner ─────────────────────────────────────────────────
 function Spin() {
   return <div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-4 rounded-full animate-spin" style={{ borderColor:`${C.forest}20`, borderTopColor:C.forest }} /></div>;
@@ -486,70 +545,22 @@ function UsersSection() {
             </div>
 
             {/* ── KYC ID images ── */}
-            {(selected.kyc_id_url || selected.kyc_id_back_url || selected.kyc_selfie_url) && (
+            {(selected.kyc_id_url || selected.kyc_id_back_url) && (
               <div className="mt-3 space-y-2">
                 <p className="text-xs font-black uppercase tracking-wider" style={{ color: C.g400 }}>
                   🪪 Identity Documents
                 </p>
                 {selected.kyc_id_url && (
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-bold" style={{ color: C.g500 }}>ID Front</span>
-                      <button
-                        onClick={() => setZoomImg({ src: selected.kyc_id_url, label: `${selected.username} — ID Document` })}
-                        className="flex items-center gap-1 text-xs font-bold hover:opacity-70 transition"
-                        style={{ color: C.forest, background: 'none', border: 'none', cursor: 'pointer' }}>
-                        <Maximize2 size={11} /> View
-                      </button>
-                    </div>
-                    <div
-                      onClick={() => setZoomImg({ src: selected.kyc_id_url, label: `${selected.username} — ID Document` })}
-                      className="w-full rounded-xl overflow-hidden border cursor-zoom-in"
-                      style={{ borderColor: C.g200, height: 110, backgroundColor: C.g50 }}>
-                      <img src={selected.kyc_id_url} alt="ID" className="w-full h-full object-cover"
-                        onError={e => { e.target.style.display = 'none'; e.target.parentNode.style.display = 'flex'; e.target.parentNode.style.alignItems = 'center'; e.target.parentNode.style.justifyContent = 'center'; e.target.parentNode.innerHTML = '<span style="font-size:11px;color:#94A3B8">Image unavailable</span>'; }} />
-                    </div>
-                  </div>
+                  <KycImageBlock
+                    userId={selected.id} type="front" label="ID Front"
+                    onZoom={(src) => setZoomImg({ src, label: `${selected.username} — ID Front` })}
+                  />
                 )}
                 {selected.kyc_id_back_url && (
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-bold" style={{ color: C.g500 }}>ID Back</span>
-                      <button
-                        onClick={() => setZoomImg({ src: selected.kyc_id_back_url, label: `${selected.username} — ID Back` })}
-                        className="flex items-center gap-1 text-xs font-bold hover:opacity-70 transition"
-                        style={{ color: C.forest, background: 'none', border: 'none', cursor: 'pointer' }}>
-                        <Maximize2 size={11} /> View
-                      </button>
-                    </div>
-                    <div
-                      onClick={() => setZoomImg({ src: selected.kyc_id_back_url, label: `${selected.username} — ID Back` })}
-                      className="w-full rounded-xl overflow-hidden border cursor-zoom-in"
-                      style={{ borderColor: C.g200, height: 110, backgroundColor: C.g50 }}>
-                      <img src={selected.kyc_id_back_url} alt="ID Back" className="w-full h-full object-cover"
-                        onError={e => { e.target.style.display = 'none'; e.target.parentNode.style.display = 'flex'; e.target.parentNode.style.alignItems = 'center'; e.target.parentNode.style.justifyContent = 'center'; e.target.parentNode.innerHTML = '<span style="font-size:11px;color:#94A3B8">Image unavailable</span>'; }} />
-                    </div>
-                  </div>
-                )}
-                {selected.kyc_selfie_url && (
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-bold" style={{ color: C.g500 }}>Selfie Photo</span>
-                      <button
-                        onClick={() => setZoomImg({ src: selected.kyc_selfie_url, label: `${selected.username} — Selfie` })}
-                        className="flex items-center gap-1 text-xs font-bold hover:opacity-70 transition"
-                        style={{ color: C.forest, background: 'none', border: 'none', cursor: 'pointer' }}>
-                        <Maximize2 size={11} /> View
-                      </button>
-                    </div>
-                    <div
-                      onClick={() => setZoomImg({ src: selected.kyc_selfie_url, label: `${selected.username} — Selfie` })}
-                      className="w-full rounded-xl overflow-hidden border cursor-zoom-in"
-                      style={{ borderColor: C.g200, height: 110, backgroundColor: C.g50 }}>
-                      <img src={selected.kyc_selfie_url} alt="Selfie" className="w-full h-full object-cover"
-                        onError={e => { e.target.style.display = 'none'; e.target.parentNode.style.display = 'flex'; e.target.parentNode.style.alignItems = 'center'; e.target.parentNode.style.justifyContent = 'center'; e.target.parentNode.innerHTML = '<span style="font-size:11px;color:#94A3B8">Image unavailable</span>'; }} />
-                    </div>
-                  </div>
+                  <KycImageBlock
+                    userId={selected.id} type="back" label="ID Back"
+                    onZoom={(src) => setZoomImg({ src, label: `${selected.username} — ID Back` })}
+                  />
                 )}
               </div>
             )}
@@ -1361,49 +1372,16 @@ UPDATE users SET kyc_status = 'approved' WHERE is_id_verified = true AND kyc_sta
               </div>
 
               {selected.kyc_id_url && (
-                <div className="mb-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-xs font-black" style={{ color: C.g500 }}>ID Front</p>
-                    <button onClick={() => setZoomImg({ src: selected.kyc_id_url, label: `${selected.username} — ID Front` })}
-                      className="flex items-center gap-1 text-xs font-bold hover:opacity-70 transition" style={{ color: C.forest }}>
-                      <Maximize2 size={11} /> Enlarge
-                    </button>
-                  </div>
-                  <div onClick={() => setZoomImg({ src: selected.kyc_id_url, label: `${selected.username} — ID Front` })}
-                    className="block w-full h-32 rounded-xl bg-gray-100 overflow-hidden border cursor-zoom-in" style={{ borderColor: C.g200 }}>
-                    <img src={selected.kyc_id_url} alt="ID Front" className="w-full h-full object-cover" onError={e => e.target.style.display='none'} />
-                  </div>
-                </div>
+                <KycImageBlock
+                  userId={selected.id} type="front" label="ID Front" large
+                  onZoom={(src) => setZoomImg({ src, label: `${selected.username} — ID Front` })}
+                />
               )}
               {selected.kyc_id_back_url && (
-                <div className="mb-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-xs font-black" style={{ color: C.g500 }}>ID Back</p>
-                    <button onClick={() => setZoomImg({ src: selected.kyc_id_back_url, label: `${selected.username} — ID Back` })}
-                      className="flex items-center gap-1 text-xs font-bold hover:opacity-70 transition" style={{ color: C.forest }}>
-                      <Maximize2 size={11} /> Enlarge
-                    </button>
-                  </div>
-                  <div onClick={() => setZoomImg({ src: selected.kyc_id_back_url, label: `${selected.username} — ID Back` })}
-                    className="block w-full h-32 rounded-xl bg-gray-100 overflow-hidden border cursor-zoom-in" style={{ borderColor: C.g200 }}>
-                    <img src={selected.kyc_id_back_url} alt="ID Back" className="w-full h-full object-cover" onError={e => e.target.style.display='none'} />
-                  </div>
-                </div>
-              )}
-              {selected.kyc_selfie_url && (
-                <div className="mb-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-xs font-black" style={{ color: C.g500 }}>Selfie</p>
-                    <button onClick={() => setZoomImg({ src: selected.kyc_selfie_url, label: `${selected.username} — Selfie` })}
-                      className="flex items-center gap-1 text-xs font-bold hover:opacity-70 transition" style={{ color: C.forest }}>
-                      <Maximize2 size={11} /> Enlarge
-                    </button>
-                  </div>
-                  <div onClick={() => setZoomImg({ src: selected.kyc_selfie_url, label: `${selected.username} — Selfie` })}
-                    className="block w-full h-32 rounded-xl bg-gray-100 overflow-hidden border cursor-zoom-in" style={{ borderColor: C.g200 }}>
-                    <img src={selected.kyc_selfie_url} alt="Selfie" className="w-full h-full object-cover" onError={e => e.target.style.display='none'} />
-                  </div>
-                </div>
+                <KycImageBlock
+                  userId={selected.id} type="back" label="ID Back" large
+                  onZoom={(src) => setZoomImg({ src, label: `${selected.username} — ID Back` })}
+                />
               )}
 
               {selected.kyc_status === 'pending' && (
