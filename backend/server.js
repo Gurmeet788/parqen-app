@@ -94,21 +94,10 @@ const supabaseAdmin = createClient(
 
 // ── 4. Other services ──────────────────────────────────────────────────────
 
-// Compute a seller's public display name based on their name_display preference.
-// 'full'    → Samuel Kwame
-// 'initial' → Samuel K.
-// 'hide'    → username only
+// Show the user's username (handle) in market cards.
 function computeDisplayName(user) {
   if (!user) return '';
-  const mode = user.name_display || (user.hide_full_name ? 'hide' : 'full');
-  const full = (user.full_name || '').trim();
-  if (mode === 'hide' || !full) return user.username || '';
-  if (mode === 'initial') {
-    const parts = full.split(/\s+/);
-    if (parts.length < 2) return full;
-    return parts[0] + ' ' + parts.slice(1).map(p => p[0] + '.').join(' ');
-  }
-  return full; // 'full'
+  return user.username || '';
 }
 
 // ── 5. Express ─────────────────────────────────────────────────────────────
@@ -2433,20 +2422,35 @@ app.get('/api/listings', async (req, res) => {
     const hit = getCached(cacheKey);
     if (hit) return res.json({ listings: hit });
 
-    let query = supabaseAdmin.from('listings').select(`
-      id, seller_id, listing_type, gift_card_brand, status, bitcoin_price, margin, pricing_type,
-      currency, currency_symbol, country, country_name, payment_method, payment_methods,
-      amount_usd, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local,
-      time_limit, trade_instructions, listing_terms, description, created_at,
-      card_values, card_type, face_value,
-      users:seller_id(id, username, full_name, name_display, hide_full_name, average_rating, total_trades, completion_rate,
-        avatar_url, is_id_verified, is_email_verified, last_login, last_seen_at, created_at,
-        total_feedback_count, positive_feedback, negative_feedback, country, country_name, city, bio, badge)
-    `).eq('status', 'ACTIVE').order('created_at', { ascending: false });
-    if (brand) query = query.ilike('gift_card_brand', `%${brand}%`);
-    if (minPrice) query = query.gte('bitcoin_price', parseFloat(minPrice));
-    if (maxPrice) query = query.lte('bitcoin_price', parseFloat(maxPrice));
-    const { data, error } = await query;
+    const buildListingsQuery = (includeNamePrefs) => {
+      const userFields = includeNamePrefs
+        ? 'id, username, full_name, name_display, hide_full_name, average_rating, total_trades, completion_rate, avatar_url, is_id_verified, is_email_verified, last_login, last_seen_at, created_at, total_feedback_count, positive_feedback, negative_feedback, country, country_name, city, bio, badge'
+        : 'id, username, full_name, average_rating, total_trades, completion_rate, avatar_url, is_id_verified, is_email_verified, last_login, last_seen_at, created_at, total_feedback_count, positive_feedback, negative_feedback, country, bio, badge';
+      return supabaseAdmin.from('listings').select(`
+        id, seller_id, listing_type, gift_card_brand, status, bitcoin_price, margin, pricing_type,
+        currency, currency_symbol, country, country_name, payment_method, payment_methods,
+        amount_usd, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local,
+        time_limit, trade_instructions, listing_terms, description, created_at,
+        card_values, card_type, face_value,
+        users:seller_id(${userFields})
+      `).eq('status', 'ACTIVE').order('created_at', { ascending: false });
+    };
+
+    let q = buildListingsQuery(true);
+    if (brand)    q = q.ilike('gift_card_brand', `%${brand}%`);
+    if (minPrice) q = q.gte('bitcoin_price', parseFloat(minPrice));
+    if (maxPrice) q = q.lte('bitcoin_price', parseFloat(maxPrice));
+    let { data, error } = await q;
+
+    if (error && (error.message?.includes('name_display') || error.message?.includes('hide_full_name') || error.message?.includes('country_name') || error.message?.includes('city'))) {
+      // Retry without columns that haven't been migrated yet
+      console.warn('[listings] Retrying without unmigratedcolumns:', error.message);
+      q = buildListingsQuery(false);
+      if (brand)    q = q.ilike('gift_card_brand', `%${brand}%`);
+      if (minPrice) q = q.gte('bitcoin_price', parseFloat(minPrice));
+      if (maxPrice) q = q.lte('bitcoin_price', parseFloat(maxPrice));
+      ({ data, error } = await q);
+    }
     if (error) return res.status(400).json({ error: error.message });
 
     let listings = data || [];
@@ -2658,12 +2662,20 @@ app.get('/api/offers', async (req, res) => {
 
     if (userIds.length === 0) { setCached(cacheKey, []); return res.json({ success: true, offers: [] }); }
 
-    const { data: users, error: userError } = await supabaseAdmin
+    let { data: users, error: userError } = await supabaseAdmin
       .from('users')
       .select('id, username, full_name, name_display, hide_full_name, badge, country, country_name, city, total_trades, positive_feedback, negative_feedback, average_rating, avatar_url, last_seen_at, last_login, completion_rate')
       .in('id', userIds);
 
-    if (userError) throw userError;
+    if (userError) {
+      // Retry without unmigrated columns
+      console.warn('[offers] Retrying users select without optional columns:', userError.message);
+      ({ data: users, error: userError } = await supabaseAdmin
+        .from('users')
+        .select('id, username, full_name, badge, country, total_trades, positive_feedback, negative_feedback, average_rating, avatar_url, last_seen_at, last_login, completion_rate')
+        .in('id', userIds));
+      if (userError) throw userError;
+    }
 
     const userMap = Object.fromEntries((users || []).map(u => [u.id, { ...u, display_name: computeDisplayName(u) }]));
 

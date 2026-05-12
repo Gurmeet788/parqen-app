@@ -189,6 +189,7 @@ const fmt  = (n, d=0) => new Intl.NumberFormat('en-US', {minimumFractionDigits:0
 const fBtc = (n)      => parseFloat(n||0).toFixed(8);
 
 const getUser     = (u) => Array.isArray(u) ? u[0] : (u||{});
+const getDisplayName = (u) => (u?.username || '');
 const isVerified  = (u) => !!(u?.kyc_verified||u?.is_verified||u?.is_id_verified||u?.is_email_verified);
 const getTrades   = (u) => parseInt(u?.total_trades ?? u?.trade_count ?? 0);
 const getLastSeen = (u) => {
@@ -287,7 +288,7 @@ function OfferCard({listing, btcPriceUSD, onViewSeller, onBuy, liked, onToggleLi
               <button onClick={onViewSeller}
                 className="font-black text-sm hover:underline leading-tight truncate"
                 style={{color:C.g800, maxWidth:'130px'}}>
-                {u.display_name || u.username || 'Seller'}
+                {getDisplayName(u) || 'Seller'}
               </button>
               {isVerified(u) && <BadgeCheck size={14} style={{color:'#3B82F6', flexShrink:0}}/>}
               {(u.country_name || u.country) && (
@@ -503,7 +504,7 @@ function ProfileModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
                 <span className="font-black text-white text-base leading-tight truncate">
-                  {u.display_name || u.username || 'User'}
+                  {getDisplayName(u) || 'User'}
                 </span>
                 {kycOk && <BadgeCheck size={15} style={{color:'#93C5FD', flexShrink:0}}/>}
               </div>
@@ -840,48 +841,6 @@ function ProfileModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
   );
 }
 
-// ── Bottom Navigation (mobile only) ──────────────────────────────────────────
-function BottomNav() {
-  const navigate = useNavigate();
-  const items = [
-    {id:'home',      icon:Home,    label:'Home',       path:'/dashboard'},
-    {id:'p2p',       icon:Bitcoin, label:'P2P',        path:'/buy-bitcoin'},
-    {id:'giftcards', icon:Gift,    label:'Gift Cards', path:'/gift-cards'},
-    {id:'wallet',    icon:Wallet,  label:'Wallet',     path:'/wallet'},
-    {id:'profile',   icon:User,    label:'Profile',    path:'/profile'},
-  ];
-
-  const path     = window.location.pathname;
-  const activeId = path.includes('buy-bitcoin')||path.includes('sell-bitcoin') ? 'p2p'
-                 : path.includes('gift')    ? 'giftcards'
-                 : path.includes('wallet')  ? 'wallet'
-                 : path.includes('profile') ? 'profile'
-                 : 'home';
-
-  return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white border-t z-40 md:hidden"
-      style={{borderColor:C.g200, paddingBottom:'env(safe-area-inset-bottom, 0px)'}}>
-      <div className="flex items-center justify-around px-1 py-2">
-        {items.map(({id, icon:Icon, label, path:to}) => {
-          const active = id === activeId;
-          return (
-            <button key={id} onClick={()=>navigate(to)}
-              className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all"
-              style={{
-                color: active ? C.forest : C.g400,
-                backgroundColor: active ? `${C.forest}12` : 'transparent',
-                minWidth: '52px',
-              }}>
-              <Icon size={22} strokeWidth={active ? 2.5 : 1.8}/>
-              <span className="text-xs font-bold leading-tight">{label}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 // ── Skeleton card ─────────────────────────────────────────────────────────────
 function SkeletonCard() {
   return (
@@ -1084,7 +1043,7 @@ export default function BuyBitcoin({user}) {
   const hasFilters = selPayment !== 'all' || buyAmt || selCountry.code !== 'ALL' || selCurrency.code !== 'USD' || !!traderSearch.trim();
 
   return (
-    <div className="min-h-screen flex flex-col pb-0"
+    <div className="min-h-screen flex flex-col"
       style={{backgroundColor:C.g100, fontFamily:"'DM Sans',sans-serif"}}>
       <SEO />
       <style>{`
@@ -1516,7 +1475,6 @@ export default function BuyBitcoin({user}) {
       </div>
 
       <PRQFooter/>
-      <BottomNav/>
 
       {modal && (
         <ProfileModal

@@ -130,6 +130,7 @@ const fmt  = (n,d=0) => new Intl.NumberFormat('en-US',{minimumFractionDigits:0,m
 const fBtc = (n)     => parseFloat(n||0).toFixed(8);
 
 const getUser     = (u) => Array.isArray(u)?u[0]:(u||{});
+const getDisplayName = (u) => (u?.username || '');
 const isVerified  = (u) => !!(u?.kyc_verified||u?.is_verified||u?.is_id_verified||u?.is_email_verified);
 const getTrades   = (u) => parseInt(u?.total_trades??u?.trade_count??0);
 const getLastSeen = (u) => {
@@ -241,15 +242,15 @@ function GCCard({listing, btcPriceUSD, onViewSeller, onTrade}) {
           </div>
 
           {/* Name + badge + stats */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 overflow-hidden">
+          <div className="flex-1 min-w-0 overflow-hidden">
+            <div className="flex items-center gap-1 flex-wrap">
               <CountryFlag
                 countryCode={(u?.country_code||u?.country||'gh').toLowerCase()}
                 className="w-4 h-3 rounded-sm flex-shrink-0"/>
               <button onClick={onViewSeller}
                 className="font-black text-sm hover:underline leading-tight truncate flex-shrink min-w-0"
-                style={{color:C.g800, maxWidth:'130px'}}>
-                {u.username||'Seller'}
+                style={{color:C.g800, maxWidth:'110px'}}>
+                {getDisplayName(u) || 'Seller'}
               </button>
               {isVerified(u) && <BadgeCheck size={13} style={{color:'#3B82F6',flexShrink:0}}/>}
               <span className={`inline-flex items-center gap-px font-medium px-1 py-0 rounded-full border flex-shrink-0 ${badge.animate ? 'shadow-md' : ''}`}
@@ -259,60 +260,56 @@ function GCCard({listing, btcPriceUSD, onViewSeller, onTrade}) {
               </span>
             </div>
 
-            {/* Stats row — feedback left, trades+status right */}
-            <div className="flex items-start justify-between mt-1.5">
-              <div className="flex items-center gap-1.5">
+            {/* Stats row — all chips wrap naturally, nothing pushed off-screen */}
+            <div className="flex items-center flex-wrap gap-1 mt-1.5">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-bold"
+                style={{backgroundColor:'#DCFCE7', color:'#16A34A'}}>
+                <ThumbsUp size={9} strokeWidth={2.5}/>{fmt(pos)}
+              </span>
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-bold"
+                style={{backgroundColor:'#FEE2E2', color:'#DC2626'}}>
+                <ThumbsDown size={9} strokeWidth={2.5}/>{fmt(neg)}
+              </span>
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-bold"
+                style={{backgroundColor:C.g100, color:C.g600}}>
+                <Repeat2 size={9} strokeWidth={2.5}/>{fmt(trades)} trades
+              </span>
+              {seen.online ? (
                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-bold"
-                  style={{backgroundColor:'#DCFCE7', color:'#16A34A'}}>
-                  <ThumbsUp size={9} strokeWidth={2.5}/>{fmt(pos)}
-                </span>
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-bold"
-                  style={{backgroundColor:'#FEE2E2', color:'#DC2626'}}>
-                  <ThumbsDown size={9} strokeWidth={2.5}/>{fmt(neg)}
-                </span>
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-bold"
-                  style={{backgroundColor:C.g100, color:C.g600}}>
-                  <Repeat2 size={9} strokeWidth={2.5}/>{fmt(trades)} trades
-                </span>
-                {seen.online ? (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-bold"
-                    style={{backgroundColor:'#F0FDF4', color:C.online}}>
-                    <span className="relative flex w-1.5 h-1.5 flex-shrink-0">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{backgroundColor:C.online}}/>
-                      <span className="relative inline-flex rounded-full w-1.5 h-1.5" style={{backgroundColor:C.online}}/>
-                    </span>
-                    Active
+                  style={{backgroundColor:'#F0FDF4', color:C.online}}>
+                  <span className="relative flex w-1.5 h-1.5 flex-shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{backgroundColor:C.online}}/>
+                    <span className="relative inline-flex rounded-full w-1.5 h-1.5" style={{backgroundColor:C.online}}/>
                   </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium"
-                    style={{backgroundColor:C.g100, color:C.g400}}>
-                    <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{backgroundColor:C.g300}}/>
-                    {seen.label}
-                  </span>
-                )}
-              </div>
+                  Active
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium"
+                  style={{backgroundColor:C.g100, color:C.g400}}>
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{backgroundColor:C.g300}}/>
+                  {seen.label}
+                </span>
+              )}
             </div>
 
             {/* Card brand + type */}
-            <div className="mt-3 flex items-center gap-3">
-              <span className="inline-flex flex-col px-3 py-1.5 rounded-xl flex-shrink-0"
-                style={{backgroundColor:C.g100, minWidth:0}}>
-                <span className="text-xs font-normal leading-snug" style={{color:C.g400}}>Seller accepts:</span>
-                <span className="text-xs font-black leading-snug tracking-wide truncate" style={{color:C.g700, maxWidth:'110px'}}>
+            <div className="mt-2 flex items-center gap-2 flex-wrap">
+              <span className="inline-flex flex-col px-2.5 py-1 rounded-xl min-w-0 max-w-full"
+                style={{backgroundColor:C.g100}}>
+                <span className="text-[10px] font-normal leading-snug" style={{color:C.g400}}>Seller accepts:</span>
+                <span className="text-xs font-black leading-snug tracking-wide truncate" style={{color:C.g700, maxWidth:'130px'}}>
                   {/card/i.test(brand) ? brand.toUpperCase() : `${brand.toUpperCase()} CARD`}
                 </span>
               </span>
-              <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-1 flex-wrap">
                 {(cardType==='physical'||cardType==='both') && (
-                  <span className="inline-flex items-center font-bold rounded-full whitespace-nowrap"
+                  <span className="inline-flex items-center font-bold rounded-full"
                     style={{backgroundColor:'#DCFCE7', color:'#166534', fontSize:'8px', padding:'2px 7px'}}>
                     Physical
                   </span>
                 )}
                 {(cardType==='ecode'||cardType==='both') && (
-                  <span className="inline-flex items-center font-bold rounded-full whitespace-nowrap"
+                  <span className="inline-flex items-center font-bold rounded-full"
                     style={{backgroundColor:'#EDE9FE', color:'#5B21B6', fontSize:'8px', padding:'2px 7px'}}>
                     E-Code
                   </span>
@@ -327,15 +324,15 @@ function GCCard({listing, btcPriceUSD, onViewSeller, onTrade}) {
       <div style={{height:1,backgroundColor:C.g100}}/>
 
       {/* ─ You Give / You Receive ────────────────────────────────── */}
-      <div className="px-4 py-3 grid grid-cols-2 gap-2">
-        <div>
+      <div className="px-3 py-3 grid grid-cols-2 gap-2">
+        <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-wide mb-0.5" style={{color:C.g500}}>YOU GIVE</p>
-          <p className="text-2xl font-black leading-tight" style={{color:C.g800}}>{youGive.val}</p>
+          <p className="text-xl font-black leading-tight truncate" style={{color:C.g800}}>{youGive.val}</p>
           <p className="text-xs font-semibold mt-0.5" style={{color:C.g400}}>CARD</p>
         </div>
-        <div className="border-l pl-2.5" style={{borderColor:C.g100}}>
+        <div className="border-l pl-2.5 min-w-0" style={{borderColor:C.g100}}>
           <p className="text-xs font-bold uppercase tracking-wide mb-0.5" style={{color:C.g500}}>YOU RECEIVE</p>
-          <p className="font-black leading-tight" style={{color:C.gold, fontSize: btcOut < 0.001 ? '14px' : '20px'}}>
+          <p className="font-black leading-tight truncate" style={{color:C.gold, fontSize:'16px'}}>
             ₿{fBtc(btcOut)}
           </p>
           <p className="text-xs font-semibold mt-0.5" style={{color:C.g400}}>Bitcoin</p>
@@ -491,7 +488,7 @@ function SellerModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-                <span className="font-black text-white text-base leading-tight truncate">{u.username || 'Seller'}</span>
+                <span className="font-black text-white text-base leading-tight truncate">{getDisplayName(u) || 'Seller'}</span>
                 {kycOk && <BadgeCheck size={15} style={{color:'#93C5FD', flexShrink:0}}/>}
               </div>
               <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
@@ -811,46 +808,11 @@ function SkeletonCard() {
   );
 }
 
-// ── Bottom Navigation (mobile only) ──────────────────────────────────────────
-function BottomNav() {
-  const navigate = useNavigate();
-  const items = [
-    {id:'home',      icon:Home,    label:'Home',       path:'/dashboard'},
-    {id:'p2p',       icon:Bitcoin, label:'P2P',        path:'/buy-bitcoin'},
-    {id:'giftcards', icon:Gift,    label:'Gift Cards', path:'/gift-cards'},
-    {id:'wallet',    icon:Wallet,  label:'Wallet',     path:'/wallet'},
-    {id:'profile',   icon:User,    label:'Profile',    path:'/profile'},
-  ];
-  const activeId = 'giftcards';
-  return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white border-t z-40 md:hidden"
-      style={{borderColor:C.g200,paddingBottom:'env(safe-area-inset-bottom)'}}>
-      <div className="flex items-center justify-around px-2 py-1.5">
-        {items.map(({id,icon:Icon,label,path:to})=>{
-          const active=id===activeId;
-          return (
-            <button key={id} onClick={()=>navigate(to)}
-              className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all"
-              style={{
-                color:active?C.forest:C.g400,
-                backgroundColor:active?`${C.forest}12`:'transparent',
-                minWidth:'52px',
-              }}>
-              <Icon size={22} strokeWidth={active?2.5:1.8}/>
-              <span className="text-xs font-bold leading-tight">{label}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 // ── Main GiftCards Page ───────────────────────────────────────────────────────
 export default function GiftCards({user}) {
   const navigate = useNavigate();
   const {rates:USD_RATES, btcUsd:contextBtcUsd} = useRates();
-  const _cacheAll = () => { try { const c=JSON.parse(sessionStorage.getItem('praqen_market_all')||'null'); return c?.data||null; } catch { return null; } };
+  const _cacheAll = () => { try { const c=JSON.parse(sessionStorage.getItem('praqen_market_all')||'null'); if(!c||Date.now()-c.ts>180000) return null; return c?.data||null; } catch { return null; } };
   const _gcNow    = () => { const a=_cacheAll(); return a?a.filter(l=>l.listing_type==='BUY_GIFT_CARD'||l.listing_type==='SELL_GIFT_CARD'):[]; };
   const [listings,     setListings]     = useState(()=>_gcNow());
   const [loading,      setLoading]      = useState(()=>_gcNow().length===0);
@@ -993,8 +955,8 @@ export default function GiftCards({user}) {
   const hasFilters  = amountInput.trim()!==''||selBrand!=='All Brands'||selCountry.code!=='ALL'||traderSearch.trim()!==''||sortBy!=='rate_low';
 
   return (
-    <div className="min-h-screen flex flex-col pb-0"
-      style={{backgroundColor:C.g100,fontFamily:"'DM Sans',sans-serif"}}>
+    <div className="min-h-screen flex flex-col"
+      style={{backgroundColor:C.g100,fontFamily:"'DM Sans',sans-serif",overflowX:'hidden'}}>
       <SEO />
       <style>{`
         @keyframes slideUp{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}
@@ -1325,7 +1287,7 @@ export default function GiftCards({user}) {
 
         {/* ── Inline active trade cards ── */}
         {activeTrades.length > 0 && (
-          <div className="mb-2">
+          <div className="mb-2 overflow-hidden">
             {activeTrades.slice(0, showAllTrades ? activeTrades.length : 3).map(trade => (
               <ActiveTradeCard key={trade.id} trade={trade} pageColor="#0D9488" onExpire={handleTradeExpire} />
             ))}
@@ -1383,7 +1345,7 @@ export default function GiftCards({user}) {
             </button>
           </div>
         ):(
-          <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3">
             {filtered.map(l=>(
               <GCCard
                 key={l.id}
@@ -1411,11 +1373,6 @@ export default function GiftCards({user}) {
           6. FOOTER
       ══════════════════════════════════════════════════ */}
       <PRQFooter/>
-
-      {/* ══════════════════════════════════════════════════
-          7. BOTTOM NAVIGATION (mobile only)
-      ══════════════════════════════════════════════════ */}
-      <BottomNav/>
 
       {modal&&(
         <SellerModal

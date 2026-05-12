@@ -183,6 +183,33 @@ export default function Settings({ user, setUser }) {
   // Payment methods
   const [payments, setPayments] = useState({ bankName: '', accountNumber: '', mobileProvider: '', mobileNumber: '' });
 
+  // Real security info — IP, country, device
+  const [secInfo, setSecInfo] = useState({ ip: null, country: null, flag: null, city: null, device: '—', browser: '—', language: '—', loading: true });
+
+  useEffect(() => {
+    if (activeTab !== 'security') return;
+    // Detect device & browser from user-agent
+    const ua = navigator.userAgent;
+    const isMobile = /Mobile|Android|iPhone|iPad|iPod/i.test(ua);
+    const browser = /Edg\//i.test(ua) ? 'Edge' : /OPR\//i.test(ua) ? 'Opera' : /Chrome/i.test(ua) ? 'Chrome' : /Firefox/i.test(ua) ? 'Firefox' : /Safari/i.test(ua) ? 'Safari' : 'Browser';
+    const device = isMobile ? 'Mobile' : 'Desktop';
+    const lang = navigator.language || navigator.languages?.[0] || 'en';
+    let langLabel = lang;
+    try { langLabel = new Intl.DisplayNames([lang], { type: 'language' }).of(lang.split('-')[0]) || lang; } catch {}
+    setSecInfo(prev => ({ ...prev, device: `${device} · ${browser}`, language: langLabel }));
+    // Fetch real IP + country from ipwho.is (free, no key needed)
+    fetch('https://ipwho.is/')
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) {
+          setSecInfo(prev => ({ ...prev, ip: d.ip, country: d.country, flag: d.flag?.emoji || '', city: d.city, loading: false }));
+        } else {
+          setSecInfo(prev => ({ ...prev, loading: false }));
+        }
+      })
+      .catch(() => setSecInfo(prev => ({ ...prev, loading: false })));
+  }, [activeTab]);
+
   // Hide full name toggle
   const [hideFullName, setHideFullName] = useState(false);
 
@@ -1422,6 +1449,71 @@ export default function Settings({ user, setUser }) {
             {/* ── SECURITY ────────────────────────────────────────── */}
             {activeTab === 'security' && (
               <div className="space-y-5">
+
+                {/* ── Account Security Info ── */}
+                <div className="bg-white rounded-2xl shadow-sm border p-5" style={{ borderColor: C.g200 }}>
+                  <h2 className="text-lg font-black mb-4" style={{ color: C.forest }}>Account Security</h2>
+                  <div className="space-y-2.5">
+
+                    {/* Registered Country */}
+                    <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
+                      <Globe size={16} style={{ color: C.forest, flexShrink: 0 }} />
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.g500 }}>Registered Country</p>
+                        {secInfo.loading ? (
+                          <div className="h-4 w-28 rounded animate-pulse mt-1" style={{ backgroundColor: C.g200 }} />
+                        ) : (
+                          <p className="text-sm font-black" style={{ color: C.g800 }}>
+                            {secInfo.flag} {secInfo.country || user?.country || '—'}
+                            {secInfo.city ? <span className="font-normal text-xs ml-1.5" style={{ color: C.g500 }}>· {secInfo.city}</span> : null}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* IP Address */}
+                    <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
+                      <Shield size={16} style={{ color: C.forest, flexShrink: 0 }} />
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.g500 }}>IP Address</p>
+                        {secInfo.loading ? (
+                          <div className="h-4 w-32 rounded animate-pulse mt-1" style={{ backgroundColor: C.g200 }} />
+                        ) : (
+                          <p className="text-sm font-black font-mono" style={{ color: C.g800 }}>{secInfo.ip || '—'}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Last Active */}
+                    <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
+                      <Clock size={16} style={{ color: C.forest, flexShrink: 0 }} />
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.g500 }}>Last Active</p>
+                        <p className="text-sm font-black" style={{ color: C.success }}>🟢 Online now</p>
+                      </div>
+                    </div>
+
+                    {/* Device Access */}
+                    <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
+                      <Smartphone size={16} style={{ color: C.forest, flexShrink: 0 }} />
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.g500 }}>Device Access</p>
+                        <p className="text-sm font-black" style={{ color: C.g800 }}>{secInfo.device}</p>
+                      </div>
+                    </div>
+
+                    {/* Language */}
+                    <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
+                      <Languages size={16} style={{ color: C.forest, flexShrink: 0 }} />
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.g500 }}>Language</p>
+                        <p className="text-sm font-black" style={{ color: C.g800 }}>{secInfo.language}</p>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+
                 <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: C.g200 }}>
                   <h2 className="text-lg font-black mb-5" style={{ color: C.forest }}>Change Password</h2>
                   <form onSubmit={handlePasswordChange} className="space-y-4">

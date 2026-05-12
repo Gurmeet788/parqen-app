@@ -279,7 +279,7 @@ export default function ActiveTradeCard({ trade, onExpire, pageColor }) {
   return (
     <>
       <style>{`@keyframes pmtBorderPulse{0%,100%{box-shadow:0 0 0 2px rgba(37,99,235,0.25),0 2px 12px rgba(0,0,0,0.08);}50%{box-shadow:0 0 0 3px rgba(37,99,235,0.5),0 4px 20px rgba(37,99,235,0.18);}}`}</style>
-      <div className="rounded-2xl mb-3 overflow-hidden"
+      <div className="rounded-2xl mb-3 overflow-hidden w-full"
         style={{
           background: '#FFFFFF',
           border: trade.status === 'PAYMENT_SENT' ? '1.5px solid #2563EB50' : `1.5px solid ${cfg.statusColor}30`,
@@ -300,7 +300,7 @@ export default function ActiveTradeCard({ trade, onExpire, pageColor }) {
         </div>
 
         {/* ── Row 1: Status badge + countdown (timer stops once buyer marks paid) ── */}
-        <div className="flex items-center justify-between px-4 pt-1.5 pb-2 gap-2">
+        <div className="flex items-center justify-between flex-wrap px-4 pt-1.5 pb-2 gap-2">
           <span className="text-[11px] font-black px-3 py-1 rounded-full flex-shrink-0"
             style={{ backgroundColor: cfg.statusBg, color: cfg.statusColor }}>
             {cfg.label}
@@ -328,17 +328,15 @@ export default function ActiveTradeCard({ trade, onExpire, pageColor }) {
         </div>
 
         {/* ── Row 2: Counterparty info ── */}
-        <div className="flex items-center justify-between px-4 pb-3 gap-2">
-          <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center justify-between px-4 pb-3 gap-2 flex-wrap">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             <CountryFlag countryCode={cc} className="w-4 h-3 rounded-sm flex-shrink-0" />
-            {/* Clickable username → opens popup with fresh profile data */}
             <button
               onClick={() => setShowPopup(true)}
               className="font-black text-sm truncate hover:underline decoration-dotted"
-              style={{ color: btnColor }}>
+              style={{ color: btnColor, maxWidth: '110px' }}>
               {cp.username || '—'}
             </button>
-            {/* Badge — from joined data; popup always shows fresh correct badge */}
             <span
               className={`inline-flex items-center gap-px font-bold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${badge.animate ? 'shadow-sm' : ''}`}
               style={{
@@ -351,7 +349,7 @@ export default function ActiveTradeCard({ trade, onExpire, pageColor }) {
               <span style={{ color: badge.textColor }} className="ml-0.5">{badge.label}</span>
             </span>
           </div>
-          <div className="flex items-center gap-2.5 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <span className="flex items-center gap-0.5 text-xs font-bold" style={{ color: '#64748B' }}>
               <Repeat2 size={10} />{cpTrades}
             </span>
@@ -379,28 +377,28 @@ export default function ActiveTradeCard({ trade, onExpire, pageColor }) {
         )}
 
         {/* ── Row 3: You Pay → You Receive ── */}
-        <div className="px-4 pb-3 flex items-stretch gap-2">
-          <div className="flex-1 rounded-xl px-3 py-2.5" style={{ backgroundColor: '#F8FAFC' }}>
+        <div className="px-3 pb-3 flex items-stretch gap-1.5">
+          <div className="flex-1 min-w-0 rounded-xl px-2.5 py-2.5" style={{ backgroundColor: '#F8FAFC' }}>
             <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">You Pay</p>
-            <p className="font-black text-base text-gray-900 leading-tight">
+            <p className="font-black text-sm text-gray-900 leading-tight break-all">
               {youPayAmt || <span className="text-gray-300">—</span>}
             </p>
             <p className="text-[10px] text-gray-400 mt-0.5 truncate">{youPayNote}</p>
           </div>
 
-          <div className="flex items-center justify-center flex-shrink-0 px-0.5">
-            <div className="w-7 h-7 rounded-full flex items-center justify-center"
+          <div className="flex items-center justify-center flex-shrink-0">
+            <div className="w-6 h-6 rounded-full flex items-center justify-center"
               style={{ backgroundColor: `${btnColor}15` }}>
-              <ArrowRight size={14} style={{ color: btnColor }} />
+              <ArrowRight size={12} style={{ color: btnColor }} />
             </div>
           </div>
 
-          <div className="flex-1 rounded-xl px-3 py-2.5"
+          <div className="flex-1 min-w-0 rounded-xl px-2.5 py-2.5"
             style={{ backgroundColor: `${btnColor}10`, border: `1px solid ${btnColor}25` }}>
             <p className="text-[9px] font-black uppercase tracking-widest mb-1" style={{ color: btnColor, opacity: 0.7 }}>
               You Receive
             </p>
-            <p className="font-black text-base leading-tight" style={{ color: btnColor }}>
+            <p className="font-black text-sm leading-tight break-all" style={{ color: btnColor }}>
               {youRecvAmt || <span style={{ opacity: 0.3 }}>—</span>}
             </p>
             <p className="text-[10px] mt-0.5 truncate" style={{ color: btnColor, opacity: 0.6 }}>
