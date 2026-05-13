@@ -12,7 +12,7 @@ import {
   Phone, Mail, Ban
 } from 'lucide-react';
 import { toast } from 'react-toastify';
-import CountryFlag from '../components/CountryFlag';
+import CountryFlag, { resolveCode } from '../components/CountryFlag';
 import { TRUST_MAP, deriveBadge } from '../lib/badge';
 import ActiveTradeCard from '../components/ActiveTradeCard';
 import PRQFooter from '../components/PRQFooter';
@@ -245,7 +245,7 @@ function GCCard({listing, btcPriceUSD, onViewSeller, onTrade}) {
           <div className="flex-1 min-w-0 overflow-hidden">
             <div className="flex items-center gap-1 flex-wrap">
               <CountryFlag
-                countryCode={(u?.country_code||u?.country||'gh').toLowerCase()}
+                countryCode={u?.country_code || u?.country || u?.location || null}
                 className="w-4 h-3 rounded-sm flex-shrink-0"/>
               <button onClick={onViewSeller}
                 className="font-black text-sm hover:underline leading-tight truncate flex-shrink min-w-0"
@@ -423,13 +423,13 @@ function SellerModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
   const trust    = total > 0 ? Math.round(pos / total * 100) : trades > 0 ? 100 : 0;
   const compRate = parseFloat(u.completion_rate || 0);
   const blocks   = parseInt(u.blocks_received || u.blocks_count || 0);
-  const ccCode   = (u.country || 'gh').slice(0, 2).toLowerCase();
+  const ccCode   = resolveCode(u.country || u.location);
   const avgReply = u.avg_response_time || u.avg_reply_minutes;
   const payMins  = parseFloat(u.avg_payment_time || u.avg_response_time || u.avg_reply_minutes || 0);
   const avgPayDisplay = payMins > 0 ? (() => { const m=Math.floor(payMins),s=Math.round((payMins-m)*60); return s>0?`${m}m ${s}s`:m>0?`${m}m`:`${s}s`; })() : '—';
-  const locCC    = (u.country || '').slice(0,2).toUpperCase() || ccCode.toUpperCase();
-  const CC_NAME  = {GH:'Ghana',NG:'Nigeria',KE:'Kenya',ZA:'S. Africa',UG:'Uganda',TZ:'Tanzania',RW:'Rwanda',CM:'Cameroon',SN:'Senegal',ML:'Mali',CI:"Côte d'Ivoire",CD:'DR Congo',ZM:'Zambia',MZ:'Mozambique',ZW:'Zimbabwe',BF:'Burkina Faso',BJ:'Benin',TG:'Togo',NE:'Niger',US:'USA',GB:'UK',EU:'Europe'};
-  const countryName = (u.country && u.country.length > 2) ? u.country : (CC_NAME[locCC] || u.location || locCC || '—');
+  const locCC    = ccCode ? ccCode.toUpperCase() : '';
+  const CC_NAME  = {GH:'Ghana',NG:'Nigeria',KE:'Kenya',ZA:'S. Africa',UG:'Uganda',TZ:'Tanzania',RW:'Rwanda',CM:'Cameroon',SN:'Senegal',ML:'Mali',CI:"Côte d'Ivoire",CD:'DR Congo',ZM:'Zambia',MZ:'Mozambique',ZW:'Zimbabwe',BF:'Burkina Faso',BJ:'Benin',TG:'Togo',NE:'Niger',ET:'Ethiopia',EG:'Egypt',MA:'Morocco',DZ:'Algeria',AO:'Angola',US:'USA',GB:'UK',DE:'Germany',FR:'France',IT:'Italy',ES:'Spain',NL:'Netherlands',SE:'Sweden',NO:'Norway',PL:'Poland',UA:'Ukraine',TR:'Turkey',VN:'Vietnam',TH:'Thailand',ID:'Indonesia',PH:'Philippines',MY:'Malaysia',SG:'Singapore',IN:'India',CN:'China',JP:'Japan',KR:'S. Korea',PK:'Pakistan',BD:'Bangladesh',SA:'Saudi Arabia',AE:'UAE',QA:'Qatar',BR:'Brazil',MX:'Mexico',CO:'Colombia',AR:'Argentina',CA:'Canada',AU:'Australia',NZ:'New Zealand'};
+  const countryName = (u.country && u.country.length > 2) ? u.country : (CC_NAME[locCC] || u.location || (locCC || '—'));
 
   useEffect(() => {
     if (tab !== 'feedback' || !u.id || reviews.length) return;

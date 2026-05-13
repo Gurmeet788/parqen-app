@@ -23,16 +23,19 @@ const NAME_TO_CODE = {
 };
 
 function resolveCode(raw) {
-  if (!raw) return 'gh';
+  if (!raw) return null;
   const s = String(raw).trim();
+  if (!s) return null;
   // Already a valid 2-letter ISO code
   if (s.length === 2) return s.toLowerCase();
-  // 3-letter codes — not supported by flagcdn, fall back
+  // 3-letter codes — truncate to 2
   if (s.length === 3) return s.slice(0, 2).toLowerCase();
   // Full name lookup
   const lower = s.toLowerCase();
-  return NAME_TO_CODE[lower] || 'gh';
+  return NAME_TO_CODE[lower] || null;
 }
+
+export { resolveCode };
 
 export default function CountryFlag({ countryCode, className = 'w-5 h-4' }) {
   const [code, setCode] = useState(() => resolveCode(countryCode));
@@ -41,6 +44,9 @@ export default function CountryFlag({ countryCode, className = 'w-5 h-4' }) {
     setCode(resolveCode(countryCode));
   }, [countryCode]);
 
+  // Unknown country — render nothing rather than showing a wrong flag
+  if (!code) return null;
+
   return (
     <img
       src={`https://flagcdn.com/48x36/${code}.png`}
@@ -48,7 +54,6 @@ export default function CountryFlag({ countryCode, className = 'w-5 h-4' }) {
       alt={code.toUpperCase()}
       className={`${className} object-cover rounded-sm inline-block flex-shrink-0`}
       onError={(e) => {
-        // If code is bad, show a neutral world flag emoji instead
         e.currentTarget.style.display = 'none';
         const span = document.createElement('span');
         span.textContent = '🌍';

@@ -145,6 +145,199 @@ function PushEnableCard() {
   );
 }
 
+// ── Currencies — full list with flags and symbols ─────────────────────────────
+const CURRENCIES = [
+  // Major Global
+  { code:'USD', label:'US Dollar',           symbol:'$',    flag:'🇺🇸' },
+  { code:'EUR', label:'Euro',                symbol:'€',    flag:'🇪🇺' },
+  { code:'GBP', label:'British Pound',       symbol:'£',    flag:'🇬🇧' },
+  { code:'CHF', label:'Swiss Franc',         symbol:'Fr',   flag:'🇨🇭' },
+  { code:'JPY', label:'Japanese Yen',        symbol:'¥',    flag:'🇯🇵' },
+  { code:'CNY', label:'Chinese Yuan',        symbol:'¥',    flag:'🇨🇳' },
+  { code:'CAD', label:'Canadian Dollar',     symbol:'CA$',  flag:'🇨🇦' },
+  { code:'AUD', label:'Australian Dollar',   symbol:'A$',   flag:'🇦🇺' },
+  { code:'NZD', label:'New Zealand Dollar',  symbol:'NZ$',  flag:'🇳🇿' },
+  { code:'SGD', label:'Singapore Dollar',    symbol:'S$',   flag:'🇸🇬' },
+  { code:'HKD', label:'Hong Kong Dollar',    symbol:'HK$',  flag:'🇭🇰' },
+  // Middle East
+  { code:'AED', label:'UAE Dirham',          symbol:'د.إ',  flag:'🇦🇪' },
+  { code:'SAR', label:'Saudi Riyal',         symbol:'﷼',    flag:'🇸🇦' },
+  { code:'QAR', label:'Qatari Riyal',        symbol:'﷼',    flag:'🇶🇦' },
+  { code:'KWD', label:'Kuwaiti Dinar',       symbol:'KD',   flag:'🇰🇼' },
+  { code:'BHD', label:'Bahraini Dinar',      symbol:'BD',   flag:'🇧🇭' },
+  { code:'OMR', label:'Omani Rial',          symbol:'﷼',    flag:'🇴🇲' },
+  // Africa
+  { code:'GHS', label:'Ghana Cedi',          symbol:'₵',    flag:'🇬🇭' },
+  { code:'NGN', label:'Nigerian Naira',      symbol:'₦',    flag:'🇳🇬' },
+  { code:'KES', label:'Kenyan Shilling',     symbol:'KSh',  flag:'🇰🇪' },
+  { code:'ZAR', label:'South African Rand',  symbol:'R',    flag:'🇿🇦' },
+  { code:'UGX', label:'Ugandan Shilling',    symbol:'USh',  flag:'🇺🇬' },
+  { code:'TZS', label:'Tanzanian Shilling',  symbol:'TSh',  flag:'🇹🇿' },
+  { code:'RWF', label:'Rwandan Franc',       symbol:'Fr',   flag:'🇷🇼' },
+  { code:'ETB', label:'Ethiopian Birr',      symbol:'Br',   flag:'🇪🇹' },
+  { code:'XOF', label:'CFA Franc (UEMOA)',   symbol:'CFA',  flag:'🌍' },
+  { code:'XAF', label:'CFA Franc (CEMAC)',   symbol:'CFA',  flag:'🌍' },
+  { code:'MAD', label:'Moroccan Dirham',     symbol:'DH',   flag:'🇲🇦' },
+  { code:'EGP', label:'Egyptian Pound',      symbol:'£',    flag:'🇪🇬' },
+  { code:'ZMW', label:'Zambian Kwacha',      symbol:'ZK',   flag:'🇿🇲' },
+  { code:'MWK', label:'Malawian Kwacha',     symbol:'MK',   flag:'🇲🇼' },
+  { code:'SLL', label:'Sierra Leone Leone',  symbol:'Le',   flag:'🇸🇱' },
+  { code:'GMD', label:'Gambian Dalasi',      symbol:'D',    flag:'🇬🇲' },
+  { code:'GNF', label:'Guinean Franc',       symbol:'Fr',   flag:'🇬🇳' },
+  // Asia
+  { code:'INR', label:'Indian Rupee',        symbol:'₹',    flag:'🇮🇳' },
+  { code:'PKR', label:'Pakistani Rupee',     symbol:'₨',    flag:'🇵🇰' },
+  { code:'BDT', label:'Bangladeshi Taka',    symbol:'৳',    flag:'🇧🇩' },
+  { code:'IDR', label:'Indonesian Rupiah',   symbol:'Rp',   flag:'🇮🇩' },
+  { code:'PHP', label:'Philippine Peso',     symbol:'₱',    flag:'🇵🇭' },
+  { code:'MYR', label:'Malaysian Ringgit',   symbol:'RM',   flag:'🇲🇾' },
+  { code:'THB', label:'Thai Baht',           symbol:'฿',    flag:'🇹🇭' },
+  { code:'VND', label:'Vietnamese Dong',     symbol:'₫',    flag:'🇻🇳' },
+  { code:'KRW', label:'South Korean Won',    symbol:'₩',    flag:'🇰🇷' },
+  { code:'TWD', label:'Taiwan Dollar',       symbol:'NT$',  flag:'🇹🇼' },
+  { code:'LKR', label:'Sri Lankan Rupee',    symbol:'₨',    flag:'🇱🇰' },
+  // Europe (non-EUR)
+  { code:'TRY', label:'Turkish Lira',        symbol:'₺',    flag:'🇹🇷' },
+  { code:'RUB', label:'Russian Ruble',       symbol:'₽',    flag:'🇷🇺' },
+  { code:'PLN', label:'Polish Zloty',        symbol:'zł',   flag:'🇵🇱' },
+  { code:'UAH', label:'Ukrainian Hryvnia',   symbol:'₴',    flag:'🇺🇦' },
+  { code:'SEK', label:'Swedish Krona',       symbol:'kr',   flag:'🇸🇪' },
+  { code:'NOK', label:'Norwegian Krone',     symbol:'kr',   flag:'🇳🇴' },
+  { code:'DKK', label:'Danish Krone',        symbol:'kr',   flag:'🇩🇰' },
+  // Americas
+  { code:'BRL', label:'Brazilian Real',      symbol:'R$',   flag:'🇧🇷' },
+  { code:'MXN', label:'Mexican Peso',        symbol:'MX$',  flag:'🇲🇽' },
+  { code:'COP', label:'Colombian Peso',      symbol:'$',    flag:'🇨🇴' },
+  { code:'ARS', label:'Argentine Peso',      symbol:'$',    flag:'🇦🇷' },
+  { code:'CLP', label:'Chilean Peso',        symbol:'$',    flag:'🇨🇱' },
+];
+
+// ── Languages ─────────────────────────────────────────────────────────────────
+const LANGUAGES = [
+  { code:'en', label:'English',     native:'English' },
+  { code:'fr', label:'French',      native:'Français' },
+  { code:'pt', label:'Portuguese',  native:'Português' },
+  { code:'es', label:'Spanish',     native:'Español' },
+  { code:'de', label:'German',      native:'Deutsch' },
+  { code:'it', label:'Italian',     native:'Italiano' },
+  { code:'ar', label:'Arabic',      native:'العربية' },
+  { code:'zh', label:'Chinese',     native:'中文' },
+  { code:'hi', label:'Hindi',       native:'हिन्दी' },
+  { code:'bn', label:'Bengali',     native:'বাংলা' },
+  { code:'ru', label:'Russian',     native:'Русский' },
+  { code:'ja', label:'Japanese',    native:'日本語' },
+  { code:'ko', label:'Korean',      native:'한국어' },
+  { code:'tr', label:'Turkish',     native:'Türkçe' },
+  { code:'sw', label:'Swahili',     native:'Kiswahili' },
+  { code:'ha', label:'Hausa',       native:'Hausa' },
+  { code:'yo', label:'Yoruba',      native:'Yorùbá' },
+  { code:'ig', label:'Igbo',        native:'Igbo' },
+  { code:'am', label:'Amharic',     native:'አማርኛ' },
+  { code:'so', label:'Somali',      native:'Soomaali' },
+  { code:'tw', label:'Twi (Akan)',  native:'Twi' },
+  { code:'ur', label:'Urdu',        native:'اردو' },
+  { code:'id', label:'Indonesian',  native:'Bahasa Indonesia' },
+  { code:'ms', label:'Malay',       native:'Bahasa Melayu' },
+  { code:'vi', label:'Vietnamese',  native:'Tiếng Việt' },
+  { code:'th', label:'Thai',        native:'ภาษาไทย' },
+  { code:'tl', label:'Filipino',    native:'Filipino' },
+  { code:'nl', label:'Dutch',       native:'Nederlands' },
+  { code:'pl', label:'Polish',      native:'Polski' },
+  { code:'uk', label:'Ukrainian',   native:'Українська' },
+];
+
+// ── Timezones grouped by region ──────────────────────────────────────────────
+const TIMEZONE_GROUPS = {
+  '🌍 Africa': [
+    { tz:'Africa/Accra',         label:'Accra, Abidjan, Dakar — Ghana · Côte d\'Ivoire · Senegal (GMT+0)' },
+    { tz:'Africa/Lagos',         label:'Lagos — Nigeria · Benin · Cameroon (GMT+1)' },
+    { tz:'Africa/Nairobi',       label:'Nairobi — Kenya · Tanzania · Uganda · Somalia (GMT+3)' },
+    { tz:'Africa/Johannesburg',  label:'Johannesburg — South Africa · Zimbabwe · Zambia (GMT+2)' },
+    { tz:'Africa/Addis_Ababa',   label:'Addis Ababa — Ethiopia · Eritrea (GMT+3)' },
+    { tz:'Africa/Kigali',        label:'Kigali — Rwanda (GMT+2)' },
+    { tz:'Africa/Dar_es_Salaam', label:'Dar es Salaam — Tanzania (GMT+3)' },
+    { tz:'Africa/Kampala',       label:'Kampala — Uganda (GMT+3)' },
+    { tz:'Africa/Douala',        label:'Douala — Cameroon · Central Africa (GMT+1)' },
+    { tz:'Africa/Cairo',         label:'Cairo — Egypt (GMT+2)' },
+    { tz:'Africa/Casablanca',    label:'Casablanca — Morocco (GMT+0/+1)' },
+    { tz:'Africa/Khartoum',      label:'Khartoum — Sudan (GMT+3)' },
+    { tz:'Africa/Lusaka',        label:'Lusaka — Zambia (GMT+2)' },
+    { tz:'Africa/Harare',        label:'Harare — Zimbabwe (GMT+2)' },
+    { tz:'Africa/Maputo',        label:'Maputo — Mozambique (GMT+2)' },
+    { tz:'Africa/Luanda',        label:'Luanda — Angola (GMT+1)' },
+    { tz:'Africa/Abidjan',       label:'Abidjan — Côte d\'Ivoire (GMT+0)' },
+    { tz:'Africa/Bamako',        label:'Bamako — Mali · Guinea · Burkina Faso (GMT+0)' },
+    { tz:'Africa/Conakry',       label:'Conakry — Guinea (GMT+0)' },
+    { tz:'Africa/Freetown',      label:'Freetown — Sierra Leone (GMT+0)' },
+  ],
+  '🌏 Asia & Middle East': [
+    { tz:'Asia/Dubai',           label:'Dubai — UAE (GMT+4)' },
+    { tz:'Asia/Riyadh',          label:'Riyadh — Saudi Arabia (GMT+3)' },
+    { tz:'Asia/Qatar',           label:'Doha — Qatar (GMT+3)' },
+    { tz:'Asia/Kuwait',          label:'Kuwait City (GMT+3)' },
+    { tz:'Asia/Baghdad',         label:'Baghdad — Iraq (GMT+3)' },
+    { tz:'Asia/Beirut',          label:'Beirut — Lebanon (GMT+2/+3)' },
+    { tz:'Asia/Kolkata',         label:'Mumbai, Delhi — India (GMT+5:30)' },
+    { tz:'Asia/Karachi',         label:'Karachi — Pakistan (GMT+5)' },
+    { tz:'Asia/Dhaka',           label:'Dhaka — Bangladesh (GMT+6)' },
+    { tz:'Asia/Colombo',         label:'Colombo — Sri Lanka (GMT+5:30)' },
+    { tz:'Asia/Shanghai',        label:'Beijing, Shanghai — China (GMT+8)' },
+    { tz:'Asia/Hong_Kong',       label:'Hong Kong (GMT+8)' },
+    { tz:'Asia/Taipei',          label:'Taipei — Taiwan (GMT+8)' },
+    { tz:'Asia/Tokyo',           label:'Tokyo — Japan (GMT+9)' },
+    { tz:'Asia/Seoul',           label:'Seoul — South Korea (GMT+9)' },
+    { tz:'Asia/Singapore',       label:'Singapore (GMT+8)' },
+    { tz:'Asia/Kuala_Lumpur',    label:'Kuala Lumpur — Malaysia (GMT+8)' },
+    { tz:'Asia/Jakarta',         label:'Jakarta — Indonesia (GMT+7)' },
+    { tz:'Asia/Manila',          label:'Manila — Philippines (GMT+8)' },
+    { tz:'Asia/Bangkok',         label:'Bangkok — Thailand (GMT+7)' },
+    { tz:'Asia/Ho_Chi_Minh',     label:'Ho Chi Minh City — Vietnam (GMT+7)' },
+  ],
+  '🌍 Europe': [
+    { tz:'Europe/London',        label:'London — UK · Ireland (GMT+0/+1)' },
+    { tz:'Europe/Paris',         label:'Paris — France · Belgium · Netherlands (GMT+1/+2)' },
+    { tz:'Europe/Berlin',        label:'Berlin — Germany · Austria (GMT+1/+2)' },
+    { tz:'Europe/Zurich',        label:'Zurich — Switzerland (GMT+1/+2)' },
+    { tz:'Europe/Madrid',        label:'Madrid — Spain (GMT+1/+2)' },
+    { tz:'Europe/Rome',          label:'Rome — Italy (GMT+1/+2)' },
+    { tz:'Europe/Lisbon',        label:'Lisbon — Portugal (GMT+0/+1)' },
+    { tz:'Europe/Amsterdam',     label:'Amsterdam — Netherlands (GMT+1/+2)' },
+    { tz:'Europe/Stockholm',     label:'Stockholm — Sweden (GMT+1/+2)' },
+    { tz:'Europe/Oslo',          label:'Oslo — Norway (GMT+1/+2)' },
+    { tz:'Europe/Copenhagen',    label:'Copenhagen — Denmark (GMT+1/+2)' },
+    { tz:'Europe/Warsaw',        label:'Warsaw — Poland (GMT+1/+2)' },
+    { tz:'Europe/Kiev',          label:'Kyiv — Ukraine (GMT+2/+3)' },
+    { tz:'Europe/Moscow',        label:'Moscow — Russia (GMT+3)' },
+    { tz:'Europe/Istanbul',      label:'Istanbul — Turkey (GMT+3)' },
+    { tz:'Europe/Athens',        label:'Athens — Greece (GMT+2/+3)' },
+    { tz:'Europe/Bucharest',     label:'Bucharest — Romania (GMT+2/+3)' },
+  ],
+  '🌎 Americas': [
+    { tz:'America/New_York',     label:'New York — USA Eastern (GMT-5/-4)' },
+    { tz:'America/Chicago',      label:'Chicago — USA Central (GMT-6/-5)' },
+    { tz:'America/Denver',       label:'Denver — USA Mountain (GMT-7/-6)' },
+    { tz:'America/Los_Angeles',  label:'Los Angeles — USA Pacific (GMT-8/-7)' },
+    { tz:'America/Toronto',      label:'Toronto — Canada Eastern (GMT-5/-4)' },
+    { tz:'America/Vancouver',    label:'Vancouver — Canada Pacific (GMT-8/-7)' },
+    { tz:'America/Sao_Paulo',    label:'São Paulo — Brazil (GMT-3)' },
+    { tz:'America/Mexico_City',  label:'Mexico City (GMT-6/-5)' },
+    { tz:'America/Bogota',       label:'Bogotá — Colombia (GMT-5)' },
+    { tz:'America/Lima',         label:'Lima — Peru (GMT-5)' },
+    { tz:'America/Buenos_Aires', label:'Buenos Aires — Argentina (GMT-3)' },
+    { tz:'America/Santiago',     label:'Santiago — Chile (GMT-4/-3)' },
+  ],
+  '🌏 Pacific & Oceania': [
+    { tz:'Australia/Sydney',     label:'Sydney — Australia Eastern (GMT+10/+11)' },
+    { tz:'Australia/Melbourne',  label:'Melbourne — Australia Eastern (GMT+10/+11)' },
+    { tz:'Australia/Perth',      label:'Perth — Australia Western (GMT+8)' },
+    { tz:'Pacific/Auckland',     label:'Auckland — New Zealand (GMT+12/+13)' },
+    { tz:'Pacific/Fiji',         label:'Fiji (GMT+12)' },
+  ],
+  '🕐 UTC': [
+    { tz:'UTC', label:'UTC — Coordinated Universal Time (GMT+0)' },
+  ],
+};
+
 export default function Settings({ user, setUser }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -197,12 +390,18 @@ export default function Settings({ user, setUser }) {
     let langLabel = lang;
     try { langLabel = new Intl.DisplayNames([lang], { type: 'language' }).of(lang.split('-')[0]) || lang; } catch {}
     setSecInfo(prev => ({ ...prev, device: `${device} · ${browser}`, language: langLabel }));
-    // Fetch real IP + country from ipwho.is (free, no key needed)
-    fetch('https://ipwho.is/')
+    // Fetch real IP + geo from our backend (avoids CORS/rate-limit issues with 3rd-party APIs)
+    const tk = localStorage.getItem('token');
+    fetch(`${API_URL}/me/security`, { headers: tk ? { Authorization: `Bearer ${tk}` } : {} })
       .then(r => r.json())
       .then(d => {
-        if (d.success) {
-          setSecInfo(prev => ({ ...prev, ip: d.ip, country: d.country, flag: d.flag?.emoji || '', city: d.city, loading: false }));
+        if (d.ip) {
+          // Build emoji flag from ISO country code
+          const cc = (d.country_code || '').toUpperCase();
+          const flag = cc.length === 2
+            ? cc.replace(/./g, c => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65))
+            : '';
+          setSecInfo(prev => ({ ...prev, ip: d.ip, country: d.country || cc || null, flag, city: d.city, loading: false }));
         } else {
           setSecInfo(prev => ({ ...prev, loading: false }));
         }
@@ -1465,7 +1664,7 @@ export default function Settings({ user, setUser }) {
                         ) : (
                           <p className="text-sm font-black" style={{ color: C.g800 }}>
                             {secInfo.flag} {secInfo.country || user?.country || '—'}
-                            {secInfo.city ? <span className="font-normal text-xs ml-1.5" style={{ color: C.g500 }}>· {secInfo.city}</span> : null}
+                            {secInfo.city ? <span className="font-normal text-xs ml-1.5" style={{ color: C.g500 }}>{secInfo.city}</span> : null}
                           </p>
                         )}
                       </div>
@@ -1586,51 +1785,86 @@ export default function Settings({ user, setUser }) {
 
             {/* ── PREFERENCES ─────────────────────────────────────── */}
             {activeTab === 'preferences' && (
-              <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: C.g200 }}>
-                <h2 className="text-lg font-black mb-5" style={{ color: C.forest }}>Account Preferences</h2>
-                <div className="space-y-5">
-                  {/* Currency */}
-                  <div>
-                    <label className={labelCls}><DollarSign size={14} className="inline mr-1" /> Preferred Currency</label>
-                    <select value={prefs.currency} onChange={e => setPrefs({ ...prefs, currency: e.target.value })}
-                      className={inputCls} style={inputStyle(true)}>
-                      {[['GHS', 'Ghana Cedi (₵)'], ['NGN', 'Nigerian Naira (₦)'], ['KES', 'Kenyan Shilling (KSh)'], ['ZAR', 'South African Rand (R)'], ['USD', 'US Dollar ($)'], ['EUR', 'Euro (€)'], ['GBP', 'British Pound (£)']].map(([v, l]) => (
-                        <option key={v} value={v}>{l}</option>
-                      ))}
-                    </select>
-                  </div>
+              <div className="space-y-4">
+                <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: C.g200 }}>
+                  <h2 className="text-lg font-black mb-1" style={{ color: C.forest }}>Account Preferences</h2>
+                  <p className="text-xs mb-6" style={{ color: C.g400 }}>Customize how prices, dates, and content display across PRAQEN</p>
 
-                  {/* Language */}
-                  <div>
-                    <label className={labelCls}><Languages size={14} className="inline mr-1" /> Language</label>
-                    <select value={prefs.language} onChange={e => setPrefs({ ...prefs, language: e.target.value })}
-                      className={inputCls} style={inputStyle(true)}>
-                      {[['en', 'English'], ['fr', 'French'], ['pt', 'Portuguese'], ['sw', 'Swahili'], ['ha', 'Hausa']].map(([v, l]) => (
-                        <option key={v} value={v}>{l}</option>
-                      ))}
-                    </select>
-                  </div>
+                  <div className="space-y-6">
+                    {/* ── Currency ── */}
+                    <div>
+                      <label className={labelCls}><DollarSign size={14} className="inline mr-1" /> Preferred Currency</label>
+                      <select value={prefs.currency} onChange={e => setPrefs({ ...prefs, currency: e.target.value })}
+                        className={inputCls} style={inputStyle(true)}>
+                        {CURRENCIES.map(({ code, label, symbol, flag }) => (
+                          <option key={code} value={code}>{flag} {label} ({symbol})</option>
+                        ))}
+                      </select>
+                      {(() => {
+                        const cur = CURRENCIES.find(c => c.code === prefs.currency);
+                        return cur ? (
+                          <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold" style={{ backgroundColor: C.g50, color: C.g600 }}>
+                            <span className="text-base">{cur.flag}</span>
+                            <span>{cur.label}</span>
+                            <span className="ml-auto font-black" style={{ color: C.green }}>{cur.symbol}</span>
+                          </div>
+                        ) : null;
+                      })()}
+                    </div>
 
-                  {/* Timezone */}
-                  <div>
-                    <label className={labelCls}><MapPin size={14} className="inline mr-1" /> Timezone</label>
-                    <select value={prefs.timezone} onChange={e => setPrefs({ ...prefs, timezone: e.target.value })}
-                      className={inputCls} style={inputStyle(true)}>
-                      {[
-                        ['Africa/Accra', 'Africa/Accra (GMT+0)'], ['Africa/Lagos', 'Africa/Lagos (GMT+1)'],
-                        ['Africa/Nairobi', 'Africa/Nairobi (GMT+3)'], ['Africa/Johannesburg', 'Africa/Johannesburg (GMT+2)'],
-                        ['Europe/London', 'Europe/London (GMT+0/+1)'], ['America/New_York', 'America/New_York (GMT-5/-4)'],
-                        ['America/Los_Angeles', 'America/Los_Angeles (GMT-8/-7)'],
-                      ].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                    </select>
-                  </div>
+                    {/* ── Language ── */}
+                    <div>
+                      <label className={labelCls}><Languages size={14} className="inline mr-1" /> Language</label>
+                      <select value={prefs.language} onChange={e => setPrefs({ ...prefs, language: e.target.value })}
+                        className={inputCls} style={inputStyle(true)}>
+                        {LANGUAGES.map(({ code, label, native }) => (
+                          <option key={code} value={code}>{label}{native !== label ? ` — ${native}` : ''}</option>
+                        ))}
+                      </select>
+                      {(() => {
+                        const lang = LANGUAGES.find(l => l.code === prefs.language);
+                        return lang ? (
+                          <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold" style={{ backgroundColor: C.g50, color: C.g600 }}>
+                            <span>{lang.label}</span>
+                            {lang.native !== lang.label && <span style={{ color: C.g400 }}>({lang.native})</span>}
+                          </div>
+                        ) : null;
+                      })()}
+                    </div>
 
-                  <button onClick={handleSavePreferences} disabled={loading}
-                    className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-white font-bold text-sm hover:opacity-90 disabled:opacity-50"
-                    style={{ backgroundColor: C.green }}>
-                    {loading ? <><RefreshCw size={15} className="animate-spin"/> Saving…</> : <><Save size={15}/> Save Preferences</>}
-                  </button>
-                  <p className="text-xs mt-2" style={{color:C.g400}}>Currency selection affects how values display in your wallet.</p>
+                    {/* ── Timezone ── */}
+                    <div>
+                      <label className={labelCls}><MapPin size={14} className="inline mr-1" /> Timezone</label>
+                      <select value={prefs.timezone} onChange={e => setPrefs({ ...prefs, timezone: e.target.value })}
+                        className={inputCls} style={inputStyle(true)}>
+                        {Object.entries(TIMEZONE_GROUPS).map(([region, zones]) => (
+                          <optgroup key={region} label={region}>
+                            {zones.map(({ tz, label }) => (
+                              <option key={tz} value={tz}>{label}</option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                      {prefs.timezone && (
+                        <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold" style={{ backgroundColor: C.g50, color: C.g600 }}>
+                          <span>🕐</span>
+                          <span>{prefs.timezone.replace(/_/g, ' ')}</span>
+                          <span className="ml-auto font-black" style={{ color: C.green }}>
+                            {(() => { try { return new Intl.DateTimeFormat('en', { timeZone: prefs.timezone, timeZoneName: 'short' }).formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value || ''; } catch { return ''; } })()}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <button onClick={handleSavePreferences} disabled={loading}
+                      className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-white font-bold text-sm hover:opacity-90 disabled:opacity-50 transition"
+                      style={{ backgroundColor: C.green }}>
+                      {loading ? <><RefreshCw size={15} className="animate-spin" /> Saving…</> : <><Save size={15} /> Save Preferences</>}
+                    </button>
+                    <p className="text-xs" style={{ color: C.g400 }}>
+                      Currency affects price display in your wallet and marketplace. Language and timezone are saved to your account.
+                    </p>
+                  </div>
                 </div>
               </div>
             )}

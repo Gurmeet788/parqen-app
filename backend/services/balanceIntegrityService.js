@@ -76,11 +76,16 @@ async function runIntegrityCheck() {
             `stored=${storedBtc.toFixed(8)} computed=${computedBtc.toFixed(8)} diff=${diff.toFixed(8)}`
           );
 
-          // Auto-correct both tables to match the transaction ledger
+          // Auto-correct all balance tables to match the transaction ledger.
+          // wallets is updated first as it is the single source of truth.
+          await supabaseAdmin.from('wallets')
+            .upsert(
+              { user_id: userId, balance_btc: computedBtc, locked_balance_btc: 0, private_key: 'placeholder_private_key', updated_at: new Date().toISOString() },
+              { onConflict: 'user_id' }
+            );
           await supabaseAdmin.from('user_balances')
             .update({ balance_btc: computedBtc, updated_at: new Date().toISOString() })
             .eq('user_id', userId);
-
           await supabaseAdmin.from('user_wallets')
             .update({ balance_btc: computedBtc, updated_at: new Date().toISOString() })
             .eq('user_id', userId);

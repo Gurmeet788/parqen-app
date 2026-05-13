@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { deriveBadge } from '../lib/badge';
+import { resolveCode } from '../components/CountryFlag';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
@@ -439,10 +440,10 @@ function ProfilePopup({user, label, trade, onClose}) {
   const avgReply   = u.avg_response_time || u.avg_reply_minutes;
   const payMins    = parseFloat(u.avg_payment_time || u.avg_response_time || 0);
   const avgPayDisplay = payMins > 0 ? (() => { const m=Math.floor(payMins),s=Math.round((payMins-m)*60); return s>0?`${m}m ${s}s`:m>0?`${m}m`:`${s}s`; })() : '—';
-  const ccCode     = (u.country || 'gh').slice(0,2).toLowerCase();
-  const locCC      = ccCode.toUpperCase();
-  const CC_NAME    = {GH:'Ghana',NG:'Nigeria',KE:'Kenya',ZA:'S. Africa',UG:'Uganda',TZ:'Tanzania',RW:'Rwanda',CM:'Cameroon',SN:'Senegal',CI:"Côte d'Ivoire",ZM:'Zambia',ZW:'Zimbabwe',US:'USA',GB:'UK'};
-  const countryName= (u.country && u.country.length > 2) ? u.country : (CC_NAME[locCC] || locCC || '—');
+  const ccCode     = resolveCode(u.country || u.location);
+  const locCC      = ccCode ? ccCode.toUpperCase() : '';
+  const CC_NAME    = {GH:'Ghana',NG:'Nigeria',KE:'Kenya',ZA:'S. Africa',UG:'Uganda',TZ:'Tanzania',RW:'Rwanda',CM:'Cameroon',SN:'Senegal',CI:"Côte d'Ivoire",ZM:'Zambia',ZW:'Zimbabwe',ET:'Ethiopia',EG:'Egypt',MA:'Morocco',US:'USA',GB:'UK',DE:'Germany',FR:'France',IT:'Italy',ES:'Spain',VN:'Vietnam',TH:'Thailand',ID:'Indonesia',PH:'Philippines',MY:'Malaysia',SG:'Singapore',CN:'China',IN:'India',JP:'Japan',KR:'S. Korea',PK:'Pakistan',BD:'Bangladesh',SA:'Saudi Arabia',AE:'UAE',QA:'Qatar',BR:'Brazil',MX:'Mexico',CA:'Canada',AU:'Australia'};
+  const countryName= (u.country && u.country.length > 2) ? u.country : (CC_NAME[locCC] || u.location || locCC || '—');
   const flagEmoji  = isoToFlag(locCC);
 
   // Last active

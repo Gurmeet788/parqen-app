@@ -26,7 +26,7 @@ const COMPANY_BTC_ADDRESS = 'bc1qd8z3zdn2e3eul6y8nmcyjvgle3yzv8ttvsjp49';
 async function pauseSellOffersIfEmpty(sellerId) {
   try {
     const { data: bal } = await supabaseAdmin
-      .from('user_balances').select('balance_btc').eq('user_id', sellerId).single();
+      .from('wallets').select('balance_btc').eq('user_id', sellerId).maybeSingle();
     const balance = parseFloat(bal?.balance_btc || 0);
     if (balance > 0.000001) return; // Still has funds — nothing to do
 
@@ -397,6 +397,11 @@ class TradeEscrowService {
 
     if (releaseErr) throw new Error(`Atomic escrow release failed: ${releaseErr.message}`);
 
+    // Fetch receiver's new balance from wallets (source of truth) for audit log + return value
+    const { data: receiverWallet } = await supabaseAdmin
+        .from('wallets').select('balance_btc').eq('user_id', btcReceiverId).maybeSingle();
+    const newReceiverBalance = parseFloat(receiverWallet?.balance_btc || 0);
+
     // Trade and escrow are now updated inside the DB function — skip redundant updates.
     const { error: tradeUpdateError } = await supabaseAdmin
         .from('trades')
@@ -407,64 +412,73 @@ class TradeEscrowService {
         console.warn('⚠️  Trade status update failed (DB trigger issue):', tradeUpdateError.message);
     }
 
-    // ── Collect 0.5% platform fee from seller — NEVER breaks the trade ─────
-    // Fee = trade.amount_btc × 0.005
-    // Seller is whoever locked BTC (btcProviderId from escrow_locks)
+    // ── Collect 0.5% platform fee — NEVER breaks the trade ──────────────────
+    // Fee = trade.amount_btc × 0.005 (calculated ONCE above, never recalculated here)
     try {
+        // ── Consistency check: verify fee is exactly 0.5% ───────────────────
+        const expectedFee = parseFloat((amount * FEE_RATE).toFixed(8));
+        const feeIsCorrect = Math.abs(platformFee - expectedFee) < 0.000000011; // 1-satoshi tolerance
+        if (!feeIsCorrect) {
+            console.error(`⚠️ [Escrow] Fee mismatch! Expected ${expectedFee.toFixed(8)} got ${platformFee.toFixed(8)} — trade ${tradeId.slice(0,8)}`);
+            await supabaseAdmin.from('trades')
+                .update({ fee_status: 'INCORRECT' })
+                .eq('id', tradeId)
+                .catch(() => {});
+        }
+
         const { data: escrowLock } = await supabaseAdmin
             .from('escrow_locks')
             .select('seller_id')
             .eq('trade_id', tradeId)
             .single();
 
-        // sellerId = whoever locked BTC into escrow (the "BTC provider")
         const feePayerId = escrowLock?.seller_id || tradeData.seller_id;
-
         console.log(`💸 Collecting fee: ${platformFee.toFixed(8)} BTC from ${feePayerId.slice(0,8)}`);
 
-        // 1. Get current company balance
-        const { data: companyBal } = await supabaseAdmin
-            .from('user_balances')
+        // 1. Get current company balance from wallets (source of truth)
+        const { data: companyWallet } = await supabaseAdmin
+            .from('wallets')
             .select('balance_btc')
             .eq('user_id', COMPANY_WALLET_ID)
-            .single();
+            .maybeSingle();
 
         const newCompanyBalance = parseFloat(
-            (parseFloat(companyBal?.balance_btc || 0) + platformFee).toFixed(8)
+            (parseFloat(companyWallet?.balance_btc || 0) + platformFee).toFixed(8)
         );
 
-        // 2. Credit company wallet in user_balances
-        await supabaseAdmin
-            .from('user_balances')
-            .upsert({
-                user_id:     COMPANY_WALLET_ID,
-                balance_btc: newCompanyBalance,
-                updated_at:  new Date().toISOString(),
-            });
+        // 2. Credit wallets FIRST (source of truth)
+        await supabaseAdmin.from('wallets').upsert({
+            user_id:            COMPANY_WALLET_ID,
+            balance_btc:        newCompanyBalance,
+            locked_balance_btc: 0,
+            private_key:        'placeholder_private_key',
+            updated_at:         new Date().toISOString(),
+        }, { onConflict: 'user_id' });
 
-        // 3. Sync company user_wallets
-        await supabaseAdmin
-            .from('user_wallets')
+        // 3. Keep secondary tables in sync
+        await supabaseAdmin.from('user_balances').upsert({
+            user_id:     COMPANY_WALLET_ID,
+            balance_btc: newCompanyBalance,
+            updated_at:  new Date().toISOString(),
+        });
+        await supabaseAdmin.from('user_wallets')
             .update({ balance_btc: newCompanyBalance, updated_at: new Date().toISOString() })
             .eq('user_id', COMPANY_WALLET_ID);
 
-        // 4. Record fee in wallet_transactions
-        await supabaseAdmin
-            .from('wallet_transactions')
-            .insert({
-                user_id:    COMPANY_WALLET_ID,
-                type:       'FEE',
-                amount_btc: platformFee,
-                status:     'CONFIRMED',
-                tx_hash:    releaseTxHash,
-                notes:      `0.5% fee — Trade #${tradeId.slice(0, 8).toUpperCase()} (paid by seller)`,
-                created_at: new Date().toISOString(),
-            });
+        // 4. Record fee in wallet_transactions — full audit trail
+        await supabaseAdmin.from('wallet_transactions').insert({
+            user_id:    COMPANY_WALLET_ID,
+            type:       'FEE',
+            amount_btc: platformFee,
+            status:     'CONFIRMED',
+            tx_hash:    releaseTxHash,
+            notes:      `Platform fee from trade ${tradeId.slice(0, 8).toUpperCase()} | buyer:${(tradeData.buyer_id || '').slice(0,8)} seller:${(tradeData.seller_id || '').slice(0,8)} | 0.5% of ₿${amount.toFixed(8)}`,
+            created_at: new Date().toISOString(),
+        });
 
         // 5. Mark trade fee as collected
-        await supabaseAdmin
-            .from('trades')
-            .update({ fee_status: 'COLLECTED', fee_collected_at: new Date().toISOString() })
+        await supabaseAdmin.from('trades')
+            .update({ fee_status: feeIsCorrect ? 'COLLECTED' : 'INCORRECT', fee_collected_at: new Date().toISOString(), platform_fee_btc: platformFee })
             .eq('id', tradeId);
 
         console.log(`✅ Fee collected: ${platformFee.toFixed(8)} BTC → company wallet (balance: ${newCompanyBalance.toFixed(8)} BTC)`);

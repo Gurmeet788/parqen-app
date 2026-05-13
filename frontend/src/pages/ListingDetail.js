@@ -251,7 +251,7 @@ const loadAll = useCallback(async () => {
   const dbTrustScore   = parseInt(seller?.trust_score || 0);
   const trustScore     = dbTrustScore > 0 ? dbTrustScore
     : Math.min(100, (hasEmail?25:0) + (hasPhone?25:0) + (hasKyc?25:0) + Math.min(25, Math.floor(trades/20)*5));
-  const sellerCountryCode = (seller?.country_code || seller?.country || 'gh').toLowerCase().slice(0,2);
+  const sellerCountryCode = (seller?.country_code || seller?.country || '').toLowerCase().slice(0,2) || null;
 
 
   const handleStartTrade = async () => {

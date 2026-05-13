@@ -54,6 +54,40 @@ const fmtAge = (ts) => {
   return `${~~(s / 86400)}d ago`;
 };
 const fmtDate = (ts) => ts ? new Date(ts).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : '—';
+
+// Country helpers — emoji flag from ISO 2-letter code, never defaults to Ghana
+const ccToFlag = (cc) => {
+  if (!cc || cc.length < 2) return '';
+  const code = cc.toUpperCase().slice(0, 2);
+  return code.split('').map(c => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65)).join('');
+};
+const CC_NAMES = {
+  GH:'Ghana', NG:'Nigeria', KE:'Kenya', ZA:'S. Africa', UG:'Uganda', TZ:'Tanzania',
+  RW:'Rwanda', CM:'Cameroon', SN:'Senegal', CI:"Côte d'Ivoire", ZM:'Zambia', ZW:'Zimbabwe',
+  ET:'Ethiopia', SD:'Sudan', AO:'Angola', MZ:'Mozambique', MG:'Madagascar', MW:'Malawi',
+  NA:'Namibia', BW:'Botswana', SL:'S. Leone', LR:'Liberia', GN:'Guinea', ML:'Mali',
+  BF:'Burkina Faso', NE:'Niger', TD:'Chad', CD:'DR Congo', CG:'Congo', GA:'Gabon',
+  US:'USA', CA:'Canada', GB:'UK', DE:'Germany', FR:'France', IT:'Italy', ES:'Spain',
+  NL:'Netherlands', BE:'Belgium', CH:'Switzerland', SE:'Sweden', NO:'Norway', DK:'Denmark',
+  PL:'Poland', UA:'Ukraine', TR:'Turkey', RU:'Russia',
+  CN:'China', IN:'India', JP:'Japan', KR:'S. Korea', SG:'Singapore', MY:'Malaysia',
+  ID:'Indonesia', PH:'Philippines', VN:'Vietnam', TH:'Thailand', PK:'Pakistan', BD:'Bangladesh',
+  SA:'Saudi Arabia', AE:'UAE', QA:'Qatar', KW:'Kuwait', EG:'Egypt', MA:'Morocco',
+  BR:'Brazil', MX:'Mexico', CO:'Colombia', AR:'Argentina', AU:'Australia', NZ:'New Zealand',
+};
+const ccToName = (cc) => CC_NAMES[cc?.toUpperCase()?.slice(0,2)] || cc || '—';
+// Priority country: KYC → phone → IP geo
+const resolveUserCountry = (u) =>
+  u?.kyc_country || u?.phone_country || u?.country || null;
+// Common countries for filter dropdown
+const FILTER_COUNTRIES = [
+  {cc:'GH',name:'Ghana'}, {cc:'NG',name:'Nigeria'}, {cc:'KE',name:'Kenya'},
+  {cc:'ZA',name:'S. Africa'}, {cc:'UG',name:'Uganda'}, {cc:'TZ',name:'Tanzania'},
+  {cc:'RW',name:'Rwanda'}, {cc:'CM',name:'Cameroon'}, {cc:'ET',name:'Ethiopia'},
+  {cc:'CN',name:'China'}, {cc:'IN',name:'India'}, {cc:'PK',name:'Pakistan'},
+  {cc:'US',name:'USA'}, {cc:'GB',name:'UK'}, {cc:'DE',name:'Germany'},
+  {cc:'AE',name:'UAE'}, {cc:'SA',name:'Saudi Arabia'}, {cc:'BR',name:'Brazil'},
+];
 const statusColor = (s) => {
   const m = { COMPLETED:'#10B981', CANCELLED:'#6B7280', DISPUTED:'#8B5CF6', ACTIVE:'#3B82F6', PAID:'#3B82F6', PAYMENT_SENT:'#3B82F6', ESCROW:'#F59E0B', CREATED:'#F59E0B', FUNDS_LOCKED:'#F59E0B', OPEN:'#2D6A4F' };
   return m[s] || '#94A3B8';
@@ -342,28 +376,32 @@ function Overview() {
 // USERS SECTION
 // ================================================================
 function UsersSection() {
-  const [users, setUsers]     = useState([]);
-  const [total, setTotal]     = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch]   = useState('');
-  const [page, setPage]       = useState(1);
-  const [filter, setFilter]   = useState('');
-  const [selected, setSelected] = useState(null);
-  const [acting, setActing]   = useState(false);
-  const [zoomImg, setZoomImg] = useState(null);
+  const [users, setUsers]         = useState([]);
+  const [total, setTotal]         = useState(0);
+  const [loading, setLoading]     = useState(true);
+  const [search, setSearch]       = useState('');
+  const [page, setPage]           = useState(1);
+  const [filter, setFilter]       = useState('');
+  const [countryFilter, setCountryFilter] = useState('');
+  const [selected, setSelected]   = useState(null);
+  const [acting, setActing]       = useState(false);
+  const [zoomImg, setZoomImg]     = useState(null);
   const LIMIT = 20;
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await axios.get(`${API_URL}/admin/users`, { headers: authH(), params: { search, status: filter, page, limit: LIMIT } });
+      const r = await axios.get(`${API_URL}/admin/users`, {
+        headers: authH(),
+        params: { search, status: filter, country: countryFilter, page, limit: LIMIT },
+      });
       setUsers(r.data.users || []);
       setTotal(r.data.total || 0);
     } catch (err) { toast.error(err.response?.data?.error || 'Failed to load users'); }
     finally { setLoading(false); }
-  }, [search, filter, page]);
+  }, [search, filter, countryFilter, page]);
 
-  useEffect(() => { setPage(1); }, [search, filter]);
+  useEffect(() => { setPage(1); }, [search, filter, countryFilter]);
   useEffect(() => { load(); }, [load]);
 
   const act = async (id, updates, label) => {
@@ -409,6 +447,13 @@ function UsersSection() {
           <option value="phone_pending">⏳ Phone Pending</option>
           <option value="kyc_pending">📋 KYC Pending</option>
         </select>
+        <select value={countryFilter} onChange={e => setCountryFilter(e.target.value)}
+          className="bg-white border rounded-xl px-3 py-2 text-sm font-semibold outline-none" style={{ borderColor: C.g200, color: C.g700 }}>
+          <option value="">🌍 All countries</option>
+          {FILTER_COUNTRIES.map(({ cc, name }) => (
+            <option key={cc} value={cc}>{ccToFlag(cc)} {name}</option>
+          ))}
+        </select>
         <button onClick={load} className="bg-white border rounded-xl px-3 py-2" style={{ borderColor: C.g200 }}>
           <RefreshCw size={14} style={{ color: C.g500 }} />
         </button>
@@ -422,7 +467,7 @@ function UsersSection() {
               <table className="w-full text-sm">
                 <thead style={{ backgroundColor: C.g50 }}>
                   <tr>
-                    {['User', 'Status', 'Trades', 'Verified', 'Joined', 'Actions'].map(h => (
+                    {['User', 'Country', 'Status', 'Trades', 'Verified', 'Joined', 'Actions'].map(h => (
                       <th key={h} className="text-left px-4 py-3 text-xs font-black uppercase tracking-wide" style={{ color: C.g500 }}>{h}</th>
                     ))}
                   </tr>
@@ -442,6 +487,21 @@ function UsersSection() {
                           </div>
                           {u.is_admin && <span className="text-xs px-1.5 py-0.5 rounded font-black" style={{ backgroundColor:'#FFFBEB', color:'#92400E' }}>ADMIN</span>}
                         </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {(() => {
+                          const cc = resolveUserCountry(u);
+                          const flag = ccToFlag(cc);
+                          const name = ccToName(cc);
+                          const city = u.city;
+                          return cc ? (
+                            <div>
+                              <span className="text-sm leading-none">{flag}</span>
+                              <p className="text-xs font-bold mt-0.5" style={{ color: C.g700 }}>{name}</p>
+                              {city && <p className="text-xs" style={{ color: C.g400 }}>{city}</p>}
+                            </div>
+                          ) : <span className="text-xs" style={{ color: C.g400 }}>—</span>;
+                        })()}
                       </td>
                       <td className="px-4 py-3">
                         <Pill label={u.account_status || 'active'}
@@ -516,7 +576,6 @@ function UsersSection() {
                 { label:'Rating',     value: `⭐ ${parseFloat(selected.average_rating || 0).toFixed(1)}` },
                 { label:'Completion', value: `${parseFloat(selected.completion_rate || 0).toFixed(1)}%` },
                 { label:'Badge',      value: selected.badge || 'BEGINNER' },
-                { label:'Country',    value: selected.country || '—' },
                 { label:'Last login', value: fmtAge(selected.last_login) },
               ].map(r => (
                 <div key={r.label} className="flex items-center justify-between py-1.5 border-b" style={{ borderColor: C.g100 }}>
@@ -524,7 +583,46 @@ function UsersSection() {
                   <span className="text-xs font-bold" style={{ color: C.g700 }}>{r.value}</span>
                 </div>
               ))}
-              {/* Phone number row — always visible so admin can see the number before approving */}
+
+              {/* ── Country block ── */}
+              <div className="py-2 border-b" style={{ borderColor: C.g100 }}>
+                <p className="text-xs font-black uppercase tracking-wide mb-1.5" style={{ color: C.g400 }}>📍 Location</p>
+                {(() => {
+                  const ipCC    = selected.country;
+                  const phoneCC = selected.phone_country;
+                  const kycCC   = selected.kyc_country;
+                  const bestCC  = resolveUserCountry(selected);
+                  const rows = [
+                    { label: 'Detected (IP)',   cc: ipCC,    source: selected.last_seen_location || selected.country_name },
+                    { label: 'Phone country',   cc: phoneCC, source: phoneCC ? `+prefix → ${ccToName(phoneCC)}` : null },
+                    { label: 'KYC country',     cc: kycCC,   source: kycCC ? ccToName(kycCC) : null },
+                    { label: 'City',            cc: null,    source: selected.city || null, isText: true },
+                  ];
+                  return (
+                    <div className="space-y-1">
+                      {rows.map(({ label, cc, source, isText }) => (
+                        <div key={label} className="flex items-center justify-between text-xs">
+                          <span style={{ color: C.g500 }}>{label}</span>
+                          {isText
+                            ? <span className="font-bold" style={{ color: source ? C.g700 : C.g400 }}>{source || '—'}</span>
+                            : cc
+                              ? <span className="font-bold" style={{ color: C.g700 }}>{ccToFlag(cc)} {ccToName(cc)}</span>
+                              : <span style={{ color: C.g400 }}>—</span>
+                          }
+                        </div>
+                      ))}
+                      {bestCC && (
+                        <div className="mt-1 pt-1 border-t flex items-center justify-between text-xs" style={{ borderColor: C.g100 }}>
+                          <span className="font-black" style={{ color: C.g600 }}>Best match</span>
+                          <span className="font-black" style={{ color: C.forest }}>{ccToFlag(bestCC)} {ccToName(bestCC)}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Phone number row */}
               <div className="flex items-center justify-between py-1.5 border-b" style={{ borderColor: C.g100 }}>
                 <span className="text-xs" style={{ color: C.g400 }}>Phone</span>
                 {selected.phone_number

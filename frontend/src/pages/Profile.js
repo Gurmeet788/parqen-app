@@ -41,24 +41,46 @@ const BADGE_DEFS = [
     desc:'Account older than 1 year.', check:(u)=>u?.created_at&&(Date.now()-new Date(u.created_at))/(1000*60*60*24*365)>=1 },
 ];
 
-// FLAGS object for real country emoji flags
-const FLAGS = {
-  GH:'🇬🇭', NG:'🇳🇬', KE:'🇰🇪', ZA:'🇿🇦', UG:'🇺🇬', TZ:'🇹🇿',
-  US:'🇺🇸', GB:'🇬🇧', EU:'🇪🇺', CM:'🇨🇲', SN:'🇸🇳', ZM:'🇿🇲',
-  MZ:'🇲🇿', MW:'🇲🇼', RW:'🇷🇼', BI:'🇧🇮', DJ:'🇩🇯', ER:'🇪🇷',
-  ET:'🇪🇹', SO:'🇸🇴', SS:'🇸🇸', SD:'🇸🇩', TD:'🇹🇩', CF:'🇨🇫',
-  CD:'🇨🇩', CG:'🇨🇬', GA:'🇬🇦', GQ:'🇬🇶', AO:'🇦🇴', NA:'🇳🇦',
-  BW:'🇧🇼', ZW:'🇿🇼', LS:'🇱🇸', SZ:'🇸🇿'
+// Convert ISO-2 code to emoji flag — correct base 0x1F1E6 = Regional Indicator A
+const isoToFlag = (cc) => {
+  if (!cc || cc.length !== 2) return '';
+  return cc.toUpperCase().replace(/./g, c => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65));
 };
 
 // Fallback country names for when DB country_name is missing
 const COUNTRY_NAMES = {
-  GH:'Ghana', NG:'Nigeria', KE:'Kenya', ZA:'South Africa', UG:'Uganda',
-  TZ:'Tanzania', US:'United States', GB:'United Kingdom', CM:'Cameroon',
-  SN:'Senegal', ZM:'Zambia', MZ:'Mozambique', MW:'Malawi', RW:'Rwanda',
-  ET:'Ethiopia', CD:'DR Congo', AO:'Angola', NA:'Namibia', BW:'Botswana',
-  ZW:'Zimbabwe', LS:'Lesotho', SZ:'Eswatini', GH:'Ghana',
+  GH:'Ghana', NG:'Nigeria', KE:'Kenya', ZA:'South Africa', UG:'Uganda', TZ:'Tanzania',
+  RW:'Rwanda', CM:'Cameroon', SN:'Senegal', ML:'Mali', CI:"Côte d'Ivoire", CD:'DR Congo',
+  ZM:'Zambia', MZ:'Mozambique', ZW:'Zimbabwe', BF:'Burkina Faso', BJ:'Benin', TG:'Togo',
+  NE:'Niger', ET:'Ethiopia', EG:'Egypt', MA:'Morocco', DZ:'Algeria', AO:'Angola',
+  NA:'Namibia', BW:'Botswana', MW:'Malawi', LS:'Lesotho', SZ:'Eswatini',
+  US:'United States', GB:'United Kingdom', DE:'Germany', FR:'France', IT:'Italy',
+  ES:'Spain', NL:'Netherlands', SE:'Sweden', NO:'Norway', PL:'Poland', UA:'Ukraine',
+  TR:'Turkey', VN:'Vietnam', TH:'Thailand', ID:'Indonesia', PH:'Philippines',
+  MY:'Malaysia', SG:'Singapore', IN:'India', CN:'China', JP:'Japan', KR:'South Korea',
+  PK:'Pakistan', BD:'Bangladesh', SA:'Saudi Arabia', AE:'UAE', QA:'Qatar',
+  BR:'Brazil', MX:'Mexico', CO:'Colombia', AR:'Argentina', CA:'Canada',
+  AU:'Australia', NZ:'New Zealand',
 };
+
+// Phone prefix → ISO country code (for deriving phone country flag)
+const PHONE_PREFIX_CC = {
+  '+1':'US','+7':'RU','+20':'EG','+27':'ZA','+33':'FR','+44':'GB','+49':'DE',
+  '+55':'BR','+60':'MY','+61':'AU','+62':'ID','+63':'PH','+65':'SG','+66':'TH',
+  '+81':'JP','+82':'KR','+84':'VN','+86':'CN','+91':'IN','+92':'PK','+212':'MA',
+  '+213':'DZ','+221':'SN','+223':'ML','+225':'CI','+226':'BF','+227':'NE',
+  '+228':'TG','+229':'BJ','+233':'GH','+234':'NG','+237':'CM','+243':'CD',
+  '+250':'RW','+251':'ET','+254':'KE','+255':'TZ','+256':'UG','+260':'ZM',
+  '+263':'ZW','+264':'NA','+265':'MW','+966':'SA','+971':'AE','+974':'QA',
+};
+function phoneToCC(phone) {
+  if (!phone) return null;
+  const d = String(phone).replace(/[\s\-\(\)]/g, '');
+  if (!d.startsWith('+')) return null;
+  const keys = Object.keys(PHONE_PREFIX_CC).sort((a,b) => b.length - a.length);
+  for (const k of keys) { if (d.startsWith(k)) return PHONE_PREFIX_CC[k]; }
+  return null;
+}
 
 const fmt = (n,d=0)=>new Intl.NumberFormat('en-US',{minimumFractionDigits:0,maximumFractionDigits:d}).format(n||0);
 const fmtAge = (d)=>{
@@ -106,8 +128,7 @@ export default function Profile({userId:propUserId}){
   const [uploading,setUploading]=useState(false); const [own,setOwn]=useState(false);
   const [editing,setEditing]=useState(false); const [saving,setSaving]=useState(false);
   const [badges,setBadges]=useState([]);
-  const [form,setForm]=useState({username:'',full_name:'',bio:'',location:'Ghana',website:''});
-  const [userCountry] = useState('GH'); // default country; detected server-side via user.country
+  const [form,setForm]=useState({username:'',full_name:'',bio:'',location:'',website:''});
 
   useEffect(()=>{
     if(!userId){
@@ -140,7 +161,7 @@ export default function Profile({userId:propUserId}){
         if(!u||!u.id) throw new Error('profile_empty');
         setUser(u);
         try{ localStorage.setItem('user',JSON.stringify(u)); }catch{}
-        setForm({username:u.username||'',full_name:u.full_name||'',bio:u.bio||'',location:u.location||'Ghana',website:u.website||''});
+        setForm({username:u.username||'',full_name:u.full_name||'',bio:u.bio||'',location:u.location||'',website:u.website||''});
       } else {
         // Another user's profile — accepts both UUID and username in URL
         const r=await axios.get(`${API_URL}/users/${userId}`);
@@ -237,11 +258,13 @@ export default function Profile({userId:propUserId}){
     </div>
   );
 
-  // Resolve country code — prefer stored 2-letter code, fallback GH
-  const rawCC   = user.country || userCountry || 'GH';
-  const userCC  = (rawCC.length === 2 ? rawCC : (rawCC.slice(0,2))).toUpperCase();
-  const phoneCC = ((user.phone_country||rawCC).slice(0,2)).toUpperCase();
-  const kycCC   = ((user.kyc_country||rawCC).slice(0,2)).toUpperCase();
+  // Resolve country code — use stored country (set from phone/KYC/IP at login)
+  const rawCC  = (user.country || '').toUpperCase().slice(0, 2);
+  const userCC = rawCC;
+  // Phone country derived from phone number prefix directly
+  const phoneCC = phoneToCC(user.phone) || rawCC;
+  // KYC country — same as user country (no separate kyc_country column)
+  const kycCC  = rawCC;
 
   const score=calcTrust(user,reviews); const trust=trustLvl(score);
   const tierIdx=getTier(user); const tier=TIERS[tierIdx]; const nextTier=TIERS[tierIdx+1];
@@ -263,12 +286,7 @@ export default function Profile({userId:propUserId}){
     ...(own?[{id:'settings',label:'Settings'}]:[]),
   ];
 
-  // Convert ISO-2 code to emoji flag (works for any country)
-  const toEmojiFlag = (cc) => {
-    if (!cc || cc.length !== 2) return '🌍';
-    return cc.toUpperCase().replace(/./g, c => String.fromCodePoint(0x1F1E0 + c.charCodeAt(0) - 65));
-  };
-  const displayFlag = FLAGS[userCC] || toEmojiFlag(userCC) || '🌍';
+  const displayFlag = userCC ? isoToFlag(userCC) : '';
 
   return(
     <div className="min-h-screen pb-0" style={{backgroundColor:C.mist,fontFamily:"'DM Sans',sans-serif",width:'100%',maxWidth:'100vw'}}>
@@ -329,11 +347,13 @@ export default function Profile({userId:propUserId}){
                     <span style={{color:'#D1D5DB'}}>·</span>
                     <span className="font-bold flex items-center gap-1" style={{color:'#6B7280'}}>
                       <MapPin size={11} style={{flexShrink:0}}/>
+                      {userCC ? isoToFlag(userCC) : ''}{' '}
                       {(() => {
-                        const name = user.country_name || COUNTRY_NAMES[userCC] || user.country || 'Unknown';
-                        const city = user.city;
-                        return city ? `${name} (${city})` : name;
-                      })()} {displayFlag}
+                        const name = user.country_name || COUNTRY_NAMES[userCC] || userCC || null;
+                        const city = user.city || user.last_seen_location?.split('(')[1]?.replace(')','') || null;
+                        if (!name) return user.location || '—';
+                        return city ? `${name}, ${city}` : name;
+                      })()}
                     </span>
                   </div>
 
@@ -341,8 +361,8 @@ export default function Profile({userId:propUserId}){
                   <div className="flex flex-col gap-1 mb-2">
                     {[
                       {ok:emailOk, label:'Email verified',  flag:null},
-                      {ok:phoneOk, label:'Phone verified',  flag:FLAGS[phoneCC]||displayFlag},
-                      {ok:kycOk,   label:'ID verified',     flag:FLAGS[kycCC]||displayFlag},
+                      {ok:phoneOk, label:'Phone verified',  flag: phoneCC ? isoToFlag(phoneCC) : null},
+                      {ok:kycOk,   label:'ID verified',     flag: kycCC  ? isoToFlag(kycCC)   : null},
                     ].map(({ok,label,flag})=>(
                       <div key={label} className="flex items-center gap-1.5">
                         {ok
@@ -944,7 +964,7 @@ export default function Profile({userId:propUserId}){
               <div className="flex items-center gap-2 mb-3"><Shield size={13} style={{color:C.green}}/><p className="font-black text-sm" style={{color:C.forest}}>Account Security</p></div>
               <div className="space-y-2.5">
                 {[
-                  {icon:MapPin,     label:'Registered Country', value:`${displayFlag} ${user.country||'Ghana'}`, color:C.paid},
+                  {icon:MapPin,     label:'Registered Country', value:rawCC ? `${isoToFlag(rawCC)} ${user.country_name||COUNTRY_NAMES[rawCC]||rawCC}` : '—', color:C.paid},
                   {icon:Clock,      label:'Last Active',          value:fmtAge(user.last_seen_at||user.last_login||user.updated_at),  color:C.success},
                   {icon:Smartphone, label:'Device Access',       value:'Mobile & Web Browser',                              color:C.purple},
                   {icon:Globe,      label:'Language',            value:'English',                                            color:C.g500},

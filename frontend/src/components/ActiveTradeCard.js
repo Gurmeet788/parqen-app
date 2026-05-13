@@ -152,7 +152,7 @@ function TraderPopup({ cpId, cpFallback, onClose }) {
   const trades     = parseInt(user.total_trades || 0);
   const completion = parseFloat(user.completion_rate || 0);
   const rating     = parseFloat(user.average_rating || 0);
-  const cc         = (user.country || 'GH').toLowerCase();
+  const cc         = (user.country || '').toLowerCase() || null;
 
   return (
     <div
@@ -278,7 +278,7 @@ export default function ActiveTradeCard({ trade, onExpire, pageColor }) {
   const pos    = parseInt(cp.positive_feedback || 0);
   const neg    = parseInt(cp.negative_feedback || 0);
   const cpTrades = parseInt(cp.total_trades || cp.trade_count || 0);
-  const cc     = (cp.country || 'GH').toLowerCase();
+  const cc     = (cp.country || '').toLowerCase() || null;
 
   return (
     <>

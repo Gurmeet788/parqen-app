@@ -280,14 +280,14 @@ class DepositMonitor {
       console.log(`   Address        : ${address}`);
       console.log(`   Blockchain now : ${blockchainBTC} BTC | Last on-chain: ${lastOnchainBTC} BTC`);
 
-      // Fetch current operational balance to add the deposit on top
-      const { data: balRow } = await supabaseAdmin
-        .from('user_balances')
-        .select('balance_btc, balance_usd')
+      // ── Step 4: Fetch current balance from wallets (single source of truth) ─
+      const { data: walRow } = await supabaseAdmin
+        .from('wallets')
+        .select('balance_btc')
         .eq('user_id', userId)
         .maybeSingle();
 
-      // ── Step 4: Fetch BTC/USD price ───────────────────────────────────────
+      // ── Step 4b: Fetch BTC/USD price ──────────────────────────────────────
       let btcUsd = 0;
       try {
         const pr = await axios.get(
@@ -302,19 +302,12 @@ class DepositMonitor {
         } catch { /* price fetch failed — balance_usd will be 0 for this deposit */ }
       }
 
-      const depositUsd       = btcUsd > 0 ? parseFloat((depositBTC * btcUsd).toFixed(2)) : 0;
-      const currentBalanceBTC = parseFloat(balRow?.balance_btc || 0);
-      const currentBalanceUsd = parseFloat(balRow?.balance_usd || 0);
-      // Add the new deposit ON TOP of the existing operational balance (not replace it)
+      const depositUsd        = btcUsd > 0 ? parseFloat((depositBTC * btcUsd).toFixed(2)) : 0;
+      const currentBalanceBTC = parseFloat(walRow?.balance_btc || 0);
       const newBalanceBTC     = parseFloat((currentBalanceBTC + depositBTC).toFixed(8));
-      const newBalanceUsd     = parseFloat((currentBalanceUsd + depositUsd).toFixed(2));
 
       // ── Step 5a: Claim this deposit by recording last_onchain_btc FIRST ────
-      // This is the idempotency guard. Once last_onchain_btc = blockchainBTC,
-      // the next poll will not detect the same deposit again, even if the
-      // balance credit below fails. Without this guard, a failed user_wallets
-      // upsert would leave last_onchain_btc unchanged, causing the deposit
-      // monitor to re-credit the same BTC on every subsequent poll.
+      // Idempotency guard — once set, the next poll will not re-credit the same deposit.
       const { error: claimErr } = await supabaseAdmin
         .from('user_wallets')
         .upsert(
@@ -332,22 +325,38 @@ class DepositMonitor {
         return; // abort — do not credit balance if we cannot mark deposit as seen
       }
 
-      // ── Step 5b: ONE atomic DB call — credit both tables + log transaction + audit ──
-      // praqen_credit_balance() runs as a single PostgreSQL transaction.
-      // Both user_balances AND user_wallets update together or neither does.
-      // This permanently prevents the two tables from ever going out of sync on deposit.
-      const { error: creditErr } = await supabaseAdmin.rpc('praqen_credit_balance', {
+      // ── Step 5b: Credit wallets table FIRST (single source of truth) ────────
+      // wallets is the authoritative balance table read by escrow, HD wallet routes,
+      // and all balance checks. This must succeed before anything else.
+      const walletCreditErr = walRow
+        ? (await supabaseAdmin.from('wallets')
+            .update({ balance_btc: newBalanceBTC, updated_at: new Date().toISOString() })
+            .eq('user_id', userId)).error
+        : (await supabaseAdmin.from('wallets').insert({
+            user_id:            userId,
+            balance_btc:        depositBTC,
+            locked_balance_btc: 0,
+            private_key:        'placeholder_private_key',
+            updated_at:         new Date().toISOString(),
+          })).error;
+
+      if (walletCreditErr) {
+        console.error(`[DepositMonitor] wallets credit failed for ${username}:`, walletCreditErr.message);
+        return;
+      }
+
+      // ── Step 5c: Keep user_balances + user_wallets in sync (secondary) ──────
+      // These tables are kept up-to-date for backwards compatibility only.
+      // The praqen_credit_balance RPC handles both atomically.
+      await supabaseAdmin.rpc('praqen_credit_balance', {
         p_user_id: userId,
         p_btc:     depositBTC,
         p_usd:     depositUsd,
         p_type:    'DEPOSIT',
         p_notes:   `On-chain deposit to ${address.slice(0, 16)}…`,
+      }).then(({ error }) => {
+        if (error) console.warn(`[DepositMonitor] Secondary RPC sync failed for ${username} (funds already credited to wallets):`, error.message);
       });
-
-      if (creditErr) {
-        console.error(`[DepositMonitor] Atomic credit failed for ${username}:`, creditErr.message);
-        return;
-      }
 
       // ── Step 8: In-app notification ───────────────────────────────────────
       await supabaseAdmin
@@ -512,12 +521,12 @@ class DepositMonitor {
 
     await this.checkUserDeposit({ userId, address, username });
 
-    const { data: bal } = await supabaseAdmin
-      .from('user_balances').select('balance_btc').eq('user_id', userId).single();
+    const { data: wal } = await supabaseAdmin
+      .from('wallets').select('balance_btc').eq('user_id', userId).maybeSingle();
 
     return {
       success:     true,
-      balance_btc: parseFloat(bal?.balance_btc || 0),
+      balance_btc: parseFloat(wal?.balance_btc || 0),
       address,
       checked_at:  new Date().toISOString(),
     };

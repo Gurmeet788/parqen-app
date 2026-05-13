@@ -123,32 +123,105 @@ const JWT_SECRET = process.env.JWT_SECRET || 'praqen-secret-change-in-production
 const otpStore          = new Map();
 const verificationCodes = new Map();
 
-// Resolve client IP → ISO country code (fire-and-forget, never blocks login)
-async function detectAndSaveCountry(userId, req) {
+// Phone dial code → ISO country code map (sorted longest-first for prefix matching)
+const PHONE_DIAL_TO_CC = {
+  '+1':'+1',   // resolved below with special case
+  '+7':'RU', '+20':'EG', '+27':'ZA', '+30':'GR', '+31':'NL', '+32':'BE', '+33':'FR',
+  '+34':'ES', '+36':'HU', '+39':'IT', '+40':'RO', '+41':'CH', '+43':'AT', '+44':'GB',
+  '+45':'DK', '+46':'SE', '+47':'NO', '+48':'PL', '+49':'DE', '+51':'PE', '+52':'MX',
+  '+53':'CU', '+54':'AR', '+55':'BR', '+56':'CL', '+57':'CO', '+58':'VE', '+60':'MY',
+  '+61':'AU', '+62':'ID', '+63':'PH', '+64':'NZ', '+65':'SG', '+66':'TH', '+81':'JP',
+  '+82':'KR', '+84':'VN', '+86':'CN', '+90':'TR', '+91':'IN', '+92':'PK', '+93':'AF',
+  '+94':'LK', '+95':'MM', '+98':'IR',
+  '+212':'MA', '+213':'DZ', '+216':'TN', '+218':'LY', '+220':'GM', '+221':'SN',
+  '+222':'MR', '+223':'ML', '+224':'GN', '+225':'CI', '+226':'BF', '+227':'NE',
+  '+228':'TG', '+229':'BJ', '+230':'MU', '+231':'LR', '+232':'SL', '+233':'GH',
+  '+234':'NG', '+235':'TD', '+236':'CF', '+237':'CM', '+238':'CV', '+239':'ST',
+  '+240':'GQ', '+241':'GA', '+242':'CG', '+243':'CD', '+244':'AO', '+245':'GW',
+  '+248':'SC', '+249':'SD', '+250':'RW', '+251':'ET', '+252':'SO', '+253':'DJ',
+  '+254':'KE', '+255':'TZ', '+256':'UG', '+257':'BI', '+258':'MZ', '+260':'ZM',
+  '+261':'MG', '+263':'ZW', '+264':'NA', '+265':'MW', '+266':'LS', '+267':'BW',
+  '+268':'SZ', '+269':'KM', '+291':'ER', '+297':'AW', '+350':'GI', '+351':'PT',
+  '+352':'LU', '+353':'IE', '+354':'IS', '+355':'AL', '+356':'MT', '+357':'CY',
+  '+358':'FI', '+359':'BG', '+370':'LT', '+371':'LV', '+372':'EE', '+373':'MD',
+  '+374':'AM', '+375':'BY', '+376':'AD', '+377':'MC', '+380':'UA', '+381':'RS',
+  '+385':'HR', '+386':'SI', '+387':'BA', '+389':'MK', '+420':'CZ', '+421':'SK',
+  '+501':'BZ', '+502':'GT', '+503':'SV', '+504':'HN', '+505':'NI', '+506':'CR',
+  '+507':'PA', '+509':'HT', '+591':'BO', '+592':'GY', '+593':'EC', '+595':'PY',
+  '+597':'SR', '+598':'UY', '+670':'TL', '+673':'BN', '+675':'PG', '+676':'TO',
+  '+677':'SB', '+678':'VU', '+679':'FJ', '+686':'KI', '+688':'TV', '+691':'FM',
+  '+850':'KP', '+852':'HK', '+853':'MO', '+855':'KH', '+856':'LA', '+880':'BD',
+  '+886':'TW', '+960':'MV', '+961':'LB', '+962':'JO', '+963':'SY', '+964':'IQ',
+  '+965':'KW', '+966':'SA', '+967':'YE', '+968':'OM', '+971':'AE', '+972':'IL',
+  '+973':'BH', '+974':'QA', '+975':'BT', '+976':'MN', '+977':'NP', '+992':'TJ',
+  '+993':'TM', '+994':'AZ', '+995':'GE', '+996':'KG', '+998':'UZ',
+};
+
+function phoneToCountryCode(phone) {
+  if (!phone) return null;
+  const normalized = String(phone).trim();
+  const withPlus   = normalized.startsWith('+') ? normalized : `+${normalized}`;
+  // Try longest prefix first so +233 matches before +2
+  const prefixes = Object.keys(PHONE_DIAL_TO_CC).sort((a, b) => b.length - a.length);
+  for (const prefix of prefixes) {
+    if (withPlus.startsWith(prefix)) {
+      const cc = PHONE_DIAL_TO_CC[prefix];
+      if (cc === '+1') return 'US'; // simplification — +1 covers US/CA
+      return cc;
+    }
+  }
+  return null;
+}
+
+// Resolve client IP + phone → ISO country code (fire-and-forget, never blocks login)
+// Priority: KYC country > phone number > IP geolocation — NEVER default to any country
+async function detectAndSaveCountry(userId, req, phoneNumber) {
   try {
     if (!userId) return;
+
+    // Fetch current stored values
+    const { data: existing } = await supabaseAdmin
+      .from('users').select('country, phone').eq('id', userId).single();
+
+    // ── Priority 1: Phone country code ────────────────────────────────────
+    const phone  = phoneNumber || existing?.phone;
+    const phoneCC = phoneToCountryCode(phone);
+    if (phoneCC && !existing?.country) {
+      await supabaseAdmin.from('users')
+        .update({ country: phoneCC })
+        .eq('id', userId)
+        .or('country.is.null,country.eq.');
+      console.log(`[GeoIP] user ${String(userId).slice(0,8)} → ${phoneCC} (phone)`);
+    }
+
+    // ── Priority 3: IP geolocation ────────────────────────────────────────
     const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
       || req.headers['x-real-ip']
       || req.socket?.remoteAddress
       || '';
-    // Skip loopback / private addresses
-    if (!ip || ip === '::1' || ip.startsWith('127.') || ip.startsWith('192.168.') || ip.startsWith('10.')) return;
+    // Skip loopback / private / empty (avoids looking up server's own IP)
+    if (!ip || ip === '::1' || ip.startsWith('127.') || ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('::ffff:')) return;
+
     const geoRes = await fetch(`https://ipapi.co/${ip}/json/`, { signal: AbortSignal.timeout(4000) });
     const geo    = await geoRes.json();
-    if (geo?.country_code && geo.country_code.length === 2) {
+    if (geo?.country_code && geo.country_code.length === 2 && !geo.error) {
       const cc   = geo.country_code.toUpperCase();
       const city = geo.city || null;
       const name = geo.country_name || null;
       const loc  = city ? `${name} (${city})` : name;
 
-      // Always refresh city/name/last_ip so profile stays current
-      const alwaysUpdate = { city, country_name: name, last_seen_location: loc, last_ip: ip };
-      await supabaseAdmin.from('users').update(alwaysUpdate).eq('id', userId);
+      // Always refresh city/name/location (UI always benefits from fresh geo data)
+      await supabaseAdmin.from('users')
+        .update({ city, country_name: name, last_seen_location: loc })
+        .eq('id', userId);
 
-      // Set country code only if not already stored (preserve manual selections)
-      await supabaseAdmin.from('users').update({ country: cc }).eq('id', userId).is('country', null);
+      // Set country code only if not already set by phone
+      await supabaseAdmin.from('users')
+        .update({ country: cc })
+        .eq('id', userId)
+        .or('country.is.null,country.eq.');
 
-      console.log(`[GeoIP] user ${String(userId).slice(0,8)} → ${cc}${city ? ` / ${city}` : ''} (${ip})`);
+      console.log(`[GeoIP] user ${String(userId).slice(0,8)} → ${cc}${city ? ` / ${city}` : ''} (IP: ${ip})`);
     }
   } catch (_) { /* geo lookup failure never breaks login */ }
 }
@@ -1005,7 +1078,10 @@ app.post('/api/auth/register', async (req, res) => {
     });
 
     // ── BACKGROUND WORK (runs after response is sent) ──────────────────────
-    // 1. Send verification email (Brevo SMTP + logged)
+    // 1. Detect and save country from IP (fire and forget)
+    detectAndSaveCountry(newUser.id, req).catch(() => {});
+
+    // 2. Send verification email (Brevo SMTP + logged)
     emailService.sendVerificationEmail(email, code, newUser.id)
       .catch(e => console.error('[Register] Verification email failed:', e.message));
 
@@ -1066,6 +1142,13 @@ app.post('/api/auth/register', async (req, res) => {
           last_onchain_btc: 0,
           updated_at:       new Date().toISOString(),
         }, { onConflict: 'user_id' }),
+        supabaseAdmin.from('wallets').upsert({
+          user_id:            newUser.id,
+          balance_btc:        0,
+          locked_balance_btc: 0,
+          private_key:        'placeholder_private_key',
+          updated_at:         new Date().toISOString(),
+        }, { onConflict: 'user_id' }),
       ]);
       console.log(`[Register] HD wallet address assigned for ${newUser.username}: ${addrData.address}`);
     } catch (e) {
@@ -1109,7 +1192,7 @@ app.post('/api/auth/login', async (req, res) => {
       if (!data) return res.status(404).json({ error: 'No account found for this phone number. Please register first.' });
       const token = jwt.sign({ userId: data.id, email: data.email }, JWT_SECRET, { expiresIn: '7d' });
       await supabaseAdmin.from('users').update({ last_login: new Date() }).eq('id', data.id);
-      detectAndSaveCountry(data.id, req).catch(() => {});
+      detectAndSaveCountry(data.id, req, phone).catch(() => {});
       let btcAddress = data.bitcoin_wallet_address;
       if (!isRealBtcAddress(btcAddress)) {
         btcAddress = await upgradeToHDAddress(data.id, data.username) || btcAddress;
@@ -2101,6 +2184,77 @@ app.post('/api/users/heartbeat', verifyToken, async (req, res) => {
   }
 });
 
+// GET /api/me/security — returns caller's real IP + geo for the Settings page
+app.get('/api/me/security', verifyToken, async (req, res) => {
+  try {
+    const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+      || req.headers['x-real-ip']
+      || req.socket?.remoteAddress
+      || '';
+
+    // Strip IPv6 loopback wrapper
+    const cleanIp = ip.replace(/^::ffff:/, '');
+
+    const isPrivate = !cleanIp || cleanIp === '::1'
+      || cleanIp.startsWith('127.')
+      || cleanIp.startsWith('192.168.')
+      || cleanIp.startsWith('10.')
+      || cleanIp.startsWith('172.');
+
+    if (isPrivate) {
+      // Running locally — return stored user data instead
+      const { data: u } = await supabaseAdmin
+        .from('users')
+        .select('country, country_name, city, last_seen_location')
+        .eq('id', req.userId).single();
+      return res.json({
+        ip: cleanIp || '127.0.0.1 (local)',
+        country_code: u?.country || null,
+        country: u?.country_name || null,
+        city: u?.city || null,
+        location: u?.last_seen_location || null,
+        source: 'stored',
+      });
+    }
+
+    // Fetch live geo from ipapi.co (same service used during login)
+    const geoRes = await fetch(`https://ipapi.co/${cleanIp}/json/`, { signal: AbortSignal.timeout(5000) });
+    const geo = await geoRes.json();
+
+    if (geo?.country_code && !geo.error) {
+      const cc   = geo.country_code.toUpperCase();
+      const city = geo.city || null;
+      const name = geo.country_name || null;
+      const loc  = city ? `${name} (${city})` : name;
+
+      // Save fresh geo to user profile in background
+      supabaseAdmin.from('users')
+        .update({ city, country_name: name, last_seen_location: loc, country: cc })
+        .eq('id', req.userId)
+        .or('country.is.null,country.eq.')
+        .then(() => {}).catch(() => {});
+
+      return res.json({ ip: cleanIp, country_code: cc, country: name, city, location: loc, source: 'live' });
+    }
+
+    // ipapi.co gave no result — return stored data
+    const { data: u } = await supabaseAdmin
+      .from('users')
+      .select('country, country_name, city, last_seen_location')
+      .eq('id', req.userId).single();
+    res.json({
+      ip: cleanIp,
+      country_code: u?.country || null,
+      country: u?.country_name || null,
+      city: u?.city || null,
+      location: u?.last_seen_location || null,
+      source: 'stored',
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/users/profile', verifyToken, async (req, res) => {
   try {
     // Core columns — confirmed to exist in every PRAQEN DB schema
@@ -2448,7 +2602,7 @@ app.get('/api/listings', async (req, res) => {
     if (maxPrice) q = q.lte('bitcoin_price', parseFloat(maxPrice));
     let { data, error } = await q;
 
-    if (error && (error.message?.includes('name_display') || error.message?.includes('hide_full_name') || error.message?.includes('country_name') || error.message?.includes('city'))) {
+    if (error && (error.message?.includes('name_display') || error.message?.includes('hide_full_name') || error.message?.includes('country_name') || error.message?.includes('city') || error.message?.includes('kyc_country'))) {
       // Retry without columns that haven't been migrated yet
       console.warn('[listings] Retrying without unmigratedcolumns:', error.message);
       q = buildListingsQuery(false);
@@ -2470,18 +2624,11 @@ app.get('/api/listings', async (req, res) => {
 
     if (sellListings.length > 0) {
       const sellerIds = [...new Set(sellListings.map(l => l.seller_id))];
-      const [{ data: balRows }, { data: walletRows }] = await Promise.all([
-        supabaseAdmin.from('user_balances').select('user_id, balance_btc').in('user_id', sellerIds),
-        supabaseAdmin.from('user_wallets').select('user_id, balance_btc').in('user_id', sellerIds),
-      ]);
+      const { data: walletRows } = await supabaseAdmin
+        .from('wallets').select('user_id, balance_btc').in('user_id', sellerIds);
 
       const balMap = {};
-      (balRows || []).forEach(w => { balMap[w.user_id] = parseFloat(w.balance_btc || 0); });
-      // Use the higher of the two tables — user_wallets may be ahead after a fresh deposit
-      (walletRows || []).forEach(w => {
-        const wBtc = parseFloat(w.balance_btc || 0);
-        if (wBtc > (balMap[w.user_id] || 0)) balMap[w.user_id] = wBtc;
-      });
+      (walletRows || []).forEach(w => { balMap[w.user_id] = parseFloat(w.balance_btc || 0); });
 
       listings = listings.map(l => {
         if (l.listing_type !== 'SELL' && l.listing_type !== 'SELL_BITCOIN') return l;
@@ -2501,11 +2648,12 @@ app.get('/api/listings', async (req, res) => {
       });
     }
 
-    // Attach display_name to each listing's embedded users object
+    // Attach display_name and resolve best country for each listing's embedded user
     listings = listings.map(l => {
       if (!l.users) return l;
       const u = Array.isArray(l.users) ? l.users[0] : l.users;
-      return { ...l, users: { ...u, display_name: computeDisplayName(u) } };
+      const resolvedCountry = u.country || null;
+      return { ...l, users: { ...u, display_name: computeDisplayName(u), country: resolvedCountry } };
     });
 
     setCached(cacheKey, listings);
@@ -2529,17 +2677,14 @@ app.get('/api/listings/:id', async (req, res) => {
     }
 
     // Fetch seller info and live balance in parallel — never use cached balance for the detail view
-    const [{ data: seller }, { data: balRow }, { data: walletRow }] = await Promise.all([
+    const [{ data: seller }, { data: walletRow }] = await Promise.all([
       supabaseAdmin.from('users')
         .select('id, username, badge, country, average_rating, total_trades, completion_rate, avatar_url, created_at, total_feedback_count, positive_feedback, negative_feedback, last_login, last_seen_at, is_id_verified, is_email_verified, is_phone_verified, bio, trust_score, blocks_received, avg_response_time')
         .eq('id', listing.seller_id).single(),
-      supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', listing.seller_id).maybeSingle(),
-      supabaseAdmin.from('user_wallets').select('balance_btc').eq('user_id', listing.seller_id).maybeSingle(),
+      supabaseAdmin.from('wallets').select('balance_btc').eq('user_id', listing.seller_id).maybeSingle(),
     ]);
 
-    const sellerBalBtc    = parseFloat(balRow?.balance_btc || 0);
-    const sellerWalletBtc = parseFloat(walletRow?.balance_btc || 0);
-    const sellerBalanceBtc = Math.max(sellerBalBtc, sellerWalletBtc);
+    const sellerBalanceBtc = parseFloat(walletRow?.balance_btc || 0);
     const btcPriceVal = parseFloat(listing.bitcoin_price) || 88000;
     const effectiveMaxUsd = sellerBalanceBtc > 0
       ? Math.min(sellerBalanceBtc * btcPriceVal, parseFloat(listing.max_limit_usd || 0) || sellerBalanceBtc * btcPriceVal)
@@ -2683,7 +2828,11 @@ app.get('/api/offers', async (req, res) => {
       if (userError) throw userError;
     }
 
-    const userMap = Object.fromEntries((users || []).map(u => [u.id, { ...u, display_name: computeDisplayName(u) }]));
+    const userMap = Object.fromEntries((users || []).map(u => [u.id, {
+      ...u,
+      display_name: computeDisplayName(u),
+      country: u.country || null,
+    }]));
 
     // Fetch BTC balances for SELL offer owners so we can hide low-balance offers
     const sellSellerIds = [...new Set(
@@ -2693,16 +2842,9 @@ app.get('/api/offers', async (req, res) => {
     )];
     let balMap = {};
     if (sellSellerIds.length > 0) {
-      const [{ data: bals }, { data: walBals }] = await Promise.all([
-        supabaseAdmin.from('user_balances').select('user_id, balance_btc').in('user_id', sellSellerIds),
-        supabaseAdmin.from('user_wallets').select('user_id, balance_btc').in('user_id', sellSellerIds),
-      ]);
-      (bals || []).forEach(b => { balMap[b.user_id] = parseFloat(b.balance_btc || 0); });
-      // Use the higher of the two tables — user_wallets may be ahead after a fresh deposit
-      (walBals || []).forEach(b => {
-        const wBtc = parseFloat(b.balance_btc || 0);
-        if (wBtc > (balMap[b.user_id] || 0)) balMap[b.user_id] = wBtc;
-      });
+      const { data: walBals } = await supabaseAdmin
+        .from('wallets').select('user_id, balance_btc').in('user_id', sellSellerIds);
+      (walBals || []).forEach(b => { balMap[b.user_id] = parseFloat(b.balance_btc || 0); });
     }
 
     const offers = (listings || [])
@@ -3146,21 +3288,10 @@ app.post('/api/trades', verifyToken, async (req, res) => {
     const tradeRef = 'PRAQ-' + require('crypto').randomBytes(4).toString('hex').toUpperCase();
 
     // Pre-check: ensure BTC provider has enough balance before creating the trade.
-    // Always query BOTH tables in parallel — user_balances can lag behind fresh deposits
-    // that haven't been synced yet. Use whichever table shows the higher (more accurate) value.
-    const [{ data: providerBalance }, { data: providerWallet }] = await Promise.all([
-      supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', btcProviderId).maybeSingle(),
-      supabaseAdmin.from('user_wallets').select('balance_btc').eq('user_id', btcProviderId).maybeSingle(),
-    ]);
-    const balBtc    = parseFloat(providerBalance?.balance_btc || 0);
-    const walletBtc = parseFloat(providerWallet?.balance_btc || 0);
-    let availableBtc = Math.max(balBtc, walletBtc);
-    // If user_wallets is ahead of user_balances (deposit monitor lag), sync now so
-    // the rest of the trade flow (escrow lock) sees the correct balance.
-    if (walletBtc > balBtc) {
-      await supabaseAdmin.from('user_balances')
-        .upsert({ user_id: btcProviderId, balance_btc: walletBtc, updated_at: new Date().toISOString() });
-    }
+    // wallets is the single source of truth — read only from there.
+    const { data: providerWallet } = await supabaseAdmin
+      .from('wallets').select('balance_btc').eq('user_id', btcProviderId).maybeSingle();
+    const availableBtc = parseFloat(providerWallet?.balance_btc || 0);
     if (availableBtc < verifiedAmountBtc) {
       return res.status(400).json({
         error: `The ${btcProviderId === req.userId ? 'seller' : 'offer owner'} has insufficient Bitcoin balance to complete this trade. Please try a smaller amount or choose a different offer.`
@@ -4305,7 +4436,7 @@ app.get('/api/admin/stats', verifyToken, async (req, res) => {
 app.get('/api/admin/users', verifyToken, async (req, res) => {
   try {
     const admin = await requireAdmin(req, res); if (!admin) return;
-    const { search = '', status = '', page = 1, limit = 50 } = req.query;
+    const { search = '', status = '', country = '', page = 1, limit = 50 } = req.query;
     let query = supabaseAdmin.from('users')
       .select('*', { count: 'exact' })
       .order('created_at', { ascending: false })
@@ -4314,6 +4445,7 @@ app.get('/api/admin/users', verifyToken, async (req, res) => {
     if (status === 'phone_pending') query = query.not('phone', 'is', null).eq('is_phone_verified', false);
     else if (status === 'kyc_pending') query = query.eq('kyc_status', 'pending');
     else if (status) query = query.eq('account_status', status);
+    if (country) query = query.eq('country', country.toUpperCase());
     const { data, error, count } = await query;
     if (error) return res.status(400).json({ error: error.message });
     res.json({ users: data || [], total: count || 0, page: parseInt(page), limit: parseInt(limit) });
@@ -5164,7 +5296,10 @@ app.get('/api/wallet', verifyToken, async (req, res) => {
     const { data: user, error: userError } = await supabaseAdmin.from('users')
       .select('id, username, coinbase_wallet_id, bitcoin_wallet_address, coinbase_wallet_address, wallet_created_at').eq('id', req.userId).single();
     if (userError || !user) return res.status(404).json({ error: 'User not found' });
-    const { data: balance } = await supabaseAdmin.from('user_balances').select('balance_btc, balance_usd').eq('user_id', req.userId).single();
+    const [{ data: balance }, { data: balanceUsd }] = await Promise.all([
+      supabaseAdmin.from('wallets').select('balance_btc, locked_balance_btc').eq('user_id', req.userId).maybeSingle(),
+      supabaseAdmin.from('user_balances').select('balance_usd').eq('user_id', req.userId).maybeSingle(),
+    ]);
     let address  = user.bitcoin_wallet_address || user.coinbase_wallet_address;
     let walletId = user.coinbase_wallet_id;
     if (!address) {
@@ -5182,7 +5317,7 @@ app.get('/api/wallet', verifyToken, async (req, res) => {
       .order('completed_at', { ascending: false }).limit(10);
     res.json({
       success: true,
-      wallet: { address, walletId, created_at: user.wallet_created_at, balance_btc: parseFloat(balance?.balance_btc || 0), balance_usd: parseFloat(balance?.balance_usd || 0), has_address: !!address },
+      wallet: { address, walletId, created_at: user.wallet_created_at, balance_btc: parseFloat(balance?.balance_btc || 0), locked_balance_btc: parseFloat(balance?.locked_balance_btc || 0), balance_usd: parseFloat(balanceUsd?.balance_usd || 0), has_address: !!address },
       transactions: (recentTrades || []).map(t => ({ id: t.id, amount_btc: parseFloat(t.amount_btc || 0), amount_usd: parseFloat(t.amount_usd || 0), type: 'trade_completion', status: t.status, date: t.completed_at || t.created_at })),
     });
   } catch (error) {
@@ -5305,11 +5440,11 @@ app.post('/api/wallet/internal-transfer', verifyToken, async (req, res) => {
       return res.status(400).json({ error: 'Cannot transfer to yourself' });
     }
 
-    // ── Check sender balance ───────────────────────────────────────────────
-    const { data: senderBal } = await supabaseAdmin
-      .from('user_balances').select('balance_btc').eq('user_id', req.userId).single();
+    // ── Check sender balance (wallets = source of truth) ──────────────────
+    const { data: senderWallet } = await supabaseAdmin
+      .from('wallets').select('balance_btc').eq('user_id', req.userId).maybeSingle();
 
-    const available = parseFloat(senderBal?.balance_btc || 0);
+    const available = parseFloat(senderWallet?.balance_btc || 0);
     if (available < amount) {
       return res.status(400).json({
         error: `Insufficient balance. Available: ${available.toFixed(8)} BTC, Requested: ${amount.toFixed(8)} BTC`,
@@ -5318,6 +5453,10 @@ app.post('/api/wallet/internal-transfer', verifyToken, async (req, res) => {
 
     // ── Deduct from sender ─────────────────────────────────────────────────
     const newSenderBalance = parseFloat((available - amount).toFixed(8));
+    // wallets first (source of truth), then keep secondary tables in sync
+    await supabaseAdmin.from('wallets')
+      .update({ balance_btc: newSenderBalance, updated_at: new Date().toISOString() })
+      .eq('user_id', req.userId);
     await supabaseAdmin.from('user_balances')
       .update({ balance_btc: newSenderBalance, updated_at: new Date().toISOString() })
       .eq('user_id', req.userId);
@@ -5326,9 +5465,15 @@ app.post('/api/wallet/internal-transfer', verifyToken, async (req, res) => {
       .eq('user_id', req.userId);
 
     // ── Credit recipient ───────────────────────────────────────────────────
-    const { data: recipBal } = await supabaseAdmin
-      .from('user_balances').select('balance_btc').eq('user_id', recipientId).single();
-    const newRecipientBalance = parseFloat((parseFloat(recipBal?.balance_btc || 0) + amount).toFixed(8));
+    const { data: recipWallet } = await supabaseAdmin
+      .from('wallets').select('balance_btc').eq('user_id', recipientId).maybeSingle();
+    const newRecipientBalance = parseFloat((parseFloat(recipWallet?.balance_btc || 0) + amount).toFixed(8));
+    // wallets first (source of truth)
+    await supabaseAdmin.from('wallets').upsert(
+      { user_id: recipientId, balance_btc: newRecipientBalance, locked_balance_btc: 0, private_key: 'placeholder_private_key', updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' }
+    );
+    // keep secondary tables in sync
     await supabaseAdmin.from('user_balances')
       .upsert({ user_id: recipientId, balance_btc: newRecipientBalance, updated_at: new Date().toISOString() });
     await supabaseAdmin.from('user_wallets')
@@ -5679,6 +5824,46 @@ app.get('/api/ref/:username', async (req, res) => {
 });
 
 // ============================================================
+// ── One-time startup backfill: set country from phone prefix for users missing it
+async function backfillCountriesFromPhone() {
+  try {
+    // Fetch ALL users with no country set (in batches of 500)
+    let from = 0;
+    const batchSize = 500;
+    let fixed = 0;
+
+    while (true) {
+      const { data: users, error } = await supabaseAdmin
+        .from('users')
+        .select('id, phone')
+        .or('country.is.null,country.eq.')
+        .range(from, from + batchSize - 1);
+
+      if (error) { console.error('[Backfill] select error:', error.message); break; }
+      if (!users?.length) break;
+
+      for (const u of users) {
+        const cc = phoneToCountryCode(u.phone);
+        if (!cc) continue;
+        const { error: upErr } = await supabaseAdmin
+          .from('users')
+          .update({ country: cc })
+          .eq('id', u.id)
+          .or('country.is.null,country.eq.'); // never overwrite if already set
+        if (!upErr) fixed++;
+      }
+
+      if (users.length < batchSize) break;
+      from += batchSize;
+    }
+
+    if (fixed > 0) console.log(`[Backfill] Populated country for ${fixed} user(s) from phone prefix`);
+    else console.log('[Backfill] No users needed country backfill from phone');
+  } catch (err) {
+    console.error('[Backfill] backfillCountriesFromPhone error:', err.message);
+  }
+}
+
 // START SERVER
 // ============================================================
 
@@ -5689,6 +5874,9 @@ app.listen(PORT, () => {
 
   // Immediately pause all sell offers whose seller balance is insufficient
   syncAllOfferStatuses().catch(err => console.error('[startup] syncAllOfferStatuses:', err.message));
+
+  // Backfill missing country codes for existing users using phone/KYC data
+  backfillCountriesFromPhone().catch(err => console.error('[startup] backfillCountries:', err.message));
 
   // ── Real-time deposit detection via mempool.space WebSocket ─────────────
   // Detects deposits within 1-3 seconds of entering mempool, credits on confirmation
