@@ -670,13 +670,16 @@ export default function WalletPage({ user }) {
       setWalletData({
         address:       r.data.address,
         balance_btc:   r.data.balance_btc,
-        locked_btc:    r.data.locked_btc    || 0,
-        available_btc: r.data.available_btc || r.data.balance_btc,
+        locked_btc:    r.data.locked_btc ?? 0,
+        // Use ?? not || so available_btc=0 (all funds locked) is preserved, not overwritten with total
+        available_btc: r.data.available_btc != null ? r.data.available_btc : r.data.balance_btc,
         balance_usd:   parseFloat(r.data.balance_usd || 0),
         network:       r.data.network,
         has_address:   r.data.has_address,
       });
       setLockedBtc(r.data.locked_btc || 0);
+      // Seed BTC price from API response so USD shows immediately (CoinGecko may be slower)
+      if (r.data.btc_price && r.data.btc_price > 0) setBtcPrice(p => p > 0 ? p : r.data.btc_price);
       setTransactions(r.data.transactions || []);
     } catch (e) {
       console.error('[Wallet] Load error:', e.message);
@@ -758,8 +761,12 @@ export default function WalletPage({ user }) {
   const balance      = parseFloat(walletData?.balance_btc   || 0); // total (available + locked)
   const lockedBal    = parseFloat(lockedBtc                 || 0);
   const availableBal = parseFloat(walletData?.available_btc ?? balance); // already deducted server-side
-  // Always compute USD from live BTC price — the DB balance_usd column can be stale or 0
-  const balUsd       = balance * (btcPrice || 88000);
+  const livePrice    = btcPrice || 88000;
+  // USD values — always computed from live price, never from stale DB column
+  const availableUsd = availableBal * livePrice;  // USD value of spendable BTC
+  const totalUsd     = balance * livePrice;        // USD value of total (available + locked)
+  const balUsd       = totalUsd; // kept for legacy references elsewhere in this component
+  console.log('[Wallet] balance_btc=', balance, 'locked=', lockedBal, 'available=', availableBal, 'btcPrice=', livePrice, 'availableUsd=', availableUsd, 'totalUsd=', totalUsd);
   const network = walletData?.network || 'mainnet';
 
   const fxRate   = displayCurrency === 'USD' ? 1 : (USD_RATES?.[displayCurrency] || 1);
@@ -821,7 +828,7 @@ export default function WalletPage({ user }) {
                   <p className="font-black text-white tracking-tight" style={{ fontSize: 'clamp(1.6rem, 6vw, 2.5rem)' }}>
                     ₿ {fmt(availableBal)}
                   </p>
-                  <p className="text-white/70 text-sm mt-1">≈ {fmtLocal(balUsd)}</p>
+                  <p className="text-white/70 text-sm mt-1">≈ {fmtLocal(availableUsd)}</p>
 
                   {/* Locked + Total breakdown */}
                   <div className="flex gap-4 mt-3">
@@ -836,7 +843,7 @@ export default function WalletPage({ user }) {
                       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#52B788' }} />
                       <div>
                         <p className="text-white/40 text-xs">Total Balance</p>
-                        <p className="text-white/80 text-xs font-bold">₿ {fmt(balance)}</p>
+                        <p className="text-white/80 text-xs font-bold">₿ {fmt(balance)} ≈ {fmtLocal(totalUsd)}</p>
                       </div>
                     </div>
                   </div>

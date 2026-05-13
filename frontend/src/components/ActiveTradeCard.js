@@ -67,7 +67,9 @@ function TradeTimer({ expiresAt, timeLimitMins = 30, onExpire }) {
       const diff = Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000);
       return Math.max(0, diff);
     }
-    // No server expiry — count down from mount time so the timer always moves
+    // No server expiry deadline — show a static countdown from mount time (visual only).
+    // onExpire must NOT fire when expiresAt is null: null means the server intentionally
+    // cleared the deadline (buyer marked paid) and the trade must stay locked forever.
     const elapsed = Math.floor((Date.now() - mountTime.current) / 1000);
     return Math.max(0, limitSecs - elapsed);
   };
@@ -81,7 +83,9 @@ function TradeTimer({ expiresAt, timeLimitMins = 30, onExpire }) {
     const tick = setInterval(() => {
       const remaining = calcRemaining();
       setSecs(remaining);
-      if (remaining === 0 && !expiredFired.current) {
+      // Only fire onExpire when we have a real server deadline (expiresAt is set).
+      // If expiresAt is null the server cleared the timer intentionally — never expire.
+      if (remaining === 0 && !expiredFired.current && expiresAt) {
         expiredFired.current = true;
         onExpire?.();
       }
@@ -305,13 +309,20 @@ export default function ActiveTradeCard({ trade, onExpire, pageColor }) {
             style={{ backgroundColor: cfg.statusBg, color: cfg.statusColor }}>
             {cfg.label}
           </span>
-          {/* Timer only counts for unfunded/active escrow — stops the moment payment is marked */}
-          {['CREATED', 'FUNDS_LOCKED'].includes(trade.status) && (
+          {/* Timer only when we have a real server deadline — never when expires_at is null */}
+          {['CREATED', 'FUNDS_LOCKED'].includes(trade.status) && effectiveExpiresAt && (
             <TradeTimer
               expiresAt={effectiveExpiresAt}
               timeLimitMins={timeLimitMins}
               onExpire={() => onExpire?.(trade.id)}
             />
+          )}
+          {/* If escrow is active but server cleared the deadline (e.g. edge-case null) show locked */}
+          {['CREATED', 'FUNDS_LOCKED'].includes(trade.status) && !effectiveExpiresAt && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-black px-2.5 py-1 rounded-full"
+              style={{ backgroundColor: '#DCFCE7', color: '#16A34A' }}>
+              🔒 Locked
+            </span>
           )}
           {trade.status === 'PAYMENT_SENT' && (
             <span className="inline-flex items-center gap-1 text-[10px] font-black px-2.5 py-1 rounded-full"

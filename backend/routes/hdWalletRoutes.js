@@ -54,53 +54,144 @@ async function getLiveBtcPrice() {
 // Returns user's BTC address + balance
 // Called by Wallet.jsx on load
 // ============================================================
+// ── Auto-heal orphaned escrow locks ──────────────────────────────────────────
+// Finds escrow_locks WHERE status='LOCKED' but the trade is already CANCELLED or COMPLETED.
+// These are stuck — BTC should have been returned but wasn't (old bug). Refund them now.
+async function autoHealOrphanedEscrows(userId) {
+    try {
+        const { data: locks } = await supabaseAdmin
+            .from('escrow_locks')
+            .select('id, trade_id, amount_btc')
+            .eq('seller_id', userId)
+            .eq('status', 'LOCKED');
+
+        if (!locks || locks.length === 0) return 0;
+
+        let healed = 0;
+        for (const lock of locks) {
+            const { data: trade } = await supabaseAdmin
+                .from('trades').select('id, status').eq('id', lock.trade_id).single();
+
+            if (!trade) continue;
+            // Only auto-refund when the trade is definitively over
+            if (!['CANCELLED', 'COMPLETED'].includes(trade.status)) continue;
+
+            const amount = parseFloat(lock.amount_btc || 0);
+            if (amount <= 0) continue;
+
+            console.log(`[AutoHeal] Orphaned escrow found — trade=${lock.trade_id.slice(0,8)} status=${trade.status} amount=${amount} — refunding to ${userId.slice(0,8)}`);
+
+            // Claim the lock first (atomic — prevents double-refund)
+            const { data: claimed } = await supabaseAdmin
+                .from('escrow_locks')
+                .update({ status: 'REFUNDING', released_at: new Date().toISOString() })
+                .eq('id', lock.id)
+                .eq('status', 'LOCKED')
+                .select('id');
+
+            if (!claimed || claimed.length === 0) continue; // already claimed by another request
+
+            // Try atomic DB function first
+            const { error: rpcErr } = await supabaseAdmin.rpc('praqen_refund_escrow', {
+                p_trade_id:    lock.trade_id,
+                p_provider_id: userId,
+                p_amount_btc:  amount,
+                p_reason:      `Auto-heal: escrow orphaned after trade ${trade.status}`,
+            });
+
+            if (rpcErr) {
+                // RPC unavailable — manually credit balance_btc, debit locked_balance_btc
+                console.warn(`[AutoHeal] RPC failed (${rpcErr.message}), applying manual refund`);
+
+                const { data: bb } = await supabaseAdmin
+                    .from('wallets').select('balance_btc, locked_balance_btc').eq('user_id', userId).single();
+                const newAvail  = parseFloat((parseFloat(bb?.balance_btc || 0) + amount).toFixed(8));
+                const newLocked = parseFloat((Math.max(0, parseFloat(bb?.locked_balance_btc || 0) - amount).toFixed(8)));
+
+                await Promise.all([
+                    supabaseAdmin.from('wallets').update({
+                        balance_btc:        newAvail,
+                        locked_balance_btc: newLocked,
+                        updated_at:         new Date().toISOString(),
+                    }).eq('user_id', userId),
+                    supabaseAdmin.from('escrow_locks').update({ status: 'REFUNDED', released_at: new Date().toISOString() }).eq('id', lock.id),
+                    supabaseAdmin.from('wallet_transactions').insert({
+                        user_id:    userId,
+                        type:       'ESCROW_REFUND',
+                        amount_btc: amount,
+                        status:     'CONFIRMED',
+                        notes:      `Auto-heal refund — trade #${lock.trade_id.slice(0,8)} (${trade.status})`,
+                        created_at: new Date().toISOString(),
+                    }),
+                ]);
+            } else {
+                // RPC ran — sync locked_balance_btc in case the DB function doesn't manage it
+                console.log(`[AutoHeal] RPC refund OK — ₿${amount} restored to ${userId.slice(0,8)}`);
+                const { data: bb } = await supabaseAdmin
+                    .from('wallets').select('locked_balance_btc').eq('user_id', userId).single();
+                const syncLocked = parseFloat((Math.max(0, parseFloat(bb?.locked_balance_btc || 0) - amount).toFixed(8)));
+                await supabaseAdmin.from('wallets')
+                    .update({ locked_balance_btc: syncLocked, updated_at: new Date().toISOString() })
+                    .eq('user_id', userId).catch(() => {});
+            }
+
+            await supabaseAdmin.from('notifications').insert({
+                user_id:    userId,
+                type:       'wallet',
+                title:      '₿ Escrow Refunded',
+                message:    `₿${amount.toFixed(8)} has been automatically returned to your wallet from a previously stuck trade.`,
+                action:     '/wallet',
+                is_read:    false,
+                created_at: new Date().toISOString(),
+            }).catch(() => {});
+
+            healed++;
+        }
+
+        if (healed > 0) console.log(`[AutoHeal] Restored ${healed} orphaned escrow(s) for ${userId.slice(0,8)}`);
+        return healed;
+    } catch (err) {
+        console.error('[AutoHeal] Error:', err.message);
+        return 0;
+    }
+}
+
 router.get('/wallet', verifyToken, async (req, res) => {
     try {
         const userId = req.userId;
+        console.log(`[Wallet] === loading wallet for userId=${userId} ===`);
 
-        // Fetch wallet data and live BTC price in parallel — USD is always computed fresh
-        const [[{ data: walletRow }, { data: balancesRow }], liveBtcPrice] = await Promise.all([
-            Promise.all([
-                supabaseAdmin.from('user_wallets').select('btc_address, balance_btc').eq('user_id', userId).single(),
-                supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', userId).single(),
-            ]),
+        // Auto-heal orphaned escrow locks before reading balance
+        await autoHealOrphanedEscrows(userId);
+
+        // ── SINGLE SOURCE OF TRUTH: wallets table only ──────────────────────────
+        const [{ data: walletRow, error: walletErr }, liveBtcPrice] = await Promise.all([
+            supabaseAdmin.from('wallets').select('balance_btc, locked_balance_btc').eq('user_id', userId).single(),
             getLiveBtcPrice(),
         ]);
 
-        let address = walletRow?.btc_address || null;
-        let balance = parseFloat(walletRow?.balance_btc || 0);
-
-        // Fallback: if user_wallets has 0, use user_balances.balance_btc
-        if (!balance && parseFloat(balancesRow?.balance_btc || 0) > 0) {
-            balance = parseFloat(balancesRow.balance_btc);
+        if (walletErr || !walletRow) {
+            console.error(`[Wallet] No wallet row for user ${userId}:`, walletErr?.message);
+            return res.status(404).json({ error: 'Wallet not found for this user' });
         }
 
-        // USD is always computed from live price — never read from the DB column (which can be stale or 0)
-        // balance_btc is never modified here, only used for the USD calculation
-        const balance_usd = parseFloat((balance * liveBtcPrice).toFixed(2));
+        const available_btc = parseFloat(walletRow.balance_btc || 0);
+        const locked_btc    = parseFloat(walletRow.locked_balance_btc || 0);
+        const total_btc     = parseFloat((available_btc + locked_btc).toFixed(8));
+        const balance_usd   = parseFloat((total_btc * liveBtcPrice).toFixed(2));
 
-        // Escrow locks — sum BTC locked as seller in active trades
-        const { data: escrowData } = await supabaseAdmin
-            .from('escrow_locks')
-            .select('amount_btc')
-            .eq('seller_id', userId)
-            .eq('status', 'LOCKED');
-        const locked_btc    = (escrowData || []).reduce((sum, e) => sum + parseFloat(e.amount_btc || 0), 0);
-        // user_wallets.balance_btc is already the AVAILABLE amount (deducted during lock, refunded on cancel)
-        const available_btc = balance;
-        const total_btc     = parseFloat((balance + locked_btc).toFixed(8));
+        console.log(`[Wallet] user=${userId.slice(0,8)} avail=${available_btc} locked=${locked_btc} total=${total_btc} price=${liveBtcPrice} usd=${balance_usd}`);
 
-        // Fallback: if user_wallets has no address, check users table
+        // BTC deposit address — from user_wallets or users table (display only, NOT for balance)
+        const { data: uwRow } = await supabaseAdmin
+            .from('user_wallets').select('btc_address').eq('user_id', userId).maybeSingle();
+        let address = uwRow?.btc_address || null;
         if (!address) {
             const { data: userRow } = await supabaseAdmin
-                .from('users')
-                .select('bitcoin_wallet_address')
-                .eq('id', userId)
-                .single();
+                .from('users').select('bitcoin_wallet_address').eq('id', userId).single();
             address = userRow?.bitcoin_wallet_address || null;
         }
 
-        // Transaction history
         const { data: txs } = await supabaseAdmin
             .from('wallet_transactions')
             .select('*')
@@ -108,23 +199,20 @@ router.get('/wallet', verifyToken, async (req, res) => {
             .order('created_at', { ascending: false })
             .limit(50);
 
-        const network = process.env.HD_NETWORK || 'mainnet';
-
-        console.log(`💰 Wallet API — user ${userId.slice(0,8)}: total=${total_btc} locked=${locked_btc} avail=${available_btc} BTC | addr ${address ? address.slice(0,12) + '…' : 'none'}`);
-
         res.json({
-            success:       true,
-            address:       address,
-            balance_btc:   total_btc,     // total = available + locked (for "Total Balance" display)
-            locked_btc:    locked_btc,
-            available_btc: available_btc, // what user can actually spend/withdraw
-            balance_usd:   balance_usd,   // dynamically computed: balance_btc * live_btc_price (never from DB)
-            network:       network,
-            has_address:   !!address,
-            transactions:  txs || [],
+            success:      true,
+            address,
+            balance_btc:  total_btc,
+            available_btc,
+            locked_btc,
+            balance_usd,
+            btc_price:    liveBtcPrice,
+            network:      process.env.HD_NETWORK || 'mainnet',
+            has_address:  !!address,
+            transactions: txs || [],
         });
     } catch (error) {
-        console.error('Wallet API error:', error.message);
+        console.error('[Wallet] FATAL ERROR:', error.message, error.stack);
         res.status(500).json({ error: error.message });
     }
 });

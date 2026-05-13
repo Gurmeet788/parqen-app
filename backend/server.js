@@ -2311,15 +2311,21 @@ app.get('/api/users/:userId/reviews', async (req, res) => {
 
 app.get('/api/user/balance', verifyToken, async (req, res) => {
   try {
-    let { data, error } = await supabaseAdmin.from('user_balances').select('balance_btc, balance_usd').eq('user_id', req.userId).single();
+    const [{ data, error }, btcPrice] = await Promise.all([
+      supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', req.userId).single(),
+      getCurrentBTCPrice().catch(() => 88000),
+    ]);
     if (error && error.code === 'PGRST116') {
       await supabaseAdmin.from('user_balances').insert([{ user_id: req.userId, balance_btc: 0, balance_usd: 0 }]);
-      return res.json({ balance_btc: 0, balance_usd: 0 });
+      return res.json({ balance_btc: 0, balance_usd: 0, btc_price: btcPrice });
     }
     if (error) return res.status(400).json({ error: error.message });
-    res.json({ balance_btc: parseFloat(data?.balance_btc || 0), balance_usd: parseFloat(data?.balance_usd || 0) });
+    const balBtc = parseFloat(data?.balance_btc || 0);
+    const balUsd = parseFloat((balBtc * btcPrice).toFixed(2));
+    console.log(`[/api/user/balance] user=${req.userId.slice(0,8)} btc=${balBtc} price=${btcPrice} usd=${balUsd}`);
+    res.json({ balance_btc: balBtc, balance_usd: balUsd, btc_price: btcPrice });
   } catch (error) {
-    res.json({ balance_btc: 0, balance_usd: 0 });
+    res.json({ balance_btc: 0, balance_usd: 0, btc_price: 88000 });
   }
 });
 
@@ -2946,7 +2952,7 @@ app.get('/api/trades/active', verifyToken, async (req, res) => {
       .or(`buyer_id.eq.${req.userId},seller_id.eq.${req.userId}`)
       .in('status', ['CREATED', 'FUNDS_LOCKED', 'PAYMENT_SENT', 'DISPUTED'])
       .order('created_at', { ascending: false })
-      .limit(10);
+      .limit(50);
 
     if (error) return res.status(400).json({ error: error.message });
 
@@ -3392,11 +3398,17 @@ app.post('/api/trades/:id/cancel', verifyToken, async (req, res) => {
     const { data: trade, error: fetchError } = await supabaseAdmin.from('trades').select('*').eq('id', req.params.id).single();
     if (fetchError || !trade) return res.status(404).json({ error: 'Trade not found' });
 
-    // Authorization: trade opener OR buyer after marking paid
-    const tradeOpener = (trade.trade_type || '').toUpperCase() === 'BUY' ? trade.buyer_id : trade.seller_id;
-    const isPostPay   = ['PAYMENT_SENT', 'PAID'].includes(trade.status);
-    const authorized  = tradeOpener === req.userId || (isPostPay && trade.buyer_id === req.userId);
-    if (!authorized) return res.status(403).json({ error: 'Not authorized to cancel this trade' });
+    // Authorization: any participant (buyer or seller) can cancel,
+    // EXCEPT after buyer marks paid — only the seller can cancel at that point.
+    const isBuyer  = trade.buyer_id  === req.userId;
+    const isSeller = trade.seller_id === req.userId;
+    if (!isBuyer && !isSeller) {
+      return res.status(403).json({ error: 'Not authorized to cancel this trade' });
+    }
+    const isPostPay = ['PAYMENT_SENT', 'PAID'].includes(trade.status);
+    if (isPostPay && !isSeller) {
+      return res.status(403).json({ error: 'Cannot cancel after payment has been sent — open a dispute instead' });
+    }
 
     const cancellableStatuses = ['CREATED', 'FUNDS_LOCKED', 'ESCROW', 'ACTIVE', 'OPEN', 'PAYMENT_SENT', 'PAID'];
     if (!cancellableStatuses.includes(trade.status)) return res.status(400).json({ error: `Trade cannot be cancelled — status is ${trade.status}` });

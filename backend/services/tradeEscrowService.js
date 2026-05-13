@@ -107,20 +107,18 @@ class TradeEscrowService {
     const amount = parseFloat(amountBtc);
     if (!amount || amount <= 0) throw new Error('Invalid escrow amount');
 
-    // ── 1. Get BTC provider's current balance from BOTH tables in parallel ────
-    // user_balances can lag behind fresh deposits — always use the higher value.
-    const [{ data: providerBal }, { data: walletRowInit }] = await Promise.all([
-      supabaseAdmin.from('user_balances').select('balance_btc, balance_usd').eq('user_id', btcProviderId).maybeSingle(),
-      supabaseAdmin.from('user_wallets').select('balance_btc').eq('user_id', btcProviderId).maybeSingle(),
-    ]);
-    const balBtc_    = parseFloat(providerBal?.balance_btc || 0);
-    const walletBtc_ = parseFloat(walletRowInit?.balance_btc || 0);
-    let currentBalance = Math.max(balBtc_, walletBtc_);
-    // Sync user_balances if user_wallets is ahead (deposit monitor hasn't run yet)
-    if (walletBtc_ > balBtc_) {
-      await supabaseAdmin.from('user_balances')
-        .upsert({ user_id: btcProviderId, balance_btc: walletBtc_, updated_at: new Date().toISOString() });
+    // ── 1. Get BTC provider's balance from wallets table (single source of truth) ──
+    const { data: walletRow, error: walletErr } = await supabaseAdmin
+      .from('wallets')
+      .select('balance_btc, locked_balance_btc')
+      .eq('user_id', btcProviderId)
+      .single();
+
+    if (walletErr || !walletRow) {
+      throw new Error(`Wallet not found for BTC provider ${btcProviderId.slice(0,8)}`);
     }
+
+    const currentBalance = parseFloat(walletRow.balance_btc || 0);
 
     if (currentBalance < amount) {
       throw new Error(
@@ -136,42 +134,16 @@ class TradeEscrowService {
     console.log(`   Escrow address: ${escrowAddress}`);
     console.log(`   Fee (0.5%):     ${feeBtc} BTC`);
 
-    // ── 3. Deduct from BTC provider's balance (locked into escrow) ─────────
-    const newBalance = parseFloat((currentBalance - amount).toFixed(8));
-    // Keep balance_usd in sync: deduct proportionally so the stored USD value
-    // stays accurate after the lock (avoids drift in wallet display).
-    const currentBalUsd = parseFloat(providerBal?.balance_usd || 0);
-    const newBalUsd = currentBalance > 0
-      ? parseFloat((currentBalUsd * newBalance / currentBalance).toFixed(2))
-      : 0;
+    // ── 3. Deduct trade amount from available balance, add to locked ─────────
+    const newAvailable = parseFloat((currentBalance - amount).toFixed(8));
+    const newLocked    = parseFloat((parseFloat(walletRow.locked_balance_btc || 0) + amount).toFixed(8));
 
     const { error: deductErr } = await supabaseAdmin
-      .from('user_balances')
-      .update({
-        balance_btc: newBalance,
-        balance_usd: newBalUsd,
-        updated_at:  new Date().toISOString(),
-      })
+      .from('wallets')
+      .update({ balance_btc: newAvailable, locked_balance_btc: newLocked, updated_at: new Date().toISOString() })
       .eq('user_id', btcProviderId);
 
     if (deductErr) throw new Error(`Failed to lock funds: ${deductErr.message}`);
-
-    // Sync user_wallets — subtract from its OWN current value.
-    // DO NOT set it to newBalance from user_balances: if the two tables were out of sync,
-    // that would inflate user_wallets and show fake BTC to the seller.
-    const { data: walletRow } = await supabaseAdmin
-      .from('user_wallets')
-      .select('balance_btc')
-      .eq('user_id', btcProviderId)
-      .maybeSingle();
-
-    if (walletRow) {
-      const walletNewBal = Math.max(0, parseFloat((parseFloat(walletRow.balance_btc || 0) - amount).toFixed(8)));
-      await supabaseAdmin
-        .from('user_wallets')
-        .update({ balance_btc: walletNewBal, updated_at: new Date().toISOString() })
-        .eq('user_id', btcProviderId);
-    }
 
     // ── 4. Generate deterministic lock reference ────────────────────────────
     const crypto = require('crypto');
@@ -198,9 +170,13 @@ class TradeEscrowService {
       });
 
     if (lockErr) {
-      // Revert balance deduction if record creation fails
-      await supabaseAdmin.from('user_balances')
-        .update({ balance_btc: currentBalance, balance_usd: currentBalUsd, updated_at: new Date().toISOString() })
+      // Revert wallets table back to pre-lock values
+      await supabaseAdmin.from('wallets')
+        .update({
+          balance_btc:        currentBalance,
+          locked_balance_btc: parseFloat(walletRow.locked_balance_btc || 0),
+          updated_at:         new Date().toISOString(),
+        })
         .eq('user_id', btcProviderId);
       throw new Error(`Failed to create escrow record: ${lockErr.message}`);
     }
@@ -233,7 +209,7 @@ class TradeEscrowService {
       lockTxHash,
       amountLocked: amount,
       feeBtc,
-      newBalance,
+      newBalance:   newAvailable,
       expiresAt:    new Date(Date.now() + timeLimitMins * 60 * 1000).toISOString(),
     };
   }
@@ -559,7 +535,7 @@ class TradeEscrowService {
 
     if (error || !trade) throw new Error('Trade not found');
 
-    const cancellable = ['CREATED', 'FUNDS_LOCKED', 'ESCROW', 'ACTIVE', 'OPEN', 'PAYMENT_SENT'];
+    const cancellable = ['CREATED', 'FUNDS_LOCKED', 'ESCROW', 'ACTIVE', 'OPEN', 'PAYMENT_SENT', 'DISPUTED'];
     if (!cancellable.includes(trade.status)) {
       return { success: false, message: `Trade cannot be cancelled — status is ${trade.status}` };
     }
@@ -589,7 +565,28 @@ class TradeEscrowService {
         p_reason:      reason || 'Trade cancelled',
       });
 
-      if (refundErr) throw new Error(`Atomic escrow refund failed: ${refundErr.message}`);
+      if (refundErr) {
+        // RPC unavailable — manually credit balance_btc and debit locked_balance_btc
+        console.warn(`[cancelTrade] praqen_refund_escrow failed (${refundErr.message}), applying manual refund`);
+        const { data: pBal } = await supabaseAdmin
+          .from('wallets').select('balance_btc, locked_balance_btc').eq('user_id', btcProviderId).maybeSingle();
+        const manualAvail  = parseFloat((parseFloat(pBal?.balance_btc || 0) + refundAmount).toFixed(8));
+        const manualLocked = parseFloat((Math.max(0, parseFloat(pBal?.locked_balance_btc || 0) - refundAmount).toFixed(8)));
+        const { error: manualErr } = await supabaseAdmin
+          .from('wallets')
+          .update({ balance_btc: manualAvail, locked_balance_btc: manualLocked, updated_at: new Date().toISOString() })
+          .eq('user_id', btcProviderId);
+        if (manualErr) throw new Error(`Manual refund also failed: ${manualErr.message}`);
+        console.log(`[cancelTrade] Manual refund applied: ₿${refundAmount} → ${btcProviderId.slice(0,8)}`);
+      } else {
+        // RPC succeeded — also sync locked_balance_btc in case the DB function doesn't manage it
+        const { data: pBal } = await supabaseAdmin
+          .from('wallets').select('locked_balance_btc').eq('user_id', btcProviderId).maybeSingle();
+        const syncedLocked = parseFloat((Math.max(0, parseFloat(pBal?.locked_balance_btc || 0) - refundAmount).toFixed(8)));
+        await supabaseAdmin.from('wallets')
+          .update({ locked_balance_btc: syncedLocked, updated_at: new Date().toISOString() })
+          .eq('user_id', btcProviderId).catch(() => {});
+      }
 
       sendSystemAlert(
         btcProviderId,
@@ -704,7 +701,10 @@ class TradeEscrowService {
 
     } else if (resolution === 'SELLER_WINS') {
       // Refund to seller — same as cancel
-      await this.cancelTrade(tradeId, `Dispute resolved — SELLER WINS. ${notes || ''}`);
+      const sellerWinsResult = await this.cancelTrade(tradeId, `Dispute resolved — SELLER WINS. ${notes || ''}`);
+      if (!sellerWinsResult?.success) {
+        throw new Error(`Escrow refund failed for SELLER_WINS: ${sellerWinsResult?.message || 'unknown error'}`);
+      }
 
       await supabaseAdmin.from('trades').update({
         status:             'COMPLETED',
@@ -716,7 +716,10 @@ class TradeEscrowService {
 
     } else if (resolution === 'CANCEL') {
       // Refund BTC to seller (whoever locked it), mark as CANCELLED
-      await this.cancelTrade(tradeId, `Dispute resolved — CANCELLED by moderator. ${notes || ''}`);
+      const cancelResult = await this.cancelTrade(tradeId, `Dispute resolved — CANCELLED by moderator. ${notes || ''}`);
+      if (!cancelResult?.success) {
+        throw new Error(`Escrow refund failed for CANCEL resolution: ${cancelResult?.message || 'unknown error'}`);
+      }
 
       await supabaseAdmin.from('trades').update({
         status:             'CANCELLED',

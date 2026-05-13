@@ -976,7 +976,9 @@ export default function SellBitcoin({user}) {
   };
 
   const handleTradeExpire = (id) => setActiveTrades(prev => prev.filter(t =>
-    t.id !== id || ['PAYMENT_SENT','DISPUTED'].includes(t.status)
+    t.id !== id ||
+    ['PAYMENT_SENT','DISPUTED'].includes(t.status) ||
+    !t.expires_at  // server cleared the deadline (buyer marked paid) — never remove
   ));
 
   const handleSell = (id) => {
