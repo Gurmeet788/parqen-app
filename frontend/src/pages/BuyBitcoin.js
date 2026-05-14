@@ -934,6 +934,29 @@ export default function BuyBitcoin({user}) {
     return () => clearInterval(interval);
   }, []);
 
+  // Auto-detect user location by IP — sets COUNTRY only, not currency.
+  // Currency stays at USD (shows all offers) until the user manually picks one.
+  useEffect(() => {
+    const detected = sessionStorage.getItem('praqen_geo');
+    if (detected) {
+      try {
+        const { countryCode } = JSON.parse(detected);
+        const match = COUNTRIES.find(c => c.code === countryCode);
+        if (match && match.code !== 'ALL') setSelCountry(match);
+      } catch {}
+      return;
+    }
+    fetch('https://ipapi.co/json/')
+      .then(r => r.json())
+      .then(data => {
+        const countryCode = (data.country_code || '').toUpperCase();
+        sessionStorage.setItem('praqen_geo', JSON.stringify({ countryCode }));
+        const match = COUNTRIES.find(c => c.code === countryCode);
+        if (match && match.code !== 'ALL') setSelCountry(match);
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     const tk = localStorage.getItem('token');
     if (!tk) return;
@@ -987,7 +1010,15 @@ export default function BuyBitcoin({user}) {
 
   const getFiltered = () => {
     let list = [...listings];
-    if (selCountry.code !== 'ALL') list = list.filter(l => (l.country_code||l.country||'').toUpperCase() === selCountry.code);
+    // Offers with no country set are treated as global — always visible regardless of country filter
+    if (selCountry.code !== 'ALL') list = list.filter(l => {
+      const offerCountry = (l.country_code || l.country || '').toUpperCase();
+      return offerCountry === '' || offerCountry === selCountry.code;
+    });
+    // Only filter by currency when user explicitly picks a non-USD currency
+    if (selCurrency.code !== 'USD') {
+      list = list.filter(l => (l.currency || l.fiat_currency || 'USD').toUpperCase() === selCurrency.code);
+    }
     if (selPayment !== 'all') list = list.filter(l => String(l.payment_method || '').toLowerCase().includes(selPayment));
     if (buyAmt && parseFloat(buyAmt) > 0) {
       const amtUsd = parseFloat(buyAmt) / (USD_RATES[selCurrency.code] || 1);
@@ -1325,7 +1356,7 @@ export default function BuyBitcoin({user}) {
                             </div>)
                           : (c.region&&(lastReg=c.region), null);
                         return [regHdr,
-                          <button key={c.code} onClick={()=>{setSelCountry(c);setShowCountry(false);setCountrySearch('');}}
+                          <button key={c.code} onClick={()=>{setSelCountry(c);setShowCountry(false);setCountrySearch('');if(c.currency){const matched=CURRENCIES.find(cur=>cur.code===c.currency);if(matched)setSelCurrency(matched);}}}
                             className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-gray-50 border-b last:border-0 transition"
                             style={{borderColor:C.g50,backgroundColor:selCountry.code===c.code?`${C.forest}08`:'transparent'}}>
                             <span className="text-base flex-shrink-0">{c.flag}</span>

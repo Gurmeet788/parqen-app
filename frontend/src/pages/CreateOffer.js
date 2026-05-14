@@ -340,7 +340,7 @@ export default function CreateOffer() {
       if (isGC) return true;
       const mn = parseFloat(minLimit), mx = parseFloat(maxLimit);
       if (!(mn > 0 && mx > 0 && mx >= mn)) return false;
-      // maxExceedsWallet is no longer a blocker — BTC locks at trade time, not offer time
+      if (minUSDVal < 10) return false;
       return true;
     }
     return true;
@@ -1465,6 +1465,14 @@ export default function CreateOffer() {
                   ))}
                 </div>
 
+                {minLimit && minUSDVal < 10 && (
+                  <div className="flex items-center gap-2 p-2.5 rounded-xl" style={{ backgroundColor: `${C.danger}10` }}>
+                    <AlertTriangle size={13} style={{ color: C.danger }} />
+                    <p className="text-xs font-semibold" style={{ color: C.danger }}>
+                      Minimum must be at least $10 USD — that's {sym}{fmt(10 * localRate, 0)} {cur} in your currency.
+                    </p>
+                  </div>
+                )}
                 {minLimit && maxLimit && parseFloat(maxLimit) < parseFloat(minLimit) && (
                   <div className="flex items-center gap-2 p-2.5 rounded-xl" style={{ backgroundColor: `${C.danger}10` }}>
                     <AlertTriangle size={13} style={{ color: C.danger }} />

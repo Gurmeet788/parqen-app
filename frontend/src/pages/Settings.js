@@ -656,6 +656,8 @@ export default function Settings({ user, setUser }) {
       } else {
         const msg = phoneOtpMethod === 'email'
           ? 'Code sent to your email! Check inbox and spam folder.'
+          : phoneOtpMethod === 'sms'
+          ? 'Code sent via SMS to your phone!'
           : 'Code sent via WhatsApp!';
         toast.success(msg);
       }
@@ -1284,7 +1286,12 @@ export default function Settings({ user, setUser }) {
                                         <button
                                           onClick={() => setPhoneOtpMethod('email')}
                                           className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border-2 text-xs font-black transition ${phoneOtpMethod === 'email' ? 'border-blue-500 bg-blue-50 text-blue-800' : 'border-gray-200 bg-white text-gray-500'}`}>
-                                          <Mail size={12}/> 📧 My Email
+                                          <Mail size={12}/> 📧 Email
+                                        </button>
+                                        <button
+                                          onClick={() => setPhoneOtpMethod('sms')}
+                                          className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border-2 text-xs font-black transition ${phoneOtpMethod === 'sms' ? 'border-orange-500 bg-orange-50 text-orange-800' : 'border-gray-200 bg-white text-gray-500'}`}>
+                                          📱 SMS
                                         </button>
                                         <button
                                           onClick={() => setPhoneOtpMethod('whatsapp')}
@@ -1317,6 +1324,8 @@ export default function Settings({ user, setUser }) {
                                       <p className="text-xs" style={{ color: '#1e40af' }}>
                                         {phoneOtpMethod === 'email'
                                           ? 'Code sent to your email — check inbox and spam folder:'
+                                          : phoneOtpMethod === 'sms'
+                                          ? `Code sent via SMS to ${accountForm.phone}:`
                                           : `Code sent via WhatsApp to ${accountForm.phone}:`}
                                       </p>
                                       <div className="flex gap-2 flex-wrap items-center">

@@ -548,53 +548,53 @@ const RESEND_FROM_ADDR = process.env.RESEND_FROM || 'PRAQEN <hello@hellopraqen.c
 
 async function sendVerificationEmail(email, code) {
   console.log(`📧 Sending verification to ${email}`);
-  console.log(`RESEND_API_KEY exists: ${!!process.env.RESEND_API_KEY}`);
-
   const html = buildVerificationEmailHtml(code);
 
-  // ── PRIMARY: Resend API ──────────────────────────────────────────────────
-  try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: RESEND_FROM_ADDR,
+  // ── PRIMARY: Gmail SMTP (works for ALL email addresses, no domain restriction) ──
+  if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    try {
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+      });
+      const info = await transporter.sendMail({
+        from: `"PRAQEN" <${process.env.EMAIL_USER}>`,
         to: email,
         subject: 'Your PRAQEN Verification Code',
         html,
-      }),
-    });
-    const data = await response.json();
-    if (data.id) {
-      console.log(`✅ Verification email sent via Resend: ${data.id}`);
+      });
+      console.log(`✅ Verification email sent via Gmail to ${email}`, info.messageId);
       return true;
+    } catch (gmailErr) {
+      console.error(`❌ Gmail error:`, gmailErr.message);
     }
-    throw new Error(`Resend error: ${JSON.stringify(data)}`);
-  } catch (resendErr) {
-    console.error('❌ Resend failed:', resendErr.message);
   }
 
-  // ── FALLBACK: Gmail SMTP ─────────────────────────────────────────────────
-  console.log(`📧 Attempting Gmail fallback to ${email}`);
-  try {
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-    });
-    await transporter.verify();
-    const info = await transporter.sendMail({
-      from: `"PRAQEN" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: 'Your PRAQEN Verification Code',
-      html,
-    });
-    console.log(`✅ Verification email sent via Gmail to ${email}`, info.messageId);
-    return true;
-  } catch (gmailErr) {
-    console.error(`❌ Gmail error:`, gmailErr.message);
+  // ── FALLBACK: Resend API ─────────────────────────────────────────────────
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: RESEND_FROM_ADDR,
+          to: email,
+          subject: 'Your PRAQEN Verification Code',
+          html,
+        }),
+      });
+      const data = await response.json();
+      if (data.id) {
+        console.log(`✅ Verification email sent via Resend: ${data.id}`);
+        return true;
+      }
+      throw new Error(`Resend error: ${JSON.stringify(data)}`);
+    } catch (resendErr) {
+      console.error('❌ Resend failed:', resendErr.message);
+    }
   }
 
   throw new Error(`All email providers failed for ${email}`);
@@ -799,11 +799,17 @@ async function createNotification(userId, type, title, message, action) {
 async function updateUserTradeStats(userId) {
   try {
     const { data: all, error } = await supabaseAdmin.from('trades').select('status').or(`seller_id.eq.${userId},buyer_id.eq.${userId}`);
-    // If the query failed or returned nothing, skip — never overwrite stats with 0
     if (error || !all || all.length === 0) return;
-    const total = all.filter(t => t.status === 'COMPLETED').length;
-    const rate  = Math.round((total / all.length) * 100);
-    await supabaseAdmin.from('users').update({ total_trades: total, completion_rate: rate }).eq('id', userId);
+
+    const completed = all.filter(t => t.status === 'COMPLETED').length;
+    const rate      = Math.round((completed / all.length) * 100);
+
+    // Never let total_trades go down — preserve historical trade counts
+    const { data: currentUser } = await supabaseAdmin.from('users').select('total_trades').eq('id', userId).single();
+    const currentTotal = parseInt(currentUser?.total_trades || 0);
+    const newTotal     = Math.max(currentTotal, completed);
+
+    await supabaseAdmin.from('users').update({ total_trades: newTotal, completion_rate: rate }).eq('id', userId);
     checkAndAwardBadges(userId).catch(() => {});
   } catch (error) {
     console.error('Error updating user stats:', error);
@@ -1766,8 +1772,8 @@ app.post('/api/users/send-phone-otp', verifyToken, async (req, res) => {
   try {
     const { phone, method = 'email' } = req.body;
     if (!phone) return res.status(400).json({ error: 'Phone number required' });
-    if (!['email', 'whatsapp'].includes(method)) {
-      return res.status(400).json({ error: 'Delivery method must be "email" or "whatsapp"' });
+    if (!['email', 'sms', 'whatsapp'].includes(method)) {
+      return res.status(400).json({ error: 'Delivery method must be "email", "sms", or "whatsapp"' });
     }
 
     // Normalise: strip spaces/dashes/parens, add + if missing, strip leading 0
@@ -1825,6 +1831,25 @@ app.post('/api/users/send-phone-otp', verifyToken, async (req, res) => {
         console.error('[send-phone-otp] Email send error:', emailErr.message);
         return res.status(500).json({
           error: 'Email delivery failed. Check your spam folder or try the WhatsApp option.',
+          devCode: isDev ? otp : undefined,
+        });
+      }
+    }
+
+    // ── SMS ────────────────────────────────────────────────────────────────────
+    if (method === 'sms') {
+      try {
+        await sendSmsOtp(e164, `Your PRAQEN code is: ${otp}. Valid 10 min. Do not share.`);
+        console.log(`[send-phone-otp] SMS OTP → ${e164}`);
+        return res.json({
+          success: true,
+          message: `Code sent via SMS to ${e164}`,
+          devCode: isDev ? otp : undefined,
+        });
+      } catch (smsErr) {
+        console.error('[send-phone-otp] SMS error:', smsErr.message);
+        return res.status(500).json({
+          error: 'SMS delivery failed. Please try the email or WhatsApp option.',
           devCode: isDev ? otp : undefined,
         });
       }
@@ -2547,6 +2572,21 @@ app.post('/api/listings', verifyToken, async (req, res) => {
       });
     }
 
+    // Block duplicate active offers with the same payment method
+    const { data: dupCheck } = await supabaseAdmin
+      .from('listings')
+      .select('id')
+      .eq('seller_id', req.userId)
+      .eq('payment_method', payMethod)
+      .eq('listing_type', listingType)
+      .eq('status', 'ACTIVE')
+      .limit(1);
+    if (dupCheck && dupCheck.length > 0) {
+      return res.status(400).json({
+        error: `You already have an active ${listingType} offer accepting ${payMethod}. Please edit or deactivate it before creating a new one.`,
+      });
+    }
+
     // Offers are preferences only — no per-offer balance locking.
     // Sellers can create multiple offers for the same BTC; escrow locks at trade time.
     const cur         = b.currency || 'USD';
@@ -2638,8 +2678,8 @@ app.get('/api/listings', async (req, res) => {
         return { ...l, seller_balance_btc: sellerBtc, effective_max_usd: effectiveMaxUsd };
       });
 
-      // Hide SELL offers whose seller has less than $10 worth of BTC — their
-      // offer stays ACTIVE in the DB and reappears automatically once they top up.
+      // Hide SELL offers whose seller has less than $10 worth of BTC.
+      // Offer stays ACTIVE in DB and reappears automatically once they top up.
       listings = listings.filter(l => {
         if (l.listing_type !== 'SELL' && l.listing_type !== 'SELL_BITCOIN') return true;
         const sellerBtc   = l.seller_balance_btc || 0;
@@ -2985,6 +3025,21 @@ app.post('/api/offers', verifyToken, async (req, res) => {
     const brandDefault = mappedType === 'SELL' ? 'Sell Bitcoin' : mappedType === 'BUY' ? 'Buy Bitcoin' : '';
     const cur = currency || 'USD';
     const curSym = currency_symbol || (cur === 'GHS' ? '₵' : cur === 'NGN' ? '₦' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : '$');
+
+    // Block duplicate active offers with the same payment method
+    const { data: dupCheck2 } = await supabaseAdmin
+      .from('listings')
+      .select('id')
+      .eq('seller_id', userId)
+      .eq('payment_method', payment_method)
+      .eq('listing_type', mappedType)
+      .eq('status', 'ACTIVE')
+      .limit(1);
+    if (dupCheck2 && dupCheck2.length > 0) {
+      return res.status(400).json({
+        error: `You already have an active ${mappedType} offer accepting ${payment_method}. Please edit or deactivate it before creating a new one.`,
+      });
+    }
 
     // Create offer in listings table (single source of truth for all marketplace pages)
     const { data, error } = await supabaseAdmin

@@ -333,7 +333,7 @@ class TradeEscrowService {
         );
     }
 
-    const allowedStatuses = ['PAYMENT_SENT', 'PAID', 'FUNDS_LOCKED'];
+    const allowedStatuses = ['PAYMENT_SENT', 'PAID', 'FUNDS_LOCKED', 'DISPUTED'];
     if (!allowedStatuses.includes(tradeData.status)) {
         throw new Error(`Cannot release — trade status is "${tradeData.status}". ${
             isGiftCardTrade ? 'Card seller must send the code first.' : 'Buyer must confirm payment first.'
@@ -365,20 +365,33 @@ class TradeEscrowService {
 
     console.log(`🔓 Release reference: ${releaseTxHash}`);
 
-    // ── Atomically claim the escrow lock before touching any balance ──────────
-    // UPDATE WHERE status = 'LOCKED' is a single atomic DB operation.
-    // If two requests race, only one will match the WHERE clause and get rows
-    // back. The other gets an empty result and throws, preventing double-credit.
-    const { data: claimedRows, error: claimErr } = await supabaseAdmin
+    // ── Check escrow lock status before calling the RPC ──────────────────────
+    // The RPC praqen_release_escrow() is the atomic guard — it does UPDATE WHERE
+    // status='LOCKED' internally. We just need to ensure the lock exists and is
+    // in a releasable state before handing off to the RPC.
+    const { data: currentLock } = await supabaseAdmin
         .from('escrow_locks')
-        .update({ status: 'RELEASING' })
+        .select('id, status')
         .eq('trade_id', tradeId)
-        .eq('status', 'LOCKED')
-        .select('id');
+        .maybeSingle();
 
-    if (claimErr) throw new Error(`Failed to claim escrow lock: ${claimErr.message}`);
-    if (!claimedRows || claimedRows.length === 0) {
-        throw new Error('Escrow already released or being released by a concurrent request — no action taken');
+    if (!currentLock) {
+        throw new Error('No escrow lock record found for this trade.');
+    }
+    if (currentLock.status === 'RELEASED') {
+        throw new Error('Bitcoin has already been released for this trade.');
+    }
+    if (currentLock.status === 'REFUNDED') {
+        throw new Error('Escrow was refunded (trade cancelled) — cannot release.');
+    }
+    if (currentLock.status === 'RELEASING') {
+        // Stuck from a previous failed attempt — reset to LOCKED so the RPC can claim it
+        console.warn(`[Escrow] Lock ${currentLock.id} stuck in RELEASING — resetting to LOCKED for trade ${tradeId.slice(0,8)}`);
+        const { error: resetErr } = await supabaseAdmin
+            .from('escrow_locks')
+            .update({ status: 'LOCKED' })
+            .eq('id', currentLock.id);
+        if (resetErr) throw new Error(`Failed to reset stuck escrow lock: ${resetErr.message}`);
     }
 
     // ── ONE atomic DB call: credit receiver + fee + mark escrow released + complete trade ──
@@ -397,6 +410,16 @@ class TradeEscrowService {
 
     if (releaseErr) throw new Error(`Atomic escrow release failed: ${releaseErr.message}`);
 
+    // ── Clear locked_balance_btc for the BTC provider (RPC only credits buyer) ──
+    const { data: providerWallet } = await supabaseAdmin
+        .from('wallets').select('locked_balance_btc').eq('user_id', btcProviderId).maybeSingle();
+    const clearedLocked = parseFloat(
+        Math.max(0, parseFloat(providerWallet?.locked_balance_btc || 0) - amount).toFixed(8)
+    );
+    await supabaseAdmin.from('wallets')
+        .update({ locked_balance_btc: clearedLocked, updated_at: new Date().toISOString() })
+        .eq('user_id', btcProviderId);
+
     // Fetch receiver's new balance from wallets (source of truth) for audit log + return value
     const { data: receiverWallet } = await supabaseAdmin
         .from('wallets').select('balance_btc').eq('user_id', btcReceiverId).maybeSingle();
@@ -413,78 +436,48 @@ class TradeEscrowService {
     }
 
     // ── Collect 0.5% platform fee — NEVER breaks the trade ──────────────────
-    // Fee = trade.amount_btc × 0.005 (calculated ONCE above, never recalculated here)
     try {
-        // ── Consistency check: verify fee is exactly 0.5% ───────────────────
-        const expectedFee = parseFloat((amount * FEE_RATE).toFixed(8));
-        const feeIsCorrect = Math.abs(platformFee - expectedFee) < 0.000000011; // 1-satoshi tolerance
-        if (!feeIsCorrect) {
-            console.error(`⚠️ [Escrow] Fee mismatch! Expected ${expectedFee.toFixed(8)} got ${platformFee.toFixed(8)} — trade ${tradeId.slice(0,8)}`);
-            await supabaseAdmin.from('trades')
-                .update({ fee_status: 'INCORRECT' })
-                .eq('id', tradeId)
-                .catch(() => {});
-        }
+        console.log(`💸 Collecting fee: ${platformFee.toFixed(8)} BTC → company wallet`);
 
-        const { data: escrowLock } = await supabaseAdmin
-            .from('escrow_locks')
-            .select('seller_id')
-            .eq('trade_id', tradeId)
-            .single();
-
-        const feePayerId = escrowLock?.seller_id || tradeData.seller_id;
-        console.log(`💸 Collecting fee: ${platformFee.toFixed(8)} BTC from ${feePayerId.slice(0,8)}`);
-
-        // 1. Get current company balance from wallets (source of truth)
-        const { data: companyWallet } = await supabaseAdmin
+        // Increment company wallet balance directly (safe UPDATE, no upsert with bogus fields)
+        const { data: companyWallet, error: cwErr } = await supabaseAdmin
             .from('wallets')
             .select('balance_btc')
             .eq('user_id', COMPANY_WALLET_ID)
             .maybeSingle();
 
+        if (cwErr) throw new Error(`Company wallet fetch failed: ${cwErr.message}`);
+
         const newCompanyBalance = parseFloat(
             (parseFloat(companyWallet?.balance_btc || 0) + platformFee).toFixed(8)
         );
 
-        // 2. Credit wallets FIRST (source of truth)
-        await supabaseAdmin.from('wallets').upsert({
-            user_id:            COMPANY_WALLET_ID,
-            balance_btc:        newCompanyBalance,
-            locked_balance_btc: 0,
-            private_key:        'placeholder_private_key',
-            updated_at:         new Date().toISOString(),
-        }, { onConflict: 'user_id' });
-
-        // 3. Keep secondary tables in sync
-        await supabaseAdmin.from('user_balances').upsert({
-            user_id:     COMPANY_WALLET_ID,
-            balance_btc: newCompanyBalance,
-            updated_at:  new Date().toISOString(),
-        });
-        await supabaseAdmin.from('user_wallets')
+        const { error: feeUpdateErr } = await supabaseAdmin
+            .from('wallets')
             .update({ balance_btc: newCompanyBalance, updated_at: new Date().toISOString() })
             .eq('user_id', COMPANY_WALLET_ID);
 
-        // 4. Record fee in wallet_transactions — full audit trail
+        if (feeUpdateErr) throw new Error(`Company wallet update failed: ${feeUpdateErr.message}`);
+
+        // Record fee transaction for audit trail
         await supabaseAdmin.from('wallet_transactions').insert({
             user_id:    COMPANY_WALLET_ID,
             type:       'FEE',
             amount_btc: platformFee,
             status:     'CONFIRMED',
             tx_hash:    releaseTxHash,
-            notes:      `Platform fee from trade ${tradeId.slice(0, 8).toUpperCase()} | buyer:${(tradeData.buyer_id || '').slice(0,8)} seller:${(tradeData.seller_id || '').slice(0,8)} | 0.5% of ₿${amount.toFixed(8)}`,
+            notes:      `Platform fee from trade ${tradeId.slice(0, 8).toUpperCase()} | 0.5% of ₿${amount.toFixed(8)}`,
             created_at: new Date().toISOString(),
         });
 
-        // 5. Mark trade fee as collected
+        // Mark fee as collected on the trade
         await supabaseAdmin.from('trades')
-            .update({ fee_status: feeIsCorrect ? 'COLLECTED' : 'INCORRECT', fee_collected_at: new Date().toISOString(), platform_fee_btc: platformFee })
+            .update({ fee_status: 'COLLECTED', fee_collected_at: new Date().toISOString(), platform_fee_btc: platformFee })
             .eq('id', tradeId);
 
-        console.log(`✅ Fee collected: ${platformFee.toFixed(8)} BTC → company wallet (balance: ${newCompanyBalance.toFixed(8)} BTC)`);
+        console.log(`✅ Fee collected: ${platformFee.toFixed(8)} BTC → company wallet (new balance: ${newCompanyBalance.toFixed(8)} BTC)`);
 
     } catch (feeErr) {
-        // Fee failure must NEVER break the trade — it is already COMPLETED
         console.error(`⚠️ [Escrow] Fee collection failed (trade still COMPLETED):`, feeErr.message);
     }
 
@@ -509,7 +502,7 @@ class TradeEscrowService {
       reason:      'ESCROW_RELEASE',
       trade_id:    tradeId,
       created_at:  new Date().toISOString(),
-    }).catch(() => {});
+    }).then(() => {}).catch(() => {});
 
     // ── Notify both parties ────────────────────────────────────────────────
     await this.notify(
@@ -599,7 +592,7 @@ class TradeEscrowService {
         const syncedLocked = parseFloat((Math.max(0, parseFloat(pBal?.locked_balance_btc || 0) - refundAmount).toFixed(8)));
         await supabaseAdmin.from('wallets')
           .update({ locked_balance_btc: syncedLocked, updated_at: new Date().toISOString() })
-          .eq('user_id', btcProviderId).catch(() => {});
+          .eq('user_id', btcProviderId);
       }
 
       sendSystemAlert(
@@ -759,12 +752,16 @@ class TradeEscrowService {
         .select('status')
         .or(`seller_id.eq.${userId},buyer_id.eq.${userId}`);
 
-      const total    = (all || []).filter(t => t.status === 'COMPLETED').length;
-      const rate     = all?.length > 0 ? Math.round((total / all.length) * 100) : 100;
+      const completed = (all || []).filter(t => t.status === 'COMPLETED').length;
+      const rate      = all?.length > 0 ? Math.round((completed / all.length) * 100) : 100;
+
+      // Never let total_trades go down — preserve historical trade counts
+      const { data: cur } = await supabaseAdmin.from('users').select('total_trades').eq('id', userId).single();
+      const newTotal = Math.max(parseInt(cur?.total_trades || 0), completed);
 
       await supabaseAdmin
         .from('users')
-        .update({ total_trades: total, completion_rate: rate })
+        .update({ total_trades: newTotal, completion_rate: rate })
         .eq('id', userId);
     } catch (e) {
       console.error('[Escrow] updateTradeStats error:', e.message);
