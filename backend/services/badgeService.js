@@ -101,14 +101,20 @@ async function checkAndAwardBadges(userId) {
       }
     }
 
-    // ── Trust tier auto-upgrade ────────────────────────────────────────────
+    // ── Trust tier — upgrade only, NEVER downgrade ────────────────────────
+    // computeTrustTier uses total_trades from DB. If total_trades is lower than
+    // expected (sparse trades table), we still must not take the badge away.
     const computedTier  = computeTrustTier(user.total_trades);
-    const currentIdx    = TRUST_TIERS.indexOf((user.badge || 'BEGINNER').toUpperCase());
+    const currentBadge  = (user.badge || 'BEGINNER').toUpperCase();
+    const currentIdx    = TRUST_TIERS.indexOf(currentBadge);
     const computedIdx   = TRUST_TIERS.indexOf(computedTier);
 
+    // Only write to DB when upgrading — downgrade is permanently blocked
     if (computedIdx > currentIdx) {
       await supabaseAdmin.from('users').update({ badge: computedTier }).eq('id', userId);
-      console.log(`⬆️  Trust badge: ${user.badge || 'BEGINNER'} → ${computedTier} (user ${userId.slice(0,8)})`);
+      console.log(`⬆️  Trust badge: ${currentBadge} → ${computedTier} (user ${userId.slice(0,8)})`);
+    } else if (computedIdx < currentIdx) {
+      console.log(`🛡️  Badge downgrade blocked: ${currentBadge} → ${computedTier} would have been applied (user ${userId.slice(0,8)})`);
     }
   } catch (err) {
     console.error('checkAndAwardBadges error:', err.message);

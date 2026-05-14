@@ -55,6 +55,30 @@ async function pauseSellOffersIfEmpty(sellerId) {
   }
 }
 
+// Guarantee a wallets row exists for a user. Called before every escrow operation.
+// Uses select-then-insert so it works even if wallets.user_id has no unique constraint.
+async function ensureWalletExists(userId) {
+  try {
+    const { data: existing } = await supabaseAdmin
+      .from('wallets').select('user_id').eq('user_id', userId).maybeSingle();
+    if (!existing) {
+      const { error: insertErr } = await supabaseAdmin.from('wallets').insert({
+        user_id:            userId,
+        balance_btc:        0,
+        locked_balance_btc: 0,
+        updated_at:         new Date().toISOString(),
+      });
+      if (insertErr && !insertErr.message?.includes('duplicate')) {
+        console.warn(`[ensureWalletExists] insert warn for ${userId.slice(0,8)}: ${insertErr.message}`);
+      } else if (!insertErr) {
+        console.log(`[ensureWalletExists] created wallets row for ${userId.slice(0,8)}`);
+      }
+    }
+  } catch (e) {
+    console.warn(`[ensureWalletExists] error for ${userId.slice(0,8)}: ${e.message}`);
+  }
+}
+
 class TradeEscrowService {
 
   constructor() {
@@ -106,6 +130,9 @@ class TradeEscrowService {
 
     const amount = parseFloat(amountBtc);
     if (!amount || amount <= 0) throw new Error('Invalid escrow amount');
+
+    // Guarantee wallet rows exist for provider before touching their balance
+    await ensureWalletExists(btcProviderId);
 
     // ── 1. Get BTC provider's balance from wallets table (single source of truth) ──
     const { data: walletRow, error: walletErr } = await supabaseAdmin
@@ -349,6 +376,14 @@ class TradeEscrowService {
         throw new Error(`Invalid trade amount: ${tradeData.amount_btc}`);
     }
 
+    // Guarantee wallet rows exist for BOTH parties before any balance operation.
+    // This prevents the silent-zero bug where UPDATE wallets affects 0 rows because
+    // the buyer has never had a wallets row (e.g. first-time buyer).
+    await Promise.all([
+        ensureWalletExists(btcReceiverId),
+        ensureWalletExists(btcProviderId),
+    ]);
+
     const amount      = parseFloat(tradeData.amount_btc);
     const buyerGets   = parseFloat((amount * 0.995).toFixed(8));
     const platformFee = parseFloat((amount * 0.005).toFixed(8));
@@ -394,6 +429,11 @@ class TradeEscrowService {
         if (resetErr) throw new Error(`Failed to reset stuck escrow lock: ${resetErr.message}`);
     }
 
+    // ── Snapshot buyer's balance BEFORE RPC so we can detect if RPC credited them ──
+    const { data: receiverBefore } = await supabaseAdmin
+        .from('wallets').select('balance_btc').eq('user_id', btcReceiverId).maybeSingle();
+    const receiverBalanceBefore = parseFloat(receiverBefore?.balance_btc || 0);
+
     // ── ONE atomic DB call: credit receiver + fee + mark escrow released + complete trade ──
     // praqen_release_escrow() runs as a single PostgreSQL transaction.
     // If ANY step fails, ALL steps roll back — tables can never go out of sync.
@@ -410,6 +450,34 @@ class TradeEscrowService {
 
     if (releaseErr) throw new Error(`Atomic escrow release failed: ${releaseErr.message}`);
 
+    // ── Ensure buyer's wallets row is credited ─────────────────────────────────
+    // The RPC may UPDATE wallets WHERE user_id = receiver, but if the buyer has no
+    // row yet (first-time buyer, never had BTC), the UPDATE silently affects 0 rows.
+    // We detect this by comparing balance before vs after, then apply a manual UPSERT.
+    const { data: receiverAfter } = await supabaseAdmin
+        .from('wallets').select('balance_btc').eq('user_id', btcReceiverId).maybeSingle();
+    const receiverBalanceAfter = parseFloat(receiverAfter?.balance_btc || 0);
+    const rpcCredited = receiverBalanceAfter - receiverBalanceBefore;
+
+    if (rpcCredited < buyerGets * 0.99) {
+        // RPC did not credit the wallets table (or credited partially) — apply manually
+        console.warn(`[Escrow] RPC credited ₿${rpcCredited.toFixed(8)} to buyer wallets table (expected ₿${buyerGets.toFixed(8)}) — applying manual credit`);
+        const correctedBalance = parseFloat((receiverBalanceAfter + (buyerGets - rpcCredited)).toFixed(8));
+        const { error: manualCreditErr } = await supabaseAdmin
+            .from('wallets')
+            .upsert({
+                user_id:            btcReceiverId,
+                balance_btc:        correctedBalance,
+                locked_balance_btc: 0,
+                updated_at:         new Date().toISOString(),
+            }, { onConflict: 'user_id' });
+        if (manualCreditErr) {
+            console.error(`[Escrow] Manual buyer credit failed: ${manualCreditErr.message}`);
+        } else {
+            console.log(`[Escrow] ✅ Manual credit applied: ₿${correctedBalance.toFixed(8)} → buyer ${btcReceiverId.slice(0,8)}`);
+        }
+    }
+
     // ── Clear locked_balance_btc for the BTC provider (RPC only credits buyer) ──
     const { data: providerWallet } = await supabaseAdmin
         .from('wallets').select('locked_balance_btc').eq('user_id', btcProviderId).maybeSingle();
@@ -420,7 +488,7 @@ class TradeEscrowService {
         .update({ locked_balance_btc: clearedLocked, updated_at: new Date().toISOString() })
         .eq('user_id', btcProviderId);
 
-    // Fetch receiver's new balance from wallets (source of truth) for audit log + return value
+    // Fetch receiver's final balance for audit log + return value
     const { data: receiverWallet } = await supabaseAdmin
         .from('wallets').select('balance_btc').eq('user_id', btcReceiverId).maybeSingle();
     const newReceiverBalance = parseFloat(receiverWallet?.balance_btc || 0);

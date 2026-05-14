@@ -3,8 +3,9 @@
 // All endpoints the Wallet.jsx frontend needs
 
 require('dotenv').config();
-const express      = require('express');
-const router       = express.Router();
+const express           = require('express');
+const router            = express.Router();
+const actionCodeService = require('../services/actionCodeService');
 const hdWallet               = require('../services/hdWalletService');
 const depositMonitor         = require('../services/depositMonitor');
 const realtimeDepositService = require('../services/realtimeDepositService');
@@ -363,7 +364,7 @@ async function pauseSellOffersIfEmpty(sellerId) {
 
 router.post('/send', verifyToken, async (req, res) => {
   try {
-    const { toAddress, amountBtc } = req.body;
+    const { toAddress, amountBtc, actionCode } = req.body;
     const userId = req.userId;
 
     if (!toAddress || !amountBtc || parseFloat(amountBtc) <= 0) {
@@ -469,6 +470,17 @@ router.post('/send', verifyToken, async (req, res) => {
     }
 
     // ── EXTERNAL SEND — on-chain broadcast ───────────────────────────────────
+
+    // ── 2FA: require email action code before broadcasting on-chain ──────────
+    if (!actionCode) {
+      return res.status(403).json({
+        error: 'Security verification required.',
+        requireActionCode: true,
+        action: 'send_btc',
+      });
+    }
+    const sendCodeCheck = actionCodeService.verify(userId, 'send_btc', actionCode);
+    if (!sendCodeCheck.valid) return res.status(403).json({ error: sendCodeCheck.error });
 
     // 2 verifications required to withdraw BTC to an external address
     const { data: sendUser } = await supabaseAdmin

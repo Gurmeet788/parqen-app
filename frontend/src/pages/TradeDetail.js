@@ -863,6 +863,9 @@ export default function TradeDetail({user}) {
   const [showFb,         setShowFb]         = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [tradeCompleted, setTradeCompleted] = useState(false);
+  const [show2FA,        setShow2FA]        = useState(false);
+  const [actionCode2FA,  setActionCode2FA]  = useState('');
+  const [sending2FA,     setSending2FA]     = useState(false);
   const [imgSrc,    setImgSrc]    = useState(null);
   const [fbSub,     setFbSub]     = useState(false);
   const [profUser,  setProfUser]  = useState(null);
@@ -1069,17 +1072,35 @@ export default function TradeDetail({user}) {
     finally{setSubmitting(false);}
   };
 
-  const releaseBtc=async()=>{
+  const requestRelease=async()=>{
     setShowRelConfirm(false);
+    setSending2FA(true);
+    try{
+      await axios.post(`${API_URL}/auth/send-action-code`,{action:'release_btc'},{headers:authH()});
+      setActionCode2FA('');
+      setShow2FA(true);
+      toast.info('Security code sent to your email.');
+    }catch(e){toast.error(e?.response?.data?.error||'Failed to send security code.');}
+    finally{setSending2FA(false);}
+  };
+
+  const releaseBtc=async()=>{
+    if(!actionCode2FA||actionCode2FA.length!==6){toast.error('Enter the 6-digit code from your email.');return;}
+    setShow2FA(false);
     setSubmitting(true);
     try{
-      await axios.post(`${API_URL}/trades/${id}/release`,{},{headers:authH()});
+      await axios.post(`${API_URL}/trades/${id}/release`,{actionCode:actionCode2FA},{headers:authH()});
+      setActionCode2FA('');
       await postSys('🎉 TRADE COMPLETE! Bitcoin has been released to the buyer. Congratulations to both parties — always come back and trade safely on PRAQEN! 🙌');
       toast.success('✅ Trade complete! Please leave feedback.');
       setTradeCompleted(true);
       setShowSuccessModal(true);
       await loadTrade();
-    }catch(e){toast.error(e?.response?.data?.error||'Failed');}
+    }catch(e){
+      const msg=e?.response?.data?.error||'Failed';
+      toast.error(msg);
+      if(msg.toLowerCase().includes('code')||msg.toLowerCase().includes('security')){setShow2FA(true);}
+    }
     finally{setSubmitting(false);}
   };
 
@@ -2057,14 +2078,63 @@ export default function TradeDetail({user}) {
             {icon:'✅', text:'Only release Bitcoin AFTER you have confirmed the payment in your bank or mobile money account.'},
             {icon:'⚠️', text:'This action is PERMANENT and cannot be reversed. Bitcoin will leave escrow immediately.'},
             {icon:'🔒', text:'A 0.5% fee will be automatically deducted by the escrow system.'},
+            {icon:'🔐', text:'A security code will be sent to your email to confirm this action.'},
           ]}
-          confirmLabel="🔓 Release Bitcoin"
+          confirmLabel={sending2FA?'Sending code…':'🔐 Send Security Code'}
           confirmBg={C.green}
           confirmColor="#fff"
           onClose={()=>setShowRelConfirm(false)}
-          onConfirm={releaseBtc}
-          submitting={submitting}
+          onConfirm={requestRelease}
+          submitting={sending2FA}
         />
+      )}
+
+      {show2FA && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{backgroundColor:'rgba(0,0,0,0.6)',backdropFilter:'blur(4px)'}}>
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{backgroundColor:`${C.green}15`}}>
+                <span className="text-xl">🔐</span>
+              </div>
+              <div>
+                <h3 className="font-black text-base" style={{color:C.g800}}>Security Verification</h3>
+                <p className="text-xs" style={{color:C.g400}}>Check your email for the code</p>
+              </div>
+            </div>
+            <p className="text-sm mb-4" style={{color:C.g600}}>
+              Enter the 6-digit code sent to your email to release Bitcoin. Code expires in 5 minutes.
+            </p>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={actionCode2FA}
+              onChange={e=>setActionCode2FA(e.target.value.replace(/\D/g,'').slice(0,6))}
+              placeholder="000000"
+              autoFocus
+              className="w-full text-center text-3xl font-mono tracking-widest border-2 rounded-xl py-3 mb-1 outline-none transition"
+              style={{borderColor:actionCode2FA.length===6?C.green:C.g200,color:C.g800}}
+              maxLength={6}
+            />
+            <p className="text-xs text-center mb-4" style={{color:C.g400}}>
+              Didn't receive it?{' '}
+              <button onClick={requestRelease} className="font-semibold underline" style={{color:C.green}}>
+                {sending2FA?'Sending…':'Resend code'}
+              </button>
+            </p>
+            <div className="flex gap-3">
+              <button onClick={()=>{setShow2FA(false);setActionCode2FA('');}}
+                className="flex-1 py-3 rounded-xl border font-semibold text-sm transition hover:bg-gray-50"
+                style={{borderColor:C.g200,color:C.g600}}>
+                Cancel
+              </button>
+              <button onClick={releaseBtc} disabled={actionCode2FA.length!==6||submitting}
+                className="flex-1 py-3 rounded-xl text-white font-black text-sm transition hover:opacity-90 disabled:opacity-40"
+                style={{backgroundColor:C.green}}>
+                {submitting?'Releasing…':'🔓 Release Bitcoin'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

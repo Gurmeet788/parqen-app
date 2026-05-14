@@ -35,15 +35,18 @@ const fmtAge = d => {
 // ─── Withdraw Modal ────────────────────────────────────────────────────────────
 function WithdrawModal({ balance, btcPrice, onClose, onSend }) {
   const [address,   setAddress]   = useState('');
-  const [amount,    setAmount]    = useState('');   // BTC input
-  const [usdAmount, setUsdAmount] = useState('');   // USD input
-  const [inputMode, setInputMode] = useState('btc'); // 'btc' | 'usd'
+  const [amount,    setAmount]    = useState('');
+  const [usdAmount, setUsdAmount] = useState('');
+  const [inputMode, setInputMode] = useState('btc');
   const [confirm,   setConfirm]   = useState(false);
   const [sending,   setSending]   = useState(false);
+  // 2FA step
+  const [step,       setStep]       = useState('form'); // 'form' | 'code'
+  const [codeInput,  setCodeInput]  = useState('');
+  const [sending2FA, setSending2FA] = useState(false);
 
   const price  = btcPrice || 88000;
 
-  // Derive btcAmt regardless of which input mode is active
   const btcAmt = inputMode === 'usd'
     ? parseFloat((parseFloat(usdAmount || 0) / price).toFixed(8))
     : parseFloat(amount || 0);
@@ -62,17 +65,39 @@ function WithdrawModal({ balance, btcPrice, onClose, onSend }) {
   const addrOk = isMainnetAddr(address.trim());
   const valid  = addrOk && btcAmt > 0 && hasEnough;
 
-  const switchMode = (mode) => {
-    setInputMode(mode);
-    setAmount('');
-    setUsdAmount('');
+  const switchMode = (mode) => { setInputMode(mode); setAmount(''); setUsdAmount(''); };
+
+  const requestCode = async () => {
+    if (!valid) return;
+    setSending2FA(true);
+    try {
+      const t = localStorage.getItem('token');
+      await axios.post(`${API_URL}/auth/send-action-code`, { action: 'send_btc' },
+        { headers: t ? { Authorization: `Bearer ${t}` } : {} });
+      setCodeInput('');
+      setStep('code');
+      toast.info('Security code sent to your email.');
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Failed to send security code.');
+    } finally {
+      setSending2FA(false);
+    }
   };
 
   const handleSend = async () => {
-    if (!valid) return;
+    if (!codeInput || codeInput.length !== 6) { toast.error('Enter the 6-digit code from your email.'); return; }
     setSending(true);
-    try { await onSend(address.trim(), btcAmt); onClose(); }
-    finally { setSending(false); }
+    try {
+      await onSend(address.trim(), btcAmt, codeInput);
+      onClose();
+    } catch (e) {
+      const msg = e?.response?.data?.error || '';
+      if (msg.toLowerCase().includes('code') || msg.toLowerCase().includes('security')) {
+        toast.error(msg);
+      }
+    } finally {
+      setSending(false);
+    }
   };
 
   const fmtUsdVal = n => `$${parseFloat(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -226,21 +251,65 @@ function WithdrawModal({ balance, btcPrice, onClose, onSend }) {
             </p>
           </label>
 
-          {/* Send button */}
-          <button onClick={handleSend} disabled={!valid || !confirm || sending}
-            className="w-full py-3.5 rounded-xl text-white font-black text-sm flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-40 transition"
-            style={{ backgroundColor: C.danger }}>
-            {sending
-              ? <><RefreshCw size={14} className="animate-spin" /> Sending…</>
-              : <><ArrowUpRight size={14} /> Send {btcAmt > 0 ? `₿ ${fmt(btcAmt)} (${fmtUsdVal(btcAmt * price)})` : 'Bitcoin'}</>}
-          </button>
+          {/* Step 1: Send code button */}
+          {step === 'form' && (
+            <>
+              <button onClick={requestCode} disabled={!valid || !confirm || sending2FA}
+                className="w-full py-3.5 rounded-xl text-white font-black text-sm flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-40 transition"
+                style={{ backgroundColor: C.danger }}>
+                {sending2FA
+                  ? <><RefreshCw size={14} className="animate-spin" /> Sending code…</>
+                  : <><Shield size={14} /> Get Security Code &amp; Send</>}
+              </button>
+              <div className="flex items-start gap-2 p-3 rounded-xl" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
+                <AlertTriangle size={12} style={{ color: C.warn, flexShrink: 0, marginTop: 1 }} />
+                <p className="text-xs font-semibold" style={{ color: '#92400E' }}>
+                  A security code will be emailed to you. Enter it to confirm the withdrawal.
+                </p>
+              </div>
+            </>
+          )}
 
-          <div className="flex items-start gap-2 p-3 rounded-xl" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
-            <AlertTriangle size={12} style={{ color: C.warn, flexShrink: 0, marginTop: 1 }} />
-            <p className="text-xs font-semibold" style={{ color: '#92400E' }}>
-              Double-check the address. Sending to the wrong address results in permanent loss of funds.
-            </p>
-          </div>
+          {/* Step 2: Enter 2FA code */}
+          {step === 'code' && (
+            <div className="space-y-3">
+              <div className="p-3 rounded-xl text-center" style={{ backgroundColor: `${C.green}08`, border: `1px solid ${C.green}20` }}>
+                <p className="text-xs font-semibold" style={{ color: C.green }}>🔐 Security code sent to your email</p>
+                <p className="text-xs mt-0.5" style={{ color: C.g500 }}>Enter the 6-digit code to confirm sending ₿{fmt(btcAmt)}</p>
+              </div>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={codeInput}
+                onChange={e => setCodeInput(e.target.value.replace(/\D/g,'').slice(0,6))}
+                placeholder="000000"
+                autoFocus
+                className="w-full text-center text-3xl font-mono tracking-widest border-2 rounded-xl py-3 outline-none transition"
+                style={{ borderColor: codeInput.length === 6 ? C.green : C.g200, color: C.g800 }}
+                maxLength={6}
+              />
+              <p className="text-xs text-center" style={{ color: C.g400 }}>
+                Didn't receive it?{' '}
+                <button onClick={requestCode} disabled={sending2FA}
+                  className="font-semibold underline disabled:opacity-50"
+                  style={{ color: C.green }}>
+                  {sending2FA ? 'Sending…' : 'Resend code'}
+                </button>
+              </p>
+              <div className="flex gap-3">
+                <button onClick={() => { setStep('form'); setCodeInput(''); }}
+                  className="flex-1 py-3 rounded-xl border font-semibold text-sm hover:bg-gray-50 transition"
+                  style={{ borderColor: C.g200, color: C.g600 }}>
+                  Back
+                </button>
+                <button onClick={handleSend} disabled={codeInput.length !== 6 || sending}
+                  className="flex-1 py-3 rounded-xl text-white font-black text-sm hover:opacity-90 disabled:opacity-40 transition"
+                  style={{ backgroundColor: C.danger }}>
+                  {sending ? <><RefreshCw size={14} className="animate-spin" /> Sending…</> : <><ArrowUpRight size={14} /> Confirm Send</>}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -744,10 +813,10 @@ export default function WalletPage({ user }) {
   };
 
   // ── Send BTC (real on-chain withdrawal) ────────────────────────────────────
-  const sendBitcoin = async (toAddress, amountBtc) => {
+  const sendBitcoin = async (toAddress, amountBtc, actionCode) => {
     try {
       const r = await axios.post(`${API_URL}/hd-wallet/send`,
-        { toAddress, amountBtc },
+        { toAddress, amountBtc, actionCode },
         { headers: authH() }
       );
       toast.success(`₿${fmt(amountBtc)} sent! TX: ${r.data.txid?.slice(0,12)}…`);

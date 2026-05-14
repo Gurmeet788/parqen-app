@@ -60,6 +60,14 @@ setInterval(() => {
   for (const key of Object.keys(typingState)) { if (typingState[key] < now) delete typingState[key]; }
 }, 10000);
 
+// Twilio Verify pending — tracks which phone numbers are awaiting a Twilio Verify OTP
+// Key: e164 phone, Value: { expires: timestamp }
+const twilioVerifyPending = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of twilioVerifyPending) { if (v.expires < now) twilioVerifyPending.delete(k); }
+}, 60000);
+
 // In-memory market cache — serves offers/listings without hitting DB on every page load
 const _marketCache = new Map(); // key -> { data, ts }
 const MARKET_CACHE_TTL = 90000; // 90 seconds
@@ -105,12 +113,44 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
+// ── Rate Limiters ──────────────────────────────────────────────────────────
+const rateLimit = require('express-rate-limit');
+
+// Auth endpoints: 10 attempts per 15 minutes per IP (brute-force protection)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many attempts. Please try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: false,
+});
+
+// OTP/verification: 5 requests per 10 minutes per IP (code-flooding protection)
+const otpLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  message: { error: 'Too many verification requests. Please wait 10 minutes before trying again.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Trade actions: 30 per minute per IP (spam protection)
+const tradeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  message: { error: 'Too many trade requests. Please slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // ── 6. HD Wallet + Deposit Monitor ────────────────────────────────────────
 const hdWalletService        = require('./services/hdWalletService');
 const depositMonitor         = require('./services/depositMonitor');
 const realtimeDepositService = require('./services/realtimeDepositService');
 const hdWalletRoutes         = require('./routes/hdWalletRoutes');
 const tradeEscrowService    = require('./services/tradeEscrowService');
+const actionCodeService     = require('./services/actionCodeService');
 const balanceIntegrity      = require('./services/balanceIntegrityService');
 const { checkAndAwardBadges } = require('./services/badgeService');
 const { syncAllOfferStatuses } = require('./services/offerStatusService');
@@ -546,7 +586,7 @@ function buildWelcomeEmailHtml(username) {
 // then set RESEND_FROM=hello@hellopraqen.com in .env
 const RESEND_FROM_ADDR = process.env.RESEND_FROM || 'PRAQEN <hello@hellopraqen.com>';
 
-async function sendVerificationEmail(email, code) {
+async function sendVerificationEmail(email, code, subject = 'Your PRAQEN Verification Code') {
   console.log(`📧 Sending verification to ${email}`);
   const html = buildVerificationEmailHtml(code);
 
@@ -560,7 +600,7 @@ async function sendVerificationEmail(email, code) {
       const info = await transporter.sendMail({
         from: `"PRAQEN" <${process.env.EMAIL_USER}>`,
         to: email,
-        subject: 'Your PRAQEN Verification Code',
+        subject,
         html,
       });
       console.log(`✅ Verification email sent via Gmail to ${email}`, info.messageId);
@@ -582,7 +622,7 @@ async function sendVerificationEmail(email, code) {
         body: JSON.stringify({
           from: RESEND_FROM_ADDR,
           to: email,
-          subject: 'Your PRAQEN Verification Code',
+          subject,
           html,
         }),
       });
@@ -798,18 +838,23 @@ async function createNotification(userId, type, title, message, action) {
 
 async function updateUserTradeStats(userId) {
   try {
-    const { data: all, error } = await supabaseAdmin.from('trades').select('status').or(`seller_id.eq.${userId},buyer_id.eq.${userId}`);
-    if (error || !all || all.length === 0) return;
+    // Atomic +1 — never recounts from trades table so historical totals are preserved.
+    // If the RPC isn't deployed yet, fall back to a safe read-then-increment (not a table recount).
+    const { error: rpcErr } = await supabaseAdmin.rpc('praqen_increment_trades', { p_user_id: userId });
+    if (rpcErr) {
+      const { data: cur } = await supabaseAdmin.from('users').select('total_trades').eq('id', userId).single();
+      const safePrev = parseInt(cur?.total_trades || 0);
+      await supabaseAdmin.from('users').update({ total_trades: safePrev + 1 }).eq('id', userId);
+    }
 
-    const completed = all.filter(t => t.status === 'COMPLETED').length;
-    const rate      = Math.round((completed / all.length) * 100);
+    // Completion rate uses actual trade rows but does NOT touch total_trades.
+    const { data: all } = await supabaseAdmin.from('trades').select('status').or(`seller_id.eq.${userId},buyer_id.eq.${userId}`);
+    if (all && all.length > 0) {
+      const completed = all.filter(t => t.status === 'COMPLETED').length;
+      const rate = Math.round((completed / all.length) * 100);
+      await supabaseAdmin.from('users').update({ completion_rate: rate }).eq('id', userId);
+    }
 
-    // Never let total_trades go down — preserve historical trade counts
-    const { data: currentUser } = await supabaseAdmin.from('users').select('total_trades').eq('id', userId).single();
-    const currentTotal = parseInt(currentUser?.total_trades || 0);
-    const newTotal     = Math.max(currentTotal, completed);
-
-    await supabaseAdmin.from('users').update({ total_trades: newTotal, completion_rate: rate }).eq('id', userId);
     checkAndAwardBadges(userId).catch(() => {});
   } catch (error) {
     console.error('Error updating user stats:', error);
@@ -982,7 +1027,7 @@ app.get('/api/auth/referrer', async (req, res) => {
   }
 });
 
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
     const { email, password, username, fullName, referralCode } = req.body;
 
@@ -1049,8 +1094,14 @@ app.post('/api/auth/register', async (req, res) => {
 
     const newUser = data[0];
 
-    // ── Seed balance row ───────────────────────────────────────────────────
-    await supabaseAdmin.from('user_balances').insert([{ user_id: newUser.id, balance_btc: 0, balance_usd: 0 }]);
+    // ── Seed balance rows — both tables must exist before any trade ───────
+    await Promise.all([
+      supabaseAdmin.from('user_balances').insert([{ user_id: newUser.id, balance_btc: 0, balance_usd: 0 }])
+        .catch(() => {}),
+      supabaseAdmin.from('wallets').insert({
+        user_id: newUser.id, balance_btc: 0, locked_balance_btc: 0, updated_at: new Date().toISOString(),
+      }).catch(() => {}), // ignore duplicate if row already exists
+    ]);
 
     // ── Generate 6-digit verification code & save to DB (fast) ────────────
     const code = Math.floor(100000 + Math.random() * 900000).toString();
@@ -1173,7 +1224,7 @@ app.post('/api/auth/register-with-referral', async (req, res) => {
   app._router.handle(req, res);
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const { email, password, phone, method } = req.body;
 
@@ -1323,24 +1374,30 @@ async function sendSmsOtp(phone, message) {
 
   // ── Channel 1: Africa's Talking (best delivery for GH/NG/KE/UG/TZ) ─────────
   if (atSms) {
-    try {
-      const sendOpts = { to: [phone], message };
-      const senderId = process.env.AFRICASTALKING_SENDER_ID;
-      if (senderId) sendOpts.from = senderId;
-      const result = await atSms.send(sendOpts);
-      const recip  = result?.SMSMessageData?.Recipients?.[0];
-      // statusCode 101 = Success, status 'Success' also valid
-      if (recip?.statusCode === 101 || (recip?.status || '').toLowerCase() === 'success') {
-        console.log(`[SMS] ✅ Africa's Talking → ${phone} (${recip.status})`);
-        return;
+    const senderId = process.env.AFRICASTALKING_SENDER_ID;
+    // Try with custom sender ID first; if rejected, retry with AT default shortcode.
+    // Custom sender IDs need carrier approval — unapproved IDs are silently dropped.
+    const atAttempts = senderId ? [{ from: senderId }, {}] : [{}];
+    let atDelivered = false;
+    for (const extra of atAttempts) {
+      try {
+        const result = await atSms.send({ to: [phone], message, ...extra });
+        const recip  = result?.SMSMessageData?.Recipients?.[0];
+        console.log(`[SMS] AT attempt (sender=${extra.from || 'default'}):`, JSON.stringify(recip));
+        if (recip?.statusCode === 101 || (recip?.status || '').toLowerCase() === 'success') {
+          console.log(`[SMS] ✅ Africa's Talking → ${phone} via ${extra.from || 'default shortcode'}`);
+          atDelivered = true;
+          break;
+        }
+        const atErr = recip?.status || JSON.stringify(result?.SMSMessageData);
+        console.warn(`[SMS] AT non-success (sender=${extra.from || 'default'}): ${atErr}`);
+        errs.push(`AT(${extra.from || 'default'}): ${atErr}`);
+      } catch (atErr) {
+        console.warn(`[SMS] AT error (sender=${extra.from || 'default'}): ${atErr.message}`);
+        errs.push(`AT: ${atErr.message}`);
       }
-      const atErr = recip?.status || JSON.stringify(result?.SMSMessageData);
-      console.warn(`[SMS] AT returned non-success: ${atErr}`);
-      errs.push(`AT: ${atErr}`);
-    } catch (atErr) {
-      console.warn(`[SMS] Africa's Talking failed: ${atErr.message}`);
-      errs.push(`AT: ${atErr.message}`);
     }
+    if (atDelivered) return;
   } else {
     errs.push('AT: not configured');
   }
@@ -1395,7 +1452,7 @@ async function checkOtp(contact, token) {
   return data;
 }
 
-app.post('/api/auth/send-otp', async (req, res) => {
+app.post('/api/auth/send-otp', otpLimiter, async (req, res) => {
   try {
     const { phone, email, channel } = req.body;
     const ch      = channel || 'email';
@@ -1461,7 +1518,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
   }
 });
 
-app.post('/api/auth/send-phone-otp', async (req, res) => {
+app.post('/api/auth/send-phone-otp', otpLimiter, async (req, res) => {
   try {
     const { phone } = req.body;
     if (!phone) return res.status(400).json({ error: 'Phone required' });
@@ -1492,7 +1549,7 @@ app.post('/api/auth/send-phone-otp', async (req, res) => {
   }
 });
 
-app.post('/api/auth/verify-otp', async (req, res) => {
+app.post('/api/auth/verify-otp', otpLimiter, async (req, res) => {
   try {
     const { phone, email, code, channel, contact, otp } = req.body;
     const ch = channel || 'sms';
@@ -1535,6 +1592,39 @@ app.post('/api/auth/verify-otp', async (req, res) => {
   } catch (error) {
     console.error('[OTP verify unexpected error]', error.message);
     res.status(500).json({ error: `Verification failed: ${error.message}` });
+  }
+});
+
+// ── Action 2FA — high-risk operations (release BTC, send BTC) ────────────────
+// Step 1: request a one-time code   → POST /api/auth/send-action-code
+// Step 2: include the code in the protected request body (actionCode field)
+
+app.post('/api/auth/send-action-code', otpLimiter, verifyToken, async (req, res) => {
+  try {
+    const { action } = req.body;
+    if (!actionCodeService.VALID_ACTIONS.includes(action)) {
+      return res.status(400).json({ error: 'Invalid action type.' });
+    }
+
+    const { data: user } = await supabaseAdmin
+      .from('users').select('email, username').eq('id', req.userId).single();
+    if (!user?.email) {
+      return res.status(400).json({ error: 'No email address on your account. Please add one in Settings.' });
+    }
+
+    const code = actionCodeService.generate(req.userId, action);
+
+    const actionLabels = { release_btc: 'Release Bitcoin', send_btc: 'Send Bitcoin' };
+    const label = actionLabels[action] || action;
+
+    await sendVerificationEmail(user.email, code,
+      `PRAQEN Security Code — ${label}`);
+
+    console.log(`[2FA] Action code sent to ${user.email} for action=${action} user=${req.userId.slice(0,8)}`);
+    res.json({ success: true, message: `Security code sent to ${user.email}` });
+  } catch (err) {
+    console.error('[2FA send-action-code]', err.message);
+    res.status(500).json({ error: 'Failed to send security code. Please try again.' });
   }
 });
 
@@ -1768,7 +1858,7 @@ app.post('/api/users/verify-email-code', verifyToken, async (req, res) => {
 // method: 'email'     -> 6-digit code sent to the user's registered email
 // method: 'whatsapp'  -> 6-digit code sent via Twilio WhatsApp
 // Phone is NOT saved here — it is saved only when the user successfully verifies (verify-phone-otp).
-app.post('/api/users/send-phone-otp', verifyToken, async (req, res) => {
+app.post('/api/users/send-phone-otp', otpLimiter, verifyToken, async (req, res) => {
   try {
     const { phone, method = 'email' } = req.body;
     if (!phone) return res.status(400).json({ error: 'Phone number required' });
@@ -1838,9 +1928,22 @@ app.post('/api/users/send-phone-otp', verifyToken, async (req, res) => {
 
     // ── SMS ────────────────────────────────────────────────────────────────────
     if (method === 'sms') {
+      // ── Primary: Twilio Verify (best international OTP delivery) ────────────
+      if (twilioClient && twilioVerifySid) {
+        try {
+          await twilioClient.verify.v2.services(twilioVerifySid).verifications.create({ to: e164, channel: 'sms' });
+          // Twilio manages the OTP code — mark this number as pending Twilio Verify
+          twilioVerifyPending.set(e164, { expires: Date.now() + 10 * 60 * 1000 });
+          console.log(`[send-phone-otp] ✅ Twilio Verify SMS → ${e164}`);
+          return res.json({ success: true, message: `Verification code sent via SMS to ${e164}` });
+        } catch (verifyErr) {
+          console.warn(`[send-phone-otp] Twilio Verify failed (${verifyErr.code}): ${verifyErr.message} — falling back`);
+        }
+      }
+      // ── Fallback: Africa's Talking / Twilio direct ────────────────────────
       try {
         await sendSmsOtp(e164, `Your PRAQEN code is: ${otp}. Valid 10 min. Do not share.`);
-        console.log(`[send-phone-otp] SMS OTP → ${e164}`);
+        console.log(`[send-phone-otp] SMS OTP (fallback) → ${e164}`);
         return res.json({
           success: true,
           message: `Code sent via SMS to ${e164}`,
@@ -1849,7 +1952,7 @@ app.post('/api/users/send-phone-otp', verifyToken, async (req, res) => {
       } catch (smsErr) {
         console.error('[send-phone-otp] SMS error:', smsErr.message);
         return res.status(500).json({
-          error: 'SMS delivery failed. Please try the email or WhatsApp option.',
+          error: 'SMS delivery failed. Please try the email option instead.',
           devCode: isDev ? otp : undefined,
         });
       }
@@ -1863,13 +1966,25 @@ app.post('/api/users/send-phone-otp', verifyToken, async (req, res) => {
           devCode: isDev ? otp : undefined,
         });
       }
+      // ── Primary: Twilio Verify WhatsApp (more reliable than sandbox) ────────
+      if (twilioVerifySid) {
+        try {
+          await twilioClient.verify.v2.services(twilioVerifySid).verifications.create({ to: e164, channel: 'whatsapp' });
+          twilioVerifyPending.set(e164, { expires: Date.now() + 10 * 60 * 1000 });
+          console.log(`[send-phone-otp] ✅ Twilio Verify WhatsApp → ${e164}`);
+          return res.json({ success: true, message: 'Verification code sent via WhatsApp' });
+        } catch (verifyWaErr) {
+          console.warn(`[send-phone-otp] Twilio Verify WhatsApp failed (${verifyWaErr.code}): ${verifyWaErr.message} — falling back to sandbox`);
+        }
+      }
+      // ── Fallback: Twilio WhatsApp sandbox ─────────────────────────────────
       try {
         await twilioClient.messages.create({
           body: `*PRAQEN Phone Verification*\n\nYour code: *${otp}*\n\nValid 10 minutes. Never share this code.`,
           from: TWILIO_WA_FROM,
           to:   `whatsapp:${e164}`,
         });
-        console.log(`[send-phone-otp] WhatsApp OTP → ${e164}`);
+        console.log(`[send-phone-otp] WhatsApp OTP (sandbox) → ${e164}`);
         return res.json({
           success: true,
           message: 'Code sent via WhatsApp',
@@ -1996,21 +2111,39 @@ app.post('/api/users/verify-phone-otp', verifyToken, async (req, res) => {
       return res.status(429).json({ error: `Too many failed attempts. Try again in ${mins} minute(s).` });
     }
 
-    // ── Check in-memory first (fast path) ─────────────────────────────────
-    const stored = otpStore.get(e164);
     let verified = false;
 
-    if (stored && String(stored.otp) === code && Date.now() <= stored.expires) {
-      otpStore.delete(e164);
-      verified = true;
+    // ── Path 1: Twilio Verify (used when SMS/WhatsApp sent via Twilio Verify) ─
+    const tvPending = twilioVerifyPending.get(e164);
+    if (tvPending && twilioClient && twilioVerifySid) {
+      try {
+        const check = await twilioClient.verify.v2.services(twilioVerifySid)
+          .verificationChecks.create({ to: e164, code });
+        if (check.status === 'approved') {
+          twilioVerifyPending.delete(e164);
+          verified = true;
+          console.log(`[verify-phone-otp] ✅ Twilio Verify approved for ${e164}`);
+        } else {
+          console.warn(`[verify-phone-otp] Twilio Verify status: ${check.status} for ${e164}`);
+        }
+      } catch (tvErr) {
+        console.warn(`[verify-phone-otp] Twilio Verify check error: ${tvErr.message} — falling back to stored OTP`);
+      }
     }
 
-    // ── DB fallback (handles server restarts) ──────────────────────────────
+    // ── Path 2: In-memory OTP (fast path, used when sent via AT/direct SMS) ───
     if (!verified) {
-      const dbRecord = await checkOtp(e164, code); // uses otp_codes table
-      if (dbRecord) {
+      const stored = otpStore.get(e164);
+      if (stored && String(stored.otp) === code && Date.now() <= stored.expires) {
+        otpStore.delete(e164);
         verified = true;
       }
+    }
+
+    // ── Path 3: DB fallback (handles server restarts) ─────────────────────────
+    if (!verified) {
+      const dbRecord = await checkOtp(e164, code);
+      if (dbRecord) verified = true;
     }
 
     if (!verified) {
@@ -3459,7 +3592,7 @@ app.post('/api/trades', verifyToken, async (req, res) => {
   }
 });
 
-app.post('/api/trades/:id/mark-paid', verifyToken, async (req, res) => {
+app.post('/api/trades/:id/mark-paid', tradeLimiter, verifyToken, async (req, res) => {
   try {
     const { data: trade, error: fetchError } = await supabaseAdmin
       .from('trades').select('*').eq('id', req.params.id).single();
@@ -3544,8 +3677,20 @@ app.post('/api/trades/:id/mark-paid', verifyToken, async (req, res) => {
   }
 });
 
-app.post('/api/trades/:id/release', verifyToken, async (req, res) => {
+app.post('/api/trades/:id/release', tradeLimiter, verifyToken, async (req, res) => {
   try {
+    // ── 2FA: require email action code before releasing BTC ─────────────────
+    const { actionCode } = req.body;
+    if (!actionCode) {
+      return res.status(403).json({
+        error: 'Security verification required.',
+        requireActionCode: true,
+        action: 'release_btc',
+      });
+    }
+    const codeCheck = actionCodeService.verify(req.userId, 'release_btc', actionCode);
+    if (!codeCheck.valid) return res.status(403).json({ error: codeCheck.error });
+
     const { data: releasedTrade } = await supabaseAdmin.from('trades').select('*').eq('id', req.params.id).single();
     const result = await tradeEscrowService.releaseBitcoinToBuyer(req.params.id, req.userId);
     res.json(result);
@@ -3578,7 +3723,7 @@ app.post('/api/trades/:id/release', verifyToken, async (req, res) => {
   }
 });
 
-app.post('/api/trades/:id/cancel', verifyToken, async (req, res) => {
+app.post('/api/trades/:id/cancel', tradeLimiter, verifyToken, async (req, res) => {
   try {
     const { reason } = req.body;
     const { data: trade, error: fetchError } = await supabaseAdmin.from('trades').select('*').eq('id', req.params.id).single();
@@ -3761,7 +3906,7 @@ app.get('/api/trades/:id/typing', verifyToken, async (req, res) => {
 // DISPUTES
 // ============================================================
 
-app.post('/api/trades/:id/dispute', verifyToken, async (req, res) => {
+app.post('/api/trades/:id/dispute', tradeLimiter, verifyToken, async (req, res) => {
   try {
     const { reason } = req.body;
     const { data: trade } = await supabaseAdmin.from('trades').select('*').eq('id', req.params.id).single();
@@ -3923,20 +4068,36 @@ app.post('/api/trades/:id/feedback', verifyToken, async (req, res) => {
     if (existing) return res.status(400).json({ error: 'Feedback already submitted for this trade' });
     const { data: review, error } = await supabaseAdmin.from('reviews').insert([{ trade_id: req.params.id, reviewer_id: req.userId, reviewee_id: toUserId, rating: parseInt(rating), comment: comment || '', created_at: new Date() }]).select();
     if (error) return res.status(400).json({ error: error.message });
-    const { data: allReviews } = await supabaseAdmin.from('reviews').select('rating').eq('reviewee_id', toUserId);
-    if (allReviews?.length > 0) {
-      const avg = allReviews.reduce((s, r) => s + r.rating, 0) / allReviews.length;
-      const posCount = allReviews.filter(r => r.rating >= 4).length;
-      const negCount = allReviews.filter(r => r.rating <= 2).length;
+
+    // ── Atomic feedback increment via DB function ─────────────────────────────
+    // Uses a single SQL UPDATE so no trigger or race condition can intercept
+    // the read-modify-write cycle. DB-level guard (protect_user_stats trigger)
+    // also blocks any attempt to lower the counts.
+    const ratingVal = parseInt(rating);
+    const { error: rpcErr } = await supabaseAdmin.rpc('praqen_add_feedback', {
+      p_user_id: toUserId,
+      p_rating:  ratingVal,
+    });
+    if (rpcErr) {
+      // RPC not yet deployed — fall back to safe increment
+      console.warn('[feedback] praqen_add_feedback RPC not found, using fallback:', rpcErr.message);
+      const { data: recipientUser } = await supabaseAdmin
+        .from('users')
+        .select('positive_feedback, negative_feedback, total_feedback_count, average_rating')
+        .eq('id', toUserId).single();
+      const prevPos   = parseInt(recipientUser?.positive_feedback    || 0);
+      const prevNeg   = parseInt(recipientUser?.negative_feedback     || 0);
+      const prevCount = parseInt(recipientUser?.total_feedback_count  || 0);
+      const prevAvg   = parseFloat(recipientUser?.average_rating      || 0);
+      const newCount  = prevCount + 1;
       await supabaseAdmin.from('users').update({
-        average_rating: parseFloat(avg.toFixed(2)),
-        total_feedback_count: allReviews.length,
-        positive_feedback: posCount,
-        negative_feedback: negCount,
+        positive_feedback:    prevPos   + (ratingVal >= 4 ? 1 : 0),
+        negative_feedback:    prevNeg   + (ratingVal <= 2 ? 1 : 0),
+        total_feedback_count: newCount,
+        average_rating:       parseFloat(((prevAvg * prevCount + ratingVal) / newCount).toFixed(2)),
       }).eq('id', toUserId);
     }
-    await updateUserTradeStats(trade.seller_id);
-    await updateUserTradeStats(trade.buyer_id);
+
     res.json({ success: true, review: review[0] });
   } catch (error) {
     res.status(500).json({ error: error.message });
