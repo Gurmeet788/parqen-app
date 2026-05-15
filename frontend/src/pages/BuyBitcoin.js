@@ -881,6 +881,7 @@ export default function BuyBitcoin({user}) {
   const [listings,     setListings]     = useState(()=>_sellNow());
   const [loading,      setLoading]      = useState(()=>_sellNow().length===0);
   const [loadError,    setLoadError]    = useState(false);
+  const [retrying,     setRetrying]     = useState(false);
   const [btcPrice,     setBtcPrice]     = useState(68000);
   const [selCountry,    setSelCountry]    = useState(COUNTRIES[0]);
   const [countrySearch, setCountrySearch] = useState('');
@@ -911,21 +912,26 @@ export default function BuyBitcoin({user}) {
     if (contextBtcUsd > 0) setBtcPrice(contextBtcUsd);
   }, [contextBtcUsd]);
 
-  const loadListings = async () => {
+  const loadListings = async (attempt = 1) => {
     setLoadError(false);
+    setRetrying(false);
     try {
-      const r = await axios.get(`${API_URL}/listings`, { timeout: 12000 });
+      const r = await axios.get(`${API_URL}/listings`, { timeout: 25000 });
       const all = (r.data.listings || []).map(l => ({...l, users: Array.isArray(l.users) ? l.users[0] : l.users}));
       const sellOffers = all.filter(l => l.listing_type === 'SELL' || l.listing_type === 'SELL_BITCOIN');
       setListings(sellOffers);
       setLastSynced(new Date());
-      // Store ALL listings so Sell/GiftCards tabs load instantly from this cache
       try { sessionStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() })); } catch {}
     } catch {
-      // Only show error UI if we have absolutely nothing to display
-      if (!listings.length) setLoadError(true);
+      if (attempt < 3) {
+        setRetrying(true);
+        setTimeout(() => loadListings(attempt + 1), 4000);
+      } else {
+        setRetrying(false);
+        if (!listings.length) setLoadError(true);
+      }
     }
-    finally { setLoading(false); }
+    finally { if (attempt === 1 || attempt >= 3) setLoading(false); }
   };
 
   useEffect(() => {
@@ -1447,15 +1453,24 @@ export default function BuyBitcoin({user}) {
           </button>
         </div>
 
-        {loading && !listings.length ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 w-full">
-            {Array(6).fill(0).map((_,i)=><SkeletonCard key={i}/>)}
+        {(loading && !listings.length) || retrying ? (
+          <div className="bg-white rounded-2xl border p-8 text-center" style={{borderColor:C.g200}}>
+            <p className="text-5xl mb-3">⏳</p>
+            <p className="font-black text-base mb-1" style={{color:C.g800}}>
+              {retrying ? 'Waking up server…' : 'Loading offers…'}
+            </p>
+            <p className="text-sm" style={{color:C.g400}}>
+              {retrying ? 'Our server is starting up, this takes a few seconds' : 'Fetching the latest offers for you'}
+            </p>
+            <div className="flex justify-center mt-4">
+              <div className="w-8 h-8 border-4 rounded-full animate-spin" style={{borderColor:`${C.forest}40`, borderTopColor:'transparent'}}/>
+            </div>
           </div>
         ) : loadError && !listings.length ? (
           <div className="bg-white rounded-2xl border p-8 text-center" style={{borderColor:C.g200}}>
             <p className="text-5xl mb-3">📡</p>
             <p className="font-black text-base mb-1" style={{color:C.g800}}>Couldn't load offers</p>
-            <p className="text-sm mb-4" style={{color:C.g400}}>Check your internet connection and try again</p>
+            <p className="text-sm mb-4" style={{color:C.g400}}>Server may be busy. Please try again.</p>
             <button onClick={()=>{ setLoading(true); loadListings(); }}
               className="px-6 py-2.5 rounded-xl text-white text-sm font-black hover:opacity-90 transition flex items-center gap-2 mx-auto"
               style={{backgroundColor:C.forest}}>

@@ -1327,15 +1327,24 @@ export default function GiftCards({user}) {
           </button>
         </div>
 
-        {loading && !listings.length ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3">
-            {Array(6).fill(0).map((_,i)=><SkeletonCard key={i}/>)}
+        {(loading && !listings.length) || retrying ? (
+          <div className="bg-white rounded-2xl border p-8 text-center" style={{borderColor:C.g200}}>
+            <p className="text-5xl mb-3">⏳</p>
+            <p className="font-black text-base mb-1" style={{color:C.g800}}>
+              {retrying ? 'Waking up server…' : 'Loading offers…'}
+            </p>
+            <p className="text-sm" style={{color:C.g400}}>
+              {retrying ? 'Our server is starting up, this takes a few seconds' : 'Fetching the latest offers for you'}
+            </p>
+            <div className="flex justify-center mt-4">
+              <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{borderColor:`${C.forest}40`, borderTopColor:'transparent'}}/>
+            </div>
           </div>
         ) : loadError && !listings.length ? (
           <div className="bg-white rounded-2xl border p-8 text-center" style={{borderColor:C.g200}}>
             <p className="text-5xl mb-3">📡</p>
             <p className="font-black text-base mb-1" style={{color:C.g800}}>Couldn't load offers</p>
-            <p className="text-sm mb-4" style={{color:C.g400}}>Check your internet connection and try again</p>
+            <p className="text-sm mb-4" style={{color:C.g400}}>Server may be busy. Please try again.</p>
             <button onClick={()=>{ setLoading(true); loadListings(); }}
               className="px-6 py-2.5 rounded-xl text-white text-sm font-black hover:opacity-90 transition flex items-center gap-2 mx-auto"
               style={{backgroundColor:C.forest}}>
