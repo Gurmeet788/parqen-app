@@ -817,6 +817,7 @@ export default function GiftCards({user}) {
   const [listings,     setListings]     = useState(()=>_gcNow());
   const [loading,      setLoading]      = useState(()=>_gcNow().length===0);
   const [loadError,    setLoadError]    = useState(false);
+  const [retrying,     setRetrying]     = useState(false);
   const [btcPrice,     setBtcPrice]     = useState(68000);
   const [selCurrency,  setSelCurrency]  = useState(CURRENCIES[0]);
   const [selBrand,     setSelBrand]     = useState('All Brands');
@@ -876,16 +877,15 @@ export default function GiftCards({user}) {
     return()=>document.removeEventListener('mousedown',h);
   },[]);
 
-  const loadListings = async () => {
+  const loadListings = async (attempt = 1) => {
     setLoadError(false);
+    setRetrying(false);
     try {
-      const r = await axios.get(`${API_URL}/listings`, { timeout: 12000 });
+      const r = await axios.get(`${API_URL}/listings`, { timeout: 25000 });
       const all=(r.data.listings||[]).map(l=>({...l,users:Array.isArray(l.users)?l.users[0]:l.users}));
       const data=all.filter(l=>l.listing_type==='BUY_GIFT_CARD'||l.listing_type==='SELL_GIFT_CARD');
       setListings(data);
-      // Store ALL listings in shared cache so Buy/Sell tabs load instantly
       try { sessionStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() })); } catch {}
-      // Check for paused offers in background — non-blocking
       const tk = localStorage.getItem('token');
       if (tk) {
         axios.get(`${API_URL}/my-listings`, { headers: { Authorization: `Bearer ${tk}` } })
@@ -897,9 +897,16 @@ export default function GiftCards({user}) {
           }).catch(()=>{});
       }
     } catch {
-      if (!listings.length) setLoadError(true);
+      if (attempt < 3) {
+        // Auto-retry up to 2 more times — server may be waking from cold start
+        setRetrying(true);
+        setTimeout(() => loadListings(attempt + 1), 4000);
+      } else {
+        setRetrying(false);
+        if (!listings.length) setLoadError(true);
+      }
     }
-    finally { setLoading(false); }
+    finally { if (attempt === 1 || attempt >= 3) setLoading(false); }
   };
 
   const getFiltered = () => {

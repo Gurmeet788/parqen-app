@@ -254,7 +254,7 @@ function ProfileSummary({ user, profile, stats }) {
 const BADGE_COLORS = { BEGINNER:'#7C3AED', PRO:'#065F46', EXPERT:'#1E40AF', AMBASSADOR:'#0D9488', LEGEND:'#D97706' };
 const RANK_MEDALS = ['🥇','🥈','🥉'];
 
-function AffiliateSection({ user, profile, earnings, referralData, btcPrice, onWithdraw, dbReferralCount, dbTotalEarnings, leaderboard }) {
+function AffiliateSection({ user, profile, earnings, referralData, btcPrice, onWithdraw, dbReferralCount, dbTotalEarnings, dbReferralTrades, leaderboard }) {
   const [copied, setCopied] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const referralLink = `https://praqen.com/signup?ref=${user?.referral_code || profile?.referral_code || 'PRAQEN'}`;
@@ -273,7 +273,11 @@ function AffiliateSection({ user, profile, earnings, referralData, btcPrice, onW
     referralData?.referralCount       || 0,
     new Set(earnings.map(e=>e.referred_user_id)).size,
   );
-  const totalTrades = earnings.length;
+  const totalTrades = Math.max(
+    dbReferralTrades             || 0,
+    referralData?.tradeCount     || 0,
+    earnings.length,
+  );
   const lastEarning = earnings[0]?.commission_btc||0;
 
   const copy = () => {
@@ -309,8 +313,8 @@ function AffiliateSection({ user, profile, earnings, referralData, btcPrice, onW
     {trades:50,  label:'Champion',  reward:'0.25%', color:'#8B5CF6' },
     {trades:100, label:'Elite',     reward:'0.3%',  color:'#F4A422' },
   ];
-  const currentTier = [...TIERS].reverse().find(t=>totalTrades>=t.trades)||TIERS[0];
-  const nextTier    = TIERS.find(t=>t.trades>totalTrades);
+  const currentTier = [...TIERS].reverse().find(t => totalTrades >= t.trades) || null;
+  const nextTier    = TIERS.find(t => t.trades > totalTrades);
 
   return (
     <div className="space-y-4">
@@ -351,7 +355,11 @@ function AffiliateSection({ user, profile, earnings, referralData, btcPrice, onW
             <div className="text-center p-3 rounded-xl" style={{backgroundColor:'rgba(255,255,255,0.1)'}}>
               <p className="text-lg mb-0.5">💰</p>
               <p className="font-black text-sm text-white">₿ {fmtBtc(totalEarnings)}</p>
-              {btcPrice > 0 && <p className="text-xs" style={{color:'#FDE68A'}}>≈ ${totalUsd.toFixed(2)}</p>}
+              {btcPrice > 0 && (
+                <p className="text-xs" style={{color:'#FDE68A'}}>
+                  ≈ {totalUsd >= 0.01 ? `$${totalUsd.toFixed(2)}` : totalUsd > 0 ? `$${totalUsd.toFixed(5)}` : '$0.00'}
+                </p>
+              )}
               <p className="text-xs" style={{color:'rgba(255,255,255,0.55)'}}>Total Earned</p>
             </div>
             <div className="text-center p-3 rounded-xl" style={{backgroundColor:'rgba(255,255,255,0.1)'}}>
@@ -414,15 +422,22 @@ function AffiliateSection({ user, profile, earnings, referralData, btcPrice, onW
       <div className="bg-white rounded-2xl border shadow-sm p-4" style={{borderColor:C.g200}}>
         <div className="flex items-center justify-between mb-3">
           <p className="text-xs font-black" style={{color:C.forest}}>🏆 Commission Tiers</p>
-          <span className="text-xs font-black px-2.5 py-1 rounded-full text-white"
-            style={{backgroundColor:currentTier.color}}>
-            {currentTier.label} — {currentTier.reward}
-          </span>
+          {currentTier ? (
+            <span className="text-xs font-black px-2.5 py-1 rounded-full text-white"
+              style={{backgroundColor:currentTier.color}}>
+              {currentTier.label} — {currentTier.reward}
+            </span>
+          ) : (
+            <span className="text-xs font-bold px-2.5 py-1 rounded-full"
+              style={{backgroundColor:C.g100, color:C.g500}}>
+              No tier yet
+            </span>
+          )}
         </div>
         <div className="space-y-1.5">
           {TIERS.map((tier,i)=>{
-            const active = currentTier.trades===tier.trades;
-            const done   = totalTrades>=tier.trades;
+            const active = currentTier?.trades === tier.trades;
+            const done   = totalTrades >= tier.trades;
             return (
               <div key={i} className="flex items-center gap-3 p-2.5 rounded-xl transition"
                 style={{
@@ -454,13 +469,34 @@ function AffiliateSection({ user, profile, earnings, referralData, btcPrice, onW
           <div className="mt-3 p-2.5 rounded-xl border"
             style={{borderColor:`${nextTier.color}30`, backgroundColor:`${nextTier.color}08`}}>
             <div className="flex justify-between text-xs mb-1">
-              <span style={{color:C.g500}}>Progress to <strong style={{color:nextTier.color}}>{nextTier.label}</strong></span>
-              <span style={{color:nextTier.color}}>{totalTrades}/{nextTier.trades} trades</span>
+              <span style={{color:C.g500}}>
+                Progress to <strong style={{color:nextTier.color}}>{nextTier.label}</strong>
+              </span>
+              <span className="font-black" style={{color:nextTier.color}}>
+                {totalTrades}/{nextTier.trades} trades
+              </span>
             </div>
-            <div className="h-2 rounded-full" style={{backgroundColor:C.g200}}>
-              <div className="h-2 rounded-full transition-all"
-                style={{width:`${Math.min(100,(totalTrades/nextTier.trades)*100)}%`, backgroundColor:nextTier.color}}/>
+            <div className="h-2.5 rounded-full overflow-hidden" style={{backgroundColor:C.g200}}>
+              <div className="h-2.5 rounded-full transition-all duration-700"
+                style={{
+                  width: totalTrades > 0
+                    ? `${Math.max(5, Math.min(100, (totalTrades / nextTier.trades) * 100))}%`
+                    : '0%',
+                  backgroundColor: nextTier.color,
+                  backgroundImage: totalTrades > 0 && totalTrades < nextTier.trades
+                    ? 'linear-gradient(90deg,rgba(255,255,255,0.2) 25%,transparent 25%,transparent 50%,rgba(255,255,255,0.2) 50%,rgba(255,255,255,0.2) 75%,transparent 75%)'
+                    : 'none',
+                  backgroundSize: '16px 100%',
+                  animation: totalTrades > 0 && totalTrades < nextTier.trades
+                    ? 'tier-stripe 1.2s linear infinite' : 'none',
+                }}/>
             </div>
+            <style>{`@keyframes tier-stripe{from{background-position:0 0}to{background-position:16px 0}}`}</style>
+            {totalTrades > 0 && (
+              <p className="text-xs mt-1.5 font-bold" style={{color:nextTier.color}}>
+                {nextTier.trades - totalTrades} more referral trade{nextTier.trades - totalTrades !== 1 ? 's' : ''} to unlock {nextTier.label} ({nextTier.reward})
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -471,12 +507,36 @@ function AffiliateSection({ user, profile, earnings, referralData, btcPrice, onW
           <p className="text-xs font-black mb-3" style={{color:C.forest}}>💸 Withdraw Earnings</p>
           <div className="flex justify-between text-xs mb-1">
             <span style={{color:C.g500}}>Progress to $10.00 minimum</span>
-            <span className="font-bold" style={{color:C.forest}}>${totalUsd.toFixed(2)} / $10.00</span>
+            <span className="font-bold" style={{color:C.forest}}>
+              {totalUsd >= 0.01
+                ? `$${totalUsd.toFixed(2)}`
+                : totalUsd > 0
+                  ? `$${totalUsd.toFixed(6)}`
+                  : '$0.00'
+              } / $10.00
+            </span>
           </div>
-          <div className="w-full rounded-full h-2.5 mb-3" style={{backgroundColor:C.g200}}>
-            <div className="h-2.5 rounded-full transition-all"
-              style={{width:`${Math.min(100,(totalUsd/10)*100)}%`, backgroundColor:C.success}}/>
+          {/* Sub-label: always show BTC amount so user sees their real balance */}
+          {totalEarnings > 0 && (
+            <p className="text-xs mb-1.5" style={{color:C.g400}}>
+              ₿ {fmtBtc(totalEarnings)} earned
+            </p>
+          )}
+          <div className="w-full rounded-full h-2.5 mb-3 overflow-hidden" style={{backgroundColor:C.g200}}>
+            <div className="h-2.5 rounded-full transition-all duration-700"
+              style={{
+                width: totalEarnings > 0
+                  ? `${Math.max(3, Math.min(100, (totalUsd / 10) * 100))}%`
+                  : '0%',
+                backgroundColor: C.success,
+                backgroundImage: totalUsd < 10
+                  ? 'linear-gradient(90deg,rgba(255,255,255,0.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,0.15) 50%,rgba(255,255,255,0.15) 75%,transparent 75%)'
+                  : 'none',
+                backgroundSize: '20px 100%',
+                animation: totalEarnings > 0 && totalUsd < 10 ? 'progress-stripe 1s linear infinite' : 'none',
+              }}/>
           </div>
+          <style>{`@keyframes progress-stripe{from{background-position:0 0}to{background-position:20px 0}}`}</style>
           <button
             onClick={onWithdraw}
             disabled={totalUsd < 10}
@@ -484,7 +544,7 @@ function AffiliateSection({ user, profile, earnings, referralData, btcPrice, onW
             style={{backgroundColor: totalUsd >= 10 ? C.forest : C.g400}}>
             {totalUsd >= 10
               ? `💰 Withdraw ₿ ${fmtBtc(totalEarnings)} to Wallet`
-              : `⏳ Need $${(10 - totalUsd).toFixed(2)} more to withdraw`}
+              : `⏳ Need $${Math.max(0, 10 - totalUsd).toFixed(2)} more to withdraw`}
           </button>
         </div>
       )}
@@ -582,40 +642,57 @@ function AffiliateSection({ user, profile, earnings, referralData, btcPrice, onW
               <p className="text-xs font-black" style={{color:C.forest}}>Top Earners — Affiliate Leaderboard</p>
             </div>
             <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{backgroundColor:`${C.amber}20`, color:C.amber}}>
-              This Month
+              All Time
             </span>
           </div>
           <div className="divide-y" style={{borderColor:C.g50}}>
-            {leaderboard.map((entry) => (
-              <div key={entry.rank} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition">
+            {leaderboard.slice(0, 10).map((entry) => (
+              <div key={entry.rank} className={`flex items-center gap-3 px-4 py-3 transition ${entry.rank <= 3 ? 'hover:bg-yellow-50' : 'hover:bg-gray-50'}`}>
+                {/* Rank */}
                 <div className="w-8 flex-shrink-0 text-center">
-                  {entry.rank <= 3
-                    ? <span className="text-xl">{RANK_MEDALS[entry.rank-1]}</span>
-                    : <span className="text-sm font-black" style={{color:C.g400}}>#{entry.rank}</span>
-                  }
+                  {entry.rank === 1 && <span className="text-xl">🥇</span>}
+                  {entry.rank === 2 && <span className="text-xl">🥈</span>}
+                  {entry.rank === 3 && <span className="text-xl">🥉</span>}
+                  {entry.rank > 3  && <span className="text-sm font-black" style={{color:C.g400}}>#{entry.rank}</span>}
                 </div>
-                <div className="w-8 h-8 rounded-full flex items-center justify-center font-black text-xs text-white flex-shrink-0"
+                {/* Avatar */}
+                <div className="w-9 h-9 rounded-full flex items-center justify-center font-black text-sm text-white flex-shrink-0 shadow-sm"
                   style={{backgroundColor: BADGE_COLORS[entry.badge] || C.green}}>
                   {entry.username?.charAt(0)?.toUpperCase()}
                 </div>
+                {/* Info */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-xs font-black" style={{color:C.forest}}>{entry.username}</p>
-                    <span className="text-xs px-1.5 py-0.5 rounded-full font-bold" style={{backgroundColor:`${BADGE_COLORS[entry.badge]||C.green}18`, color:BADGE_COLORS[entry.badge]||C.green}}>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="text-xs font-black truncate" style={{color:C.forest}}>
+                      {entry.username}
+                    </p>
+                    <span className="text-xs px-1.5 py-0.5 rounded-full font-bold flex-shrink-0"
+                      style={{backgroundColor:`${BADGE_COLORS[entry.badge]||C.green}18`, color:BADGE_COLORS[entry.badge]||C.green}}>
                       {entry.badge}
                     </span>
                   </div>
-                  <p className="text-xs" style={{color:C.g400}}>{entry.referrals} referrals · {entry.total_trades} trades</p>
+                  <p className="text-xs mt-0.5" style={{color:C.g400}}>
+                    {entry.referrals} referrals · {entry.affiliate_trades > 0 ? `${entry.affiliate_trades} affiliate trades` : `${entry.total_trades} trades`}
+                  </p>
                 </div>
+                {/* Earnings */}
                 <div className="text-right flex-shrink-0">
-                  <p className="text-xs font-black" style={{color:C.success}}>₿ {parseFloat(entry.earned_btc).toFixed(6)}</p>
-                  {btcPrice > 0 && <p className="text-xs" style={{color:C.g400}}>≈ ${(entry.earned_btc * btcPrice).toFixed(2)}</p>}
+                  <p className="text-xs font-black" style={{color:C.success}}>
+                    ₿ {parseFloat(entry.earned_btc || 0).toFixed(8)}
+                  </p>
+                  {btcPrice > 0 && (
+                    <p className="text-xs" style={{color:C.g400}}>
+                      {(entry.earned_btc * btcPrice) >= 0.01
+                        ? `≈ $${(entry.earned_btc * btcPrice).toFixed(2)}`
+                        : `≈ $${(entry.earned_btc * btcPrice).toFixed(5)}`}
+                    </p>
+                  )}
                 </div>
               </div>
             ))}
           </div>
           <div className="px-4 py-2.5 border-t text-center" style={{borderColor:C.g100, backgroundColor:C.g50}}>
-            <p className="text-xs" style={{color:C.g400}}>🔒 Usernames are anonymized for privacy. Could you be next?</p>
+            <p className="text-xs" style={{color:C.g400}}>🏆 Top {leaderboard.length} affiliate earner{leaderboard.length !== 1 ? 's' : ''} on PRAQEN. Could you be next?</p>
           </div>
         </div>
       )}
@@ -798,6 +875,7 @@ export default function Dashboard({ user }) {
       referralCode: userData.referral_code || '',
       totalReferrals: userData.total_referrals || 0,
       referralEarnings: userData.referral_earnings_btc || 0,
+      referralTrades: userData.referral_trade_count || 0,
       badge: userData.badge || 'BEGINNER'
     });
   };
@@ -849,15 +927,17 @@ export default function Dashboard({ user }) {
         setEarnings(res.data.earnings || []);
         // Always sync stats — use the larger of the two sources so stale cached
         // values never override a freshly fetched amount, even when amount is tiny.
-        const freshEarned   = Math.max(
+        const freshEarned    = Math.max(
           parseFloat(res.data.userReferralEarnings || 0),
           parseFloat(res.data.totalEarned          || 0),
         );
         const freshReferrals = res.data.referralCount != null ? res.data.referralCount : 0;
+        const freshTrades    = res.data.tradeCount    != null ? res.data.tradeCount    : (res.data.earnings?.length || 0);
         setStats(prev => ({
           ...prev,
-          referralEarnings: Math.max(parseFloat(prev.referralEarnings || 0), freshEarned),
-          totalReferrals:   Math.max(prev.totalReferrals   || 0, freshReferrals),
+          referralEarnings:  Math.max(parseFloat(prev.referralEarnings || 0), freshEarned),
+          totalReferrals:    Math.max(prev.totalReferrals  || 0, freshReferrals),
+          referralTrades:    Math.max(prev.referralTrades  || 0, freshTrades),
         }));
       }
     } catch (e) { /* silent */ }
@@ -1473,7 +1553,7 @@ export default function Dashboard({ user }) {
 
         {/* ── AFFILIATE TAB ─────────────────────────────────────────────────── */}
         {activeTab==='affiliate' && (
-          <AffiliateSection user={displayUser} profile={profile} earnings={earnings} referralData={referralData} btcPrice={btcPrice} onWithdraw={handleReferralWithdraw} dbReferralCount={stats.totalReferrals} dbTotalEarnings={parseFloat(stats.referralEarnings || 0)} leaderboard={leaderboard}/>
+          <AffiliateSection user={displayUser} profile={profile} earnings={earnings} referralData={referralData} btcPrice={btcPrice} onWithdraw={handleReferralWithdraw} dbReferralCount={stats.totalReferrals} dbTotalEarnings={parseFloat(stats.referralEarnings || 0)} dbReferralTrades={stats.referralTrades || 0} leaderboard={leaderboard}/>
         )}
 
       </div>

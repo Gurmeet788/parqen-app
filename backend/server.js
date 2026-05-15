@@ -2459,8 +2459,8 @@ app.get('/api/users/:userId', async (req, res) => {
   try {
     const param  = req.params.userId?.trim();
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(param);
-    // Core fields only — avoid non-existent columns causing 500s
-    const coreFields = 'id, username, full_name, bio, location, website, avatar_url, average_rating, total_trades, completion_rate, created_at, is_admin, is_moderator, is_id_verified, is_email_verified, is_phone_verified, total_feedback_count, positive_feedback, negative_feedback, last_login, last_seen_at, badge, country';
+    // Core fields — referral fields included directly to avoid silent failure in secondary query
+    const coreFields = 'id, username, full_name, bio, location, website, avatar_url, average_rating, total_trades, completion_rate, created_at, is_admin, is_moderator, is_id_verified, is_email_verified, is_phone_verified, total_feedback_count, positive_feedback, negative_feedback, last_login, last_seen_at, badge, country, referral_code, total_referrals, referral_earnings_btc';
 
     let data = null;
 
@@ -2487,6 +2487,16 @@ app.get('/api/users/:userId', async (req, res) => {
       if (extra) extraFields = extra;
     } catch {}
 
+    // Affiliate trade count — how many commission-generating trades their referrals made
+    let referral_trade_count = 0;
+    try {
+      const { count } = await supabaseAdmin
+        .from('affiliate_earnings')
+        .select('*', { count: 'exact', head: true })
+        .eq('referrer_id', data.id);
+      if (count != null) referral_trade_count = count;
+    } catch {}
+
     // Reviews — silently ignored if table doesn't exist
     let reviews = [];
     try {
@@ -2496,7 +2506,7 @@ app.get('/api/users/:userId', async (req, res) => {
       reviews = rv || [];
     } catch {}
 
-    res.json({ user: { ...data, ...extraFields }, reviews });
+    res.json({ user: { ...data, ...extraFields, referral_trade_count }, reviews });
   } catch (error) {
     console.error('[GET /api/users/:userId]', error.message);
     res.status(500).json({ error: 'We couldn\'t load this profile right now. Please try again.' });
@@ -4165,7 +4175,8 @@ app.get('/api/referral/earnings', verifyToken, async (req, res) => {
 
     // Step 1 — fetch raw earnings WITHOUT a FK join so missing auth.users rows
     // can never silently drop earning rows from the result set.
-    const [earningsResult, userResult, signupsResult] = await Promise.allSettled([
+    // Also fetch a plain COUNT separately — this is the authoritative Ref. Trades number.
+    const [earningsResult, userResult, signupsResult, countResult] = await Promise.allSettled([
       supabaseAdmin
         .from('affiliate_earnings')
         .select('id, commission_btc, trade_amount_btc, trade_amount_usd, commission_rate, status, created_at, trade_id, referred_user_id')
@@ -4183,11 +4194,17 @@ app.get('/api/referral/earnings', verifyToken, async (req, res) => {
         .select('id, username, avatar_url, created_at, total_trades, badge')
         .eq('referred_by', userId)
         .order('created_at', { ascending: false }),
+
+      supabaseAdmin
+        .from('affiliate_earnings')
+        .select('*', { count: 'exact', head: true })
+        .eq('referrer_id', userId),
     ]);
 
-    const rawEarnings = (earningsResult.status === 'fulfilled' ? earningsResult.value.data : null) || [];
-    const userData    = (userResult.status    === 'fulfilled' ? userResult.value.data    : null) || {};
-    const signups     = (signupsResult.status === 'fulfilled' ? signupsResult.value.data : null) || [];
+    const rawEarnings  = (earningsResult.status === 'fulfilled' ? earningsResult.value.data  : null) || [];
+    const userData     = (userResult.status     === 'fulfilled' ? userResult.value.data      : null) || {};
+    const signups      = (signupsResult.status  === 'fulfilled' ? signupsResult.value.data   : null) || [];
+    const tradeCount   = (countResult.status    === 'fulfilled' ? countResult.value.count    : null) ?? rawEarnings.length;
 
     // Step 2 — look up referred users from the public users table separately
     // (bypasses any FK to auth.users that would hide rows for deleted accounts)
@@ -4250,8 +4267,9 @@ app.get('/api/referral/earnings', verifyToken, async (req, res) => {
     res.json({
       success: true,
       totalEarned: authorativeTotalEarned,
-      userReferralEarnings,             // always the users.referral_earnings_btc value
+      userReferralEarnings,
       referralCount: userData.total_referrals != null ? userData.total_referrals : referredUsers.length,
+      tradeCount,          // authoritative count of commission-generating trades
       referredUsers,
       earnings,
     });
@@ -4260,52 +4278,41 @@ app.get('/api/referral/earnings', verifyToken, async (req, res) => {
   }
 });
 
-// Public leaderboard — top 10 referrers (anonymized: first 2 chars + ***)
+// Public leaderboard — top 10 referrers by earnings
 app.get('/api/referral/leaderboard', async (req, res) => {
   try {
-    // Sum commission_btc grouped by referrer_id
-    const { data, error } = await supabaseAdmin
-      .from('affiliate_earnings')
-      .select('referrer_id, commission_btc');
+    // Primary source: users table ordered by referral_earnings_btc (authoritative, covers all referrers)
+    const { data: topUsers, error } = await supabaseAdmin
+      .from('users')
+      .select('id, username, badge, total_referrals, total_trades, referral_earnings_btc')
+      .gt('referral_earnings_btc', 0)
+      .order('referral_earnings_btc', { ascending: false })
+      .limit(10);
+
     if (error) throw error;
 
-    // Aggregate in JS since Supabase REST doesn't support GROUP BY directly
-    const map = {};
-    (data || []).forEach(r => {
-      if (!map[r.referrer_id]) map[r.referrer_id] = 0;
-      map[r.referrer_id] += parseFloat(r.commission_btc || 0);
-    });
+    // Secondary: also pull per-user commission count from affiliate_earnings
+    const ids = (topUsers || []).map(u => u.id);
+    let commissionCountMap = {};
+    if (ids.length > 0) {
+      const { data: entries } = await supabaseAdmin
+        .from('affiliate_earnings')
+        .select('referrer_id')
+        .in('referrer_id', ids);
+      (entries || []).forEach(e => {
+        commissionCountMap[e.referrer_id] = (commissionCountMap[e.referrer_id] || 0) + 1;
+      });
+    }
 
-    // Resolve usernames (only for top earners)
-    const sorted = Object.entries(map)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10);
-
-    if (sorted.length === 0) return res.json({ success: true, leaderboard: [] });
-
-    const ids = sorted.map(([id]) => id);
-    const { data: users } = await supabaseAdmin
-      .from('users')
-      .select('id, username, badge, total_referrals, total_trades')
-      .in('id', ids);
-
-    const userMap = {};
-    (users || []).forEach(u => { userMap[u.id] = u; });
-
-    const leaderboard = sorted.map(([id, earned], rank) => {
-      const u = userMap[id] || {};
-      const name = u.username || 'Trader';
-      // Anonymize: first 2 chars visible, rest replaced
-      const anon = name.length <= 2 ? name + '***' : name.slice(0, 2) + '*'.repeat(Math.min(4, name.length - 2));
-      return {
-        rank: rank + 1,
-        username: anon,
-        badge: u.badge || 'BEGINNER',
-        earned_btc: earned,
-        referrals: u.total_referrals || 0,
-        total_trades: u.total_trades || 0,
-      };
-    });
+    const leaderboard = (topUsers || []).map((u, rank) => ({
+      rank:         rank + 1,
+      username:     u.username || 'Trader',
+      badge:        u.badge || 'BEGINNER',
+      earned_btc:   parseFloat(u.referral_earnings_btc || 0),
+      referrals:    u.total_referrals || 0,
+      total_trades: u.total_trades || 0,
+      affiliate_trades: commissionCountMap[u.id] || 0,
+    }));
 
     res.json({ success: true, leaderboard });
   } catch (err) {
