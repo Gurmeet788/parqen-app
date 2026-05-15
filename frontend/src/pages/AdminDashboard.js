@@ -42,7 +42,7 @@ const C = {
 };
 
 // ─── helpers ─────────────────────────────────────────────────
-const authH  = () => { const t = localStorage.getItem('adminToken') || localStorage.getItem('token'); return t ? { Authorization: `Bearer ${t}` } : {}; };
+const authH  = () => { const t = localStorage.getItem('token') || localStorage.getItem('adminToken'); return t ? { Authorization: `Bearer ${t}` } : {}; };
 const fmt    = (n, d = 0) => new Intl.NumberFormat('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }).format(n || 0);
 const fmtBtc = (n) => parseFloat(n || 0).toFixed(6);
 const fmtAge = (ts) => {
@@ -101,7 +101,7 @@ function KycImageBlock({ userId, type, label, large, onZoom }) {
   React.useEffect(() => {
     if (!userId) return;
     const proxyUrl = `${API_URL}/admin/kyc/${userId}/image?type=${type}`;
-    const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
+    const token = localStorage.getItem('token') || localStorage.getItem('adminToken');
     fetch(proxyUrl, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
       .then(r => {
         if (!r.ok) throw new Error(`${r.status}`);
@@ -112,8 +112,7 @@ function KycImageBlock({ userId, type, label, large, onZoom }) {
         setStatus('ok');
       })
       .catch(() => setStatus('error'));
-    return () => { if (src) URL.revokeObjectURL(src); };
-  }, [userId, type]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [userId, type]);
 
   const height = large ? 128 : 110;
   return (
@@ -138,10 +137,15 @@ function KycImageBlock({ userId, type, label, large, onZoom }) {
           </div>
         )}
         {status === 'error' && (
-          <div className="flex flex-col items-center gap-1 px-3 text-center">
-            <span className="text-xl">🖼️</span>
-            <span className="text-xs font-semibold" style={{ color: C.g400 }}>Image not available</span>
-            <span className="text-xs" style={{ color: C.g400 }}>Storage bucket may be private or file missing</span>
+          <div className="flex flex-col items-center gap-2 px-3 text-center">
+            <span className="text-2xl">🖼️</span>
+            <span className="text-xs font-semibold" style={{ color: C.g500 }}>Image not available</span>
+            <button
+              onClick={() => { setStatus('loading'); setSrc(null); const t = localStorage.getItem('token') || localStorage.getItem('adminToken'); fetch(`${API_URL}/admin/kyc/${userId}/image?type=${type}&t=${Date.now()}`, { headers: t ? { Authorization: `Bearer ${t}` } : {} }).then(r => { if (!r.ok) throw new Error(r.status); return r.blob(); }).then(b => { setSrc(URL.createObjectURL(b)); setStatus('ok'); }).catch(() => setStatus('error')); }}
+              className="text-xs font-bold px-3 py-1 rounded-lg"
+              style={{ backgroundColor: C.g100, color: C.g600 }}>
+              Retry
+            </button>
           </div>
         )}
         {status === 'ok' && (
@@ -632,29 +636,29 @@ function UsersSection() {
                   : <span className="text-xs" style={{ color: C.g400 }}>—</span>}
               </div>
               {/* KYC status row */}
-              {(selected.kyc_status || selected.kyc_id_type) && (
+              {(selected.kyc_status || selected.id_type) && (
                 <div className="flex items-center justify-between py-1.5 border-b" style={{ borderColor: C.g100 }}>
                   <span className="text-xs" style={{ color: C.g400 }}>KYC</span>
                   <span className="text-xs font-bold" style={{ color: selected.kyc_status === 'approved' ? C.success : selected.kyc_status === 'pending' ? '#D97706' : C.danger }}>
-                    {selected.kyc_id_type ? `${selected.kyc_id_type} — ` : ''}{selected.kyc_status || '—'}
+                    {selected.id_type ? `${selected.id_type} — ` : ''}{selected.kyc_status || '—'}
                   </span>
                 </div>
               )}
             </div>
 
             {/* ── KYC ID images ── */}
-            {(selected.kyc_id_url || selected.kyc_id_back_url) && (
+            {(selected.id_front_url || selected.id_back_url) && (
               <div className="mt-3 space-y-2">
                 <p className="text-xs font-black uppercase tracking-wider" style={{ color: C.g400 }}>
                   🪪 Identity Documents
                 </p>
-                {selected.kyc_id_url && (
+                {selected.id_front_url && (
                   <KycImageBlock
                     userId={selected.id} type="front" label="ID Front"
                     onZoom={(src) => setZoomImg({ src, label: `${selected.username} — ID Front` })}
                   />
                 )}
-                {selected.kyc_id_back_url && (
+                {selected.id_back_url && (
                   <KycImageBlock
                     userId={selected.id} type="back" label="ID Back"
                     onZoom={(src) => setZoomImg({ src, label: `${selected.username} — ID Back` })}
@@ -1421,7 +1425,7 @@ UPDATE users SET kyc_status = 'approved' WHERE is_id_verified = true AND kyc_sta
                     <Pill label={u.kyc_status || 'unverified'}
                       color={u.kyc_status === 'approved' ? '#166534' : u.kyc_status === 'rejected' ? '#991B1B' : u.kyc_status === 'pending' ? '#92400E' : '#475569'}
                       bg={u.kyc_status === 'approved' ? '#F0FDF4' : u.kyc_status === 'rejected' ? '#FEF2F2' : u.kyc_status === 'pending' ? '#FFFBEB' : C.g100} />
-                    <p className="text-xs" style={{ color: C.g400 }}>{u.kyc_id_type || (u.kyc_id_url ? 'Has doc' : 'No doc')}</p>
+                    <p className="text-xs" style={{ color: C.g400 }}>{u.id_type || (u.id_front_url ? 'Has doc' : 'No doc')}</p>
                     {waitDays !== null && (
                       <span className="text-xs font-black px-1.5 py-0.5 rounded-full"
                         style={{
@@ -1458,7 +1462,7 @@ UPDATE users SET kyc_status = 'approved' WHERE is_id_verified = true AND kyc_sta
                   { label:'Real Name',  value: selected.full_name || '—' },
                   { label:'Country',    value: selected.country || '—' },
                   { label:'Phone',      value: selected.phone_number ? `${selected.phone_number}${selected.is_phone_verified ? ' ✓' : ' (unverified)'}` : '—' },
-                  { label:'ID Type',    value: selected.kyc_id_type || '—' },
+                  { label:'ID Type',    value: selected.id_type || '—' },
                   { label:'Submitted',  value: selected.kyc_submitted_at ? `${fmtDate(selected.kyc_submitted_at)} (${fmtAge(selected.kyc_submitted_at)})` : '—' },
                   { label:'Status',     value: selected.kyc_status || 'pending' },
                 ].map(r => (
@@ -1469,18 +1473,42 @@ UPDATE users SET kyc_status = 'approved' WHERE is_id_verified = true AND kyc_sta
                 ))}
               </div>
 
-              {selected.kyc_id_url && (
-                <KycImageBlock
-                  userId={selected.id} type="front" label="ID Front" large
-                  onZoom={(src) => setZoomImg({ src, label: `${selected.username} — ID Front` })}
-                />
-              )}
-              {selected.kyc_id_back_url && (
-                <KycImageBlock
-                  userId={selected.id} type="back" label="ID Back" large
-                  onZoom={(src) => setZoomImg({ src, label: `${selected.username} — ID Back` })}
-                />
-              )}
+              {/* Always show image section — null URL means storage upload failed */}
+              <div className="mb-3">
+                <p className="text-xs font-black uppercase tracking-wider mb-2" style={{ color: C.g400 }}>🪪 Identity Documents</p>
+                {(!selected.id_front_url && !selected.id_back_url) ? (
+                  <div className="rounded-xl border-2 border-dashed p-4" style={{ borderColor: '#FCA5A5', backgroundColor: '#FEF2F2' }}>
+                    <p className="text-xs font-black mb-1" style={{ color: '#991B1B' }}>⚠ Documents not saved to storage</p>
+                    <p className="text-xs mb-3" style={{ color: '#B91C1C' }}>
+                      The user's images failed to upload. Make sure the <code className="font-mono bg-red-100 px-1 rounded">kyc-documents</code> bucket exists in Supabase Storage, then ask the user to resubmit.
+                    </p>
+                    {selected.kyc_status === 'pending' && (
+                      <button
+                        disabled={acting}
+                        onClick={() => { setRejectTarget(selected); setRejectReason('Your document upload failed on our end. Please go to Settings → Verification → Identity (KYC) and resubmit your ID photos.'); }}
+                        className="w-full py-2 rounded-lg text-xs font-black"
+                        style={{ backgroundColor: '#EF4444', color: '#fff' }}>
+                        📤 Reject & Ask User to Resubmit
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {selected.id_front_url && (
+                      <KycImageBlock
+                        userId={selected.id} type="front" label="ID Front" large
+                        onZoom={(src) => setZoomImg({ src, label: `${selected.username} — ID Front` })}
+                      />
+                    )}
+                    {selected.id_back_url && (
+                      <KycImageBlock
+                        userId={selected.id} type="back" label="ID Back" large
+                        onZoom={(src) => setZoomImg({ src, label: `${selected.username} — ID Back` })}
+                      />
+                    )}
+                  </>
+                )}
+              </div>
 
               {selected.kyc_status === 'pending' && (
                 <div className="flex gap-2">
@@ -2449,7 +2477,15 @@ export default function AdminDashboard({ user: appUser, onLogin }) {
 
   // Check existing admin token on mount
   useEffect(() => {
-    const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
+    // Main app user takes priority — their token is always fresh
+    if (appUser && (appUser.email === ADMIN_EMAIL || appUser.is_admin || appUser.is_moderator)) {
+      const mainToken = localStorage.getItem('token');
+      if (mainToken) axios.defaults.headers.common['Authorization'] = `Bearer ${mainToken}`;
+      setAdminUser(appUser);
+      return;
+    }
+    // Fall back to stored admin-specific token
+    const token = localStorage.getItem('token') || localStorage.getItem('adminToken');
     const stored = localStorage.getItem('adminUser');
     if (token && stored) {
       try {
@@ -2459,10 +2495,6 @@ export default function AdminDashboard({ user: appUser, onLogin }) {
           setAdminUser(u);
         }
       } catch {}
-    }
-    // If already logged in via main app as admin
-    if (appUser && (appUser.email === ADMIN_EMAIL || appUser.is_admin || appUser.is_moderator)) {
-      setAdminUser(appUser);
     }
   }, [appUser]);
 

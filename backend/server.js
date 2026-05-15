@@ -2204,25 +2204,25 @@ app.post('/api/kyc/upload', verifyToken, async (req, res) => {
     }
 
     // Always mark user as pending regardless of storage success
+    // DB columns: id_front_url, id_back_url, id_type, selfie_url
     const { error: dbErr } = await supabaseAdmin.from('users').update({
-      kyc_status:        'pending',
-      kyc_id_type:       idType,
-      kyc_submitted_at:  new Date().toISOString(),
-      kyc_id_url:        idUrl,
-      kyc_id_back_url:   idBackUrl,
-      kyc_selfie_url:    null,
-      updated_at:        new Date().toISOString(),
+      kyc_status:       'pending',
+      id_type:          idType,
+      kyc_submitted_at: new Date().toISOString(),
+      id_front_url:     idUrl,
+      id_back_url:      idBackUrl,
+      selfie_url:       null,
+      updated_at:       new Date().toISOString(),
     }).eq('id', userId);
     if (dbErr) {
       console.error('[kyc/upload] DB update failed:', dbErr.message);
-      // If columns missing, try minimal update
       const { error: minErr } = await supabaseAdmin.from('users').update({
         kyc_status: 'pending',
         updated_at: new Date().toISOString(),
       }).eq('id', userId);
       if (minErr) {
-        console.error('[kyc/upload] Minimal DB update also failed — run admin_columns.sql migration:', minErr.message);
-        return res.status(500).json({ error: 'Database not ready. Please run the admin_columns.sql migration.' });
+        console.error('[kyc/upload] Minimal DB update also failed:', minErr.message);
+        return res.status(500).json({ error: 'Database not ready. Please contact support.' });
       }
     }
 
@@ -2249,10 +2249,9 @@ app.post('/api/kyc/upload', verifyToken, async (req, res) => {
 app.get('/api/kyc/status', verifyToken, async (req, res) => {
   try {
     let { data, error } = await supabaseAdmin.from('users')
-      .select('kyc_status, kyc_id_type, kyc_submitted_at, kyc_id_url, kyc_id_back_url, kyc_rejection_reason, is_id_verified')
+      .select('kyc_status, id_type, kyc_submitted_at, id_front_url, id_back_url, kyc_rejection_reason, is_id_verified')
       .eq('id', req.userId).single();
     if (error) {
-      // Columns may not exist yet — fall back to minimal query
       const fallback = await supabaseAdmin.from('users')
         .select('is_id_verified, kyc_status')
         .eq('id', req.userId).single();
@@ -2260,13 +2259,13 @@ app.get('/api/kyc/status', verifyToken, async (req, res) => {
       data = fallback.data;
     }
     res.json({
-      kyc_status:          data?.kyc_status          || null,
-      kyc_id_type:         data?.kyc_id_type         || null,
-      kyc_submitted_at:    data?.kyc_submitted_at    || null,
-      kyc_id_url:          data?.kyc_id_url          || null,
-      kyc_id_back_url:     data?.kyc_id_back_url     || null,
-      kyc_rejection_reason:data?.kyc_rejection_reason|| null,
-      is_id_verified:      data?.is_id_verified      || false,
+      kyc_status:           data?.kyc_status           || null,
+      kyc_id_type:          data?.id_type              || null,
+      kyc_submitted_at:     data?.kyc_submitted_at     || null,
+      kyc_id_url:           data?.id_front_url         || null,
+      kyc_id_back_url:      data?.id_back_url          || null,
+      kyc_rejection_reason: data?.kyc_rejection_reason || null,
+      is_id_verified:       data?.is_id_verified       || false,
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -2429,7 +2428,7 @@ app.get('/api/users/profile', verifyToken, async (req, res) => {
     let extraFields = {};
     try {
       const { data: extra } = await supabaseAdmin.from('users')
-        .select('email_verified, is_phone_verified, phone_verified, kyc_verified, kyc_status, kyc_id_type, kyc_submitted_at, kyc_id_url, kyc_selfie_url, kyc_rejection_reason, username_changed, preferred_currency, preferred_language, timezone, hide_full_name, name_display, city, country_name, last_seen_location, referral_code, total_referrals, referral_earnings_btc')
+        .select('email_verified, is_phone_verified, phone_verified, kyc_verified, kyc_status, id_type, kyc_submitted_at, id_front_url, id_back_url, selfie_url, kyc_rejection_reason, username_changed, preferred_currency, preferred_language, timezone, hide_full_name, name_display, city, country_name, last_seen_location, referral_code, total_referrals, referral_earnings_btc')
         .eq('id', req.userId).single();
       if (extra) extraFields = extra;
     } catch {}
@@ -4627,7 +4626,7 @@ async function requireAdmin(req, res) {
 app.get('/api/admin/stats', verifyToken, async (req, res) => {
   try {
     const admin = await requireAdmin(req, res); if (!admin) return;
-    const [usersR, tradesR, listingsR, profitsR, disputesR, kycR] = await Promise.all([
+    const [usersR, tradesR, listingsR, profitsR, disputesR, kycR] = await Promise.allSettled([
       supabaseAdmin.from('users').select('id, created_at, account_status, is_email_verified, is_id_verified, badge', { count: 'exact' }),
       supabaseAdmin.from('trades').select('id, status, amount_usd, amount_btc, created_at', { count: 'exact' }),
       supabaseAdmin.from('listings').select('id, status', { count: 'exact' }),
@@ -4635,9 +4634,15 @@ app.get('/api/admin/stats', verifyToken, async (req, res) => {
       supabaseAdmin.from('trades').select('id', { count: 'exact' }).eq('status', 'DISPUTED'),
       supabaseAdmin.from('users').select('id', { count: 'exact' }).eq('kyc_status', 'pending'),
     ]);
-    const users   = usersR.data  || [];
-    const trades  = tradesR.data || [];
-    const profits = profitsR.data || [];
+    const uD = usersR.status    === 'fulfilled' ? usersR.value    : { data: [], count: 0 };
+    const tD = tradesR.status   === 'fulfilled' ? tradesR.value   : { data: [], count: 0 };
+    const lD = listingsR.status === 'fulfilled' ? listingsR.value : { data: [], count: 0 };
+    const pD = profitsR.status  === 'fulfilled' ? profitsR.value  : { data: [] };
+    const dD = disputesR.status === 'fulfilled' ? disputesR.value : { count: 0 };
+    const kD = kycR.status      === 'fulfilled' ? kycR.value      : { count: 0 };
+    const users   = uD.data  || [];
+    const trades  = tD.data  || [];
+    const profits = pD.data  || [];
     const now = Date.now();
     const day = 86400000;
     const newUsersToday  = users.filter(u => now - new Date(u.created_at) < day).length;
@@ -4660,16 +4665,16 @@ app.get('/api/admin/stats', verifyToken, async (req, res) => {
       return { label, count };
     });
     res.json({
-      totalUsers: usersR.count || users.length,
+      totalUsers: uD.count || users.length,
       newUsersToday, newUsersWeek,
       verifiedUsers: users.filter(u => u.is_email_verified).length,
       kycVerified:   users.filter(u => u.is_id_verified).length,
-      pendingKyc:    kycR.count || 0,
-      totalTrades:   tradesR.count || trades.length,
+      pendingKyc:    kD.count || 0,
+      totalTrades:   tD.count || trades.length,
       activeTrades, completedTrades, cancelledTrades,
-      openDisputes:  disputesR.count || 0,
-      activeListings: (listingsR.data || []).filter(l => l.status === 'ACTIVE').length,
-      totalListings:  listingsR.count || 0,
+      openDisputes:  dD.count || 0,
+      activeListings: (lD.data || []).filter(l => l.status === 'ACTIVE').length,
+      totalListings:  lD.count || 0,
       totalVolumeUsd: totalVolumeUsd.toFixed(2),
       totalVolumeBtc: totalVolumeBtc.toFixed(8),
       totalRevBtc:    totalRevBtc.toFixed(8),
@@ -4768,11 +4773,9 @@ app.get('/api/admin/kyc', verifyToken, async (req, res) => {
       .order('kyc_submitted_at', { ascending: true, nullsFirst: false });
 
     if (status === 'all') {
-      // Anyone who ever uploaded a document OR has any kyc_status
-      query = query.or('kyc_id_url.not.is.null,kyc_status.not.is.null');
+      query = query.or('id_front_url.not.is.null,kyc_status.not.is.null');
     } else if (status === 'pending') {
-      // kyc_status='pending' OR has a document but status was never set (legacy)
-      query = query.or('kyc_status.eq.pending,and(kyc_status.is.null,kyc_id_url.not.is.null)');
+      query = query.or('kyc_status.eq.pending,and(kyc_status.is.null,id_front_url.not.is.null)');
     } else {
       query = query.eq('kyc_status', status);
     }
@@ -4804,7 +4807,7 @@ app.post('/api/admin/backfill-kyc', verifyToken, async (req, res) => {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { data, error } = await supabaseAdmin.from('users')
       .update({ kyc_status: 'pending', updated_at: new Date() })
-      .not('kyc_id_url', 'is', null)
+      .not('id_front_url', 'is', null)
       .is('kyc_status', null)
       .select('id, username');
     if (error) return res.status(400).json({ error: error.message });
@@ -4851,53 +4854,69 @@ app.put('/api/admin/kyc/:userId/reject', verifyToken, async (req, res) => {
 });
 
 // GET /api/admin/kyc/:userId/image?type=front|back
-// Fetches the KYC image from Supabase Storage using the service role key and streams it
-// to the admin browser — avoids exposing private bucket URLs directly.
 app.get('/api/admin/kyc/:userId/image', verifyToken, async (req, res) => {
   try {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { userId } = req.params;
-    const { type = 'front' } = req.query; // 'front' | 'back'
+    const { type = 'front' } = req.query;
 
-    // Look up the stored URL to extract the storage path
     const { data: user, error: userErr } = await supabaseAdmin
       .from('users')
-      .select('kyc_id_url, kyc_id_back_url')
+      .select('id_front_url, id_back_url')
       .eq('id', userId)
       .single();
 
     if (userErr || !user) return res.status(404).json({ error: 'User not found' });
 
-    const storedUrl = type === 'back' ? user.kyc_id_back_url : user.kyc_id_url;
-    if (!storedUrl) return res.status(404).json({ error: 'Image not found' });
+    const storedUrl = type === 'back' ? user.id_back_url : user.id_front_url;
+    if (!storedUrl) return res.status(404).json({ error: 'No image on file for this user' });
 
-    // Extract the object path from the full Supabase Storage URL
-    // URL format: https://<project>.supabase.co/storage/v1/object/public/kyc-documents/<path>
-    //         OR: https://<project>.supabase.co/storage/v1/object/sign/kyc-documents/<path>
-    const match = storedUrl.match(/\/(?:public|sign)\/kyc-documents\/(.+?)(?:\?|$)/);
-    if (!match) return res.status(400).json({ error: 'Cannot parse image path' });
-    const storagePath = match[1];
+    // Detect content type from file extension
+    const ext = (storedUrl.split('?')[0].split('.').pop() || 'jpg').toLowerCase();
+    const mimeMap = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', heic: 'image/heic' };
+    const contentType = mimeMap[ext] || 'image/jpeg';
 
-    // Download via admin client (bypasses RLS)
-    const { data: fileData, error: dlErr } = await supabaseAdmin.storage
-      .from('kyc-documents')
-      .download(storagePath);
+    // Extract storage path from URL — handles /public/, /sign/, /authenticated/ formats
+    const match = storedUrl.match(/\/object\/(?:public|sign|authenticated)\/kyc-documents\/(.+?)(?:\?|$)/);
 
-    if (dlErr || !fileData) {
-      // Fallback: generate a short-lived signed URL and redirect
-      const { data: signedData, error: signErr } = await supabaseAdmin.storage
+    if (match) {
+      const storagePath = decodeURIComponent(match[1]);
+
+      // Try: download directly via service role (bypasses bucket RLS)
+      const { data: fileData, error: dlErr } = await supabaseAdmin.storage
         .from('kyc-documents')
-        .createSignedUrl(storagePath, 300); // 5 minutes
-      if (signErr || !signedData?.signedUrl) return res.status(500).json({ error: 'Failed to load image' });
-      return res.redirect(signedData.signedUrl);
+        .download(storagePath);
+
+      if (!dlErr && fileData) {
+        const buffer = Buffer.from(await fileData.arrayBuffer());
+        res.set('Content-Type', contentType);
+        res.set('Cache-Control', 'private, max-age=300');
+        return res.send(buffer);
+      }
+
+      // Try: signed URL (works for private buckets)
+      const { data: signedData } = await supabaseAdmin.storage
+        .from('kyc-documents')
+        .createSignedUrl(storagePath, 300);
+
+      if (signedData?.signedUrl) {
+        // Fetch the signed URL server-side and stream to admin
+        const imgRes = await axios.get(signedData.signedUrl, { responseType: 'arraybuffer', timeout: 10000 });
+        res.set('Content-Type', imgRes.headers['content-type'] || contentType);
+        res.set('Cache-Control', 'private, max-age=300');
+        return res.send(Buffer.from(imgRes.data));
+      }
     }
 
-    // Stream the image buffer back to the admin browser
-    const arrayBuffer = await fileData.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    res.set('Content-Type', 'image/jpeg');
-    res.set('Cache-Control', 'private, max-age=300');
-    res.send(buffer);
+    // Last resort: fetch the stored URL directly (works if bucket is public)
+    try {
+      const imgRes = await axios.get(storedUrl, { responseType: 'arraybuffer', timeout: 10000 });
+      res.set('Content-Type', imgRes.headers['content-type'] || contentType);
+      res.set('Cache-Control', 'private, max-age=300');
+      return res.send(Buffer.from(imgRes.data));
+    } catch (_) {}
+
+    res.status(404).json({ error: 'Image could not be loaded from storage' });
   } catch (e) {
     console.error('[admin/kyc/image]', e.message);
     res.status(500).json({ error: e.message });
