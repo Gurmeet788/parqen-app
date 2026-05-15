@@ -2705,18 +2705,29 @@ app.post('/api/listings', verifyToken, async (req, res) => {
       });
     }
 
-    // Block duplicate active offers with the same payment method
+    // Enforce $10 USD minimum trade amount for non-gift-card offers
+    if (!isGiftCard && minUSD < 10) {
+      return res.status(400).json({ error: 'Minimum trade amount must be at least $10 USD.' });
+    }
+
+    // Block duplicate offers (ACTIVE or PAUSED) with the same payment method
     const { data: dupCheck } = await supabaseAdmin
       .from('listings')
-      .select('id')
+      .select('id, status')
       .eq('seller_id', req.userId)
       .eq('payment_method', payMethod)
       .eq('listing_type', listingType)
-      .eq('status', 'ACTIVE')
+      .in('status', ['ACTIVE', 'PAUSED'])
       .limit(1);
     if (dupCheck && dupCheck.length > 0) {
+      const existing = dupCheck[0];
+      const isPaused = existing.status === 'PAUSED';
       return res.status(400).json({
-        error: `You already have an active ${listingType} offer accepting ${payMethod}. Please edit or deactivate it before creating a new one.`,
+        error: isPaused
+          ? `You already have a paused ${payMethod} offer. Go to your Dashboard and activate it instead of creating a new one.`
+          : `You already have an active ${payMethod} offer. Go to your Dashboard to edit it instead of creating a new one.`,
+        existingOfferId: existing.id,
+        existingOfferStatus: existing.status,
       });
     }
 
@@ -4299,20 +4310,30 @@ app.post('/api/referral/withdraw', verifyToken, async (req, res) => {
       return res.status(400).json({ error: `Minimum $10 USD required. Current: $${(totalEarnings * btcPrice).toFixed(2)}` });
     }
 
-    // Read current balance then upsert incremented value (supabase-js has no raw SQL in update)
-    const { data: balanceRow } = await supabaseAdmin
-      .from('user_balances')
-      .select('balance_btc')
+    // Credit the wallets table — this is the SINGLE SOURCE OF TRUTH for balances.
+    // The old code wrote to user_balances which is NOT read by the wallet page,
+    // causing referral withdrawals to silently disappear from the user's view.
+    const { data: walletRow, error: walletReadErr } = await supabaseAdmin
+      .from('wallets')
+      .select('balance_btc, locked_balance_btc')
       .eq('user_id', req.userId)
-      .single();
+      .maybeSingle();
 
-    const newBalance = parseFloat(balanceRow?.balance_btc || 0) + totalEarnings;
+    if (walletReadErr) throw walletReadErr;
+
+    const newBalance = parseFloat((parseFloat(walletRow?.balance_btc || 0) + totalEarnings).toFixed(8));
 
     const { error: balErr } = await supabaseAdmin
-      .from('user_balances')
-      .upsert({ user_id: req.userId, balance_btc: newBalance }, { onConflict: 'user_id' });
+      .from('wallets')
+      .upsert({
+        user_id:            req.userId,
+        balance_btc:        newBalance,
+        locked_balance_btc: parseFloat(walletRow?.locked_balance_btc || 0),
+        updated_at:         new Date().toISOString(),
+      }, { onConflict: 'user_id' });
     if (balErr) throw balErr;
 
+    // Mark all pending earnings as withdrawn
     const ids = earnings.map(e => e.id);
     const { error: updErr } = await supabaseAdmin
       .from('affiliate_earnings')
@@ -4320,7 +4341,17 @@ app.post('/api/referral/withdraw', verifyToken, async (req, res) => {
       .in('id', ids);
     if (updErr) throw updErr;
 
-    res.json({ success: true, amountBtc: totalEarnings, message: `₿ ${totalEarnings.toFixed(8)} added to wallet!` });
+    // Audit trail
+    await supabaseAdmin.from('wallet_transactions').insert({
+      user_id:    req.userId,
+      type:       'REFERRAL_WITHDRAWAL',
+      amount_btc: totalEarnings,
+      status:     'CONFIRMED',
+      notes:      `Referral earnings withdrawal — ₿${totalEarnings.toFixed(8)} from ${ids.length} commission(s)`,
+      created_at: new Date().toISOString(),
+    }).catch(() => {});
+
+    res.json({ success: true, amountBtc: totalEarnings, message: `₿ ${totalEarnings.toFixed(8)} added to your wallet!` });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

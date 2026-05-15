@@ -369,7 +369,7 @@ function OfferCard({listing, btcPriceUSD, onViewBuyer, onSell}) {
       <div className="px-4 py-3 grid grid-cols-2 gap-2">
         <div>
           <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{color:C.g500}}>YOU SEND</p>
-          <p className="font-black leading-tight" style={{color:C.gold, fontSize: exampleBtc < 0.001 ? '14px' : '20px'}}>
+          <p className="font-bold leading-tight" style={{color:C.gold, fontSize: exampleBtc < 0.001 ? '13px' : '17px'}}>
             ₿{fBtc(exampleBtc)}
           </p>
           {/* Market value of the BTC sent — strips out buyer's margin so it differs from YOU RECEIVE */}
@@ -380,7 +380,7 @@ function OfferCard({listing, btcPriceUSD, onViewBuyer, onSell}) {
         </div>
         <div className="border-l pl-3" style={{borderColor:C.g100}}>
           <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{color:C.g500}}>YOU RECEIVE</p>
-          <p className="text-2xl font-black leading-tight truncate" style={{color:C.g800}}>
+          <p className="text-lg font-bold leading-tight truncate" style={{color:C.g800}}>
             {sym}{fmt(exampleRecv)} {cur}
           </p>
           <p className="text-xs font-semibold mt-0.5" style={{color:C.g400}}>Cash payment</p>

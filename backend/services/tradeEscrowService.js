@@ -596,12 +596,13 @@ class TradeEscrowService {
   }
 
   // ============================================================
-  // CANCEL TRADE — refund seller
+  // CANCEL TRADE — refund BTC provider
   // Called by buyer cancel, auto-cancel, or dispute resolution
   // ============================================================
   async cancelTrade(tradeId, reason) {
     console.log(`\n❌ cancelTrade — Trade: ${tradeId.slice(0,8)}, Reason: ${reason}`);
 
+    // ── 1. Fetch trade ────────────────────────────────────────────────────────
     const { data: trade, error } = await supabaseAdmin
       .from('trades')
       .select('*')
@@ -615,9 +616,29 @@ class TradeEscrowService {
       return { success: false, message: `Trade cannot be cancelled — status is ${trade.status}` };
     }
 
-    // ── Atomically claim the escrow (UPDATE WHERE status='LOCKED') ────────────
-    // A single DB operation — only one concurrent request can flip LOCKED→REFUNDING.
-    // Prevents double-refund if frontend auto-cancel and server cron race each other.
+    // ── 2. Recover any lock stuck in REFUNDING from a previous failed cancel ──
+    // Mirrors the RELEASING recovery in releaseBitcoinToBuyer.
+    // If a prior cancel attempt set status=REFUNDING but then crashed, the atomic
+    // claim below (WHERE status='LOCKED') would silently match nothing and the
+    // refund would never run. We reset it to LOCKED so this attempt can claim it.
+    const { data: lockCheck } = await supabaseAdmin
+      .from('escrow_locks')
+      .select('id, status')
+      .eq('trade_id', tradeId)
+      .maybeSingle();
+
+    if (lockCheck?.status === 'REFUNDING') {
+      console.warn(`[cancelTrade] Lock ${lockCheck.id} stuck in REFUNDING for trade ${tradeId.slice(0,8)} — resetting to LOCKED`);
+      const { error: resetErr } = await supabaseAdmin
+        .from('escrow_locks')
+        .update({ status: 'LOCKED' })
+        .eq('id', lockCheck.id);
+      if (resetErr) throw new Error(`Failed to reset stuck escrow lock: ${resetErr.message}`);
+    }
+
+    // ── 3. Atomically claim the escrow (UPDATE WHERE status='LOCKED') ─────────
+    // Only one concurrent request can flip LOCKED→REFUNDING — prevents double-refund
+    // if a manual cancel and the auto-cancel cron fire at the same instant.
     const { data: claimedEscrow } = await supabaseAdmin
       .from('escrow_locks')
       .update({ status: 'REFUNDING', released_at: new Date().toISOString() })
@@ -625,14 +646,43 @@ class TradeEscrowService {
       .eq('status', 'LOCKED')
       .select('*');
 
-    // ── ONE atomic DB call: refund provider + mark escrow refunded + cancel trade ──
-    // praqen_refund_escrow() runs as a single PostgreSQL transaction.
-    // If ANY step fails, ALL steps roll back — tables can never go out of sync.
-    const esc           = (await supabaseAdmin.from('escrow_locks').select('*').eq('trade_id', tradeId).maybeSingle()).data;
-    const refundAmount  = parseFloat(esc?.amount_btc || trade.escrow_amount || trade.amount_btc || 0);
-    const btcProviderId = esc?.seller_id || trade.seller_id;
+    // ── 4. Determine who gets the refund ──────────────────────────────────────
+    // escrow_locks.seller_id is set to btcProviderId at lock time — always the
+    // ground truth. The fallback matters only when no escrow record exists (e.g.
+    // the lock step failed at trade creation).
+    //
+    // Fallback rule (must match lockFundsInEscrow logic in server.js):
+    //   • Standard BTC trades (SELL / BUY listing):  btcProvider = trade.seller_id
+    //   • Gift card trades (BUY_GIFT_CARD / SELL_GIFT_CARD): btcProvider = trade.buyer_id
+    //     because for gift card trades the *buyer* role holds the BTC, not the seller.
+    const esc          = (await supabaseAdmin.from('escrow_locks').select('*').eq('trade_id', tradeId).maybeSingle()).data;
+    const refundAmount = parseFloat(esc?.amount_btc || trade.escrow_amount || trade.amount_btc || 0);
 
+    let fallbackBtcProvider = trade.seller_id;
+    if (!esc?.seller_id && trade.listing_id) {
+      const { data: listing } = await supabaseAdmin
+        .from('listings').select('listing_type').eq('id', trade.listing_id).maybeSingle();
+      const lType = (listing?.listing_type || '').toUpperCase();
+      if (lType === 'BUY_GIFT_CARD' || lType === 'SELL_GIFT_CARD') {
+        fallbackBtcProvider = trade.buyer_id;
+      }
+    }
+    const btcProviderId = esc?.seller_id || fallbackBtcProvider;
+
+    console.log(`[cancelTrade] refundAmount=₿${refundAmount} btcProvider=${btcProviderId?.slice(0,8)} escrow=${esc?.status || 'none'}`);
+
+    // ── 5. Refund the BTC provider ─────────────────────────────────────────────
     if (refundAmount > 0 && btcProviderId) {
+      await ensureWalletExists(btcProviderId);
+
+      // Snapshot balance BEFORE RPC — same guard used in releaseBitcoinToBuyer.
+      // Lets us detect and fix the case where the RPC returns success but silently
+      // fails to update balance_btc (e.g. the wallets row is missing or the DB
+      // function has a bug). Without this check, funds disappear with no error.
+      const { data: providerBefore } = await supabaseAdmin
+        .from('wallets').select('balance_btc, locked_balance_btc').eq('user_id', btcProviderId).maybeSingle();
+      const balanceBefore = parseFloat(providerBefore?.balance_btc || 0);
+
       const { error: refundErr } = await supabaseAdmin.rpc('praqen_refund_escrow', {
         p_trade_id:    tradeId,
         p_provider_id: btcProviderId,
@@ -641,27 +691,73 @@ class TradeEscrowService {
       });
 
       if (refundErr) {
-        // RPC unavailable — manually credit balance_btc and debit locked_balance_btc
-        console.warn(`[cancelTrade] praqen_refund_escrow failed (${refundErr.message}), applying manual refund`);
+        // RPC unavailable or threw — apply refund manually
+        console.warn(`[cancelTrade] praqen_refund_escrow RPC failed (${refundErr.message}) — applying manual refund`);
         const { data: pBal } = await supabaseAdmin
           .from('wallets').select('balance_btc, locked_balance_btc').eq('user_id', btcProviderId).maybeSingle();
-        const manualAvail  = parseFloat((parseFloat(pBal?.balance_btc || 0) + refundAmount).toFixed(8));
-        const manualLocked = parseFloat((Math.max(0, parseFloat(pBal?.locked_balance_btc || 0) - refundAmount).toFixed(8)));
+        const manualAvail  = parseFloat((parseFloat(pBal?.balance_btc  || 0) + refundAmount).toFixed(8));
+        const manualLocked = parseFloat(Math.max(0, parseFloat(pBal?.locked_balance_btc || 0) - refundAmount).toFixed(8));
         const { error: manualErr } = await supabaseAdmin
           .from('wallets')
-          .update({ balance_btc: manualAvail, locked_balance_btc: manualLocked, updated_at: new Date().toISOString() })
-          .eq('user_id', btcProviderId);
-        if (manualErr) throw new Error(`Manual refund also failed: ${manualErr.message}`);
-        console.log(`[cancelTrade] Manual refund applied: ₿${refundAmount} → ${btcProviderId.slice(0,8)}`);
+          .upsert({
+            user_id:            btcProviderId,
+            balance_btc:        manualAvail,
+            locked_balance_btc: manualLocked,
+            updated_at:         new Date().toISOString(),
+          }, { onConflict: 'user_id' });
+        if (manualErr) throw new Error(`Manual refund failed: ${manualErr.message}`);
+        console.log(`[cancelTrade] ✅ Manual refund applied: ₿${manualAvail.toFixed(8)} → provider ${btcProviderId.slice(0,8)}`);
+
       } else {
-        // RPC succeeded — also sync locked_balance_btc in case the DB function doesn't manage it
-        const { data: pBal } = await supabaseAdmin
-          .from('wallets').select('locked_balance_btc').eq('user_id', btcProviderId).maybeSingle();
-        const syncedLocked = parseFloat((Math.max(0, parseFloat(pBal?.locked_balance_btc || 0) - refundAmount).toFixed(8)));
-        await supabaseAdmin.from('wallets')
-          .update({ locked_balance_btc: syncedLocked, updated_at: new Date().toISOString() })
-          .eq('user_id', btcProviderId);
+        // RPC returned no error — now verify it actually updated balance_btc
+        const { data: providerAfter } = await supabaseAdmin
+          .from('wallets').select('balance_btc, locked_balance_btc').eq('user_id', btcProviderId).maybeSingle();
+        const balanceAfter = parseFloat(providerAfter?.balance_btc || 0);
+        const rpcCredited  = balanceAfter - balanceBefore;
+
+        if (rpcCredited < refundAmount * 0.99) {
+          // RPC succeeded but balance_btc was not actually updated — fix it manually
+          console.warn(`[cancelTrade] RPC credited ₿${rpcCredited.toFixed(8)} but expected ₿${refundAmount.toFixed(8)} — applying balance correction`);
+          const correctedBalance = parseFloat((balanceAfter + (refundAmount - rpcCredited)).toFixed(8));
+          const syncedLocked     = parseFloat(Math.max(0, parseFloat(providerAfter?.locked_balance_btc || 0) - refundAmount).toFixed(8));
+          const { error: fixErr } = await supabaseAdmin
+            .from('wallets')
+            .upsert({
+              user_id:            btcProviderId,
+              balance_btc:        correctedBalance,
+              locked_balance_btc: syncedLocked,
+              updated_at:         new Date().toISOString(),
+            }, { onConflict: 'user_id' });
+          if (fixErr) throw new Error(`Balance correction after RPC mismatch failed: ${fixErr.message}`);
+          console.log(`[cancelTrade] ✅ Balance corrected: ₿${correctedBalance.toFixed(8)} → provider ${btcProviderId.slice(0,8)}`);
+        } else {
+          // RPC credited correctly — only sync locked_balance_btc
+          const syncedLocked = parseFloat(Math.max(0, parseFloat(providerAfter?.locked_balance_btc || 0) - refundAmount).toFixed(8));
+          await supabaseAdmin.from('wallets')
+            .update({ locked_balance_btc: syncedLocked, updated_at: new Date().toISOString() })
+            .eq('user_id', btcProviderId);
+          console.log(`[cancelTrade] ✅ RPC credited correctly: ₿${rpcCredited.toFixed(8)} → provider ${btcProviderId.slice(0,8)}`);
+        }
       }
+
+      // ── Log refund transaction (audit trail) ──────────────────────────────
+      await this.logTransaction(
+        btcProviderId, 'ESCROW_REFUND', refundAmount, null,
+        `Trade #${tradeId.slice(0,8)} cancelled — ₿${refundAmount.toFixed(8)} refunded`
+      );
+
+      // Balance audit (fire-and-forget — never blocks the refund)
+      supabaseAdmin.from('wallets').select('balance_btc').eq('user_id', btcProviderId).maybeSingle()
+        .then(({ data: final }) => {
+          supabaseAdmin.from('balance_audit').insert({
+            user_id:     btcProviderId,
+            change_btc:  refundAmount,
+            new_balance: parseFloat(final?.balance_btc || 0),
+            reason:      'ESCROW_REFUND',
+            trade_id:    tradeId,
+            created_at:  new Date().toISOString(),
+          }).catch(() => {});
+        }).catch(() => {});
 
       sendSystemAlert(
         btcProviderId,
@@ -670,12 +766,13 @@ class TradeEscrowService {
         'https://praqen.com/wallet'
       ).catch(err => console.error('[Escrow] Refund push error:', err.message));
 
-      console.log(`   Refunded ${refundAmount} BTC to provider ${btcProviderId.slice(0,8)}`);
+      console.log(`[cancelTrade] ✅ Refund complete: ₿${refundAmount} → provider ${btcProviderId.slice(0,8)}`);
+
     } else {
-      console.log(`[cancelTrade] No escrow to refund for trade ${tradeId.slice(0,8)}`);
+      console.log(`[cancelTrade] No escrow funds to refund for trade ${tradeId.slice(0,8)}`);
     }
 
-    // ── Update trade status ────────────────────────────────────────────────
+    // ── 6. Mark trade CANCELLED ───────────────────────────────────────────────
     await supabaseAdmin
       .from('trades')
       .update({
@@ -685,24 +782,23 @@ class TradeEscrowService {
       })
       .eq('id', tradeId);
 
-    // Notify both parties
+    // ── 7. Notify both parties ────────────────────────────────────────────────
     for (const uid of [trade.buyer_id, trade.seller_id]) {
-      await this.notify(uid, 'trade', '❌ Trade Cancelled',
-        `Trade #${tradeId.slice(0,8).toUpperCase()} cancelled. ${reason || ''}`,
-        `/trade/${tradeId}`);
+      if (uid) {
+        await this.notify(uid, 'trade', '❌ Trade Cancelled',
+          `Trade #${tradeId.slice(0,8).toUpperCase()} cancelled. ${reason || ''}`,
+          `/trade/${tradeId}`);
+      }
     }
 
-    console.log(`✅ Trade ${tradeId.slice(0,8)} cancelled`);
+    console.log(`✅ Trade ${tradeId.slice(0,8)} cancelled and closed`);
 
-    // Refund restored the BTC provider's balance — re-evaluate their offer status
-    if (claimedEscrow && claimedEscrow.length > 0) {
-      const btcProviderId = claimedEscrow[0].seller_id || trade.seller_id;
-      if (btcProviderId) updateOfferStatus(btcProviderId).catch(() => {});
-    }
+    // ── 8. Re-evaluate offer status now that the provider's balance is restored ─
+    if (btcProviderId) updateOfferStatus(btcProviderId).catch(() => {});
 
     return {
       success: true,
-      message: `Trade cancelled. ${claimedEscrow && claimedEscrow.length > 0 ? 'Funds returned to seller.' : ''}`,
+      message: `Trade cancelled. ${refundAmount > 0 ? 'Funds returned to wallet.' : ''}`,
     };
   }
 

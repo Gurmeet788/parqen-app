@@ -837,6 +837,15 @@ export default function Dashboard({ user }) {
       if (res.data.success) {
         setReferralData(res.data);
         setEarnings(res.data.earnings || []);
+        // affiliate_earnings is the authoritative source — sync the stats card
+        // so it shows the real earned amount even if users.referral_earnings_btc is stale
+        if (res.data.totalEarned > 0) {
+          setStats(prev => ({
+            ...prev,
+            referralEarnings: Math.max(prev.referralEarnings || 0, res.data.totalEarned),
+            totalReferrals:   Math.max(prev.totalReferrals  || 0, res.data.referralCount || 0),
+          }));
+        }
       }
     } catch (e) { /* silent */ }
   };
@@ -1451,7 +1460,7 @@ export default function Dashboard({ user }) {
 
         {/* ── AFFILIATE TAB ─────────────────────────────────────────────────── */}
         {activeTab==='affiliate' && (
-          <AffiliateSection user={displayUser} profile={profile} earnings={earnings} referralData={referralData} btcPrice={btcPrice} onWithdraw={handleReferralWithdraw} dbReferralCount={stats.totalReferrals} dbTotalEarnings={stats.referralEarnings > 0 ? stats.referralEarnings : undefined} leaderboard={leaderboard}/>
+          <AffiliateSection user={displayUser} profile={profile} earnings={earnings} referralData={referralData} btcPrice={btcPrice} onWithdraw={handleReferralWithdraw} dbReferralCount={stats.totalReferrals} dbTotalEarnings={stats.referralEarnings > 0 ? stats.referralEarnings : (referralData?.totalEarned ?? undefined)} leaderboard={leaderboard}/>
         )}
 
       </div>

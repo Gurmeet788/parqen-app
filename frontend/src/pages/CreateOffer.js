@@ -202,6 +202,7 @@ export default function CreateOffer() {
 
   const [step,         setStep]         = useState(1);
   const [submitting,   setSubmitting]   = useState(false);
+  const [dupOfferWarning, setDupOfferWarning] = useState(null); // { status, id }
   const [btcPrice,     setBtcPrice]     = useState(68000);
   const [loadingPrice, setLoadingPrice] = useState(true);
   const [walletBal,    setWalletBal]    = useState({ btc: 0, usd: 0 });
@@ -346,7 +347,15 @@ export default function CreateOffer() {
     return true;
   };
 
-  const next = () => { if (canNext()) setStep(s => Math.min(s + 1, 5)); else toast.warn('Please complete all required fields'); };
+  const next = () => {
+    if (canNext()) {
+      setStep(s => Math.min(s + 1, 5));
+    } else if (step === 4 && !isGC && minUSDVal < 10) {
+      toast.warn(`Minimum must be at least $10 USD — that's ${sym}${fmt(10 * localRate, 0)} ${cur}`);
+    } else {
+      toast.warn('Please complete all required fields');
+    }
+  };
   const back = () => setStep(s => Math.max(s - 1, 1));
 
   const handleSubmit = async () => {
@@ -401,7 +410,12 @@ export default function CreateOffer() {
         toast.error(r.data.error || 'Failed to publish offer');
       }
     } catch (e) {
-      toast.error(e.response?.data?.error || 'Failed to publish offer');
+      const errData = e.response?.data;
+      if (errData?.existingOfferId) {
+        setDupOfferWarning({ status: errData.existingOfferStatus, id: errData.existingOfferId });
+      } else {
+        toast.error(errData?.error || 'Failed to publish offer');
+      }
     } finally { setSubmitting(false); }
   };
 
@@ -452,7 +466,7 @@ export default function CreateOffer() {
                         style={{ color: CAT_COLORS[cat] || C.g500 }}>{cat}</p>
                       {items.map(m => (
                         <button key={m.id}
-                          onClick={() => { setPayMethod(m.id); setShowPayMenu(false); setPaySearch(''); }}
+                          onClick={() => { setPayMethod(m.id); setShowPayMenu(false); setPaySearch(''); setDupOfferWarning(null); }}
                           className="w-full flex items-center gap-3 px-3 py-3 text-left active:bg-gray-100 transition"
                           style={{ backgroundColor: payMethod === m.id ? `${C.green}08` : undefined }}>
                           <span className="text-xl w-7 text-center flex-shrink-0">{m.icon}</span>
@@ -471,7 +485,7 @@ export default function CreateOffer() {
                   style={{ color: C.g400 }}>Other Methods</p>
                 {otherMethods.map(m => (
                   <button key={m.id}
-                    onClick={() => { setPayMethod(m.id); setShowPayMenu(false); setPaySearch(''); }}
+                    onClick={() => { setPayMethod(m.id); setShowPayMenu(false); setPaySearch(''); setDupOfferWarning(null); }}
                     className="w-full flex items-center gap-3 px-3 py-3 text-left active:bg-gray-100 transition">
                     <span className="text-xl w-7 text-center flex-shrink-0">{m.icon}</span>
                     <span className="text-sm font-semibold flex-1" style={{ color: C.g800 }}>{m.name}</span>
@@ -1638,6 +1652,36 @@ export default function CreateOffer() {
 
         {/* ── Navigation ──────────────────────────────────────────────────── */}
         <div style={{ display:'flex', gap:10, width:'100%', boxSizing:'border-box' }}>
+          {dupOfferWarning && (
+            <div style={{
+              width:'100%', marginBottom:10, padding:'12px 14px',
+              borderRadius:12, backgroundColor:'#FFF7ED',
+              border:'1.5px solid #FDE68A', display:'flex', flexDirection:'column', gap:8,
+            }}>
+              <div style={{ display:'flex', alignItems:'flex-start', gap:8 }}>
+                <AlertTriangle size={15} style={{ color:'#D97706', flexShrink:0, marginTop:1 }} />
+                <div>
+                  <p style={{ fontWeight:800, fontSize:13, color:'#92400E', margin:0 }}>
+                    {dupOfferWarning.status === 'PAUSED' ? 'You have a paused offer for this payment method' : 'You already have an active offer for this payment method'}
+                  </p>
+                  <p style={{ fontSize:12, color:'#B45309', margin:'4px 0 0' }}>
+                    {dupOfferWarning.status === 'PAUSED'
+                      ? 'Go to your Dashboard and activate your existing offer instead of creating a duplicate. One payment method per market is the rule.'
+                      : 'Go to your Dashboard and edit your existing offer instead of creating a duplicate. One payment method per market is the rule.'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => navigate('/dashboard')}
+                style={{
+                  alignSelf:'flex-start', padding:'7px 14px', borderRadius:8,
+                  backgroundColor:'#D97706', color:'#fff', fontWeight:800,
+                  fontSize:12, border:'none', cursor:'pointer',
+                }}>
+                Go to Dashboard →
+              </button>
+            </div>
+          )}
           {step > 1 && (
             <button onClick={back}
               style={{
