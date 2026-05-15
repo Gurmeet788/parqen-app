@@ -8,7 +8,7 @@ const { createClient } = require('@supabase/supabase-js');
 const hdWallet = require('./hdWalletService');
 const { checkAndAwardBadges } = require('./badgeService');
 const { updateOfferStatus } = require('./offerStatusService');
-const { sendSystemAlert } = require('./pushNotificationService');
+const { sendTradeAlert, sendSystemAlert } = require('./pushNotificationService');
 
 // ── Supabase admin (bypasses RLS) ─────────────────────────────────────────────
 const supabaseAdmin = createClient(
@@ -230,6 +230,15 @@ class TradeEscrowService {
 
     console.log(`✅ Funds locked — ${amount} BTC from provider ${btcProviderId.slice(0,8)}`);
 
+    // Fire-and-forget: push new_trade alert to the seller so they know to respond
+    supabaseAdmin.from('trades')
+      .select('seller_id, trade_ref, amount_btc')
+      .eq('id', tradeId)
+      .maybeSingle()
+      .then(({ data: t }) => {
+        if (t?.seller_id) sendTradeAlert(t.seller_id, t, 'new_trade').catch(() => {});
+      }).catch(() => {});
+
     return {
       success:      true,
       escrowAddress,
@@ -307,6 +316,7 @@ class TradeEscrowService {
       notifyMsg,
       `/trade/${tradeId}`
     );
+    sendTradeAlert(notifyId, trade, 'payment_sent').catch(() => {});
 
     console.log(`✅ Trade ${tradeId.slice(0,8)} marked as PAYMENT_SENT`);
 
@@ -583,6 +593,8 @@ class TradeEscrowService {
         `Trade #${tradeId.slice(0, 8).toUpperCase()} completed. 0.5% platform fee (₿${platformFee.toFixed(8)}) collected.`,
         `/trade/${tradeId}`
     );
+    sendTradeAlert(btcReceiverId, tradeData, 'btc_released').catch(() => {});
+    sendTradeAlert(releaserId, tradeData, 'btc_released').catch(() => {});
 
     console.log(`✅ Trade ${tradeId.slice(0, 8)} COMPLETED — receiver got ₿${buyerGets} | fee ₿${platformFee} → company`);
 
@@ -790,6 +802,9 @@ class TradeEscrowService {
           `/trade/${tradeId}`);
       }
     }
+    // Push to the party who did NOT get the refund alert above (btcProviderId already got sendSystemAlert)
+    const otherPartyId = btcProviderId === trade.buyer_id ? trade.seller_id : trade.buyer_id;
+    if (otherPartyId) sendTradeAlert(otherPartyId, trade, 'trade_cancelled').catch(() => {});
 
     console.log(`✅ Trade ${tradeId.slice(0,8)} cancelled and closed`);
 

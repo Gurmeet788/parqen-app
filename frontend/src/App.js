@@ -10,6 +10,7 @@ import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
 import WelcomeModal from './components/WelcomeModal';
 import SuggestionsPanel from './components/SuggestionsPanel';
+import { NotificationPrompt, AndroidInstallBanner, IOSInstallGuide } from './components/PushSetup';
 
 // Silence all non-error console output in production
 if (process.env.NODE_ENV === 'production') {
@@ -232,6 +233,15 @@ function App() {
         {showWelcome && user && (
           <WelcomeModal user={user} onClose={() => setShowWelcome(false)} />
         )}
+
+        {/* Push notification permission prompt — shows 3s after login, once per user */}
+        {user && <NotificationPrompt userId={user.id} />}
+
+        {/* Android PWA install banner — shows when browser offers install */}
+        <AndroidInstallBanner />
+
+        {/* iOS Safari guide — shows once on iPhone to walk through Add to Home Screen */}
+        <IOSInstallGuide />
 
         <Suspense fallback={<PageLoader />}>
         <Routes>
