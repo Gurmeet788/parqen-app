@@ -171,6 +171,7 @@ const GC_BRANDS = [
   { name:'PlayStation',         icon:'🎮', color:'#003087' },
   { name:'Nintendo',            icon:'🎮', color:'#E4000F' },
   { name:'Razer Gold',          icon:'🟡', color:'#44D62C' },
+  { name:'Nike Gift Card',      icon:'👟', color:'#111111' },
   { name:'MoneyPak',            icon:'💚', color:'#00A651' },
   { name:'PostePay',            icon:'🟡', color:'#FFCC00' },
   { name:'PLS Gift Card',       icon:'🎁', color:'#FF6B6B' },

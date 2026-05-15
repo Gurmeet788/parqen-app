@@ -4163,24 +4163,21 @@ app.get('/api/referral/earnings', verifyToken, async (req, res) => {
   try {
     const userId = req.userId;
 
-    // Run all queries in parallel
-    const [earningsResult, userResult, signupsResult] = await Promise.all([
-      // Trade-based commissions (also source of legacy referred-user data)
+    // Step 1 — fetch raw earnings WITHOUT a FK join so missing auth.users rows
+    // can never silently drop earning rows from the result set.
+    const [earningsResult, userResult, signupsResult] = await Promise.allSettled([
       supabaseAdmin
         .from('affiliate_earnings')
-        .select(`id, commission_btc, trade_amount_btc, trade_amount_usd, commission_rate, status, created_at, trade_id,
-          referred_user:referred_user_id(id, username, avatar_url, created_at, total_trades, badge)`)
+        .select('id, commission_btc, trade_amount_btc, trade_amount_usd, commission_rate, status, created_at, trade_id, referred_user_id')
         .eq('referrer_id', userId)
         .order('created_at', { ascending: false }),
 
-      // Referrer's own stats (total_referrals is authoritative signup count)
       supabaseAdmin
         .from('users')
         .select('total_referrals, referral_earnings_btc')
         .eq('id', userId)
         .single(),
 
-      // Users who signed up via this referrer's link (referred_by properly set)
       supabaseAdmin
         .from('users')
         .select('id, username, avatar_url, created_at, total_trades, badge')
@@ -4188,43 +4185,73 @@ app.get('/api/referral/earnings', verifyToken, async (req, res) => {
         .order('created_at', { ascending: false }),
     ]);
 
-    if (earningsResult.error) throw earningsResult.error;
+    const rawEarnings = (earningsResult.status === 'fulfilled' ? earningsResult.value.data : null) || [];
+    const userData    = (userResult.status    === 'fulfilled' ? userResult.value.data    : null) || {};
+    const signups     = (signupsResult.status === 'fulfilled' ? signupsResult.value.data : null) || [];
 
-    const earnings = earningsResult.data || [];
-    const userData = userResult.data || {};
-    const signups  = signupsResult.data || [];
+    // Step 2 — look up referred users from the public users table separately
+    // (bypasses any FK to auth.users that would hide rows for deleted accounts)
+    const uniqueRefIds = [...new Set(rawEarnings.map(e => e.referred_user_id).filter(Boolean))];
+    let referredUserMap = {};
+    if (uniqueRefIds.length > 0) {
+      const { data: refUsers } = await supabaseAdmin
+        .from('users')
+        .select('id, username, avatar_url, created_at, total_trades, badge')
+        .in('id', uniqueRefIds);
+      (refUsers || []).forEach(u => { referredUserMap[u.id] = u; });
+    }
+
+    // Attach resolved user to each earning row
+    const earnings = rawEarnings.map(e => ({
+      ...e,
+      referred_user: referredUserMap[e.referred_user_id] || null,
+    }));
 
     const totalEarned = earnings.reduce((sum, e) => sum + parseFloat(e.commission_btc || 0), 0);
 
-    // Map earnings per user for commission totals
+    // Map total earnings per username for the referredUsers summary card
     const earningsPerUser = {};
     earnings.forEach(e => {
-      if (e.referred_user?.username) {
-        const u = e.referred_user.username;
-        earningsPerUser[u] = (earningsPerUser[u] || 0) + parseFloat(e.commission_btc || 0);
+      const username = e.referred_user?.username || e.referred_user_id;
+      if (username) {
+        earningsPerUser[username] = (earningsPerUser[username] || 0) + parseFloat(e.commission_btc || 0);
       }
     });
 
-    // Start with signups that have referred_by set (new method)
+    // Build referredUsers list — start with proper signups (referred_by set)
     const seenIds = new Set();
     const referredUsers = signups.map(u => {
       seenIds.add(u.id);
       return { username: u.username, avatar_url: u.avatar_url || null, total_trades: u.total_trades || 0, badge: u.badge || 'BEGINNER', joined_at: u.created_at, total_earned: earningsPerUser[u.username] || 0 };
     });
 
-    // Add users from affiliate_earnings that aren't already in the list (legacy referrals)
+    // Also include users found only in affiliate_earnings (legacy / missing referred_by)
     earnings.forEach(e => {
       const ru = e.referred_user;
-      if (ru?.id && !seenIds.has(ru.id)) {
-        seenIds.add(ru.id);
-        referredUsers.push({ username: ru.username, avatar_url: ru.avatar_url || null, total_trades: ru.total_trades || 0, badge: ru.badge || 'BEGINNER', joined_at: ru.created_at, total_earned: earningsPerUser[ru.username] || 0 });
+      const refId = e.referred_user_id;
+      if (refId && !seenIds.has(refId)) {
+        seenIds.add(refId);
+        referredUsers.push({
+          username:     ru?.username    || `user_${String(refId).slice(0,8)}`,
+          avatar_url:   ru?.avatar_url  || null,
+          total_trades: ru?.total_trades || 0,
+          badge:        ru?.badge       || 'BEGINNER',
+          joined_at:    ru?.created_at  || null,
+          total_earned: earningsPerUser[ru?.username || refId] || 0,
+        });
       }
     });
 
+    // Use the users table referral_earnings_btc as the authoritative lifetime total.
+    // The sum from affiliate_earnings rows may differ if a withdrawal was processed.
+    const userReferralEarnings = parseFloat(userData.referral_earnings_btc || 0);
+    const authorativeTotalEarned = userReferralEarnings > totalEarned ? userReferralEarnings : totalEarned;
+
     res.json({
       success: true,
-      totalEarned,
-      referralCount: userData.total_referrals || referredUsers.length,
+      totalEarned: authorativeTotalEarned,
+      userReferralEarnings,             // always the users.referral_earnings_btc value
+      referralCount: userData.total_referrals != null ? userData.total_referrals : referredUsers.length,
       referredUsers,
       earnings,
     });

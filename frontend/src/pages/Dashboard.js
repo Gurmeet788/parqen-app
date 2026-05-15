@@ -259,12 +259,22 @@ function AffiliateSection({ user, profile, earnings, referralData, btcPrice, onW
   const [shareOpen, setShareOpen] = useState(false);
   const referralLink = `https://praqen.com/signup?ref=${user?.referral_code || profile?.referral_code || 'PRAQEN'}`;
 
-  // Use DB authoritative values when available (covers legacy data where affiliate_earnings is empty)
-  const totalEarnings  = dbTotalEarnings ?? referralData?.totalEarned ?? earnings.reduce((s,e)=>s+parseFloat(e.commission_btc||0),0);
+  // Use the largest non-zero value across all sources so stale/missing data
+  // in one source can never hide real earnings that another source has.
+  const totalEarnings = Math.max(
+    parseFloat(dbTotalEarnings               || 0),
+    parseFloat(referralData?.userReferralEarnings || 0),
+    parseFloat(referralData?.totalEarned         || 0),
+    earnings.reduce((s,e) => s + parseFloat(e.commission_btc||0), 0),
+  );
   const totalUsd       = totalEarnings * (btcPrice || 0);
-  const totalReferrals = dbReferralCount ?? referralData?.referralCount ?? new Set(earnings.map(e=>e.referred_user_id)).size;
-  const totalTrades    = referralData?.earnings?.length ?? earnings.length;
-  const lastEarning    = earnings[0]?.commission_btc||0;
+  const totalReferrals = Math.max(
+    dbReferralCount                   || 0,
+    referralData?.referralCount       || 0,
+    new Set(earnings.map(e=>e.referred_user_id)).size,
+  );
+  const totalTrades = earnings.length;
+  const lastEarning = earnings[0]?.commission_btc||0;
 
   const copy = () => {
     navigator.clipboard.writeText(referralLink);
@@ -659,10 +669,10 @@ function AffiliateSection({ user, profile, earnings, referralData, btcPrice, onW
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-black" style={{color:C.forest}}>
-                    Commission Earned
+                    {e.referred_user?.username ? `From @${e.referred_user.username}` : 'Commission Earned'}
                   </p>
-                  <p className="text-xs font-mono" style={{color:C.g400}}>
-                    #{String(e.trade_id||'').slice(0,10).toUpperCase()}
+                  <p className="text-xs font-mono truncate" style={{color:C.g400}}>
+                    Trade #{String(e.trade_id||'').slice(0,8).toUpperCase()}
                   </p>
                 </div>
                 <div className="text-right flex-shrink-0">
@@ -837,15 +847,18 @@ export default function Dashboard({ user }) {
       if (res.data.success) {
         setReferralData(res.data);
         setEarnings(res.data.earnings || []);
-        // affiliate_earnings is the authoritative source — sync the stats card
-        // so it shows the real earned amount even if users.referral_earnings_btc is stale
-        if (res.data.totalEarned > 0) {
-          setStats(prev => ({
-            ...prev,
-            referralEarnings: Math.max(prev.referralEarnings || 0, res.data.totalEarned),
-            totalReferrals:   Math.max(prev.totalReferrals  || 0, res.data.referralCount || 0),
-          }));
-        }
+        // Always sync stats — use the larger of the two sources so stale cached
+        // values never override a freshly fetched amount, even when amount is tiny.
+        const freshEarned   = Math.max(
+          parseFloat(res.data.userReferralEarnings || 0),
+          parseFloat(res.data.totalEarned          || 0),
+        );
+        const freshReferrals = res.data.referralCount != null ? res.data.referralCount : 0;
+        setStats(prev => ({
+          ...prev,
+          referralEarnings: Math.max(parseFloat(prev.referralEarnings || 0), freshEarned),
+          totalReferrals:   Math.max(prev.totalReferrals   || 0, freshReferrals),
+        }));
       }
     } catch (e) { /* silent */ }
   };
@@ -1460,7 +1473,7 @@ export default function Dashboard({ user }) {
 
         {/* ── AFFILIATE TAB ─────────────────────────────────────────────────── */}
         {activeTab==='affiliate' && (
-          <AffiliateSection user={displayUser} profile={profile} earnings={earnings} referralData={referralData} btcPrice={btcPrice} onWithdraw={handleReferralWithdraw} dbReferralCount={stats.totalReferrals} dbTotalEarnings={stats.referralEarnings > 0 ? stats.referralEarnings : (referralData?.totalEarned ?? undefined)} leaderboard={leaderboard}/>
+          <AffiliateSection user={displayUser} profile={profile} earnings={earnings} referralData={referralData} btcPrice={btcPrice} onWithdraw={handleReferralWithdraw} dbReferralCount={stats.totalReferrals} dbTotalEarnings={parseFloat(stats.referralEarnings || 0)} leaderboard={leaderboard}/>
         )}
 
       </div>

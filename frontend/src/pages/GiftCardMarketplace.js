@@ -121,7 +121,7 @@ const PAYMENT_OPTIONS = [
 const GC_BRANDS = [
   'All Brands','Amazon','Apple / iTunes','Google Play','Steam','eBay',
   'Walmart','Target','Visa Gift Card','Mastercard GC','Netflix',
-  'Spotify','Xbox','PlayStation','Nintendo','Razer Gold','MoneyPak','PostePay','Roblox','Other',
+  'Spotify','Xbox','PlayStation','Nintendo','Razer Gold','Nike Gift Card','MoneyPak','PostePay','Roblox','Other',
 ];
 
 const GC_FACE_VALUES = [10,20,25,50,100,200,500,1000];
