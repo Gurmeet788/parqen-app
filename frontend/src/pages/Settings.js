@@ -474,7 +474,11 @@ export default function Settings({ user, setUser }) {
   // Verification status — own state so it updates without depending on parent re-rendering
   const [emailVerified, setEmailVerified] = useState(!!(user?.is_email_verified || user?.email_verified));
   const [phoneVerified, setPhoneVerified] = useState(!!(user?.is_phone_verified || user?.phone_verified));
-  const [kycVerified,   setKycVerified]   = useState(!!(user?.kyc_verified || user?.is_id_verified));
+  const [kycVerified,   setKycVerified]   = useState(() => {
+    if (user?.kyc_verified || user?.is_id_verified) return true;
+    const ls = JSON.parse(localStorage.getItem('user') || '{}');
+    return ls.kyc_status === 'approved' || user?.kyc_status === 'approved';
+  });
   const [verificationSyncing, setVerificationSyncing] = useState(true);
   const verLevel = kycVerified ? 3 : phoneVerified ? 2 : emailVerified ? 1 : 0;
 
@@ -502,12 +506,14 @@ export default function Settings({ user, setUser }) {
     const tk = localStorage.getItem('token');
     if (!tk) { setVerificationSyncing(false); return; }
 
-    // Fetch profile and KYC status in parallel
-    Promise.all([
+    // Fetch profile and KYC status in parallel — allSettled so KYC applies even if profile fails
+    Promise.allSettled([
       axios.get(`${API_URL}/users/profile`, { headers: authH() }),
       axios.get(`${API_URL}/kyc/status`,    { headers: authH() }),
-    ]).then(([profileRes, kycRes]) => {
-      const fresh = profileRes.data.user || profileRes.data;
+    ]).then(([profileResult, kycResult]) => {
+      const profileRes = profileResult.status === 'fulfilled' ? profileResult.value : null;
+      const kycRes     = kycResult.status     === 'fulfilled' ? kycResult.value     : null;
+      const fresh = profileRes?.data?.user || profileRes?.data;
       if (fresh?.id) {
         const emailOk = !!(fresh.is_email_verified || fresh.email_verified);
         const phoneOk = !!(fresh.is_phone_verified || fresh.phone_verified);
@@ -534,35 +540,35 @@ export default function Settings({ user, setUser }) {
         localStorage.setItem('user', JSON.stringify({ ...stored, ...fresh }));
       }
       // Apply KYC status from dedicated endpoint (always fresh)
-      const kyc = kycRes.data;
-      const isVerified = !!(kyc.is_id_verified || kyc.kyc_status === 'approved');
-      setKycVerified(isVerified);
-      if (kyc.kyc_rejection_reason) setKycRejectedReason(kyc.kyc_rejection_reason);
+      if (kycRes) {
+        const kyc = kycRes.data;
+        const isVerified = !!(kyc.is_id_verified || kyc.kyc_status === 'approved');
+        setKycVerified(isVerified);
+        if (kyc.kyc_rejection_reason) setKycRejectedReason(kyc.kyc_rejection_reason);
 
-      // Read existing dedicated KYC key — merge API values in, but only when non-null
-      const kycStored = JSON.parse(localStorage.getItem('praqen_kyc') || '{}');
-      if (kyc.kyc_status) {
-        setKycStatus(kyc.kyc_status);
-        kycStored.status = kyc.kyc_status;
-      }
-      if (kyc.kyc_id_type) {
-        setKycSubmittedType(kyc.kyc_id_type);
-        kycStored.id_type = kyc.kyc_id_type;
-      }
-      if (kyc.kyc_submitted_at) {
-        setKycSubmittedAt(kyc.kyc_submitted_at);
-        kycStored.submitted_at = kyc.kyc_submitted_at;
-      }
-      // pending → show banner; approved → clear banner; null → keep whatever was stored
-      if (kyc.kyc_status === 'pending') {
-        setKycSubmitted(true);
-        kycStored.status = 'pending';
-      } else if (kyc.kyc_status === 'approved') {
-        setKycSubmitted(false);
-        localStorage.removeItem('praqen_kyc');
-      }
-      if (kyc.kyc_status !== 'approved') {
-        localStorage.setItem('praqen_kyc', JSON.stringify(kycStored));
+        const kycStored = JSON.parse(localStorage.getItem('praqen_kyc') || '{}');
+        if (kyc.kyc_status) {
+          setKycStatus(kyc.kyc_status);
+          kycStored.status = kyc.kyc_status;
+        }
+        if (kyc.kyc_id_type) {
+          setKycSubmittedType(kyc.kyc_id_type);
+          kycStored.id_type = kyc.kyc_id_type;
+        }
+        if (kyc.kyc_submitted_at) {
+          setKycSubmittedAt(kyc.kyc_submitted_at);
+          kycStored.submitted_at = kyc.kyc_submitted_at;
+        }
+        if (kyc.kyc_status === 'pending') {
+          setKycSubmitted(true);
+          kycStored.status = 'pending';
+        } else if (kyc.kyc_status === 'approved') {
+          setKycSubmitted(false);
+          localStorage.removeItem('praqen_kyc');
+        }
+        if (kyc.kyc_status !== 'approved') {
+          localStorage.setItem('praqen_kyc', JSON.stringify(kycStored));
+        }
       }
     }).catch(() => {
       // Fallback: try profile alone if KYC endpoint fails (column may not exist yet)
@@ -1493,7 +1499,7 @@ export default function Settings({ user, setUser }) {
                               )}
 
                               {/* KYC multi-step upload form */}
-                              {!kycVerified && !kycPending && phoneVerified && (
+                              {!kycVerified && !kycPending && kycStatus !== 'approved' && phoneVerified && (
                                 <div className="mt-4 space-y-4">
 
                                   {/* Step A: Select ID type */}
