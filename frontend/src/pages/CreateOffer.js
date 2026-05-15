@@ -135,7 +135,9 @@ const PAYMENT_METHODS = [
   // Gift Card / Voucher payment
   { id:'pls_gc',        name:'PLS Gift Card',                icon:'🎁', cat:'Gift Card Pay',  countries:[] },
   { id:'vanilla',       name:'Vanilla Card',                 icon:'🎁', cat:'Gift Card Pay',  countries:[] },
-  { id:'razer_gold',    name:'Razer Gold',                   icon:'🎮', cat:'Gift Card Pay',  countries:[] },
+  { id:'razer_gold',    name:'Razer Gold Gift Card',          icon:'🎮', cat:'Gift Card Pay',  countries:[] },
+  { id:'moneypak',      name:'MoneyPak',                     icon:'💚', cat:'Gift Card Pay',  countries:['US'] },
+  { id:'postepay',      name:'PostePay',                     icon:'🟡', cat:'Gift Card Pay',  countries:['IT'] },
   { id:'walmart_w2w',   name:'Walmart to Walmart',           icon:'🛒', cat:'Gift Card Pay',  countries:['US'] },
   { id:'psn_pay',       name:'PlayStation Gift Card',        icon:'🎮', cat:'Gift Card Pay',  countries:[] },
 ];
@@ -169,6 +171,8 @@ const GC_BRANDS = [
   { name:'PlayStation',         icon:'🎮', color:'#003087' },
   { name:'Nintendo',            icon:'🎮', color:'#E4000F' },
   { name:'Razer Gold',          icon:'🟡', color:'#44D62C' },
+  { name:'MoneyPak',            icon:'💚', color:'#00A651' },
+  { name:'PostePay',            icon:'🟡', color:'#FFCC00' },
   { name:'PLS Gift Card',       icon:'🎁', color:'#FF6B6B' },
   { name:'Vanilla Card',        icon:'🎁', color:'#8B4513' },
   { name:'Roblox',              icon:'🟥', color:'#E62E2E' },
