@@ -20,35 +20,64 @@ const FEE_RATE            = 0.005;
 const COMPANY_WALLET_ID   = '14762cd0-d3b2-474f-acab-fe0071961e9a';
 const COMPANY_BTC_ADDRESS = 'bc1qd8z3zdn2e3eul6y8nmcyjvgle3yzv8ttvsjp49';
 
-// Auto-pause a seller's SELL listings when their BTC balance hits zero.
-// Called after every trade completion and every wallet withdrawal.
+// After every trade / withdrawal: sync SELL listings to the seller's current balance.
+//   • If balance hits zero  → PAUSE all SELL offers + notify.
+//   • If balance is positive but max_limit_usd > balance value → cap max_limit_usd.
 // NEVER throws — must not break the caller.
 async function pauseSellOffersIfEmpty(sellerId) {
   try {
     const { data: bal } = await supabaseAdmin
       .from('wallets').select('balance_btc').eq('user_id', sellerId).maybeSingle();
-    const balance = parseFloat(bal?.balance_btc || 0);
-    if (balance > 0.000001) return; // Still has funds — nothing to do
+    const balance    = parseFloat(bal?.balance_btc || 0);
+    const BTC_PRICE  = 88000; // approximate — used only for USD cap comparison
+    const balanceUsd = balance * BTC_PRICE;
 
-    const { data: paused } = await supabaseAdmin
+    if (balance <= 0.000001) {
+      // Wallet empty → pause all SELL offers
+      const { data: paused } = await supabaseAdmin
+        .from('listings')
+        .update({ status: 'PAUSED', updated_at: new Date().toISOString() })
+        .eq('seller_id', sellerId)
+        .eq('status', 'ACTIVE')
+        .in('listing_type', ['SELL', 'SELL_BITCOIN'])
+        .select('id');
+
+      if (paused && paused.length > 0) {
+        console.log(`⏸ [AutoPause] ${paused.length} sell offer(s) paused — wallet empty for ${sellerId.slice(0,8)}`);
+        await supabaseAdmin.from('notifications').insert({
+          user_id:    sellerId,
+          type:       'wallet',
+          title:      '⏸ Sell Offers Paused',
+          message:    `Your sell offer${paused.length > 1 ? 's have' : ' has'} been automatically paused because your Bitcoin balance is empty. Top up your wallet to reactivate them.`,
+          action:     '/wallet',
+          is_read:    false,
+          created_at: new Date().toISOString(),
+        });
+      }
+      return;
+    }
+
+    // Wallet not empty — cap max_limit_usd to current balance value on all SELL offers
+    const { data: sellOffers } = await supabaseAdmin
       .from('listings')
-      .update({ status: 'PAUSED', updated_at: new Date().toISOString() })
+      .select('id, max_limit_usd, min_limit_usd')
       .eq('seller_id', sellerId)
-      .eq('status', 'ACTIVE')
       .in('listing_type', ['SELL', 'SELL_BITCOIN'])
-      .select('id');
+      .in('status', ['ACTIVE', 'PAUSED']);
 
-    if (paused && paused.length > 0) {
-      console.log(`⏸ [AutoPause] ${paused.length} sell offer(s) paused — wallet empty for ${sellerId.slice(0,8)}`);
-      await supabaseAdmin.from('notifications').insert({
-        user_id:    sellerId,
-        type:       'wallet',
-        title:      '⏸ Sell Offers Paused',
-        message:    `Your sell offer${paused.length > 1 ? 's have' : ' has'} been automatically paused because your Bitcoin balance is empty. Top up your wallet to reactivate them.`,
-        action:     '/wallet',
-        is_read:    false,
-        created_at: new Date().toISOString(),
-      });
+    if (!sellOffers || sellOffers.length === 0) return;
+
+    for (const offer of sellOffers) {
+      const currentMax = parseFloat(offer.max_limit_usd || 0);
+      if (currentMax > balanceUsd) {
+        // Cap max to balance; ensure min doesn't exceed the new capped max
+        const newMax = Math.max(10, parseFloat(balanceUsd.toFixed(2)));
+        const newMin = Math.min(parseFloat(offer.min_limit_usd || 10), newMax);
+        await supabaseAdmin.from('listings')
+          .update({ max_limit_usd: newMax, min_limit_usd: newMin, updated_at: new Date().toISOString() })
+          .eq('id', offer.id);
+        console.log(`📉 [AutoCap] Offer ${offer.id.slice(0,8)} max capped $${currentMax.toFixed(0)} → $${newMax.toFixed(0)} (balance $${balanceUsd.toFixed(0)})`);
+      }
     }
   } catch (err) {
     console.error('[pauseSellOffersIfEmpty]', err.message);

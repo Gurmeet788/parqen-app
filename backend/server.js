@@ -2719,6 +2719,18 @@ app.post('/api/listings', verifyToken, async (req, res) => {
       return res.status(400).json({ error: 'Minimum trade amount must be at least $10 USD.' });
     }
 
+    // BUY_GIFT_CARD offers lock BTC in escrow — creator must have >= $10 BTC
+    if (listingType === 'BUY_GIFT_CARD') {
+      const { data: creatorWallet } = await supabaseAdmin
+        .from('wallets').select('balance_btc').eq('user_id', req.userId).maybeSingle();
+      const creatorBalUsd = parseFloat(creatorWallet?.balance_btc || 0) * 88000;
+      if (creatorBalUsd < 10) {
+        return res.status(400).json({
+          error: 'You need at least $10 worth of Bitcoin in your PRAQEN wallet to create a gift card buying offer. Please top up your wallet first.',
+        });
+      }
+    }
+
     // Block duplicate offers (ACTIVE or PAUSED) with the same payment method
     const { data: dupCheck } = await supabaseAdmin
       .from('listings')
@@ -2808,21 +2820,21 @@ app.get('/api/listings', async (req, res) => {
 
     let listings = data || [];
 
-    // Attach live seller BTC balance to each SELL listing so the frontend can
-    // show dynamic available limits. ALL active offers are shown regardless of
-    // balance — escrow locks at trade time, not at offer creation.
-    const sellListings = listings.filter(l =>
-      l.listing_type === 'SELL' || l.listing_type === 'SELL_BITCOIN'
-    );
+    // Listings that require the creator to hold BTC:
+    //   SELL / SELL_BITCOIN  → seller locks BTC in escrow
+    //   BUY_GIFT_CARD        → creator pays BTC to receive a gift card
+    const btcRequiredTypes = ['SELL', 'SELL_BITCOIN', 'BUY_GIFT_CARD'];
+    const balanceCheckedListings = listings.filter(l => btcRequiredTypes.includes(l.listing_type));
 
-    if (sellListings.length > 0) {
-      const sellerIds = [...new Set(sellListings.map(l => l.seller_id))];
+    if (balanceCheckedListings.length > 0) {
+      const sellerIds = [...new Set(balanceCheckedListings.map(l => l.seller_id))];
       const { data: walletRows } = await supabaseAdmin
         .from('wallets').select('user_id, balance_btc').in('user_id', sellerIds);
 
       const balMap = {};
       (walletRows || []).forEach(w => { balMap[w.user_id] = parseFloat(w.balance_btc || 0); });
 
+      // Attach balance + effective max to SELL listings
       listings = listings.map(l => {
         if (l.listing_type !== 'SELL' && l.listing_type !== 'SELL_BITCOIN') return l;
         const sellerBtc   = balMap[l.seller_id] || 0;
@@ -2831,14 +2843,25 @@ app.get('/api/listings', async (req, res) => {
         return { ...l, seller_balance_btc: sellerBtc, effective_max_usd: effectiveMaxUsd };
       });
 
-      // Hide SELL offers whose seller has less than $10 worth of BTC.
-      // Offer stays ACTIVE in DB and reappears automatically once they top up.
+      // Hide any btcRequired offer whose creator has < $10 worth of BTC.
+      const lowBalanceGiftCardIds = [];
       listings = listings.filter(l => {
-        if (l.listing_type !== 'SELL' && l.listing_type !== 'SELL_BITCOIN') return true;
-        const sellerBtc   = l.seller_balance_btc || 0;
+        if (!btcRequiredTypes.includes(l.listing_type)) return true;
+        const sellerBtc   = balMap[l.seller_id] || 0;
         const btcPriceVal = parseFloat(l.bitcoin_price) || 88000;
-        return sellerBtc * btcPriceVal >= 10;
+        const hasEnough   = sellerBtc * btcPriceVal >= 10;
+        if (!hasEnough && l.listing_type === 'BUY_GIFT_CARD') lowBalanceGiftCardIds.push(l.id);
+        return hasEnough;
       });
+
+      // Auto-pause BUY_GIFT_CARD offers with insufficient balance in the DB
+      if (lowBalanceGiftCardIds.length > 0) {
+        supabaseAdmin.from('listings')
+          .update({ status: 'PAUSED', updated_at: new Date().toISOString() })
+          .in('id', lowBalanceGiftCardIds)
+          .then(() => {})
+          .catch(e => console.error('[listings] auto-pause gift card low-balance:', e.message));
+      }
     }
 
     // Attach display_name and resolve best country for each listing's embedded user
@@ -2903,16 +2926,38 @@ app.get('/api/my-listings', verifyToken, async (req, res) => {
 app.put('/api/listings/:id', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { margin, min_limit_usd, max_limit_usd, payment_method, trade_instructions, status } = req.body;
-    const { data: listing, error: findError } = await supabaseAdmin.from('listings').select('seller_id').eq('id', id).single();
+    const { margin, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local,
+            payment_method, trade_instructions, listing_terms, time_limit, status } = req.body;
+    const { data: listing, error: findError } = await supabaseAdmin.from('listings').select('seller_id, listing_type').eq('id', id).single();
     if (findError || !listing) return res.status(404).json({ error: 'Listing not found' });
     if (listing.seller_id !== req.userId) return res.status(403).json({ error: 'You can only edit your own listings' });
+    if (min_limit_usd !== undefined && parseFloat(min_limit_usd) < 10) {
+      return res.status(400).json({ error: 'Minimum trade amount must be at least $10 USD.' });
+    }
+    // For SELL offers: cap max_limit_usd at seller's actual wallet balance
+    if (max_limit_usd !== undefined) {
+      const isSellListing = ['SELL', 'SELL_BITCOIN'].includes((listing.listing_type || '').toUpperCase());
+      if (isSellListing) {
+        const { data: sellerWallet } = await supabaseAdmin
+          .from('wallets').select('balance_btc').eq('user_id', req.userId).maybeSingle();
+        const sellerBalUsd = parseFloat(sellerWallet?.balance_btc || 0) * 88000;
+        if (parseFloat(max_limit_usd) > sellerBalUsd && sellerBalUsd > 0) {
+          return res.status(400).json({
+            error: `Maximum trade limit ($${parseFloat(max_limit_usd).toFixed(0)}) exceeds your wallet balance ($${sellerBalUsd.toFixed(0)}). Please top up or lower the maximum.`,
+          });
+        }
+      }
+    }
     const updateData = { updated_at: new Date().toISOString() };
     if (margin !== undefined) updateData.margin = margin;
     if (min_limit_usd !== undefined) updateData.min_limit_usd = min_limit_usd;
     if (max_limit_usd !== undefined) updateData.max_limit_usd = max_limit_usd;
+    if (min_limit_local !== undefined) updateData.min_limit_local = min_limit_local;
+    if (max_limit_local !== undefined) updateData.max_limit_local = max_limit_local;
     if (payment_method !== undefined) updateData.payment_method = payment_method;
     if (trade_instructions !== undefined) updateData.trade_instructions = trade_instructions;
+    if (listing_terms !== undefined) updateData.listing_terms = listing_terms;
+    if (time_limit !== undefined) updateData.time_limit = time_limit;
     if (status !== undefined) updateData.status = status;
     const { data, error } = await supabaseAdmin.from('listings').update(updateData).eq('id', id).select().single();
     if (error) return res.status(400).json({ error: error.message });
@@ -3174,10 +3219,27 @@ app.post('/api/offers', verifyToken, async (req, res) => {
     const verifCount = [hasEmail, hasPhone, hasKyc].filter(Boolean).length;
     const isGiftCard = mappedType === 'BUY_GIFT_CARD' || mappedType === 'SELL_GIFT_CARD';
 
+    // Enforce $10 USD minimum trade limit for non-gift-card offers
+    if (!isGiftCard && parseFloat(min_limit_usd || 0) < 10) {
+      return res.status(400).json({ error: 'Minimum trade amount must be at least $10 USD.' });
+    }
+
     // Default gift_card_brand for non-GC offers (column is NOT NULL in schema)
     const brandDefault = mappedType === 'SELL' ? 'Sell Bitcoin' : mappedType === 'BUY' ? 'Buy Bitcoin' : '';
     const cur = currency || 'USD';
     const curSym = currency_symbol || (cur === 'GHS' ? '₵' : cur === 'NGN' ? '₦' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : '$');
+
+    // For SELL offers: max_limit_usd must not exceed the seller's BTC wallet balance
+    if ((mappedType === 'SELL' || mappedType === 'SELL_BITCOIN') && max_limit_usd) {
+      const { data: sellerWallet } = await supabaseAdmin
+        .from('wallets').select('balance_btc').eq('user_id', userId).maybeSingle();
+      const sellerBalUsd = parseFloat(sellerWallet?.balance_btc || 0) * 88000; // approximate BTC price for cap
+      if (parseFloat(max_limit_usd) > sellerBalUsd && sellerBalUsd > 0) {
+        return res.status(400).json({
+          error: `Maximum trade limit ($${parseFloat(max_limit_usd).toFixed(0)}) exceeds your wallet balance ($${sellerBalUsd.toFixed(0)}). Please top up or lower the maximum.`,
+        });
+      }
+    }
 
     // Block duplicate active offers with the same payment method
     const { data: dupCheck2 } = await supabaseAdmin
@@ -3501,9 +3563,19 @@ app.post('/api/trades', verifyToken, async (req, res) => {
       .from('wallets').select('balance_btc').eq('user_id', btcProviderId).maybeSingle();
     const availableBtc = parseFloat(providerWallet?.balance_btc || 0);
     if (availableBtc < verifiedAmountBtc) {
-      return res.status(400).json({
-        error: `The ${btcProviderId === req.userId ? 'seller' : 'offer owner'} has insufficient Bitcoin balance to complete this trade. Please try a smaller amount or choose a different offer.`
-      });
+      const isOwnBalance = btcProviderId === req.userId;
+      // Auto-pause the offer if the balance problem is on the offer creator's side
+      if (!isOwnBalance) {
+        supabaseAdmin.from('listings')
+          .update({ status: 'PAUSED', updated_at: new Date().toISOString() })
+          .eq('id', listingId)
+          .then(() => {}).catch(() => {});
+      }
+      const availableUsd = (availableBtc * (verifiedAmountBtc > 0 ? (tradeAmountUsd / verifiedAmountBtc) : 88000)).toFixed(2);
+      const msg = isOwnBalance
+        ? `You don't have enough Bitcoin in your PRAQEN wallet to open this trade. You need ${verifiedAmountBtc.toFixed(6)} BTC. Please top up your wallet first.`
+        : `This seller doesn't have enough Bitcoin to complete this trade right now. Their offer has been paused automatically. Please choose a different offer.`;
+      return res.status(400).json({ error: msg });
     }
 
     // Large trades ($10k+) require KYC to protect the platform
@@ -3949,7 +4021,7 @@ app.post('/api/trades/:id/dispute', tradeLimiter, verifyToken, async (req, res) 
       await createNotification(trade.seller_id, 'support', '⚠️ Dispute Opened', `Dispute opened for trade #${req.params.id.slice(0, 8)}. Moderator will review.`, `/trade/${req.params.id}`);
       await createNotification(trade.buyer_id,  'support', '⚠️ Dispute Opened', `Dispute opened for trade #${req.params.id.slice(0, 8)}. Please provide evidence.`, `/trade/${req.params.id}`);
       notifyModerators(req.params.id, trade, reason || 'User opened a dispute').catch(e => console.error('[dispute] notifyModerators failed:', e.message));
-      supabaseAdmin.from('messages').insert([{ trade_id: req.params.id, sender_id: null, recipient_id: null, message_text: `🚨 DISPUTE OPENED — Reason: ${reason || 'User opened a dispute'}. Moderators notified.`, message_type: 'SYSTEM', sender_role: 'system', created_at: new Date() }]).catch(() => {});
+      supabaseAdmin.from('messages').insert([{ trade_id: req.params.id, sender_id: null, recipient_id: null, message_text: `🚨 DISPUTE OPENED — Reason: ${reason || 'User opened a dispute'}. Moderators notified.`, message_type: 'SYSTEM', sender_role: 'system', created_at: new Date() }]).then(() => {}).catch(() => {});
 
       // Email both parties — fetch their user records in parallel
       const [buyerRes, sellerRes] = await Promise.allSettled([
@@ -6171,8 +6243,9 @@ app.listen(PORT, () => {
   console.log(`✅ PRAQEN Backend running on http://localhost:${PORT}`);
   console.log('📋 Routes: /api/auth, /api/users, /api/listings, /api/trades, /api/my-trades, /api/wallet, /api/hd-wallet, /api/notifications');
 
-  // Immediately pause all sell offers whose seller balance is insufficient
+  // Pause/reactivate offers based on live wallet balance — runs at startup then every 10 min
   syncAllOfferStatuses().catch(err => console.error('[startup] syncAllOfferStatuses:', err.message));
+  setInterval(() => syncAllOfferStatuses().catch(err => console.error('[interval] syncAllOfferStatuses:', err.message)), 10 * 60 * 1000);
 
   // Backfill missing country codes for existing users using phone/KYC data
   backfillCountriesFromPhone().catch(err => console.error('[startup] backfillCountries:', err.message));

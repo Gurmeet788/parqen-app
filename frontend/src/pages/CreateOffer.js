@@ -347,6 +347,8 @@ export default function CreateOffer() {
       const mn = parseFloat(minLimit), mx = parseFloat(maxLimit);
       if (!(mn > 0 && mx > 0 && mx >= mn)) return false;
       if (minUSDVal < 10) return false;
+      // Max cannot exceed what the seller actually has in their wallet
+      if ((offerType === 'sell') && walletCapacityLocal > 0 && mx > walletCapacityLocal) return false;
       return true;
     }
     return true;
@@ -355,8 +357,17 @@ export default function CreateOffer() {
   const next = () => {
     if (canNext()) {
       setStep(s => Math.min(s + 1, 5));
-    } else if (step === 4 && !isGC && minUSDVal < 10) {
-      toast.warn(`Minimum must be at least $10 USD — that's ${sym}${fmt(10 * localRate, 0)} ${cur}`);
+    } else if (step === 4 && !isGC) {
+      const mn = parseFloat(minLimit), mx = parseFloat(maxLimit);
+      if (minUSDVal < 10) {
+        toast.warn(`Minimum must be at least $10 USD — that's ${sym}${fmt(10 * localRate, 0)} ${cur}`);
+      } else if (offerType === 'sell' && walletCapacityLocal > 0 && mx > walletCapacityLocal) {
+        toast.warn(`Maximum cannot exceed your wallet balance of ${sym}${fmt(walletCapacityLocal, 0)} ${cur}`);
+      } else if (!(mn > 0 && mx > 0 && mx >= mn)) {
+        toast.warn('Maximum must be greater than or equal to minimum');
+      } else {
+        toast.warn('Please complete all required fields');
+      }
     } else {
       toast.warn('Please complete all required fields');
     }
@@ -364,6 +375,12 @@ export default function CreateOffer() {
   const back = () => setStep(s => Math.max(s - 1, 1));
 
   const handleSubmit = async () => {
+    // Hard block: minimum must be ≥ $10 for non-gift-card offers (catches any bypass of step 4)
+    if (!isGC && minUSDVal < 10) {
+      toast.error(`Minimum must be at least $10 USD — that's ${sym}${fmt(10 * localRate, 0)} ${cur}`);
+      setStep(4);
+      return;
+    }
     setSubmitting(true);
     try {
       const user  = JSON.parse(localStorage.getItem('user')  || '{}');
@@ -1460,28 +1477,52 @@ export default function CreateOffer() {
                 </h3>
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { key:'min', label:'Minimum', val:minLimit, set:setMinLimit, ph:'e.g. 100' },
-                    { key:'max', label:'Maximum', val:maxLimit, set:setMaxLimit, ph:'e.g. 5000' },
-                  ].map(({ key, label, val, set, ph }) => (
+                    { key:'min', label:'Minimum', val:minLimit, set:setMinLimit, ph:`Min ${sym}${Math.ceil(10*localRate)}` },
+                    { key:'max', label:'Maximum', val:maxLimit, set:setMaxLimit, ph:`Max ${sym}${walletCapacityLocal > 0 ? fmt(Math.floor(walletCapacityLocal), 0) : '5000'}` },
+                  ].map(({ key, label, val, set, ph }) => {
+                    const isMin = key === 'min';
+                    const isMax = key === 'max';
+                    const belowMin = isMin && val && parseFloat(val) / localRate < 10;
+                    const aboveCap = isMax && offerType === 'sell' && walletCapacityLocal > 0 && parseFloat(val) > walletCapacityLocal;
+                    const hasError = belowMin || aboveCap;
+                    return (
                     <div key={key}>
                       <label className="block text-xs font-bold mb-1.5" style={{ color: C.g600 }}>
                         {label} per Trade <span style={{ color: C.danger }}>*</span>
+                        {isMax && walletCapacityLocal > 0 && (
+                          <span className="ml-1 font-semibold" style={{ color: C.g400 }}>
+                            (cap: {sym}{fmt(Math.floor(walletCapacityLocal), 0)})
+                          </span>
+                        )}
                       </label>
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-black"
                           style={{ color: C.g500 }}>{sym}</span>
-                        <input type="number" value={val} onChange={e => set(e.target.value)} placeholder={ph}
+                        <input type="number" value={val}
+                          onChange={e => set(e.target.value)}
+                          onBlur={() => {
+                            if (isMax && walletCapacityLocal > 0 && parseFloat(val) > walletCapacityLocal) {
+                              set(String(Math.floor(walletCapacityLocal)));
+                            }
+                            if (isMin && parseFloat(val) < Math.ceil(10 * localRate)) {
+                              set(String(Math.ceil(10 * localRate)));
+                            }
+                          }}
+                          placeholder={ph}
+                          min={isMin ? Math.ceil(10 * localRate) : 1}
+                          max={isMax && walletCapacityLocal > 0 ? Math.floor(walletCapacityLocal) : undefined}
                           className="w-full pl-8 pr-3 py-3 border-2 rounded-xl text-sm font-bold focus:outline-none"
-                          style={{ borderColor: val ? C.green : C.g200, color: C.forest }} />
+                          style={{ borderColor: hasError ? C.danger : val ? C.green : C.g200, color: C.forest }} />
                       </div>
                       {val && effectiveRate > 0 && (
-                        <p className="text-xs mt-0.5 font-semibold" style={{ color: C.g400 }}>
+                        <p className="text-xs mt-0.5 font-semibold" style={{ color: hasError ? C.danger : C.g400 }}>
                           ≈ ₿{(parseFloat(val) / effectiveRate).toFixed(6)}
                           <span className="ml-1">(${fmt(parseFloat(val) / localRate, 0)} USD)</span>
                         </p>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {minLimit && minUSDVal < 10 && (
@@ -1489,6 +1530,15 @@ export default function CreateOffer() {
                     <AlertTriangle size={13} style={{ color: C.danger }} />
                     <p className="text-xs font-semibold" style={{ color: C.danger }}>
                       Minimum must be at least $10 USD — that's {sym}{fmt(10 * localRate, 0)} {cur} in your currency.
+                    </p>
+                  </div>
+                )}
+                {offerType === 'sell' && maxLimit && walletCapacityLocal > 0 && parseFloat(maxLimit) > walletCapacityLocal && (
+                  <div className="flex items-center gap-2 p-2.5 rounded-xl" style={{ backgroundColor: `${C.danger}10` }}>
+                    <AlertTriangle size={13} style={{ color: C.danger }} />
+                    <p className="text-xs font-semibold" style={{ color: C.danger }}>
+                      Maximum ({sym}{fmt(parseFloat(maxLimit), 0)}) exceeds your wallet balance of {sym}{fmt(walletCapacityLocal, 0)} {cur}.
+                      Your maximum has been auto-corrected on blur.
                     </p>
                   </div>
                 )}

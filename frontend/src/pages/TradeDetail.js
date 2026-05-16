@@ -1058,10 +1058,6 @@ export default function TradeDetail({user}) {
     autoCancelled.current = true;
     try{
       await axios.post(`${API_URL}/trades/${id}/mark-paid`,{},{headers:authH()});
-      const sysMsg = isGiftCardTrade
-        ? '🎁 Seller sent the gift card code. Buyer: verify the code and release Bitcoin.'
-        : '⏳ Payment confirmed — waiting for seller to verify and release your Bitcoin.';
-      await postSys(sysMsg);
       toast.success(isGiftCardTrade ? 'Code sent! Waiting for buyer to verify.' : 'Payment confirmed!');
       await loadTrade();
     }catch(e){
@@ -1327,18 +1323,12 @@ export default function TradeDetail({user}) {
                       : '⏳ Waiting for the buyer to send payment…'}
                 </div>
               )}
-              {isActive&&isPaid&&(
+              {isActive&&isPaid&&isGiftCardTrade&&(
                 <div className="p-3 rounded-xl text-xs font-semibold border"
-                  style={{backgroundColor:isGiftCardTrade?'#F0FDF4':'#EFF6FF',
-                          borderColor:isGiftCardTrade?'#86EFAC':'#BFDBFE',
-                          color:isGiftCardTrade?'#166534':'#1E40AF'}}>
-                  {isGiftCardTrade
-                    ? isBuyer
-                      ? '✅ Code received! Test it now — if it works, click "RELEASE BITCOIN" to pay the seller.'
-                      : '⏳ Buyer is verifying your gift card code. BTC releases once they confirm.'
-                    : isSeller
-                      ? '💰 Buyer confirmed payment sent. Verify you received it, then click "RELEASE BITCOIN".'
-                      : '⏳ Payment confirmed — waiting for seller to verify and release your Bitcoin.'}
+                  style={{backgroundColor:'#F0FDF4',borderColor:'#86EFAC',color:'#166534'}}>
+                  {isBuyer
+                    ? '✅ Code received! Test it — if it works, click RELEASE BITCOIN to pay the seller.'
+                    : '⏳ Buyer is verifying your gift card code. Bitcoin releases once they confirm.'}
                 </div>
               )}
 
@@ -1740,7 +1730,7 @@ export default function TradeDetail({user}) {
                     const isSuccess=/complet|released|btc.*released|verified|unlock/i.test(text);
                     const isDanger =/cancel|expired|refund|failed/i.test(text);
                     const isWarn   =/warning|urgent|expir|time.*left|5 minute/i.test(text);
-                    const isPmt    =/payment.*sent|buyer.*paid|mark.*paid|sent.*payment|confirmed payment|payment.*confirm|payment confirmed/i.test(text);
+                    const isPmt    =/⏳.*payment|payment.*sent|buyer.*paid|mark.*paid|sent.*payment|confirmed payment|payment.*confirm|payment confirmed/i.test(text);
                     const isOpen   =/trade.*open|escrow.*lock|btc.*locked|opened/i.test(text);
                     const isDisp   =/disput|moderator|support.*review/i.test(text);
 
@@ -1749,8 +1739,8 @@ export default function TradeDetail({user}) {
                       <div key={i} className="flex justify-center my-4 px-1">
                         <div className="w-full max-w-[95%] rounded-2xl overflow-hidden"
                           style={{
-                            background:'linear-gradient(145deg,#7F1D1D,#B91C1C,#DC2626)',
-                            boxShadow:'0 0 0 2px #FCA5A5, 0 8px 32px rgba(220,38,38,0.55)',
+                            background:'linear-gradient(145deg,#1E3A5F,#1D4ED8,#2563EB)',
+                            boxShadow:'0 0 0 2px #93C5FD, 0 8px 32px rgba(37,99,235,0.55)',
                             animation:'pmtPulse 2.4s ease-in-out infinite',
                           }}>
                           {/* top bar */}
@@ -1759,22 +1749,22 @@ export default function TradeDetail({user}) {
                             <div className="flex items-center gap-2">
                               <div className="w-8 h-8 rounded-full flex items-center justify-center text-lg flex-shrink-0"
                                 style={{background:'rgba(255,255,255,0.18)',border:'1.5px solid rgba(255,255,255,0.35)'}}>
-                                💰
+                                ⏳
                               </div>
                               <span className="font-black text-white text-xs tracking-[0.15em] uppercase">Payment Confirmed</span>
                             </div>
-                            <span className="text-xs font-semibold" style={{color:'rgba(255,255,255,0.5)'}}>{ts}</span>
+                            <span className="text-xs font-semibold" style={{color:'rgba(255,255,255,0.6)'}}>{ts}</span>
                           </div>
                           {/* body */}
                           <div className="px-4 py-3" style={{background:'rgba(255,255,255,0.97)'}}>
-                            <p className="text-sm font-black leading-snug" style={{color:'#DC2626'}}>{text}</p>
+                            <p className="text-sm font-black leading-snug" style={{color:'#1D4ED8'}}>{text}</p>
                             <div className="mt-2.5 px-3 py-2 rounded-xl text-xs font-black"
                               style={{
                                 background: isSeller
-                                  ? 'rgba(220,38,38,0.08)'
-                                  : 'rgba(220,38,38,0.05)',
-                                color:'#991B1B',
-                                border:'1px solid rgba(220,38,38,0.25)',
+                                  ? 'rgba(37,99,235,0.10)'
+                                  : 'rgba(37,99,235,0.06)',
+                                color:'#1E40AF',
+                                border:'1px solid rgba(37,99,235,0.25)',
                               }}>
                               {isBuyer
                                 ? '✓ You marked payment sent. Awaiting seller confirmation.'
@@ -1784,7 +1774,7 @@ export default function TradeDetail({user}) {
                             </div>
                           </div>
                         </div>
-                        <style>{`@keyframes pmtPulse{0%,100%{box-shadow:0 0 0 2px #FCA5A5,0 8px 32px rgba(220,38,38,0.55);}50%{box-shadow:0 0 0 3px #F87171,0 12px 40px rgba(220,38,38,0.75);}}`}</style>
+                        <style>{`@keyframes pmtPulse{0%,100%{box-shadow:0 0 0 2px #93C5FD,0 8px 32px rgba(37,99,235,0.55);}50%{box-shadow:0 0 0 3px #60A5FA,0 12px 40px rgba(37,99,235,0.75);}}`}</style>
                       </div>
                     );
 
@@ -1971,6 +1961,41 @@ export default function TradeDetail({user}) {
 
                 <div ref={msgEnd}/>
               </div>
+
+              {/* ── Payment confirmed banner — pinned above input, visible to both users ── */}
+              {isActive&&isPaid&&(
+                <div className="flex-shrink-0 mx-3 mb-2 rounded-xl overflow-hidden"
+                  style={{border:'2px solid #2563EB',boxShadow:'0 2px 12px rgba(37,99,235,0.20)'}}>
+                  {/* header */}
+                  <div className="flex items-center gap-2 px-3 py-2"
+                    style={{background:'linear-gradient(135deg,#1E3A8A,#2563EB)'}}>
+                    <span className="text-sm">{isBuyer ? '⏳' : '🔔'}</span>
+                    <span className="text-xs font-black text-white tracking-wide flex-1">
+                      {isBuyer
+                        ? 'Payment Sent — Awaiting Seller Confirmation'
+                        : '⚡ Action Required — Release Bitcoin'}
+                    </span>
+                  </div>
+                  {/* body */}
+                  <div className="px-3 py-2.5" style={{backgroundColor:'#EFF6FF'}}>
+                    {isBuyer ? (
+                      <p className="text-xs font-semibold leading-relaxed" style={{color:'#1E40AF'}}>
+                        ✅ Your payment has been sent successfully. The seller has been notified and will check their account now. Once they confirm receipt, your Bitcoin will be released to you automatically.
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-xs font-bold leading-relaxed" style={{color:'#1E40AF'}}>
+                          💰 The buyer has confirmed payment. Please check your {payMethod} account right now.
+                        </p>
+                        <p className="text-xs font-semibold mt-1" style={{color:'#1D4ED8'}}>
+                          ✅ Payment received? → Scroll up and tap <strong>RELEASE BITCOIN</strong> to complete the trade.<br/>
+                          ❌ Not received? → Open a dispute so a moderator can help.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Input */}
               {isActive?(

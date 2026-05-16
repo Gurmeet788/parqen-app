@@ -38,13 +38,21 @@ const tabOf = l => {
 const shareUrl = id => `${window.location.origin}/listing/${id}`;
 
 // ─── Edit Modal ───────────────────────────────────────────────────────────────
-function EditModal({ listing, onClose, onSave, saving }) {
+function EditModal({ listing, onClose, onSave, saving, walletBtc, btcPrice }) {
+  const { rates: USD_RATES } = useRates();
   const cur = listing.currency || 'USD';
   const sym = listing.currency_symbol || CUR_SYM[cur] || '$';
+  const usdRate = USD_RATES[cur] || 1;
+  const isSell = (listing.listing_type || '').toUpperCase() === 'SELL' || (listing.listing_type || '').toUpperCase() === 'SELL_BITCOIN';
+
+  // Wallet capacity in local currency (only relevant for SELL offers)
+  const walletCapLocal = isSell ? Math.floor(walletBtc * (btcPrice || 88000) * usdRate) : Infinity;
+  const minAllowed = Math.ceil(10 * usdRate); // $10 in local currency
+
   const [form, setForm] = useState({
     margin:             parseFloat(listing.margin || 0),
-    min_limit_local:    listing.min_limit_local || listing.min_limit_usd || 0,
-    max_limit_local:    listing.max_limit_local || listing.max_limit_usd || 0,
+    min_limit_local:    listing.min_limit_local || Math.round((listing.min_limit_usd || 10) * usdRate),
+    max_limit_local:    listing.max_limit_local || Math.round((listing.max_limit_usd || 1000) * usdRate),
     payment_method:     listing.payment_method || '',
     trade_instructions: listing.trade_instructions || '',
     listing_terms:      listing.listing_terms || '',
@@ -52,6 +60,13 @@ function EditModal({ listing, onClose, onSave, saving }) {
   });
 
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const minVal = parseFloat(form.min_limit_local) || 0;
+  const maxVal = parseFloat(form.max_limit_local) || 0;
+  const minBelowFloor = minVal < minAllowed;
+  const maxAboveCap   = isSell && walletCapLocal < Infinity && maxVal > walletCapLocal;
+  const maxBelowMin   = maxVal > 0 && minVal > 0 && maxVal < minVal;
+  const canSave = !minBelowFloor && !maxAboveCap && !maxBelowMin && minVal > 0 && maxVal > 0;
 
   return (
     <div className="fixed inset-0 flex items-end md:items-center justify-center p-0 md:p-4"
@@ -99,20 +114,71 @@ function EditModal({ listing, onClose, onSave, saving }) {
           </div>
 
           <div>
-            <label className="text-sm font-black mb-2 block" style={{color:C.g700}}>Trade Range ({sym} {cur})</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-black" style={{color:C.g700}}>Trade Range ({sym} {cur})</label>
+              {isSell && walletCapLocal < Infinity && (
+                <span className="text-xs font-bold px-2 py-0.5 rounded-lg"
+                  style={{backgroundColor:`${C.success}15`, color:C.success}}>
+                  💼 Wallet cap: {sym}{fmt(walletCapLocal)}
+                </span>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-3">
-              {[{key:'min_limit_local',label:'Minimum'},{key:'max_limit_local',label:'Maximum'}].map(({key,label})=>(
+              {[
+                {key:'min_limit_local', label:'Minimum', isMin:true, isMax:false},
+                {key:'max_limit_local', label:'Maximum', isMin:false, isMax:true},
+              ].map(({key, label, isMin, isMax})=>{
+                const val = parseFloat(form[key]) || 0;
+                const hasErr = (isMin && val > 0 && val < minAllowed) ||
+                               (isMax && maxAboveCap) ||
+                               (isMax && maxBelowMin);
+                return (
                 <div key={key}>
-                  <p className="text-sm font-bold mb-1.5" style={{color:C.g500}}>{label}</p>
+                  <p className="text-sm font-bold mb-1.5" style={{color: hasErr ? C.danger : C.g500}}>
+                    {label}
+                    {isMax && walletCapLocal < Infinity && (
+                      <span className="ml-1 text-xs font-semibold" style={{color:C.g400}}>
+                        (max {sym}{fmt(walletCapLocal)})
+                      </span>
+                    )}
+                    {isMin && (
+                      <span className="ml-1 text-xs font-semibold" style={{color:C.g400}}>
+                        (min {sym}{fmt(minAllowed)})
+                      </span>
+                    )}
+                  </p>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black" style={{color:C.g400}}>{sym}</span>
                     <input type="number" value={form[key]} onChange={e=>set(key,e.target.value)}
+                      onBlur={() => {
+                        if (isMin && val < minAllowed) set(key, minAllowed);
+                        if (isMax && isSell && walletCapLocal < Infinity && val > walletCapLocal) set(key, walletCapLocal);
+                      }}
+                      min={isMin ? minAllowed : 1}
+                      max={isMax && walletCapLocal < Infinity ? walletCapLocal : undefined}
                       className="w-full pl-8 pr-3 py-3 text-base font-bold border-2 rounded-xl focus:outline-none"
-                      style={{borderColor:form[key]?C.green:C.g200,color:C.forest}}/>
+                      style={{borderColor: hasErr ? C.danger : form[key] ? C.green : C.g200, color:C.forest}}/>
                   </div>
+                  {val > 0 && (
+                    <p className="text-xs mt-0.5 font-semibold" style={{color: hasErr ? C.danger : C.g400}}>
+                      ≈ ${fmt(val / usdRate, 0)} USD
+                    </p>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
+            {(minBelowFloor || maxAboveCap || maxBelowMin) && (
+              <div className="mt-2 p-2.5 rounded-xl flex items-start gap-2"
+                style={{backgroundColor:`${C.danger}10`}}>
+                <AlertTriangle size={13} style={{color:C.danger, flexShrink:0, marginTop:1}}/>
+                <p className="text-xs font-semibold" style={{color:C.danger}}>
+                  {minBelowFloor && `Minimum must be at least ${sym}${fmt(minAllowed)} (= $10 USD). `}
+                  {maxAboveCap && `Maximum cannot exceed your wallet balance of ${sym}${fmt(walletCapLocal)} ${cur}. `}
+                  {maxBelowMin && `Maximum must be greater than or equal to minimum. `}
+                </p>
+              </div>
+            )}
           </div>
 
           <div>
@@ -161,9 +227,9 @@ function EditModal({ listing, onClose, onSave, saving }) {
           <button onClick={onClose}
             className="flex-1 py-4 rounded-2xl border text-base font-bold hover:bg-gray-50 transition"
             style={{borderColor:C.g200,color:C.g600}}>Cancel</button>
-          <button onClick={()=>onSave(listing.id,form)} disabled={saving}
+          <button onClick={()=>canSave && onSave(listing.id,form,usdRate)} disabled={saving||!canSave}
             className="flex-2 py-4 rounded-2xl text-white text-base font-black flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 transition"
-            style={{backgroundColor:C.green, flex:2}}>
+            style={{backgroundColor: canSave ? C.green : C.g400, flex:2, cursor: canSave ? 'pointer' : 'not-allowed'}}>
             {saving?<><RefreshCw size={16} className="animate-spin"/>Saving…</>:<><Save size={16}/>Save Changes</>}
           </button>
         </div>
@@ -209,6 +275,10 @@ function OfferCard({ listing, onEdit, onDelete, onToggle, walletBtc }) {
   const minLocal = listing.min_limit_local || (listing.min_limit_usd ? listing.min_limit_usd * usdRate : 0);
   const maxLocal = listing.max_limit_local || (listing.max_limit_usd ? listing.max_limit_usd * usdRate : 0);
   const views    = parseInt(listing.view_count || 0);
+
+  const isBuyGiftCard   = (listing.listing_type || '').toUpperCase() === 'BUY_GIFT_CARD';
+  const walletUsd       = parseFloat(walletBtc || 0) * 88000;
+  const pausedLowBal    = !isActive && isBuyGiftCard && walletUsd < 10;
 
 
   const TYPE_CFG = {
@@ -320,6 +390,25 @@ function OfferCard({ listing, onEdit, onDelete, onToggle, walletBtc }) {
         </div>
       </div>
 
+      {/* ── Low-balance warning for paused BUY_GIFT_CARD offers ── */}
+      {pausedLowBal && (
+        <div className="mx-3 mb-3 rounded-xl overflow-hidden border-2" style={{borderColor:'#F59E0B'}}>
+          <div className="flex items-center gap-2 px-3 py-2"
+            style={{background:'linear-gradient(135deg,#92400E,#B45309)'}}>
+            <span className="text-sm">⚠️</span>
+            <span className="text-xs font-black text-white tracking-wide">Offer Paused — Insufficient Balance</span>
+          </div>
+          <div className="px-3 py-2.5" style={{backgroundColor:'#FFFBEB'}}>
+            <p className="text-xs font-semibold leading-relaxed" style={{color:'#92400E'}}>
+              Your gift card buying offer was automatically paused because your PRAQEN wallet has less than <strong>$10 worth of Bitcoin</strong>.
+            </p>
+            <p className="text-xs font-bold mt-1.5" style={{color:'#B45309'}}>
+              👉 Top up your wallet with at least <strong>$10 in BTC</strong> and your offer will be reactivated automatically.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── Actions ── */}
       <div className="flex gap-2 p-3">
         <button onClick={()=>onEdit(listing)}
@@ -414,6 +503,7 @@ function StatCard({icon:Icon, label, value, color, sub}) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function MyListings({ user }) {
   const navigate = useNavigate();
+  const { btcUsd: btcPrice } = useRates();
   const [listings,    setListings]    = useState([]);
   const [walletBtc,   setWalletBtc]   = useState(0);
   const [loading,     setLoading]     = useState(true);
@@ -445,20 +535,20 @@ export default function MyListings({ user }) {
         setWalletBtc(currentWalletBtc);
       }
 
-      // Auto-reactivate any PAUSED SELL offers when wallet has $10+ worth of BTC
+      // Auto-reactivate PAUSED SELL and BUY_GIFT_CARD offers when wallet has $10+ worth of BTC
       if (currentWalletBtc * 88000 >= 10) {
-        const pausedSell = currentListings.filter(l => {
+        const pausedBtcRequired = currentListings.filter(l => {
           const lt = (l.listing_type || '').toUpperCase();
-          return l.status === 'PAUSED' && (lt === 'SELL' || lt === 'SELL_BITCOIN');
+          return l.status === 'PAUSED' && (lt === 'SELL' || lt === 'SELL_BITCOIN' || lt === 'BUY_GIFT_CARD');
         });
-        if (pausedSell.length > 0) {
+        if (pausedBtcRequired.length > 0) {
           await Promise.allSettled(
-            pausedSell.map(l =>
+            pausedBtcRequired.map(l =>
               axios.patch(`${API_URL}/listings/${l.id}/status`, { status: 'ACTIVE' }, { headers: authH() })
             )
           );
           currentListings = currentListings.map(l =>
-            pausedSell.some(p => p.id === l.id) ? { ...l, status: 'ACTIVE' } : l
+            pausedBtcRequired.some(p => p.id === l.id) ? { ...l, status: 'ACTIVE' } : l
           );
         }
       }
@@ -467,15 +557,18 @@ export default function MyListings({ user }) {
     } finally { setLoading(false); }
   };
 
-  const saveEdit = async (id, form) => {
+  const saveEdit = async (id, form, usdRate) => {
     setSaving(true);
     try {
+      const rate = usdRate || 1;
+      const minLocal = parseFloat(form.min_limit_local) || 0;
+      const maxLocal = parseFloat(form.max_limit_local) || 0;
       const r = await axios.put(`${API_URL}/listings/${id}`, {
         margin:             parseFloat(form.margin),
-        min_limit_local:    parseFloat(form.min_limit_local),
-        max_limit_local:    parseFloat(form.max_limit_local),
-        min_limit_usd:      parseFloat(form.min_limit_local),
-        max_limit_usd:      parseFloat(form.max_limit_local),
+        min_limit_local:    minLocal,
+        max_limit_local:    maxLocal,
+        min_limit_usd:      parseFloat((minLocal / rate).toFixed(2)),
+        max_limit_usd:      parseFloat((maxLocal / rate).toFixed(2)),
         payment_method:     form.payment_method,
         trade_instructions: form.trade_instructions,
         listing_terms:      form.listing_terms,
@@ -484,7 +577,14 @@ export default function MyListings({ user }) {
       if (r.data.success) {
         toast.success('Offer updated!');
         setEditListing(null);
-        setListings(prev=>prev.map(l=>l.id===id?{...l,...form,margin:parseFloat(form.margin)}:l));
+        setListings(prev=>prev.map(l=>l.id===id?{
+          ...l, ...form,
+          margin:           parseFloat(form.margin),
+          min_limit_local:  minLocal,
+          max_limit_local:  maxLocal,
+          min_limit_usd:    parseFloat((minLocal / rate).toFixed(2)),
+          max_limit_usd:    parseFloat((maxLocal / rate).toFixed(2)),
+        }:l));
       }
     } catch(e) { toast.error(e.response?.data?.error||'Failed to update'); }
     finally { setSaving(false); }
@@ -796,7 +896,8 @@ export default function MyListings({ user }) {
       </footer>
 
       {editListing && (
-        <EditModal listing={editListing} onClose={()=>setEditListing(null)} onSave={saveEdit} saving={saving}/>
+        <EditModal listing={editListing} onClose={()=>setEditListing(null)} onSave={saveEdit} saving={saving}
+          walletBtc={walletBtc} btcPrice={btcPrice || 88000}/>
       )}
     </div>
   );
