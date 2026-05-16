@@ -415,7 +415,7 @@ class DepositMonitor {
       if (err.response?.status === 429) {
         console.warn(`[DepositMonitor] Rate limited by mempool.space — will retry next cycle`);
       } else {
-        console.error(`[DepositMonitor] Error checking ${address.slice(0, 12)}…:`, err.message);
+        console.error(`[DepositMonitor] Error checking ${address.slice(0, 12)}…:`, err.message || err.code || String(err));
       }
     }
   }

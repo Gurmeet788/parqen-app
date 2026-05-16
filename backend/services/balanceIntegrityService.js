@@ -85,6 +85,18 @@ async function runIntegrityCheck() {
               `stored=${storedBtc.toFixed(8)} computed=${computedBtc.toFixed(8)} diff=${diff.toFixed(8)}`
             );
 
+            // Never auto-correct to a negative balance — that means the transaction
+            // ledger has more debits than credits, which is a data issue to investigate,
+            // not something we should stamp onto the user's wallet.
+            if (computedBtc < 0) {
+              console.error(
+                `[BalanceIntegrity] ❌ SKIPPING correction for user ${userId.slice(0,8)} — ` +
+                `computed balance is negative (${computedBtc.toFixed(8)} BTC). Manual review needed.`
+              );
+              errors++;
+              continue;
+            }
+
             // Auto-correct all balance tables to match the transaction ledger.
             // wallets is updated first as it is the single source of truth.
             await supabaseAdmin.from('wallets')
@@ -100,13 +112,16 @@ async function runIntegrityCheck() {
               .eq('user_id', userId);
 
             // Log the correction so you can investigate root cause later
-            await supabaseAdmin.from('balance_audit').insert({
-              user_id:     userId,
-              change_btc:  parseFloat((computedBtc - storedBtc).toFixed(8)),
-              new_balance: computedBtc,
-              reason:      'INTEGRITY_CORRECTION',
-              created_at:  new Date().toISOString(),
-            }).catch(() => {});
+            // Use try/catch instead of .catch() — Supabase v2 builder is PromiseLike, not a full Promise
+            try {
+              await supabaseAdmin.from('balance_audit').insert({
+                user_id:     userId,
+                change_btc:  parseFloat((computedBtc - storedBtc).toFixed(8)),
+                new_balance: computedBtc,
+                reason:      'INTEGRITY_CORRECTION',
+                created_at:  new Date().toISOString(),
+              });
+            } catch (_) { /* balance_audit table may not exist yet — non-fatal */ }
 
             corrected++;
           }
