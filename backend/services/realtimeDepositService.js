@@ -132,7 +132,7 @@ class RealtimeDepositService {
 
     this.ws.on('error', (err) => {
       // 'error' always fires before 'close', so just log — reconnect happens in close handler
-      console.error('[RealtimeDeposit] WebSocket error:', err.message);
+      console.error('[RealtimeDeposit] WebSocket error:', err.message || err.code || String(err));
     });
   }
 

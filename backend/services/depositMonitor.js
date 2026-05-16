@@ -24,7 +24,7 @@ const supabaseAdmin = createClient(
 );
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const POLL_INTERVAL_MS    = 5 * 60 * 1000; // 5 minutes
+const POLL_INTERVAL_MS    = 15 * 60 * 1000; // 15 minutes — WebSocket handles real-time; this is safety net only
 const DUST_THRESHOLD_SATS = 546;           // ignore sub-dust outputs
 
 // ── Email transporter (Gmail) ─────────────────────────────────────────────────
@@ -236,7 +236,7 @@ class DepositMonitor {
           continue;
         }
         await this.checkUserDeposit(entry);
-        await this.sleep(600); // respect mempool.space rate limits
+        await this.sleep(2000); // 0.5 req/sec — stays well under mempool.space rate limits
       }
 
     } catch (err) {
