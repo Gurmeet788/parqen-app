@@ -214,7 +214,7 @@ router.get('/wallet', verifyToken, async (req, res) => {
         });
     } catch (error) {
         console.error('[Wallet] FATAL ERROR:', error.message, error.stack);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'Failed to load wallet. Please try again.' });
     }
 });
 
@@ -258,7 +258,7 @@ router.post('/generate-address', verifyToken, async (req, res) => {
 
   } catch (error) {
     console.error('[hdWalletRoutes POST /generate-address]', error.message);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Failed to generate address. Please try again.' });
   }
 });
 
@@ -301,7 +301,7 @@ router.get('/balance', verifyToken, async (req, res) => {
 
   } catch (error) {
     console.error('[hdWalletRoutes GET /balance]', error.message);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Failed to load balance. Please try again.' });
   }
 });
 
@@ -328,7 +328,7 @@ router.post('/check-deposit', verifyToken, async (req, res) => {
 
   } catch (error) {
     console.error('[hdWalletRoutes POST /check-deposit]', error.message);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Deposit check failed. Please try again.' });
   }
 });
 
@@ -551,7 +551,7 @@ router.post('/send', verifyToken, async (req, res) => {
 
   } catch (error) {
     console.error('[hdWalletRoutes POST /send]', error.message);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Transaction failed. Please try again or contact support.' });
   }
 });
 
@@ -580,7 +580,7 @@ router.get('/transactions', verifyToken, async (req, res) => {
 
   } catch (error) {
     console.error('[hdWalletRoutes GET /transactions]', error.message);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Failed to load transactions. Please try again.' });
   }
 });
 
@@ -605,7 +605,7 @@ router.post('/escrow-address', verifyToken, async (req, res) => {
 
   } catch (error) {
     console.error('[hdWalletRoutes POST /escrow-address]', error.message);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Failed to create escrow address. Please try again.' });
   }
 });
 
@@ -624,7 +624,8 @@ router.get('/network', (req, res) => {
         : '✅ MAINNET — Real Bitcoin',
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('[hdWalletRoutes GET /network]', error.message);
+    res.status(500).json({ error: 'Failed to get network info.' });
   }
 });
 
@@ -637,7 +638,8 @@ router.get('/info', verifyToken, async (req, res) => {
     const info = hdWallet.getInfo();
     res.json({ success: true, ...info });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('[hdWalletRoutes GET /info]', error.message);
+    res.status(500).json({ error: 'Failed to get wallet info.' });
   }
 });
 
@@ -662,7 +664,8 @@ router.get('/realtime-status', verifyToken, async (req, res) => {
       scanner: depositMonitor.getStatus(),
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('[hdWalletRoutes GET /realtime-status]', error.message);
+    res.status(500).json({ error: 'Failed to get realtime status.' });
   }
 });
 

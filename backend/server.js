@@ -11,6 +11,7 @@ if (envResult.error) {
 
 const express    = require('express');
 const cors       = require('cors');
+const helmet     = require('helmet');
 const { createClient } = require('@supabase/supabase-js');
 const bcrypt     = require('bcryptjs');
 const jwt        = require('jsonwebtoken');
@@ -110,8 +111,37 @@ function computeDisplayName(user) {
 
 // ── 5. Express ─────────────────────────────────────────────────────────────
 const app = express();
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+
+// Security headers — applied before everything else
+app.use(helmet({
+  contentSecurityPolicy:      false, // pure API server, no HTML pages served
+  crossOriginEmbedderPolicy:  false, // allow API calls from the frontend
+  crossOriginResourcePolicy:  false, // allow cross-origin fetch from browser
+}));
+
+// CORS — only allow requests from our own frontend domain
+const _allowedOrigins = (process.env.FRONTEND_URL || 'https://praqen.com')
+  .split(',').map(o => o.trim());
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // No origin = mobile app or server-to-server call — always allow
+    if (!origin) return callback(null, true);
+    // Allow listed production origins
+    if (_allowedOrigins.some(a => origin === a)) return callback(null, true);
+    // Allow localhost in development only
+    if (process.env.NODE_ENV !== 'production' && origin.startsWith('http://localhost')) {
+      return callback(null, true);
+    }
+    callback(new Error('CORS: origin not allowed — ' + origin));
+  },
+  methods:          ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders:   ['Content-Type', 'Authorization'],
+  credentials:      true,
+  maxAge:           86400, // browser caches preflight for 24 hours
+}));
+
+app.use(express.json({ limit: '2mb' })); // 10mb was dangerously large for a JSON API
 
 // ── Rate Limiters ──────────────────────────────────────────────────────────
 const rateLimit = require('express-rate-limit');
@@ -1088,7 +1118,8 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
 
     if (error) {
       console.error('[Register] DB insert error:', error);
-      return res.status(400).json({ error: error.message });
+      const isDuplicate = error.message?.includes('duplicate') || error.code === '23505';
+      return res.status(400).json({ error: isDuplicate ? 'An account with this email or username already exists.' : 'Registration failed. Please try again.' });
     }
     if (!data || data.length === 0) return res.status(400).json({ error: E.REGISTER_FAILED });
 
@@ -1218,7 +1249,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
   }
 });
 
-app.post('/api/auth/register-with-referral', async (req, res) => {
+app.post('/api/auth/register-with-referral', authLimiter, async (req, res) => {
   // same as /register — just alias it
   req.url = '/api/auth/register';
   app._router.handle(req, res);
@@ -1302,7 +1333,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Login failed. Please try again.' });
   }
 });
 
@@ -1319,7 +1350,8 @@ app.post('/api/auth/change-password', verifyToken, async (req, res) => {
     await supabaseAdmin.from('users').update({ password_hash: newHash, updated_at: new Date() }).eq('id', req.userId);
     res.json({ success: true, message: 'Password changed successfully' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('[change-password]', error.message);
+    res.status(500).json({ error: 'Password change failed. Please try again.' });
   }
 });
 
@@ -1331,17 +1363,14 @@ const toE164 = raw => {
   return s.startsWith('+') ? s : `+${s}`;
 };
 
-// Diagnostic endpoint — remove after debugging
-app.get('/api/auth/twilio-check', async (req, res) => {
+// Diagnostic endpoint — protected so only logged-in users can access
+app.get('/api/auth/twilio-check', verifyToken, async (req, res) => {
   try {
     const sid = process.env.TWILIO_SID;
     const token = process.env.TWILIO_TOKEN;
-    const verifySid = process.env.TWILIO_VERIFY_SID || 'VAddba23c45841679ed249d49be8a90bbe';
     res.json({
-      twilio_sid_set: !!sid,
+      twilio_sid_set:   !!sid,
       twilio_token_set: !!token,
-      verify_sid: verifySid,
-      sid_prefix: sid ? sid.slice(0, 6) : 'MISSING',
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -1514,7 +1543,7 @@ app.post('/api/auth/send-otp', otpLimiter, async (req, res) => {
     }
   } catch (error) {
     console.error('[OTP send error]', error);
-    res.status(500).json({ error: 'Failed to send code. Please try again.', detail: error.message });
+    res.status(500).json({ error: 'Failed to send code. Please try again.' });
   }
 });
 
@@ -1630,7 +1659,7 @@ app.post('/api/auth/send-action-code', otpLimiter, verifyToken, async (req, res)
 
 // ── Email Verification ────────────────────────────────────────────────────────
 
-app.post('/api/auth/send-verification', async (req, res) => {
+app.post('/api/auth/send-verification', otpLimiter, async (req, res) => {
   try {
     const { email } = req.body;
     if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email is required' });
