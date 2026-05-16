@@ -64,6 +64,7 @@ async function ensureWalletExists(userId) {
     if (!existing) {
       const { error: insertErr } = await supabaseAdmin.from('wallets').insert({
         user_id:            userId,
+        address:            hdWallet.generateUserAddress(userId).address,
         balance_btc:        0,
         locked_balance_btc: 0,
         updated_at:         new Date().toISOString(),
@@ -475,12 +476,12 @@ class TradeEscrowService {
         const correctedBalance = parseFloat((receiverBalanceAfter + (buyerGets - rpcCredited)).toFixed(8));
         const { error: manualCreditErr } = await supabaseAdmin
             .from('wallets')
-            .upsert({
-                user_id:            btcReceiverId,
+            .update({
                 balance_btc:        correctedBalance,
                 locked_balance_btc: 0,
                 updated_at:         new Date().toISOString(),
-            }, { onConflict: 'user_id' });
+            })
+            .eq('user_id', btcReceiverId);
         if (manualCreditErr) {
             console.error(`[Escrow] Manual buyer credit failed: ${manualCreditErr.message}`);
         } else {
@@ -711,12 +712,12 @@ class TradeEscrowService {
         const manualLocked = parseFloat(Math.max(0, parseFloat(pBal?.locked_balance_btc || 0) - refundAmount).toFixed(8));
         const { error: manualErr } = await supabaseAdmin
           .from('wallets')
-          .upsert({
-            user_id:            btcProviderId,
+          .update({
             balance_btc:        manualAvail,
             locked_balance_btc: manualLocked,
             updated_at:         new Date().toISOString(),
-          }, { onConflict: 'user_id' });
+          })
+          .eq('user_id', btcProviderId);
         if (manualErr) throw new Error(`Manual refund failed: ${manualErr.message}`);
         console.log(`[cancelTrade] ✅ Manual refund applied: ₿${manualAvail.toFixed(8)} → provider ${btcProviderId.slice(0,8)}`);
 
@@ -734,12 +735,12 @@ class TradeEscrowService {
           const syncedLocked     = parseFloat(Math.max(0, parseFloat(providerAfter?.locked_balance_btc || 0) - refundAmount).toFixed(8));
           const { error: fixErr } = await supabaseAdmin
             .from('wallets')
-            .upsert({
-              user_id:            btcProviderId,
+            .update({
               balance_btc:        correctedBalance,
               locked_balance_btc: syncedLocked,
               updated_at:         new Date().toISOString(),
-            }, { onConflict: 'user_id' });
+            })
+            .eq('user_id', btcProviderId);
           if (fixErr) throw new Error(`Balance correction after RPC mismatch failed: ${fixErr.message}`);
           console.log(`[cancelTrade] ✅ Balance corrected: ₿${correctedBalance.toFixed(8)} → provider ${btcProviderId.slice(0,8)}`);
         } else {

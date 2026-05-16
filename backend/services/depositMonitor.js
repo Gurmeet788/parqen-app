@@ -334,9 +334,9 @@ class DepositMonitor {
             .eq('user_id', userId)).error
         : (await supabaseAdmin.from('wallets').insert({
             user_id:            userId,
+            address:            address,
             balance_btc:        depositBTC,
             locked_balance_btc: 0,
-            private_key:        'placeholder_private_key',
             updated_at:         new Date().toISOString(),
           })).error;
 

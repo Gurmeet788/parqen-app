@@ -1201,9 +1201,9 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
         }, { onConflict: 'user_id' }),
         supabaseAdmin.from('wallets').upsert({
           user_id:            newUser.id,
+          address:            addrData.address,
           balance_btc:        0,
           locked_balance_btc: 0,
-          private_key:        'placeholder_private_key',
           updated_at:         new Date().toISOString(),
         }, { onConflict: 'user_id' }),
       ]);
@@ -4358,12 +4358,12 @@ app.post('/api/referral/withdraw', verifyToken, async (req, res) => {
 
     const { error: balErr } = await supabaseAdmin
       .from('wallets')
-      .upsert({
-        user_id:            req.userId,
+      .update({
         balance_btc:        newBalance,
         locked_balance_btc: parseFloat(walletRow?.locked_balance_btc || 0),
         updated_at:         new Date().toISOString(),
-      }, { onConflict: 'user_id' });
+      })
+      .eq('user_id', req.userId);
     if (balErr) throw balErr;
 
     // Mark all pending earnings as withdrawn
@@ -5769,10 +5769,9 @@ app.post('/api/wallet/internal-transfer', verifyToken, async (req, res) => {
       .from('wallets').select('balance_btc').eq('user_id', recipientId).maybeSingle();
     const newRecipientBalance = parseFloat((parseFloat(recipWallet?.balance_btc || 0) + amount).toFixed(8));
     // wallets first (source of truth)
-    await supabaseAdmin.from('wallets').upsert(
-      { user_id: recipientId, balance_btc: newRecipientBalance, locked_balance_btc: 0, private_key: 'placeholder_private_key', updated_at: new Date().toISOString() },
-      { onConflict: 'user_id' }
-    );
+    await supabaseAdmin.from('wallets')
+      .update({ balance_btc: newRecipientBalance, updated_at: new Date().toISOString() })
+      .eq('user_id', recipientId);
     // keep secondary tables in sync
     await supabaseAdmin.from('user_balances')
       .upsert({ user_id: recipientId, balance_btc: newRecipientBalance, updated_at: new Date().toISOString() });
