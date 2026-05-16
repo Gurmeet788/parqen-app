@@ -195,7 +195,7 @@ router.get('/wallet', verifyToken, async (req, res) => {
 
         const { data: txs } = await supabaseAdmin
             .from('wallet_transactions')
-            .select('*')
+            .select('id, type, status, amount_btc, tx_hash, notes, created_at')
             .eq('user_id', userId)
             .order('created_at', { ascending: false })
             .limit(50);

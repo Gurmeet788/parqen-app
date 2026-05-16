@@ -177,10 +177,10 @@ class DepositMonitor {
   // ── Fetch all wallets to monitor ───────────────────────────────────────────
   async checkAllUserDeposits() {
     try {
-      // Primary source: user_wallets table
+      // Primary source: user_wallets table (include last_onchain_btc to avoid N+1 re-queries)
       const { data: wallets, error: wErr } = await supabaseAdmin
         .from('user_wallets')
-        .select('user_id, btc_address')
+        .select('user_id, btc_address, last_onchain_btc')
         .not('btc_address', 'is', null)
         .neq('btc_address', '');
 
@@ -201,7 +201,7 @@ class DepositMonitor {
       for (const w of (wallets || [])) {
         if (w.btc_address && !seen.has(w.btc_address)) {
           seen.add(w.btc_address);
-          toCheck.push({ userId: w.user_id, address: w.btc_address, username: null });
+          toCheck.push({ userId: w.user_id, address: w.btc_address, username: null, lastOnchainBtc: parseFloat(w.last_onchain_btc || 0) });
         }
       }
       for (const u of (users || [])) {
@@ -214,6 +214,18 @@ class DepositMonitor {
       if (toCheck.length === 0) {
         console.log('[DepositMonitor] No wallet addresses to monitor yet');
         return;
+      }
+
+      // Batch-fetch all missing usernames in one query instead of N individual lookups
+      const missingUserIds = toCheck.filter(e => !e.username).map(e => e.userId);
+      if (missingUserIds.length > 0) {
+        const { data: names } = await supabaseAdmin
+          .from('users').select('id, username').in('id', missingUserIds);
+        const nameMap = {};
+        for (const n of (names || [])) nameMap[n.id] = n.username;
+        for (const e of toCheck) {
+          if (!e.username) e.username = nameMap[e.userId] || e.userId.slice(0, 8);
+        }
       }
 
       console.log(`[DepositMonitor] Scanning ${toCheck.length} wallet address(es)...`);
@@ -241,9 +253,9 @@ class DepositMonitor {
   }
 
   // ── Check one address for new deposits (balance comparison) ───────────────
-  async checkUserDeposit({ userId, address, username }) {
+  async checkUserDeposit({ userId, address, username, lastOnchainBtc: prefetchedOnchain }) {
     try {
-      // Resolve username if not provided
+      // Resolve username if not provided (fallback for manual checkAddressNow path)
       if (!username) {
         const { data: u } = await supabaseAdmin
           .from('users').select('username').eq('id', userId).single();
@@ -256,18 +268,23 @@ class DepositMonitor {
       const blockchainSats = (chainStats.funded_txo_sum || 0) - (chainStats.spent_txo_sum || 0);
       const blockchainBTC  = parseFloat((blockchainSats / 1e8).toFixed(8));
 
-      // ── Step 2: Fetch last KNOWN on-chain balance (not the operational balance)
+      // ── Step 2: Get last KNOWN on-chain balance ──────────────────────────
       // CRITICAL: We compare against last_onchain_btc, NOT balance_btc.
       // balance_btc goes up/down with internal escrow operations (locks, releases,
       // refunds) — those are off-chain and must never be used as a deposit baseline.
       // last_onchain_btc only ever increases when real Bitcoin arrives on-chain.
-      const { data: walletRow } = await supabaseAdmin
-        .from('user_wallets')
-        .select('last_onchain_btc, balance_btc')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      const lastOnchainBTC = parseFloat(walletRow?.last_onchain_btc || 0);
+      // Use pre-fetched value from batch query when available; fall back to DB for manual checks.
+      let lastOnchainBTC;
+      if (prefetchedOnchain !== undefined) {
+        lastOnchainBTC = prefetchedOnchain;
+      } else {
+        const { data: walletRow } = await supabaseAdmin
+          .from('user_wallets')
+          .select('last_onchain_btc')
+          .eq('user_id', userId)
+          .maybeSingle();
+        lastOnchainBTC = parseFloat(walletRow?.last_onchain_btc || 0);
+      }
 
       // ── Step 3: Compare on-chain vs last known on-chain ──────────────────
       // Use small epsilon (1 satoshi) to avoid floating-point false positives
