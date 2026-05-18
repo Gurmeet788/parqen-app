@@ -33,21 +33,23 @@ function verifyToken(req, res, next) {
   }
 }
 
-// ── Live BTC price helper — USD is always computed, never read from DB ────────
+// ── Live BTC price helper — cached 60 s so polling doesn't hammer external APIs ─
+let _btcPriceCache = { price: 88000, ts: 0 };
 async function getLiveBtcPrice() {
+    if (Date.now() - _btcPriceCache.ts < 60000) return _btcPriceCache.price;
     try {
         const r = await fetch('https://api.coinbase.com/v2/prices/BTC-USD/spot');
         const d = await r.json();
         const p = parseFloat(d.data.amount);
-        if (p > 0) return p;
+        if (p > 0) { _btcPriceCache = { price: p, ts: Date.now() }; return p; }
     } catch { /* fall through */ }
     try {
         const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
         const d = await r.json();
         const p = parseFloat(d.bitcoin?.usd);
-        if (p > 0) return p;
+        if (p > 0) { _btcPriceCache = { price: p, ts: Date.now() }; return p; }
     } catch { /* fall through */ }
-    return 88000; // last-resort fallback
+    return _btcPriceCache.price; // return last known price rather than hard-coded fallback
 }
 
 // ============================================================
@@ -57,8 +59,12 @@ async function getLiveBtcPrice() {
 // ============================================================
 // ── Auto-heal orphaned escrow locks ──────────────────────────────────────────
 // Finds escrow_locks WHERE status='LOCKED' but the trade is already CANCELLED or COMPLETED.
-// These are stuck — BTC should have been returned but wasn't (old bug). Refund them now.
+// 5-minute cooldown per user so wallet auto-polling does not hammer the DB.
+const _healCooldown = {};
 async function autoHealOrphanedEscrows(userId) {
+    const now = Date.now();
+    if (_healCooldown[userId] && now - _healCooldown[userId] < 5 * 60 * 1000) return 0;
+    _healCooldown[userId] = now;
     try {
         const { data: locks } = await supabaseAdmin
             .from('escrow_locks')
