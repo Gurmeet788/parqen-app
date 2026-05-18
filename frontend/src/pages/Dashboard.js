@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { useLocalUser } from '../hooks/useLocalUser';
 import {
@@ -839,6 +839,7 @@ function WithdrawModal({ balance, onClose, onSuccess }) {
 // ─── Main Dashboard ────────────────────────────────────────────────────────────
 export default function Dashboard({ user }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const displayUser = useLocalUser(user);
 
   const [profile, setProfile]       = useState(null);
@@ -858,7 +859,11 @@ export default function Dashboard({ user }) {
   const [showWithdraw, setShowWithdraw]   = useState(false);
   const [loading, setLoading]             = useState(true);
   const [loadError, setLoadError]         = useState(false);
-  const [activeTab, setActiveTab]         = useState('overview');
+  const VALID_TABS = ['overview','trades','wallet','affiliate','profile'];
+  const [activeTab, setActiveTab]         = useState(() => {
+    const t = searchParams.get('tab');
+    return VALID_TABS.includes(t) ? t : 'overview';
+  });
   const [lastRefresh, setLastRefresh]     = useState(null);
   const [isRefreshing, setIsRefreshing]   = useState(false);
 

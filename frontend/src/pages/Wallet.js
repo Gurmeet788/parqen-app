@@ -1,7 +1,8 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useRates } from '../contexts/RatesContext';
+import { supabase } from '../lib/supabaseClient';
 import {
   Copy, Bitcoin, RefreshCw, CheckCircle,
   ArrowDownLeft, ArrowUpRight, Shield, AlertTriangle,
@@ -781,6 +782,57 @@ export default function WalletPage({ user }) {
     init();
   }, [user]);
 
+  // ── Auto-poll every 15 s while the tab is visible ─────────────────────────
+  const prevBalRef = useRef(null);
+  useEffect(() => {
+    if (!user) return;
+    const poll = setInterval(async () => {
+      if (document.hidden) return;
+      try {
+        const r = await axios.get(`${API_URL}/hd-wallet/wallet`, { headers: authH() });
+        const incoming = parseFloat(r.data.balance_btc || 0);
+        if (prevBalRef.current !== null && incoming > prevBalRef.current) {
+          const diff = (incoming - prevBalRef.current).toFixed(8);
+          toast.success(`₿ ${diff} BTC received!`, { autoClose: 6000 });
+        }
+        prevBalRef.current = incoming;
+        setWalletData({
+          address:       r.data.address,
+          balance_btc:   r.data.balance_btc,
+          locked_btc:    r.data.locked_btc ?? 0,
+          available_btc: r.data.available_btc != null ? r.data.available_btc : r.data.balance_btc,
+          balance_usd:   parseFloat(r.data.balance_usd || 0),
+          network:       r.data.network,
+          has_address:   r.data.has_address,
+        });
+        setLockedBtc(r.data.locked_btc || 0);
+        setTransactions(r.data.transactions || []);
+        if (r.data.btc_price && r.data.btc_price > 0) setBtcPrice(p => p > 0 ? p : r.data.btc_price);
+      } catch { /* silent — avoid toast spam on network blip */ }
+    }, 15000);
+    return () => clearInterval(poll);
+  }, [user]);
+
+  // ── Supabase Realtime — instant update when a wallet notification arrives ──
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel(`wallet_notif_${user.id}`)
+      .on('postgres_changes', {
+        event:  'INSERT',
+        schema: 'public',
+        table:  'notifications',
+        filter: `user_id=eq.${user.id}`,
+      }, async (payload) => {
+        if (payload.new?.type === 'wallet') {
+          await loadWallet();
+          toast.success(payload.new.title || '₿ Wallet updated!', { autoClose: 5000 });
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id]);
+
   // ── Refresh ────────────────────────────────────────────────────────────────
   const refresh = async () => {
     setRefreshing(true);
@@ -870,8 +922,15 @@ export default function WalletPage({ user }) {
                   <Wallet size={17} className="text-white" />
                 </div>
                 <div>
-                  <p className="text-white font-black text-sm">Bitcoin Wallet</p>
-                  <p className="text-white/60 text-xs">{user?.username} · Live Balance</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-white font-black text-sm">Bitcoin Wallet</p>
+                    <span className="flex items-center gap-1 text-xs font-black px-1.5 py-0.5 rounded-full"
+                      style={{ backgroundColor: 'rgba(16,185,129,0.25)', color: '#6EE7B7' }}>
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse inline-block" />
+                      Live
+                    </span>
+                  </div>
+                  <p className="text-white/60 text-xs">{user?.username} · Auto-refreshing</p>
                 </div>
               </div>
               <div className="flex gap-2">

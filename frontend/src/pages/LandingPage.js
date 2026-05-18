@@ -217,6 +217,10 @@ export default function LandingPage({ user }) {
                 {['🔒 Escrow','⚡ 15 min','💸 0.5%','🌍 180+ countries'].map(t=>(
                   <span key={t} className="text-xs px-2.5 py-1 rounded-full flex-shrink-0" style={{color:'rgba(255,255,255,.75)',background:'rgba(255,255,255,.1)'}}>{t}</span>
                 ))}
+                <span className="text-xs px-2.5 py-1 rounded-full flex-shrink-0 flex items-center gap-1" style={{color:'#F6821F',background:'rgba(246,130,31,0.15)',border:'1px solid rgba(246,130,31,0.3)'}}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
+                  Cloudflare Protected
+                </span>
               </div>
 
               {/* ticker */}

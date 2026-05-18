@@ -71,7 +71,7 @@ setInterval(() => {
 
 // In-memory market cache — serves offers/listings without hitting DB on every page load
 const _marketCache = new Map(); // key -> { data, ts }
-const MARKET_CACHE_TTL = 90000; // 90 seconds
+const MARKET_CACHE_TTL = 300000; // 5 minutes
 function getCached(key) {
   const c = _marketCache.get(key);
   return c && Date.now() - c.ts < MARKET_CACHE_TTL ? c.data : null;
@@ -896,12 +896,12 @@ async function createAffiliateEarning(tradeId, buyerId, tradeAmountBtc, tradeAmo
     const { data: buyer, error: buyerError } = await supabaseAdmin.from('users').select('referred_by').eq('id', buyerId).single();
     if (buyerError || !buyer?.referred_by) return;
     const { data: referrer } = await supabaseAdmin.from('users').select('total_referrals').eq('id', buyer.referred_by).single();
-    let commissionRate = 0.1;
+    let commissionRate = 0.2;
     const referralCount = referrer?.total_referrals || 0;
-    if (referralCount >= 100) commissionRate = 0.3;
-    else if (referralCount >= 50) commissionRate = 0.25;
-    else if (referralCount >= 25) commissionRate = 0.2;
-    else if (referralCount >= 10) commissionRate = 0.15;
+    if (referralCount >= 100) commissionRate = 0.5;
+    else if (referralCount >= 50) commissionRate = 0.4;
+    else if (referralCount >= 25) commissionRate = 0.35;
+    else if (referralCount >= 10) commissionRate = 0.25;
     const commissionBtc = parseFloat(tradeAmountBtc || 0) * (commissionRate / 100);
     const { error } = await supabaseAdmin.from('affiliate_earnings').insert({
       referrer_id: buyer.referred_by, referred_user_id: buyerId, trade_id: tradeId,
@@ -1565,7 +1565,7 @@ app.post('/api/auth/send-phone-otp', otpLimiter, async (req, res) => {
     if (existing) return res.status(400).json({ error: 'This phone number is already verified by another account.' });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    await storeOtp(contact, otp);
+    storeOtp(contact, otp).catch(e => console.warn('[send-phone-otp] DB store warn:', e.message));
 
     await sendSmsOtp(contact, `Your PRAQEN code is: ${otp}. Valid 10 min. Do not share.`);
 
@@ -2631,17 +2631,27 @@ app.post('/api/users/upload-avatar', verifyToken, async (req, res) => {
       .eq('id', req.userId).select('id, username, avatar_url').single();
     if (error) return res.status(500).json({ error: error.message });
     if (!data) return res.status(404).json({ error: 'User not found' });
+    // Bust the per-user avatar cache so the new photo shows immediately
+    delete _avatarCache[req.userId];
     res.json({ success: true, avatar_url: data.avatar_url, message: 'Profile picture updated successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
+// In-memory per-user avatar cache (1-hour TTL) — prevents re-fetching large base64 blobs
+const _avatarCache = {};
 app.get('/api/users/:userId/avatar', async (req, res) => {
   try {
-    const { data, error } = await supabaseAdmin.from('users').select('avatar_url').eq('id', req.params.userId).single();
-    if (error) return res.json({ avatar_url: null });
-    res.json({ avatar_url: data?.avatar_url || null });
+    const { userId } = req.params;
+    const cached = _avatarCache[userId];
+    if (cached && Date.now() - cached.ts < 3600000) {
+      return res.json({ avatar_url: cached.url });
+    }
+    const { data } = await supabaseAdmin.from('users').select('avatar_url').eq('id', userId).maybeSingle();
+    const url = data?.avatar_url || null;
+    _avatarCache[userId] = { url, ts: Date.now() };
+    res.json({ avatar_url: url });
   } catch { res.json({ avatar_url: null }); }
 });
 
@@ -2816,38 +2826,44 @@ app.get('/api/listings', async (req, res) => {
     const hit = getCached(cacheKey);
     if (hit) return res.json({ listings: hit });
 
-    const buildListingsQuery = (includeNamePrefs) => {
-      const userFields = includeNamePrefs
-        ? 'id, username, full_name, name_display, hide_full_name, average_rating, total_trades, completion_rate, avatar_url, is_id_verified, is_email_verified, last_login, last_seen_at, created_at, total_feedback_count, positive_feedback, negative_feedback, country, country_name, city, bio, badge'
-        : 'id, username, full_name, average_rating, total_trades, completion_rate, avatar_url, is_id_verified, is_email_verified, last_login, last_seen_at, created_at, total_feedback_count, positive_feedback, negative_feedback, country, bio, badge';
-      return supabaseAdmin.from('listings').select(`
-        id, seller_id, listing_type, gift_card_brand, status, bitcoin_price, margin, pricing_type,
-        currency, currency_symbol, country, country_name, payment_method, payment_methods,
-        amount_usd, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local,
-        time_limit, trade_instructions, listing_terms, description, created_at,
-        card_values, card_type, face_value,
-        users:seller_id(${userFields})
-      `).eq('status', 'ACTIVE').order('created_at', { ascending: false });
-    };
+    // Step 1: fetch listings only (no join) — fast
+    let listingsQ = supabaseAdmin.from('listings').select(
+      'id, seller_id, listing_type, gift_card_brand, status, bitcoin_price, margin, pricing_type, currency, currency_symbol, country, country_name, payment_method, payment_methods, amount_usd, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local, time_limit, trade_instructions, listing_terms, description, created_at, card_values, card_type, face_value'
+    ).eq('status', 'ACTIVE').order('created_at', { ascending: false }).limit(200);
+    if (brand)    listingsQ = listingsQ.ilike('gift_card_brand', `%${brand}%`);
+    if (minPrice) listingsQ = listingsQ.gte('bitcoin_price', parseFloat(minPrice));
+    if (maxPrice) listingsQ = listingsQ.lte('bitcoin_price', parseFloat(maxPrice));
 
-    let q = buildListingsQuery(true);
-    if (brand)    q = q.ilike('gift_card_brand', `%${brand}%`);
-    if (minPrice) q = q.gte('bitcoin_price', parseFloat(minPrice));
-    if (maxPrice) q = q.lte('bitcoin_price', parseFloat(maxPrice));
-    let { data, error } = await q;
+    const { data: rawListings, error: listErr } = await Promise.race([
+      listingsQ,
+      new Promise(resolve => setTimeout(() => resolve({ data: [], error: null }), 8000)),
+    ]);
+    if (listErr) return res.status(400).json({ error: listErr.message });
 
-    if (error && (error.message?.includes('name_display') || error.message?.includes('hide_full_name') || error.message?.includes('country_name') || error.message?.includes('city') || error.message?.includes('kyc_country'))) {
-      // Retry without columns that haven't been migrated yet
-      console.warn('[listings] Retrying without unmigratedcolumns:', error.message);
-      q = buildListingsQuery(false);
-      if (brand)    q = q.ilike('gift_card_brand', `%${brand}%`);
-      if (minPrice) q = q.gte('bitcoin_price', parseFloat(minPrice));
-      if (maxPrice) q = q.lte('bitcoin_price', parseFloat(maxPrice));
-      ({ data, error } = await q);
+    // Step 2: fetch user profile fields + avatars in parallel
+    // avatars are fetched separately because base64 data is large and slows the main query
+    const sellerIdSet = [...new Set((rawListings || []).map(l => l.seller_id).filter(Boolean))];
+    let userMap = {};
+    if (sellerIdSet.length > 0) {
+      const [usersResult, avatarResult] = await Promise.all([
+        Promise.race([
+          supabaseAdmin.from('users').select(
+            'id, username, full_name, average_rating, total_trades, completion_rate, is_id_verified, is_email_verified, last_login, last_seen_at, total_feedback_count, positive_feedback, negative_feedback, country, bio, badge'
+          ).in('id', sellerIdSet),
+          new Promise(resolve => setTimeout(() => resolve({ data: [] }), 10000)),
+        ]),
+        Promise.race([
+          supabaseAdmin.from('users').select('id, avatar_url').in('id', sellerIdSet),
+          new Promise(resolve => setTimeout(() => resolve({ data: [] }), 15000)),
+        ]),
+      ]);
+      (usersResult.data || []).forEach(u => { userMap[u.id] = u; });
+      (avatarResult.data || []).forEach(u => {
+        if (userMap[u.id]) userMap[u.id].avatar_url = u.avatar_url || null;
+      });
     }
-    if (error) return res.status(400).json({ error: error.message });
 
-    let listings = data || [];
+    let listings = (rawListings || []).map(l => ({ ...l, users: userMap[l.seller_id] || null }));
 
     // Listings that require the creator to hold BTC:
     //   SELL / SELL_BITCOIN  → seller locks BTC in escrow
@@ -2857,8 +2873,10 @@ app.get('/api/listings', async (req, res) => {
 
     if (balanceCheckedListings.length > 0) {
       const sellerIds = [...new Set(balanceCheckedListings.map(l => l.seller_id))];
-      const { data: walletRows } = await supabaseAdmin
-        .from('wallets').select('user_id, balance_btc').in('user_id', sellerIds);
+      const { data: walletRows } = await Promise.race([
+        supabaseAdmin.from('wallets').select('user_id, balance_btc').in('user_id', sellerIds),
+        new Promise(resolve => setTimeout(() => resolve({ data: [] }), 4000)),
+      ]);
 
       const balMap = {};
       (walletRows || []).forEach(w => { balMap[w.user_id] = parseFloat(w.balance_btc || 0); });

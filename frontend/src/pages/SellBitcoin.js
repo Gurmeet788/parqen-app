@@ -220,12 +220,28 @@ const getRateUSD = (l, btcPrice) => {
 };
 
 // ── Avatar ────────────────────────────────────────────────────────────────────
+const _avatarCache = {}; // userId → Promise<url> | url-string | null
 function Avatar({user, size=48, radius='rounded-xl'}) {
   const [err, setErr] = useState(false);
+  const [lazyUrl, setLazyUrl] = useState(null);
   const u = getUser(user);
-  if (u?.avatar_url && !err) {
+  useEffect(() => {
+    const stored = u?.avatar_url;
+    const id = u?.id;
+    if (stored || !id || err) return;
+    const hit = _avatarCache[id];
+    if (hit instanceof Promise) { hit.then(v => { if(v) setLazyUrl(v); }); return; }
+    if (hit !== undefined) { setLazyUrl(hit); return; }
+    const p = axios.get(`${API_URL}/users/${id}/avatar`)
+      .then(r => r.data?.avatar_url || null)
+      .catch(() => null)
+      .then(v => { _avatarCache[id] = v; if(v) setLazyUrl(v); return v; });
+    _avatarCache[id] = p;
+  }, [u?.id, u?.avatar_url, err]);
+  const url = u?.avatar_url || lazyUrl;
+  if (url && !err) {
     return (
-      <img src={u.avatar_url} alt={u.username||'user'} onError={()=>setErr(true)}
+      <img src={url} alt={u.username||'user'} onError={()=>setErr(true)}
         className={`object-cover flex-shrink-0 ${radius}`}
         style={{width:size, height:size}}/>
     );
@@ -869,6 +885,7 @@ export default function SellBitcoin({user}) {
   const [loadError,    setLoadError]    = useState(false);
   const [retrying,     setRetrying]     = useState(false);
   const [btcPrice,     setBtcPrice]     = useState(68000);
+  const [affLeaderboard, setAffLeaderboard] = useState([]);
   const [selCountry,    setSelCountry]    = useState(COUNTRIES[0]);
   const [countrySearch, setCountrySearch] = useState('');
   const [selPayment,    setSelPayment]    = useState('all');
@@ -925,6 +942,11 @@ export default function SellBitcoin({user}) {
     };
     document.addEventListener('mousedown',h);
     return () => document.removeEventListener('mousedown',h);
+  },[]);
+  useEffect(()=>{
+    axios.get(`${API_URL}/referral/leaderboard`).then(r=>{
+      if(r.data?.leaderboard) setAffLeaderboard(r.data.leaderboard.slice(0,3));
+    }).catch(()=>{});
   },[]);
 
   const loadOffers = async (attempt = 1) => {
@@ -1397,14 +1419,88 @@ export default function SellBitcoin({user}) {
           </div>
         )}
 
-        <div className="flex items-start gap-2.5 p-3 rounded-xl border"
-          style={{backgroundColor:C.sellBg, borderColor:'#FDE68A'}}>
-          <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" style={{color:C.sell}}/>
-          <p className="text-xs leading-relaxed" style={{color:'#92400E'}}>
-            <strong>Sell Safely:</strong> Never release Bitcoin before confirming payment received.
-            All trades are escrow-protected. Report suspicious buyers immediately.
-          </p>
+        <div style={{display:'flex',alignItems:'center',gap:6,padding:'7px 10px',borderRadius:8,background:'#FFFBEB',border:'1px solid #FDE68A'}}>
+          <AlertTriangle size={11} style={{color:'#D97706',flexShrink:0}}/>
+          <span style={{fontSize:11,color:'#92400E',lineHeight:1.3}}><strong>Sell Safely:</strong> Never release Bitcoin before confirming payment. All trades are escrow-protected.</span>
         </div>
+      </div>
+
+      {/* ══ AFFILIATE PROMO — compact white card ══════════════ */}
+      <div style={{background:'#fff',borderTop:'1px solid #E2E8F0',padding:'14px 14px 12px',fontFamily:"'DM Sans',sans-serif"}}>
+
+        {/* Top row: label + headline + CTA */}
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom:10}}>
+          <div style={{minWidth:0}}>
+            <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:3}}>
+              <span style={{fontSize:9,fontWeight:800,color:'#F59E0B',background:'#FEF3C7',border:'1px solid #FDE68A',borderRadius:4,padding:'1px 6px',letterSpacing:0.4,textTransform:'uppercase'}}>₿ Affiliate</span>
+              <span style={{fontSize:9,color:'#94A3B8',fontWeight:500}}>Earn on every referral trade</span>
+            </div>
+            <p style={{margin:0,fontSize:13,fontWeight:800,color:'#1E293B',lineHeight:1.2}}>Invite friends. Earn BTC forever.</p>
+          </div>
+          <button
+            onClick={()=>navigate('/dashboard?tab=affiliate')}
+            style={{flexShrink:0,padding:'7px 12px',borderRadius:8,border:'none',cursor:'pointer',background:'linear-gradient(135deg,#2D6A4F,#40916C)',color:'#fff',fontWeight:800,fontSize:10,whiteSpace:'nowrap',boxShadow:'0 2px 8px rgba(45,106,79,0.25)'}}>
+            Get Link →
+          </button>
+        </div>
+
+        {/* Commission tiers — compact horizontal pills */}
+        <div style={{display:'flex',gap:4,marginBottom:10,overflowX:'auto',paddingBottom:1}}>
+          {[
+            {refs:'0–9',rate:'0.20%',c:'#059669'},
+            {refs:'10–24',rate:'0.25%',c:'#0D9488'},
+            {refs:'25–49',rate:'0.35%',c:'#F59E0B'},
+            {refs:'50–99',rate:'0.40%',c:'#EA580C'},
+            {refs:'100+',rate:'0.50%',c:'#7C3AED'},
+          ].map(t=>(
+            <div key={t.refs} style={{flex:'0 0 auto',background:`${t.c}0D`,border:`1px solid ${t.c}30`,borderRadius:6,padding:'4px 8px',textAlign:'center'}}>
+              <div style={{fontSize:11,fontWeight:800,color:t.c,lineHeight:1}}>{t.rate}</div>
+              <div style={{fontSize:8,color:'#94A3B8',fontWeight:500,marginTop:1}}>{t.refs} refs</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Leaderboard — ultra-compact */}
+        {affLeaderboard.length>0&&(
+          <div style={{background:'#F8FAFC',border:'1px solid #E2E8F0',borderRadius:10,overflow:'hidden'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'6px 10px',borderBottom:'1px solid #E2E8F0'}}>
+              <span style={{fontSize:9,fontWeight:800,color:'#64748B',textTransform:'uppercase',letterSpacing:0.8}}>Top Earners</span>
+              <span style={{fontSize:9,color:'#94A3B8',fontWeight:500}}>All Time</span>
+            </div>
+            {affLeaderboard.map((u,i)=>{
+              const medals=['🥇','🥈','🥉'];
+              const badgeColors={BEGINNER:'#7C3AED',PRO:'#059669',EXPERT:'#1E40AF',AMBASSADOR:'#0D9488',LEGEND:'#D97706'};
+              const bc=badgeColors[u.badge]||'#64748B';
+              const earnedUsd=((u.earned_btc||0)*(btcPrice||76000));
+              return(
+                <div key={u.username} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',borderBottom:i<affLeaderboard.length-1?'1px solid #F1F5F9':'none'}}>
+                  <span style={{fontSize:13,flexShrink:0}}>{medals[i]}</span>
+                  <div style={{width:22,height:22,borderRadius:'50%',flexShrink:0,background:`${bc}18`,border:`1.5px solid ${bc}40`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:900,color:bc}}>
+                    {(u.username||'?')[0].toUpperCase()}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap'}}>
+                      <span style={{fontSize:10,fontWeight:700,color:'#1E293B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.username}</span>
+                      <span style={{fontSize:7,fontWeight:900,color:bc,background:`${bc}12`,border:`1px solid ${bc}30`,borderRadius:3,padding:'1px 4px',letterSpacing:0.4,flexShrink:0,textTransform:'uppercase'}}>{u.badge||'BEGINNER'}</span>
+                    </div>
+                    <span style={{fontSize:8,color:'#94A3B8',fontWeight:500}}>{u.referrals} refs · {u.affiliate_trades||u.total_trades} trades</span>
+                  </div>
+                  <div style={{textAlign:'right',flexShrink:0}}>
+                    <div style={{fontSize:10,fontWeight:800,color:'#F59E0B'}}>₿{(()=>{const v=parseFloat(u.earned_btc||0);return v>0&&v<0.0001?v.toFixed(8):v.toFixed(5);})()}</div>
+                    <div style={{fontSize:8,color:'#94A3B8',fontWeight:500}}>${earnedUsd>=1000?(earnedUsd/1000).toFixed(1)+'k':earnedUsd>=1?earnedUsd.toFixed(2):earnedUsd<0.01?'<$0.01':earnedUsd.toFixed(2)}</div>
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{padding:'5px 10px',background:'#FFFBEB',borderTop:'1px solid #FDE68A',textAlign:'center'}}>
+              <span style={{fontSize:9,color:'#92400E',fontWeight:600}}>🏆 Could you be next?</span>
+            </div>
+          </div>
+        )}
+
+        <p style={{margin:'8px 0 0',textAlign:'center',fontSize:9,color:'#94A3B8',fontWeight:500}}>
+          Free to join · No minimum payout · Lifetime commission
+        </p>
       </div>
 
       {/* ══ 5. FOOTER ══════════════════════════════════════════ */}

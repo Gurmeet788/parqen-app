@@ -56,168 +56,84 @@ export default function PRQFooter() {
   const nav = useNavigate();
 
   return (
-    <div className="pb-16 md:pb-0" style={{
-      background: 'linear-gradient(160deg,#040f08 0%,#0c2218 45%,#163d28 100%)',
+    <div style={{
+      background: 'linear-gradient(160deg,#040f08 0%,#0c2218 60%,#163d28 100%)',
       fontFamily: "'DM Sans',sans-serif",
-      borderTop: '1px solid rgba(64,145,108,0.3)',
-      width: '100%',
-      boxSizing: 'border-box',
-      overflowX: 'hidden',
+      borderTop: '1px solid rgba(64,145,108,0.25)',
+      width: '100%', boxSizing: 'border-box', overflowX: 'hidden',
     }}>
 
-      {/* ── How to Buy — 4 step cards ── */}
-      <div style={{ padding: '12px 14px 10px', borderBottom: '1px solid rgba(255,255,255,0.05)', boxSizing: 'border-box' }}>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 9, minWidth: 0 }}>
-          <span style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', letterSpacing: 1.1, whiteSpace: 'nowrap' }}>
-            How to Buy Bitcoin
-          </span>
-          <span style={{ height: 1, flex: 1, background: 'rgba(255,255,255,0.06)', minWidth: 0 }}/>
-          <span style={{
-            fontSize: 9, fontWeight: 800, color: '#6EE7B7',
-            background: 'rgba(64,145,108,0.2)', border: '1px solid rgba(64,145,108,0.35)',
-            borderRadius: 5, padding: '2px 7px', whiteSpace: 'nowrap', flexShrink: 0,
-          }}>Done in 60 sec ⚡</span>
+      {/* ── How to Buy — horizontal scroll steps ── */}
+      <div style={{ padding: '10px 14px 8px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+          <span style={{ fontSize: 8, fontWeight: 900, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: 1.2, whiteSpace: 'nowrap' }}>How to Buy</span>
+          <span style={{ height: 1, flex: 1, background: 'rgba(255,255,255,0.05)' }}/>
+          <span style={{ fontSize: 8, fontWeight: 800, color: '#6EE7B7', background: 'rgba(64,145,108,0.2)', border: '1px solid rgba(64,145,108,0.3)', borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap' }}>60 sec ⚡</span>
         </div>
-
-        {/* 2-col on phone, 4-col on wider screens */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(2, 1fr)',
-          gap: 7,
-          width: '100%',
-          boxSizing: 'border-box',
-        }}>
+        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
           {STEPS.map((s, i) => (
-            <div key={i} style={{
-              background: 'rgba(45,106,79,0.15)',
-              border: '1px solid rgba(64,145,108,0.22)',
-              borderRadius: 10,
-              padding: '9px 10px',
-              position: 'relative',
-              overflow: 'hidden',
-              boxSizing: 'border-box',
-              minWidth: 0,
-            }}>
-              <span style={{
-                position: 'absolute', top: 4, right: 7,
-                fontSize: 18, fontWeight: 900, color: 'rgba(64,145,108,0.1)',
-                lineHeight: 1, userSelect: 'none', pointerEvents: 'none',
-              }}>{s.step}</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
-                <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>{s.icon}</span>
-                <span style={{ fontSize: 10, fontWeight: 900, color: '#6EE7B7', lineHeight: 1.2, minWidth: 0 }}>{s.title}</span>
+            <div key={i} style={{ flex: '0 0 auto', width: 130, background: 'rgba(45,106,79,0.12)', border: '1px solid rgba(64,145,108,0.18)', borderRadius: 8, padding: '7px 9px', boxSizing: 'border-box' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3 }}>
+                <span style={{ fontSize: 12, lineHeight: 1, flexShrink: 0 }}>{s.icon}</span>
+                <span style={{ fontSize: 9, fontWeight: 800, color: '#6EE7B7', lineHeight: 1.2 }}>{s.title}</span>
               </div>
-              <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,0.42)', fontWeight: 500, lineHeight: 1.45 }}>
-                {s.desc}
-              </div>
+              <div style={{ fontSize: 8.5, color: 'rgba(255,255,255,0.38)', fontWeight: 500, lineHeight: 1.4 }}>{s.desc}</div>
             </div>
           ))}
         </div>
-
-        {/* Promo strip */}
-        <div style={{
-          marginTop: 9,
-          padding: '7px 10px',
-          background: 'rgba(244,164,34,0.07)',
-          border: '1px solid rgba(244,164,34,0.15)',
-          borderRadius: 8,
-          boxSizing: 'border-box',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
-            <span style={{ fontSize: 12, flexShrink: 0 }}>🚀</span>
-            <span style={{ fontSize: 10, fontWeight: 800, color: '#F4A422' }}>Be the first to create your offer</span>
-          </div>
-          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.42)', fontWeight: 600, lineHeight: 1.5, marginBottom: 7 }}>
-            Sell to MTN MoMo or Bank Account — instant payout in 1 min.
-            Send BTC free to any wallet of your choice.
-          </div>
-          <button
-            onClick={() => nav('/create-offer')}
-            style={{
-              width: '100%',
-              padding: '7px 0', borderRadius: 8,
-              border: '1px solid rgba(244,164,34,0.4)',
-              background: 'rgba(244,164,34,0.12)',
-              color: '#F4A422', fontWeight: 800, fontSize: 11, cursor: 'pointer',
-              boxSizing: 'border-box',
-            }}>
-            + Create Your Offer Now
-          </button>
-        </div>
       </div>
 
-      {/* ── Tagline + Buy CTA ── */}
-      <div style={{
-        padding: '10px 14px 0',
-        boxSizing: 'border-box',
-      }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '3px 6px', marginBottom: 8 }}>
-          <span style={{ fontSize: 13, fontWeight: 900, color: '#fff', whiteSpace: 'nowrap' }}>Keep Trading.</span>
-          <span style={{ fontSize: 13, fontWeight: 900, color: '#F4A422', whiteSpace: 'nowrap' }}>Keep Growing.</span>
-          <span style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.38)' }}>· Africa's most trusted P2P platform · Start in 30 sec</span>
+      {/* ── Create offer strip ── */}
+      <div style={{ padding: '8px 14px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, color: '#F4A422', marginBottom: 1 }}>🚀 Create your offer</div>
+          <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', fontWeight: 500 }}>Sell BTC — instant payout via MTN MoMo or Bank</div>
         </div>
-        <button
-          onClick={() => nav('/buy-bitcoin')}
-          style={{
-            width: '100%',
-            padding: '8px 0', borderRadius: 9, border: 'none', cursor: 'pointer',
-            background: 'linear-gradient(135deg,#2D6A4F,#40916C)',
-            color: '#fff', fontWeight: 800, fontSize: 12,
-            boxShadow: '0 2px 10px rgba(45,106,79,0.4)',
-            boxSizing: 'border-box',
-          }}>
-          ₿ Buy Bitcoin Now
+        <button onClick={() => nav('/create-offer')} style={{ flexShrink: 0, padding: '6px 11px', borderRadius: 7, border: '1px solid rgba(244,164,34,0.35)', background: 'rgba(244,164,34,0.1)', color: '#F4A422', fontWeight: 800, fontSize: 10, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          + Create
         </button>
       </div>
 
-      {/* ── Divider ── */}
-      <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '9px 14px' }}/>
+      {/* ── Tagline + CTA ── */}
+      <div style={{ padding: '8px 14px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 900, color: '#fff', lineHeight: 1.2 }}>Keep Trading. <span style={{ color: '#F4A422' }}>Keep Growing.</span></div>
+          <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.3)', fontWeight: 500, marginTop: 2 }}>Africa's most trusted P2P platform</div>
+        </div>
+        <button onClick={() => nav('/buy-bitcoin')} style={{ flexShrink: 0, padding: '7px 13px', borderRadius: 8, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg,#2D6A4F,#40916C)', color: '#fff', fontWeight: 800, fontSize: 10, boxShadow: '0 2px 8px rgba(45,106,79,0.35)', whiteSpace: 'nowrap' }}>
+          ₿ Buy Now
+        </button>
+      </div>
 
-      {/* ── Socials + email + legal ── */}
-      <div style={{
-        padding: '0 14px 12px',
-        display: 'flex', flexWrap: 'wrap', alignItems: 'center',
-        gap: '5px 8px',
-        boxSizing: 'border-box',
-      }}>
-        <span style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', letterSpacing: 1 }}>
-          Follow &amp; Connect
-        </span>
+      {/* ── Socials + legal ── */}
+      <div style={{ padding: '8px 14px 10px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '5px 7px' }}>
+        <span style={{ fontSize: 8, fontWeight: 900, color: 'rgba(255,255,255,0.22)', textTransform: 'uppercase', letterSpacing: 1 }}>Follow</span>
 
         {SOCIALS.map(s => (
           <a key={s.label} href={s.href} target="_blank" rel="noopener noreferrer" title={s.label}
-            style={{
-              width: 28, height: 28, borderRadius: 7, display: 'inline-flex',
-              alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              backgroundColor: s.bg, textDecoration: 'none', transition: 'opacity 0.2s',
-            }}
-            onMouseEnter={e => e.currentTarget.style.opacity='0.8'}
+            style={{ width: 24, height: 24, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, backgroundColor: s.bg, textDecoration: 'none', transition: 'opacity 0.2s' }}
+            onMouseEnter={e => e.currentTarget.style.opacity='0.75'}
             onMouseLeave={e => e.currentTarget.style.opacity='1'}>
-            <svg viewBox="0 0 24 24" width="14" height="14" fill={s.color} aria-hidden="true">
-              <path d={s.svg}/>
-            </svg>
+            <svg viewBox="0 0 24 24" width="12" height="12" fill={s.color} aria-hidden="true"><path d={s.svg}/></svg>
           </a>
         ))}
 
-        <span style={{ color: 'rgba(255,255,255,0.1)', fontSize: 10 }}>·</span>
-
-        <a href="mailto:support@praqen.com"
-          style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.45)', textDecoration: 'none', whiteSpace: 'nowrap' }}>
-          ✉️ support@praqen.com
-        </a>
-
+        <span style={{ color: 'rgba(255,255,255,0.08)', fontSize: 10 }}>·</span>
+        <a href="mailto:support@praqen.com" style={{ fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textDecoration: 'none', whiteSpace: 'nowrap' }}>support@praqen.com</a>
+        <span style={{ fontSize: 8, fontWeight: 800, background: 'rgba(64,145,108,0.2)', border: '1px solid rgba(64,145,108,0.3)', color: '#6EE7B7', padding: '1px 5px', borderRadius: 4, whiteSpace: 'nowrap' }}>24/7</span>
+        <span style={{ color: 'rgba(255,255,255,0.08)', fontSize: 10 }}>·</span>
+        <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.2)', fontWeight: 500 }}>© {new Date().getFullYear()} PRAQEN</span>
+        <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.15)', fontWeight: 500 }}>🔒 SSL</span>
+        <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.15)', fontWeight: 500 }}>Escrow Protected</span>
         <span style={{
-          fontSize: 9, fontWeight: 800,
-          background: 'rgba(64,145,108,0.22)', border: '1px solid rgba(64,145,108,0.38)',
-          color: '#6EE7B7', padding: '2px 6px', borderRadius: 5, whiteSpace: 'nowrap',
-        }}>24/7 Support</span>
-
-        <span style={{ color: 'rgba(255,255,255,0.1)', fontSize: 10 }}>·</span>
-
-        <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)', fontWeight: 600 }}>© {new Date().getFullYear()} PRAQEN</span>
-        <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.16)', fontWeight: 600 }}>🔒 SSL Encrypted</span>
-        <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.16)', fontWeight: 600 }}>Escrow-Protected Trades</span>
+          display: 'inline-flex', alignItems: 'center', gap: 3,
+          fontSize: 9, fontWeight: 800, color: '#F6821F',
+          background: 'rgba(246,130,31,0.1)', border: '1px solid rgba(246,130,31,0.25)',
+          padding: '2px 6px', borderRadius: 5, whiteSpace: 'nowrap',
+        }}>
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
+          Cloudflare Protected
+        </span>
       </div>
 
     </div>

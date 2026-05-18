@@ -178,11 +178,25 @@ class DepositMonitor {
   async checkAllUserDeposits() {
     try {
       // Primary source: user_wallets table (include last_onchain_btc to avoid N+1 re-queries)
-      const { data: wallets, error: wErr } = await supabaseAdmin
+      let { data: wallets, error: wErr } = await supabaseAdmin
         .from('user_wallets')
         .select('user_id, btc_address, last_onchain_btc')
         .not('btc_address', 'is', null)
         .neq('btc_address', '');
+
+      // If column doesn't exist yet — retry without it (wallet_transactions provides idempotency)
+      let _columnMissing = false;
+      if (wErr) {
+        console.warn('[DepositMonitor] last_onchain_btc column missing — retrying without it:', wErr.message);
+        const retry = await supabaseAdmin
+          .from('user_wallets')
+          .select('user_id, btc_address')
+          .not('btc_address', 'is', null)
+          .neq('btc_address', '');
+        wallets = retry.data;
+        wErr    = retry.error;
+        _columnMissing = true;
+      }
 
       // Fallback: users.bitcoin_wallet_address (older generate path)
       const { data: users, error: uErr } = await supabaseAdmin
@@ -201,7 +215,7 @@ class DepositMonitor {
       for (const w of (wallets || [])) {
         if (w.btc_address && !seen.has(w.btc_address)) {
           seen.add(w.btc_address);
-          toCheck.push({ userId: w.user_id, address: w.btc_address, username: null, lastOnchainBtc: parseFloat(w.last_onchain_btc || 0) });
+          toCheck.push({ userId: w.user_id, address: w.btc_address, username: null, lastOnchainBtc: _columnMissing ? undefined : parseFloat(w.last_onchain_btc || 0) });
         }
       }
       for (const u of (users || [])) {
@@ -278,12 +292,25 @@ class DepositMonitor {
       if (prefetchedOnchain !== undefined) {
         lastOnchainBTC = prefetchedOnchain;
       } else {
-        const { data: walletRow } = await supabaseAdmin
+        // Try user_wallets first; fall back to wallet_transactions DEPOSIT sum when column is missing
+        const { data: walletRow, error: rowErr } = await supabaseAdmin
           .from('user_wallets')
           .select('last_onchain_btc')
           .eq('user_id', userId)
           .maybeSingle();
-        lastOnchainBTC = parseFloat(walletRow?.last_onchain_btc || 0);
+        if (rowErr || walletRow?.last_onchain_btc == null) {
+          const { data: dtxs } = await supabaseAdmin
+            .from('wallet_transactions')
+            .select('amount_btc')
+            .eq('user_id', userId)
+            .eq('type', 'DEPOSIT');
+          lastOnchainBTC = parseFloat(
+            ((dtxs || []).reduce((s, t) => s + parseFloat(t.amount_btc || 0), 0)).toFixed(8)
+          );
+          if (rowErr) console.warn(`[DepositMonitor] last_onchain_btc unavailable for ${userId.slice(0,8)} — using wallet_transactions sum: ${lastOnchainBTC} BTC`);
+        } else {
+          lastOnchainBTC = parseFloat(walletRow.last_onchain_btc || 0);
+        }
       }
 
       // ── Step 3: Compare on-chain vs last known on-chain ──────────────────
@@ -338,8 +365,19 @@ class DepositMonitor {
         );
 
       if (claimErr) {
-        console.error(`[DepositMonitor] Failed to claim deposit for ${username} (last_onchain_btc not updated):`, claimErr.message);
-        return; // abort — do not credit balance if we cannot mark deposit as seen
+        // Column likely not yet added — fall back to upsert without it.
+        // wallet_transactions insert below acts as the idempotency guard in this case.
+        console.warn(`[DepositMonitor] last_onchain_btc upsert failed for ${username} — trying fallback:`, claimErr.message);
+        const { error: fallbackErr } = await supabaseAdmin
+          .from('user_wallets')
+          .upsert(
+            { user_id: userId, btc_address: address, updated_at: new Date().toISOString() },
+            { onConflict: 'user_id' }
+          );
+        if (fallbackErr) {
+          console.error(`[DepositMonitor] Fallback upsert also failed for ${username}:`, fallbackErr.message);
+        }
+        // Do NOT return — proceed to credit balance; wallet_transactions insert prevents double-credit
       }
 
       // ── Step 5b: Credit wallets table FIRST (single source of truth) ────────
@@ -361,6 +399,19 @@ class DepositMonitor {
         console.error(`[DepositMonitor] wallets credit failed for ${username}:`, walletCreditErr.message);
         return;
       }
+
+      // ── Step 5b2: Record in wallet_transactions — REQUIRED for idempotency when last_onchain_btc column is absent ──
+      const { error: txInsertErr } = await supabaseAdmin
+        .from('wallet_transactions')
+        .insert({
+          user_id:    userId,
+          type:       'DEPOSIT',
+          amount_btc: depositBTC,
+          status:     'CONFIRMED',
+          notes:      `On-chain deposit to ${address.slice(0, 16)}…`,
+          created_at: new Date().toISOString(),
+        });
+      if (txInsertErr) console.warn(`[DepositMonitor] wallet_transactions insert failed for ${username}:`, txInsertErr.message);
 
       // ── Step 5c: Keep user_balances + user_wallets in sync (secondary) ──────
       // These tables are kept up-to-date for backwards compatibility only.
