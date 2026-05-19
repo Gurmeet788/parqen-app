@@ -1371,9 +1371,10 @@ function KycSection() {
             <details className="mb-2">
               <summary className="text-xs font-bold cursor-pointer" style={{ color:'#92400E' }}>Show SQL to run →</summary>
               <pre className="mt-2 text-xs p-3 rounded-xl overflow-x-auto" style={{ backgroundColor:'#1E293B', color:'#94A3B8' }}>{`ALTER TABLE users ADD COLUMN IF NOT EXISTS kyc_status VARCHAR(20) DEFAULT NULL;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS kyc_id_type VARCHAR(50) DEFAULT NULL;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS kyc_id_url TEXT DEFAULT NULL;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS kyc_selfie_url TEXT DEFAULT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS id_type VARCHAR(50) DEFAULT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS id_front_url TEXT DEFAULT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS id_back_url TEXT DEFAULT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS selfie_url TEXT DEFAULT NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS kyc_submitted_at TIMESTAMPTZ DEFAULT NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS kyc_approved_at TIMESTAMPTZ DEFAULT NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS kyc_rejection_reason TEXT DEFAULT NULL;
