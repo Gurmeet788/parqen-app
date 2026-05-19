@@ -404,7 +404,7 @@ export default function Notifications({ user }) {
   useEffect(() => {
     if (!user) return;
     load();
-    const iv = setInterval(load, 30000);
+    const iv = setInterval(load, 8000);
     return () => clearInterval(iv);
   }, [user]);
 
@@ -413,6 +413,14 @@ export default function Notifications({ user }) {
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
+
+  // Reload when user switches back to this tab (mobile users, background tabs)
+  useEffect(() => {
+    if (!user) return;
+    const h = () => { if (document.visibilityState === 'visible') load(); };
+    document.addEventListener('visibilitychange', h);
+    return () => document.removeEventListener('visibilitychange', h);
+  }, [user]);
 
   const markRead = async id => {
     setNotifs(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));

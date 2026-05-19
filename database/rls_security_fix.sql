@@ -248,11 +248,15 @@ CREATE TABLE IF NOT EXISTS notifications (
   type       VARCHAR(50),
   title      VARCHAR(255),
   message    TEXT,
+  action     TEXT,
   data       JSONB,
   is_read    BOOLEAN     DEFAULT false,
   read_at    TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Add action column if table was created before this fix
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS action TEXT DEFAULT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_is_read  ON notifications(is_read);

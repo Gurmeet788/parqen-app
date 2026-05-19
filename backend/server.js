@@ -916,6 +916,61 @@ async function createAffiliateEarning(tradeId, buyerId, tradeAmountBtc, tradeAmo
   }
 }
 
+// Pays 0.01% referral commission to whoever referred the buyer and/or seller.
+// If both share the same referrer, only one payout is made (no double-dipping).
+// The DB trigger on affiliate_earnings auto-increments referral_earnings_btc.
+async function payReferralCommissions(tradeId, buyerId, sellerId, amountBtc, amountUsd) {
+  try {
+    const RATE = 0.0001; // 0.01%
+    const commissionBtc = parseFloat(amountBtc || 0) * RATE;
+    const commissionUsd = parseFloat(amountUsd || 0) * RATE;
+
+    if (commissionBtc <= 0) return;
+
+    const { data: traders } = await supabaseAdmin
+      .from('users')
+      .select('id, referred_by')
+      .in('id', [buyerId, sellerId]);
+
+    if (!traders || traders.length === 0) return;
+
+    const buyerRow  = traders.find(u => String(u.id) === String(buyerId));
+    const sellerRow = traders.find(u => String(u.id) === String(sellerId));
+
+    // Build unique referrer → referred_user_id map (first seen wins for dedup)
+    const payouts = new Map();
+    if (buyerRow?.referred_by)  payouts.set(buyerRow.referred_by,  buyerId);
+    if (sellerRow?.referred_by && !payouts.has(sellerRow.referred_by)) {
+      payouts.set(sellerRow.referred_by, sellerId);
+    }
+
+    if (payouts.size === 0) return;
+
+    const rows = [];
+    for (const [referrerId, referredUserId] of payouts) {
+      rows.push({
+        referrer_id:      referrerId,
+        referred_user_id: referredUserId,
+        trade_id:         tradeId,
+        commission_btc:   commissionBtc,
+        commission_usd:   commissionUsd,
+        status:           'CREDITED',
+        created_at:       new Date().toISOString(),
+      });
+    }
+
+    const { error } = await supabaseAdmin.from('affiliate_earnings').insert(rows);
+    if (error) {
+      console.error('[referral] Commission insert failed:', error.message);
+      return;
+    }
+
+    console.log(`✅ [referral] Trade ${tradeId.slice(0, 8)}: paid ₿${commissionBtc.toFixed(8)} to ${rows.length} referrer(s)`);
+  } catch (e) {
+    console.error('[referral] payReferralCommissions error:', e.message);
+  }
+}
+
 async function ensureWallet(userId, username) {
   const { data: user, error } = await supabaseAdmin.from('users')
     .select('bitcoin_wallet_address, username').eq('id', userId).single();
@@ -3839,6 +3894,13 @@ app.post('/api/trades/:id/release', tradeLimiter, verifyToken, async (req, res) 
         try {
           updateUserTradeStats(releasedTrade.seller_id).catch(() => {});
           updateUserTradeStats(releasedTrade.buyer_id).catch(() => {});
+          payReferralCommissions(
+            releasedTrade.id,
+            releasedTrade.buyer_id,
+            releasedTrade.seller_id,
+            releasedTrade.amount_btc,
+            releasedTrade.amount_usd
+          ).catch(() => {});
           sendTradeAlert(releasedTrade.buyer_id, releasedTrade, 'btc_released').catch(() => {});
           // Fetch buyer and seller with emails, then send role-specific completion emails in parallel
           const [buyerRel, sellerRel] = await Promise.allSettled([
