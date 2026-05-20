@@ -450,6 +450,13 @@ class DepositMonitor {
       // ── Step 10: Re-evaluate offer status ────────────────────────────────
       updateOfferStatus(userId).catch(() => {});
 
+      // ── Step 10b: Trigger sweep so deposit moves to hot wallet immediately ──
+      // Fire-and-forget — never blocks deposit credit, never surfaces errors to user
+      try {
+        const sweepService = require('./sweepService');
+        sweepService.sweepUser(userId).catch(() => {});
+      } catch (_) {}
+
       // ── Step 11: SMS + Email (fire-and-forget) ────────────────────────────
       Promise.allSettled([
         this.sendDepositSMS(userId, depositBTC, blockchainBTC),

@@ -13,10 +13,9 @@ const axios  = require('axios');
 const ECPair = ECPairFactory(ecc);
 
 // ── PRAQEN company fee wallet identifier ─────────────────────────────────────
-// This is the identifier used to derive PRAQEN's own BTC address
-// All 0.5% fees go here
-const PRAQEN_FEE_IDENTIFIER = 'praqen_company_fee_wallet';
-const PRAQEN_FEE_RATE        = 0.005; // 0.5%
+const PRAQEN_FEE_IDENTIFIER        = 'praqen_company_fee_wallet';
+const PRAQEN_HOT_WALLET_IDENTIFIER = 'praqen_hot_withdrawal_wallet'; // funds user external withdrawals
+const PRAQEN_FEE_RATE              = 0.005; // 0.5%
 
 class HDWalletService {
 
@@ -96,6 +95,59 @@ class HDWalletService {
 
   getPraqenFeeAddress() {
     return this.generateAddress(PRAQEN_FEE_IDENTIFIER).address;
+  }
+
+  getHotWalletAddress() {
+    return this.generateAddress(PRAQEN_HOT_WALLET_IDENTIFIER).address;
+  }
+
+  // Returns total confirmed BTC at the hot wallet
+  async getHotWalletBalance() {
+    const address = this.getHotWalletAddress();
+    const bal = await this.checkBalance(address);
+    return { address, confirmed_btc: bal.confirmed_btc };
+  }
+
+  // Send withdrawal from user's own address if it has UTXOs, otherwise fall back to hot wallet
+  async sendWithdrawal(userId, toAddress, amountBTC, feeRate = 5) {
+    this.initialize();
+
+    const userIdentifier    = `user_${userId}`;
+    const userAddress       = this.generateAddress(userIdentifier).address;
+    const hotWalletAddress  = this.getHotWalletAddress();
+
+    // Check UTXOs at user's own deposit address first
+    const userUtxos = await this.getUTXOs(userAddress);
+    const userFunds = (userUtxos || []).reduce((sum, u) => sum + u.value, 0);
+    const amountSats = Math.floor(amountBTC * 1e8);
+
+    const estimatedSize = 110 + (68 * Math.max(1, (userUtxos || []).length)) + (31 * 2);
+    const estimatedFee  = estimatedSize * feeRate;
+
+    if (userFunds >= amountSats + estimatedFee) {
+      // User has enough real on-chain BTC (direct depositor path)
+      console.log(`[Withdrawal] Sending from user's own address: ${userAddress}`);
+      return this.sendBitcoin(userIdentifier, toAddress, amountBTC, feeRate);
+    }
+
+    // User's on-chain address has insufficient UTXOs (they received BTC from trades)
+    // Fall back to the platform hot wallet
+    const hwUtxos = await this.getUTXOs(hotWalletAddress);
+    const hwFunds = (hwUtxos || []).reduce((sum, u) => sum + u.value, 0);
+
+    console.log(`[Withdrawal] User address has ${userFunds} sats, hot wallet has ${hwFunds} sats, need ${amountSats + estimatedFee} sats`);
+
+    if (hwFunds < amountSats + estimatedFee) {
+      throw new Error(
+        `HOT_WALLET_INSUFFICIENT: The platform withdrawal wallet needs to be topped up. ` +
+        `Hot wallet address: ${hotWalletAddress}. ` +
+        `Required: ${((amountSats + estimatedFee) / 1e8).toFixed(8)} BTC, ` +
+        `Available: ${(hwFunds / 1e8).toFixed(8)} BTC`
+      );
+    }
+
+    console.log(`[Withdrawal] Sending from platform hot wallet: ${hotWalletAddress}`);
+    return this.sendBitcoin(PRAQEN_HOT_WALLET_IDENTIFIER, toAddress, amountBTC, feeRate);
   }
 
   // ── Check balance at any address ─────────────────────────────────────────

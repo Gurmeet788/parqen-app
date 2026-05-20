@@ -203,6 +203,7 @@ router.get('/wallet', verifyToken, async (req, res) => {
             .from('wallet_transactions')
             .select('id, type, status, amount_btc, tx_hash, notes, created_at')
             .eq('user_id', userId)
+            .neq('type', 'SWEEP')  // internal platform operation — never shown to users
             .order('created_at', { ascending: false })
             .limit(50);
 
@@ -370,7 +371,8 @@ async function pauseSellOffersIfEmpty(sellerId) {
 
 router.post('/send', verifyToken, async (req, res) => {
   try {
-    const { toAddress, amountBtc, actionCode } = req.body;
+    const { toAddress: rawAddress, amountBtc, actionCode } = req.body;
+    const toAddress = (rawAddress || '').trim();
     const userId = req.userId;
 
     if (!toAddress || !amountBtc || parseFloat(amountBtc) <= 0) {
@@ -379,8 +381,8 @@ router.post('/send', verifyToken, async (req, res) => {
 
     // SECURITY: Mainnet-only address check.
     // tb1 / m / n / 2 are TESTNET prefixes — sending real BTC there = permanent loss.
-    const MAINNET_ADDRESS_RE = /^(bc1[a-z0-9]{25,87}|[13][a-zA-HJ-NP-Z1-9]{25,34})$/;
-    if (!MAINNET_ADDRESS_RE.test(toAddress.trim())) {
+    const MAINNET_ADDRESS_RE = /^(bc1[a-zA-Z0-9]{25,87}|[13][a-zA-HJ-NP-Z1-9]{25,34})$/;
+    if (!MAINNET_ADDRESS_RE.test(toAddress)) {
       return res.status(400).json({
         error: 'Invalid Bitcoin address. Only mainnet addresses are accepted (bc1..., 1..., 3...). Testnet addresses are blocked.',
       });
@@ -404,7 +406,7 @@ router.post('/send', verifyToken, async (req, res) => {
       const recipientId = internalWallet.user_id;
 
       const { data: senderBal } = await supabaseAdmin
-        .from('user_balances').select('balance_btc').eq('user_id', userId).single();
+        .from('wallets').select('balance_btc').eq('user_id', userId).single();
       const available = parseFloat(senderBal?.balance_btc || 0);
       if (available < amount) {
         return res.status(400).json({
@@ -414,23 +416,32 @@ router.post('/send', verifyToken, async (req, res) => {
 
       const newSenderBalance    = parseFloat((available - amount).toFixed(8));
       const { data: recipBal }  = await supabaseAdmin
-        .from('user_balances').select('balance_btc').eq('user_id', recipientId).single();
+        .from('wallets').select('balance_btc').eq('user_id', recipientId).single();
       const newRecipientBalance = parseFloat((parseFloat(recipBal?.balance_btc || 0) + amount).toFixed(8));
 
-      // Deduct sender
-      await supabaseAdmin.from('user_balances')
-        .update({ balance_btc: newSenderBalance, updated_at: new Date().toISOString() })
-        .eq('user_id', userId);
-      await supabaseAdmin.from('user_wallets')
-        .update({ balance_btc: newSenderBalance, updated_at: new Date().toISOString() })
-        .eq('user_id', userId);
+      // Deduct sender — keep all three tables in sync
+      await Promise.all([
+        supabaseAdmin.from('wallets')
+          .update({ balance_btc: newSenderBalance, updated_at: new Date().toISOString() })
+          .eq('user_id', userId),
+        supabaseAdmin.from('user_balances')
+          .update({ balance_btc: newSenderBalance, updated_at: new Date().toISOString() })
+          .eq('user_id', userId),
+        supabaseAdmin.from('user_wallets')
+          .update({ balance_btc: newSenderBalance, updated_at: new Date().toISOString() })
+          .eq('user_id', userId),
+      ]);
 
-      // Credit recipient
-      await supabaseAdmin.from('user_balances')
-        .upsert({ user_id: recipientId, balance_btc: newRecipientBalance, updated_at: new Date().toISOString() });
-      await supabaseAdmin.from('user_wallets')
-        .update({ balance_btc: newRecipientBalance, updated_at: new Date().toISOString() })
-        .eq('user_id', recipientId);
+      // Credit recipient — keep all three tables in sync
+      await Promise.all([
+        supabaseAdmin.from('wallets')
+          .upsert({ user_id: recipientId, balance_btc: newRecipientBalance, updated_at: new Date().toISOString() }, { onConflict: 'user_id' }),
+        supabaseAdmin.from('user_balances')
+          .upsert({ user_id: recipientId, balance_btc: newRecipientBalance, updated_at: new Date().toISOString() }, { onConflict: 'user_id' }),
+        supabaseAdmin.from('user_wallets')
+          .update({ balance_btc: newRecipientBalance, updated_at: new Date().toISOString() })
+          .eq('user_id', recipientId),
+      ]);
 
       const crypto = require('crypto');
       const txRef  = 'INT_' + crypto
@@ -507,57 +518,122 @@ router.post('/send', verifyToken, async (req, res) => {
     }
 
     const { data: bal } = await supabaseAdmin
-      .from('user_balances').select('balance_btc').eq('user_id', userId).single();
+      .from('wallets').select('balance_btc').eq('user_id', userId).single();
 
     const available = parseFloat(bal?.balance_btc || 0);
+
+    // ── 1% PRAQEN withdrawal fee ─────────────────────────────────────────────
+    const WITHDRAWAL_FEE_RATE  = 0.01;
+    const COMPANY_WALLET_ID    = '14762cd0-d3b2-474f-acab-fe0071961e9a';
+    const platformFee          = parseFloat((amount * WITHDRAWAL_FEE_RATE).toFixed(8));
+    const amountUserReceives   = parseFloat((amount - platformFee).toFixed(8));
+
     if (available < amount) {
       return res.status(400).json({
-        error: `Insufficient balance. Available: ${available.toFixed(8)} BTC, Requested: ${amount.toFixed(8)} BTC`,
+        error: `Insufficient balance. Available: ${available.toFixed(8)} BTC, Requested: ${amount.toFixed(8)} BTC (includes 1% fee of ${platformFee.toFixed(8)} BTC)`,
       });
     }
 
-    console.log(`[hdWalletRoutes] On-chain send: ${amount} BTC from ${userId.slice(0,8)} → ${toAddress}`);
+    if (amountUserReceives <= 0) {
+      return res.status(400).json({ error: 'Amount too small after fee deduction.' });
+    }
 
-    const result = await hdWallet.sendBitcoin(`user_${userId}`, toAddress, amount);
+    console.log(`[hdWalletRoutes] On-chain send: ₿${amountUserReceives} (+ ₿${platformFee} fee) from ${userId.slice(0,8)} → ${toAddress}`);
+
+    // Send only what user receives — fee stays in DB, never goes on-chain
+    const result = await hdWallet.sendWithdrawal(userId, toAddress, amountUserReceives);
 
     const newBalance = parseFloat((available - amount).toFixed(8));
-    await supabaseAdmin.from('user_balances')
-      .update({ balance_btc: newBalance, updated_at: new Date().toISOString() })
-      .eq('user_id', userId);
-    await supabaseAdmin.from('user_wallets')
-      .update({ balance_btc: newBalance, updated_at: new Date().toISOString() })
-      .eq('user_id', userId);
 
-    await supabaseAdmin.from('wallet_transactions').insert({
-      user_id:              userId,
-      type:                 'WITHDRAWAL',
-      amount_btc:           amount,
-      status:               'CONFIRMED',
-      tx_hash:              result.txid,
-      destination_address:  toAddress,
-      created_at:           new Date().toISOString(),
-    });
+    // Deduct full amount (including fee) from user — update all three tables
+    await Promise.all([
+      supabaseAdmin.from('wallets')
+        .update({ balance_btc: newBalance, updated_at: new Date().toISOString() })
+        .eq('user_id', userId),
+      supabaseAdmin.from('user_balances')
+        .update({ balance_btc: newBalance, updated_at: new Date().toISOString() })
+        .eq('user_id', userId),
+      supabaseAdmin.from('user_wallets')
+        .update({ balance_btc: newBalance, updated_at: new Date().toISOString() })
+        .eq('user_id', userId),
+    ]);
 
-    console.log(`✅ [hdWalletRoutes] On-chain sent ₿${amount} — TX: ${result.txid}`);
+    // Credit 1% fee to PRAQEN company wallet
+    const { data: companyWallet } = await supabaseAdmin
+      .from('wallets').select('balance_btc').eq('user_id', COMPANY_WALLET_ID).maybeSingle();
+    const newCompanyBalance = parseFloat((parseFloat(companyWallet?.balance_btc || 0) + platformFee).toFixed(8));
+    await supabaseAdmin.from('wallets')
+      .update({ balance_btc: newCompanyBalance, updated_at: new Date().toISOString() })
+      .eq('user_id', COMPANY_WALLET_ID);
+
+    // Log both transactions for full audit trail
+    await supabaseAdmin.from('wallet_transactions').insert([
+      {
+        user_id:             userId,
+        type:                'WITHDRAWAL',
+        amount_btc:          amountUserReceives,
+        status:              'CONFIRMED',
+        tx_hash:             result.txid,
+        destination_address: toAddress,
+        notes:               `Withdrawal — 1% fee (₿${platformFee.toFixed(8)}) deducted`,
+        created_at:          new Date().toISOString(),
+      },
+      {
+        user_id:    COMPANY_WALLET_ID,
+        type:       'FEE',
+        amount_btc: platformFee,
+        status:     'CONFIRMED',
+        tx_hash:    result.txid,
+        notes:      `1% withdrawal fee from user ${userId.slice(0, 8)} — withdrawal of ₿${amount.toFixed(8)}`,
+        created_at: new Date().toISOString(),
+      },
+    ]);
+
+    console.log(`✅ [hdWalletRoutes] On-chain sent ₿${amountUserReceives} — TX: ${result.txid} | Fee ₿${platformFee} → company`);
 
     // Re-evaluate offer status after withdrawal reduces available balance
     updateOfferStatus(userId).catch(() => {});
 
     res.json({
-      success:     true,
-      internal:    false,
-      txid:        result.txid,
-      amount_btc:  amount,
-      to:          toAddress,
-      fee_sats:    result.fee_sats,
-      new_balance: newBalance,
-      explorer:    result.explorer_url,
-      message:     `₿${amount} sent on-chain successfully`,
+      success:            true,
+      internal:           false,
+      txid:               result.txid,
+      amount_requested:   amount,
+      amount_sent:        amountUserReceives,
+      platform_fee:       platformFee,
+      fee_label:          `1% PRAQEN withdrawal fee`,
+      to:                 toAddress,
+      network_fee_sats:   result.fee_sats,
+      new_balance:        newBalance,
+      explorer:           result.explorer_url,
+      message:            `₿${amountUserReceives.toFixed(8)} sent successfully. 1% fee (₿${platformFee.toFixed(8)}) applied.`,
     });
 
   } catch (error) {
     console.error('[hdWalletRoutes POST /send]', error.message);
-    res.status(500).json({ error: 'Transaction failed. Please try again or contact support.' });
+
+    // Surface operator-actionable errors clearly
+    if (error.message?.startsWith('HOT_WALLET_INSUFFICIENT')) {
+      return res.status(503).json({
+        error: 'Withdrawal temporarily unavailable — platform wallet is being refilled. Please try again in a few hours or contact support.',
+        admin_detail: error.message,
+      });
+    }
+    if (error.message?.includes('No UTXOs')) {
+      return res.status(503).json({
+        error: 'Your Bitcoin is not yet available for on-chain withdrawal. It may still be confirming. Please wait a few minutes and try again.',
+      });
+    }
+    if (error.message?.includes('Broadcast failed')) {
+      return res.status(502).json({
+        error: `Transaction rejected by the Bitcoin network: ${error.message.replace('Broadcast failed: ', '')}`,
+      });
+    }
+    if (error.message?.includes('Insufficient funds') || error.message?.includes('Not enough to cover fee')) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    res.status(500).json({ error: `Transaction failed: ${error.message}` });
   }
 });
 
@@ -573,6 +649,7 @@ router.get('/transactions', verifyToken, async (req, res) => {
       .from('wallet_transactions')
       .select('*')
       .eq('user_id', userId)
+      .neq('type', 'SWEEP')        // internal platform operation — never shown to users
       .order('created_at', { ascending: false })
       .limit(50);
 
@@ -612,6 +689,27 @@ router.post('/escrow-address', verifyToken, async (req, res) => {
   } catch (error) {
     console.error('[hdWalletRoutes POST /escrow-address]', error.message);
     res.status(500).json({ error: 'Failed to create escrow address. Please try again.' });
+  }
+});
+
+// ============================================================
+// GET /api/hd-wallet/hot-wallet
+// Returns platform hot wallet address + on-chain balance
+// (admin use — fund this address to enable user withdrawals)
+// ============================================================
+router.get('/hot-wallet', verifyToken, async (req, res) => {
+  try {
+    const info = await hdWallet.getHotWalletBalance();
+    res.json({
+      success: true,
+      hot_wallet_address: info.address,
+      confirmed_btc: info.confirmed_btc,
+      message: info.confirmed_btc > 0
+        ? `Hot wallet has ${info.confirmed_btc.toFixed(8)} BTC available for withdrawals`
+        : 'Hot wallet is empty — send BTC to the address above to enable user withdrawals',
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

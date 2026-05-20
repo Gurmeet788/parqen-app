@@ -178,6 +178,7 @@ const tradeLimiter = rateLimit({
 const hdWalletService        = require('./services/hdWalletService');
 const depositMonitor         = require('./services/depositMonitor');
 const realtimeDepositService = require('./services/realtimeDepositService');
+const sweepService           = require('./services/sweepService');
 const hdWalletRoutes         = require('./routes/hdWalletRoutes');
 const tradeEscrowService    = require('./services/tradeEscrowService');
 const actionCodeService     = require('./services/actionCodeService');
@@ -6396,6 +6397,11 @@ app.listen(PORT, () => {
   // 5-minute scanner kept as safety net (catches anything WebSocket misses on reconnect)
   depositMonitor.start();
   console.log('🔍 Deposit monitor: MAINNET — polls every 5 min | SMS + Email alerts enabled');
+
+  // ── Deposit sweeper — moves confirmed deposits to hot wallet ─────────────
+  // Runs 2 min after startup then every 30 min. Silent — never affects user balances.
+  sweepService.start();
+  console.log(`🧹 Sweep service: MAINNET — hot wallet ${hdWalletService.getHotWalletAddress()}`);
 
   // ── Daily balance integrity check ─────────────────────────────────────────
   balanceIntegrity.start();
