@@ -132,10 +132,24 @@ class HDWalletService {
 
     // User's on-chain address has insufficient UTXOs (they received BTC from trades)
     // Fall back to the platform hot wallet
-    const hwUtxos = await this.getUTXOs(hotWalletAddress);
+    let hwUtxos, hwApiError;
+    try {
+      hwUtxos = await this.getUTXOs(hotWalletAddress, { throwOnError: true });
+    } catch (err) {
+      hwApiError = err;
+      hwUtxos = [];
+    }
+
     const hwFunds = (hwUtxos || []).reduce((sum, u) => sum + u.value, 0);
 
     console.log(`[Withdrawal] User address has ${userFunds} sats, hot wallet has ${hwFunds} sats, need ${amountSats + estimatedFee} sats`);
+
+    if (hwApiError && hwFunds === 0) {
+      throw new Error(
+        `MEMPOOL_API_ERROR: Could not verify hot wallet balance — blockchain API unreachable. ` +
+        `Please try again in a few minutes. (${hwApiError.message})`
+      );
+    }
 
     if (hwFunds < amountSats + estimatedFee) {
       throw new Error(
@@ -177,7 +191,7 @@ class HDWalletService {
   }
 
   // ── Fetch UTXOs for an address ────────────────────────────────────────────
-  async getUTXOs(address) {
+  async getUTXOs(address, { throwOnError = false } = {}) {
     this.initialize();
     try {
       const response = await axios.get(`${this.apiBase}/address/${address}/utxo`, {
@@ -186,6 +200,7 @@ class HDWalletService {
       return response.data || [];
     } catch (error) {
       console.error(`[getUTXOs] Error for ${address}:`, error.message);
+      if (throwOnError) throw error;
       return [];
     }
   }

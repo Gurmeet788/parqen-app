@@ -613,6 +613,12 @@ router.post('/send', verifyToken, async (req, res) => {
     console.error('[hdWalletRoutes POST /send]', error.message);
 
     // Surface operator-actionable errors clearly
+    if (error.message?.startsWith('MEMPOOL_API_ERROR')) {
+      return res.status(503).json({
+        error: 'Withdrawal temporarily unavailable — blockchain API is unreachable. Please try again in a few minutes.',
+        admin_detail: error.message,
+      });
+    }
     if (error.message?.startsWith('HOT_WALLET_INSUFFICIENT')) {
       return res.status(503).json({
         error: 'Withdrawal temporarily unavailable — platform wallet is being refilled. Please try again in a few hours or contact support.',
