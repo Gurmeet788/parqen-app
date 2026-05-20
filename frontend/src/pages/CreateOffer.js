@@ -184,6 +184,44 @@ const GC_BRANDS = [
 const GC_FACE_VALUES = [10, 20, 25, 50, 100, 200, 500, 1000];
 const TIME_LIMITS = [15, 30, 45, 60, 90, 120];
 
+const GC_CURRENCIES = [
+  { region:'iTunes USA',        currency:'USD', symbol:'$',  flag:'🇺🇸' },
+  { region:'iTunes UK',         currency:'GBP', symbol:'£',  flag:'🇬🇧' },
+  { region:'iTunes Germany',    currency:'EUR', symbol:'€',  flag:'🇩🇪' },
+  { region:'iTunes France',     currency:'EUR', symbol:'€',  flag:'🇫🇷' },
+  { region:'iTunes Spain',      currency:'EUR', symbol:'€',  flag:'🇪🇸' },
+  { region:'iTunes Italy',      currency:'EUR', symbol:'€',  flag:'🇮🇹' },
+  { region:'iTunes Netherlands',currency:'EUR', symbol:'€',  flag:'🇳🇱' },
+  { region:'iTunes Canada',     currency:'CAD', symbol:'C$', flag:'🇨🇦' },
+  { region:'iTunes Australia',  currency:'AUD', symbol:'A$', flag:'🇦🇺' },
+  { region:'iTunes Japan',      currency:'JPY', symbol:'¥',  flag:'🇯🇵' },
+  { region:'iTunes Poland',     currency:'PLN', symbol:'zł', flag:'🇵🇱' },
+  { region:'iTunes Sweden',     currency:'SEK', symbol:'kr', flag:'🇸🇪' },
+  { region:'iTunes Norway',     currency:'NOK', symbol:'kr', flag:'🇳🇴' },
+  { region:'iTunes Denmark',    currency:'DKK', symbol:'kr', flag:'🇩🇰' },
+  { region:'iTunes Switzerland',currency:'CHF', symbol:'Fr', flag:'🇨🇭' },
+  { region:'iTunes Mexico',     currency:'MXN', symbol:'$',  flag:'🇲🇽' },
+  { region:'iTunes Brazil',     currency:'BRL', symbol:'R$', flag:'🇧🇷' },
+  { region:'Amazon USA',        currency:'USD', symbol:'$',  flag:'🇺🇸' },
+  { region:'Amazon UK',         currency:'GBP', symbol:'£',  flag:'🇬🇧' },
+  { region:'Amazon Germany',    currency:'EUR', symbol:'€',  flag:'🇩🇪' },
+  { region:'Amazon Canada',     currency:'CAD', symbol:'C$', flag:'🇨🇦' },
+  { region:'Amazon Australia',  currency:'AUD', symbol:'A$', flag:'🇦🇺' },
+  { region:'Amazon India',      currency:'INR', symbol:'₹',  flag:'🇮🇳' },
+  { region:'Amazon Japan',      currency:'JPY', symbol:'¥',  flag:'🇯🇵' },
+  { region:'Google Play USA',   currency:'USD', symbol:'$',  flag:'🇺🇸' },
+  { region:'Google Play UK',    currency:'GBP', symbol:'£',  flag:'🇬🇧' },
+  { region:'Google Play Germany',currency:'EUR',symbol:'€',  flag:'🇩🇪' },
+  { region:'Google Play Canada',currency:'CAD', symbol:'C$', flag:'🇨🇦' },
+  { region:'Google Play Australia',currency:'AUD',symbol:'A$',flag:'🇦🇺' },
+  { region:'Steam USA',         currency:'USD', symbol:'$',  flag:'🇺🇸' },
+  { region:'Steam Europe',      currency:'EUR', symbol:'€',  flag:'🇪🇺' },
+  { region:'Steam UK',          currency:'GBP', symbol:'£',  flag:'🇬🇧' },
+  { region:'Razer Gold Global', currency:'USD', symbol:'$',  flag:'🌍' },
+  { region:'Vanilla Visa USA',  currency:'USD', symbol:'$',  flag:'🇺🇸' },
+  { region:'Vanilla Visa Europe',currency:'EUR',symbol:'€',  flag:'🇪🇺' },
+];
+
 // ── Step configs ──────────────────────────────────────────────────────────────
 const BTC_STEPS  = [
   { id:1, label:'Type',    icon:Tag },
@@ -216,10 +254,12 @@ export default function CreateOffer() {
   const [offerType, setOfferType] = useState('sell'); // sell | buy | gc_buy
 
   // Step 2 – GC
-  const [gcBrand,      setGcBrand]      = useState('Amazon');
-  const [gcCardType,   setGcCardType]   = useState('both');   // 'physical' | 'ecode' | 'both'
-  const [gcCardValues, setGcCardValues] = useState([50]);     // array of selected denominations
-  const [gcSearch,     setGcSearch]     = useState('');
+  const [gcBrand,       setGcBrand]       = useState('Amazon');
+  const [gcCardType,    setGcCardType]    = useState('both');   // 'physical' | 'ecode' | 'both'
+  const [gcCardValues,  setGcCardValues]  = useState([50]);     // array of selected denominations
+  const [gcSearch,      setGcSearch]      = useState('');
+  const [gcCurrencies,  setGcCurrencies]  = useState([]);       // selected currency regions (max 10)
+  const [gcCurrSearch,  setGcCurrSearch]  = useState('');
 
   // Step 2/3 – Country + Payment
   const [country,        setCountry]        = useState('GH');
@@ -396,10 +436,11 @@ export default function CreateOffer() {
       const payload = {
         type:              offerType,
         listing_type:      listingTypeMap[offerType],
-        gift_card_brand:   isGC ? gcBrand : null,
-        face_value:        isGC ? gcMinVal : null,
-        card_values:       isGC && gcCardValues.length > 0 ? gcCardValues.map(Number) : null,
-        card_type:         isGC ? gcCardType : null,
+        gift_card_brand:      isGC ? gcBrand : null,
+        face_value:           isGC ? gcMinVal : null,
+        card_values:          isGC && gcCardValues.length > 0 ? gcCardValues.map(Number) : null,
+        card_type:            isGC ? gcCardType : null,
+        gift_card_currencies: isGC && gcCurrencies.length > 0 ? gcCurrencies : null,
         amount_usd:        isGC ? gcMinVal : minUSDVal,
         bitcoin_price:     rateUSD,
         margin:            pricingType === 'market' ? margin : 0,
@@ -972,6 +1013,76 @@ export default function CreateOffer() {
                         ₿{(gcMinVal / btcPrice).toFixed(6)}
                       </p>
                       <p className="text-xs" style={{ color: C.g400 }}>at min ${gcMinVal}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Card Currency Regions (optional, up to 10) ── */}
+              <div>
+                <label className="block text-sm font-bold mb-0.5" style={{ color: C.g700 }}>
+                  Card Currency Regions
+                  <span className="ml-1.5 text-xs font-normal" style={{ color: C.g400 }}>(optional · up to 10)</span>
+                </label>
+                <p className="text-xs mb-2" style={{ color: C.g500 }}>
+                  Add the regions / currencies your card supports. Buyers will pick which region their card is from.
+                </p>
+                <div className="relative mb-2">
+                  <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: C.g400 }} />
+                  <input
+                    type="text"
+                    placeholder="Search region or currency…"
+                    value={gcCurrSearch}
+                    onChange={e => setGcCurrSearch(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border-2 text-sm focus:outline-none"
+                    style={{ borderColor: C.g200 }}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                  {GC_CURRENCIES.filter(c =>
+                    !gcCurrSearch || c.region.toLowerCase().includes(gcCurrSearch.toLowerCase()) || c.currency.toLowerCase().includes(gcCurrSearch.toLowerCase())
+                  ).map(c => {
+                    const sel = gcCurrencies.some(x => x.region === c.region);
+                    return (
+                      <button key={c.region}
+                        onClick={() => {
+                          if (sel) {
+                            setGcCurrencies(prev => prev.filter(x => x.region !== c.region));
+                          } else if (gcCurrencies.length < 10) {
+                            setGcCurrencies(prev => [...prev, { region: c.region, currency: c.currency, symbol: c.symbol, flag: c.flag }]);
+                          } else {
+                            toast.warn('Maximum 10 currency regions allowed');
+                          }
+                        }}
+                        className="flex items-center gap-2 p-2.5 rounded-xl border-2 text-left transition-all"
+                        style={{
+                          borderColor: sel ? C.mint : C.g200,
+                          backgroundColor: sel ? `${C.mint}12` : C.white,
+                          boxSizing: 'border-box',
+                        }}>
+                        <span className="text-base flex-shrink-0">{c.flag}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold truncate" style={{ color: C.g800 }}>{c.region}</p>
+                          <p className="text-xs" style={{ color: C.g500 }}>{c.symbol} {c.currency}</p>
+                        </div>
+                        {sel && <Check size={11} style={{ color: C.mint, flexShrink: 0 }} />}
+                      </button>
+                    );
+                  })}
+                </div>
+                {gcCurrencies.length > 0 && (
+                  <div className="mt-3 p-3 rounded-xl" style={{ backgroundColor: `${C.mint}08`, border: `1px solid ${C.mint}25` }}>
+                    <p className="text-xs font-bold mb-2" style={{ color: C.g600 }}>Selected regions ({gcCurrencies.length}/10)</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {gcCurrencies.map(c => (
+                        <button key={c.region}
+                          onClick={() => setGcCurrencies(prev => prev.filter(x => x.region !== c.region))}
+                          className="flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full"
+                          style={{ backgroundColor: C.mint, color: C.white }}>
+                          {c.flag} {c.region}
+                          <X size={9} className="ml-0.5" />
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}

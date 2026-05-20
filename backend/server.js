@@ -2825,25 +2825,28 @@ app.post('/api/listings', verifyToken, async (req, res) => {
       }
     }
 
-    // Block duplicate offers (ACTIVE or PAUSED) with the same payment method
-    const { data: dupCheck } = await supabaseAdmin
-      .from('listings')
-      .select('id, status')
-      .eq('seller_id', req.userId)
-      .eq('payment_method', payMethod)
-      .eq('listing_type', listingType)
-      .in('status', ['ACTIVE', 'PAUSED'])
-      .limit(1);
-    if (dupCheck && dupCheck.length > 0) {
-      const existing = dupCheck[0];
-      const isPaused = existing.status === 'PAUSED';
-      return res.status(400).json({
-        error: isPaused
-          ? `You already have a paused ${payMethod} offer. Go to your Dashboard and activate it instead of creating a new one.`
-          : `You already have an active ${payMethod} offer. Go to your Dashboard to edit it instead of creating a new one.`,
-        existingOfferId: existing.id,
-        existingOfferStatus: existing.status,
-      });
+    // Block duplicate offers: same payment method + same currency + same type (skip gift cards)
+    if (!isGiftCard) {
+      const { data: dupCheck } = await supabaseAdmin
+        .from('listings')
+        .select('id, status')
+        .eq('seller_id', req.userId)
+        .eq('payment_method', payMethod)
+        .eq('listing_type', listingType)
+        .eq('currency', b.currency || 'USD')
+        .in('status', ['ACTIVE', 'PAUSED'])
+        .limit(1);
+      if (dupCheck && dupCheck.length > 0) {
+        const existing = dupCheck[0];
+        const isPaused = existing.status === 'PAUSED';
+        return res.status(400).json({
+          error: isPaused
+            ? `You already have a paused ${payMethod} (${b.currency || 'USD'}) offer. Activate it from your Dashboard instead.`
+            : `You already have an active ${payMethod} (${b.currency || 'USD'}) offer. Edit it from your Dashboard instead.`,
+          existingOfferId: existing.id,
+          existingOfferStatus: existing.status,
+        });
+      }
     }
 
     // Offers are preferences only — no per-offer balance locking.
@@ -3294,7 +3297,8 @@ app.post('/api/offers', verifyToken, async (req, res) => {
       listing_terms,
       description,
       card_values,
-      card_type
+      card_type,
+      gift_card_currencies
     } = req.body;
 
     const userId = req.userId;
@@ -3363,19 +3367,22 @@ app.post('/api/offers', verifyToken, async (req, res) => {
       }
     }
 
-    // Block duplicate active offers with the same payment method
-    const { data: dupCheck2 } = await supabaseAdmin
-      .from('listings')
-      .select('id')
-      .eq('seller_id', userId)
-      .eq('payment_method', payment_method)
-      .eq('listing_type', mappedType)
-      .eq('status', 'ACTIVE')
-      .limit(1);
-    if (dupCheck2 && dupCheck2.length > 0) {
-      return res.status(400).json({
-        error: `You already have an active ${mappedType} offer accepting ${payment_method}. Please edit or deactivate it before creating a new one.`,
-      });
+    // Block duplicate active offers: same payment method + same currency + same type (skip gift cards)
+    if (mappedType !== 'BUY_GIFT_CARD') {
+      const { data: dupCheck2 } = await supabaseAdmin
+        .from('listings')
+        .select('id')
+        .eq('seller_id', userId)
+        .eq('payment_method', payment_method)
+        .eq('listing_type', mappedType)
+        .eq('currency', currency || 'USD')
+        .eq('status', 'ACTIVE')
+        .limit(1);
+      if (dupCheck2 && dupCheck2.length > 0) {
+        return res.status(400).json({
+          error: `You already have an active ${mappedType} offer for ${payment_method} in ${currency || 'USD'}. Edit it from your Dashboard instead.`,
+        });
+      }
     }
 
     // Create offer in listings table (single source of truth for all marketplace pages)
@@ -3404,6 +3411,7 @@ app.post('/api/offers', verifyToken, async (req, res) => {
         card_values:         Array.isArray(card_values) && card_values.length > 0 ? card_values.map(Number) : null,
         card_type:           card_type || 'both',
         face_value:          Array.isArray(card_values) && card_values[0] ? parseFloat(card_values[0]) : null,
+        gift_card_currencies: Array.isArray(gift_card_currencies) && gift_card_currencies.length > 0 ? gift_card_currencies : null,
         created_at:          new Date().toISOString(),
       })
       .select()

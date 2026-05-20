@@ -5,7 +5,7 @@ import axios from 'axios';
 import { ArrowRight, BadgeCheck, RefreshCw, Lock, ChevronRight, ThumbsUp, ThumbsDown, Repeat2 } from 'lucide-react';
 import { BadgeChip } from '../lib/badge';
 import { toast } from 'react-toastify';
-import CountryFlag from '../components/CountryFlag';
+import CountryFlag, { resolveCode } from '../components/CountryFlag';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
@@ -78,9 +78,10 @@ export default function ListingDetail({ user }) {
   const [btcPrice,   setBtcPrice]   = useState(68000);
   const [loading,    setLoading]    = useState(true);
   const [loadError,  setLoadError]  = useState(false);
-  const [payAmt,     setPayAmt]     = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [tradeError, setTradeError] = useState('');
+  const [payAmt,          setPayAmt]          = useState('');
+  const [submitting,      setSubmitting]      = useState(false);
+  const [tradeError,      setTradeError]      = useState('');
+  const [selectedGcRegion, setSelectedGcRegion] = useState(null);
   const [quote,             setQuote]             = useState(null);
   const [quoteFetching,     setQuoteFetching]     = useState(false);
   const [showSellerProfile, setShowSellerProfile] = useState(false);
@@ -130,6 +131,7 @@ const loadAll = useCallback(async () => {
 
   useEffect(() => { if (contextBtcUsd > 0) setBtcPrice(contextBtcUsd); }, [contextBtcUsd]);
   useEffect(() => { loadAll(); }, [loadAll]);
+  useEffect(() => { setSelectedGcRegion(null); }, [id]);
 
   // Debounce quote fetch whenever the user changes the amount
   useEffect(() => {
@@ -200,8 +202,9 @@ const loadAll = useCallback(async () => {
     shadowLg: 'rgba(27,67,50,0.40)',
   };
 
-  const cur      = listing.currency || 'USD';
-  const sym      = listing.currency_symbol || CUR_SYM[cur] || '$';
+  const gcCurrencies = Array.isArray(listing.gift_card_currencies) ? listing.gift_card_currencies : [];
+  const cur      = selectedGcRegion ? selectedGcRegion.currency : (listing.currency || 'USD');
+  const sym      = selectedGcRegion ? (selectedGcRegion.symbol || CUR_SYM[cur] || '$') : (listing.currency_symbol || CUR_SYM[listing.currency || 'USD'] || '$');
   const usdRate  = USD_RATES[cur] || 1;
   const margin   = parseFloat(listing.margin || 0);
 
@@ -251,13 +254,14 @@ const loadAll = useCallback(async () => {
   const dbTrustScore   = parseInt(seller?.trust_score || 0);
   const trustScore     = dbTrustScore > 0 ? dbTrustScore
     : Math.min(100, (hasEmail?25:0) + (hasPhone?25:0) + (hasKyc?25:0) + Math.min(25, Math.floor(trades/20)*5));
-  const sellerCountryCode = (seller?.country_code || seller?.country || '').toLowerCase().slice(0,2) || null;
+  const sellerCountryCode = resolveCode(seller?.country_code || seller?.country || seller?.location);
 
 
   const handleStartTrade = async () => {
     setTradeError('');
     if (!user)                           { toast.info('Please login to start trading'); navigate('/login'); return; }
     if (isOwner)                         { toast.info('This is your listing'); return; }
+    if (isGiftCard && gcCurrencies.length > 0 && !selectedGcRegion) { setTradeError('Please select your card region to continue.'); return; }
     if (!payAmt || payAmtNum <= 0)       { setTradeError('Please enter an amount to trade.'); return; }
     if (payAmtNum < minLocal)            { setTradeError(`Minimum is ${sym}${fmt(minLocal)}.`); return; }
     if (payAmtNum > maxLocal)            { setTradeError(`Maximum is ${sym}${fmt(maxLocal)}.`); return; }
@@ -285,16 +289,17 @@ const loadAll = useCallback(async () => {
       const lockedBtcAfterFee = lockedBtcGross * 0.995;
 
       const r = await axios.post(`${API_URL}/trades`, {
-        listingId:       listing.id || id,
-        quoteId:         activeQuote.quoteId,
-        amountBtc:       parseFloat(lockedBtcAfterFee.toFixed(8)),
-        amountLocal:     payAmtNum,
-        currency:        cur,
-        currencySymbol:  sym,
-        paymentMethod:   pmRaw,
-        trade_type:      (listing.listing_type === 'SELL' || listing.listing_type === 'SELL_GIFT_CARD') ? 'BUY' : 'SELL',
-        sellerRateLocal: parseFloat(activeQuote.executableRate.toFixed(2)),
-        sellerRateUsd:   parseFloat(sellerRateUSD.toFixed(2)),
+        listingId:        listing.id || id,
+        quoteId:          activeQuote.quoteId,
+        amountBtc:        parseFloat(lockedBtcAfterFee.toFixed(8)),
+        amountLocal:      payAmtNum,
+        currency:         cur,
+        currencySymbol:   sym,
+        paymentMethod:    pmRaw,
+        trade_type:       (listing.listing_type === 'SELL' || listing.listing_type === 'SELL_GIFT_CARD') ? 'BUY' : 'SELL',
+        sellerRateLocal:  parseFloat(activeQuote.executableRate.toFixed(2)),
+        sellerRateUsd:    parseFloat(sellerRateUSD.toFixed(2)),
+        gc_region:        selectedGcRegion ? selectedGcRegion.region : null,
       }, { headers: { Authorization: `Bearer ${token}` }, timeout: 60000 });
 
       const tradeData = r.data.trade || r.data;
@@ -667,6 +672,42 @@ const loadAll = useCallback(async () => {
 
             <div style={{ padding: 20 }}>
 
+              {/* ── Gift card region picker (only when listing has currency regions) ── */}
+              {isGiftCard && gcCurrencies.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <p style={{ fontSize: 11, fontWeight: 800, color: C.g600, marginBottom: 8 }}>
+                    SELECT YOUR CARD REGION <span style={{ color: C.danger }}>*</span>
+                  </p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {gcCurrencies.map(rc => {
+                      const active = selectedGcRegion?.region === rc.region;
+                      return (
+                        <button
+                          key={rc.region}
+                          onClick={() => { setSelectedGcRegion(rc); setPayAmt(''); setTradeError(''); }}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 6,
+                            padding: '7px 12px', borderRadius: 10, cursor: 'pointer',
+                            border: `2px solid ${active ? C.mint : C.g200}`,
+                            background: active ? `${C.mint}12` : '#fff',
+                            fontWeight: 700, fontSize: 12, color: active ? C.forest : C.g600,
+                            transition: 'all 0.15s',
+                          }}>
+                          <span style={{ fontSize: 16 }}>{rc.flag}</span>
+                          <span>{rc.region}</span>
+                          <span style={{ fontWeight: 900, fontSize: 11, color: active ? C.mint : C.g400 }}>{rc.symbol} {rc.currency}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {!selectedGcRegion && (
+                    <p style={{ fontSize: 11, color: C.warn, fontWeight: 700, marginTop: 6 }}>
+                      Please select the region of your gift card to continue.
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* Amount input */}
               <div style={{ marginBottom: 16 }}>
                 {/* Label row with MIN / MAX quick-fill chips */}
@@ -780,14 +821,14 @@ const loadAll = useCallback(async () => {
               ) : (
               <button
                 onClick={handleStartTrade}
-                disabled={submitting || !payAmt || payAmtNum <= 0 || payAmtNum < minLocal || payAmtNum > maxLocal}
+                disabled={submitting || !payAmt || payAmtNum <= 0 || payAmtNum < minLocal || payAmtNum > maxLocal || (isGiftCard && gcCurrencies.length > 0 && !selectedGcRegion)}
                 style={{
                   width: '100%', padding: '16px', borderRadius: 14, border: 'none', cursor: 'pointer',
-                  background: submitting || !payAmt || payAmtNum <= 0 || payAmtNum < minLocal || payAmtNum > maxLocal
+                  background: submitting || !payAmt || payAmtNum <= 0 || payAmtNum < minLocal || payAmtNum > maxLocal || (isGiftCard && gcCurrencies.length > 0 && !selectedGcRegion)
                     ? C.g200 : T.grad,
-                  color: submitting || !payAmt || payAmtNum <= 0 || payAmtNum < minLocal || payAmtNum > maxLocal
+                  color: submitting || !payAmt || payAmtNum <= 0 || payAmtNum < minLocal || payAmtNum > maxLocal || (isGiftCard && gcCurrencies.length > 0 && !selectedGcRegion)
                     ? C.g400 : '#fff',
-                  boxShadow: (!submitting && payAmt && payAmtNum >= minLocal && payAmtNum <= maxLocal)
+                  boxShadow: (!submitting && payAmt && payAmtNum >= minLocal && payAmtNum <= maxLocal && !(isGiftCard && gcCurrencies.length > 0 && !selectedGcRegion))
                     ? `0 6px 24px ${T.shadowLg}` : 'none',
                   fontWeight: 900, fontSize: 15,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
