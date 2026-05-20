@@ -2936,33 +2936,53 @@ app.get('/api/listings', async (req, res) => {
       const balMap = {};
       (walletRows || []).forEach(w => { balMap[w.user_id] = parseFloat(w.balance_btc || 0); });
 
-      // Attach balance + effective max to SELL listings
+      // For SELL offers: cap displayed limits to seller's actual balance
       listings = listings.map(l => {
         if (l.listing_type !== 'SELL' && l.listing_type !== 'SELL_BITCOIN') return l;
-        const sellerBtc   = balMap[l.seller_id] || 0;
-        const btcPriceVal = parseFloat(l.bitcoin_price) || 88000;
-        const effectiveMaxUsd = sellerBtc > 0 ? sellerBtc * btcPriceVal : parseFloat(l.max_limit_usd || 0);
-        return { ...l, seller_balance_btc: sellerBtc, effective_max_usd: effectiveMaxUsd };
+        const sellerBtc    = balMap[l.seller_id] || 0;
+        const btcPriceVal  = parseFloat(l.bitcoin_price) || 88000;
+        const balanceUsd   = sellerBtc * btcPriceVal;
+        const origMaxUsd   = parseFloat(l.max_limit_usd || 0);
+        const origMaxLocal = parseFloat(l.max_limit_local || 0);
+
+        // Cap displayed max to what the seller actually holds
+        const cappedMaxUsd   = origMaxUsd > 0 && balanceUsd > 0 ? Math.min(origMaxUsd, balanceUsd) : balanceUsd;
+        // Scale local max proportionally using the listing's implicit rate
+        const localRate      = origMaxUsd > 0 && origMaxLocal > 0 ? origMaxLocal / origMaxUsd : 1;
+        const cappedMaxLocal = parseFloat((cappedMaxUsd * localRate).toFixed(2));
+
+        return {
+          ...l,
+          seller_balance_btc: sellerBtc,
+          effective_max_usd:  cappedMaxUsd,
+          max_limit_usd:      cappedMaxUsd,
+          max_limit_local:    cappedMaxLocal,
+        };
       });
 
-      // Hide any btcRequired offer whose creator has < $10 worth of BTC.
-      const lowBalanceGiftCardIds = [];
+      // Hide BTC-required offers where seller has < $10 OR can't fulfil the minimum trade amount
+      const toPauseIds = [];
       listings = listings.filter(l => {
         if (!btcRequiredTypes.includes(l.listing_type)) return true;
         const sellerBtc   = balMap[l.seller_id] || 0;
         const btcPriceVal = parseFloat(l.bitcoin_price) || 88000;
-        const hasEnough   = sellerBtc * btcPriceVal >= 10;
-        if (!hasEnough && l.listing_type === 'BUY_GIFT_CARD') lowBalanceGiftCardIds.push(l.id);
-        return hasEnough;
+        const balanceUsd  = sellerBtc * btcPriceVal;
+        const minUsd      = parseFloat(l.min_limit_usd || 0);
+
+        const tooLow    = balanceUsd < 10;
+        const cantDoMin = minUsd > 0 && balanceUsd < minUsd;
+
+        if (tooLow || cantDoMin) { toPauseIds.push(l.id); return false; }
+        return true;
       });
 
-      // Auto-pause BUY_GIFT_CARD offers with insufficient balance in the DB
-      if (lowBalanceGiftCardIds.length > 0) {
+      // Auto-pause in DB any offer that shouldn't be showing (fire-and-forget)
+      if (toPauseIds.length > 0) {
         supabaseAdmin.from('listings')
           .update({ status: 'PAUSED', updated_at: new Date().toISOString() })
-          .in('id', lowBalanceGiftCardIds)
+          .in('id', toPauseIds)
           .then(() => {})
-          .catch(e => console.error('[listings] auto-pause gift card low-balance:', e.message));
+          .catch(e => console.error('[listings] auto-pause low-balance:', e.message));
       }
     }
 

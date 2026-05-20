@@ -425,8 +425,9 @@ class TradeEscrowService {
     ]);
 
     const amount      = parseFloat(tradeData.amount_btc);
-    const buyerGets   = parseFloat((amount * 0.995).toFixed(8));
-    const platformFee = parseFloat((amount * 0.005).toFixed(8));
+    const feeRate     = isGiftCardTrade ? 0.01 : 0.005;
+    const buyerGets   = parseFloat((amount * (1 - feeRate)).toFixed(8));
+    const platformFee = parseFloat((amount * feeRate).toFixed(8));
 
     console.log(`💰 Releasing ${buyerGets} BTC → receiver: ${btcReceiverId.slice(0, 8)}`);
 
@@ -477,7 +478,7 @@ class TradeEscrowService {
     // ── ONE atomic DB call: credit receiver + fee + mark escrow released + complete trade ──
     // praqen_release_escrow() runs as a single PostgreSQL transaction.
     // If ANY step fails, ALL steps roll back — tables can never go out of sync.
-    const buyerGetsUsd = parseFloat(((parseFloat(tradeData.amount_usd || 0)) * 0.995).toFixed(2));
+    const buyerGetsUsd = parseFloat(((parseFloat(tradeData.amount_usd || 0)) * (1 - feeRate)).toFixed(2));
     const { error: releaseErr } = await supabaseAdmin.rpc('praqen_release_escrow', {
       p_trade_id:    tradeId,
       p_receiver_id: btcReceiverId,
