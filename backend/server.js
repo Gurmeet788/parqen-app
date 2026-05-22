@@ -910,7 +910,10 @@ async function createAffiliateEarning(tradeId, buyerId, tradeAmountBtc, tradeAmo
       commission_rate: commissionRate, status: 'COMPLETED', created_at: new Date()
     });
     if (error) throw error;
-    await supabaseAdmin.rpc('update_referrer_earnings', { user_id: buyer.referred_by });
+    // Update referral_earnings_btc directly — sum all earnings for this referrer
+    const { data: allE } = await supabaseAdmin.from('affiliate_earnings').select('commission_btc').eq('referrer_id', buyer.referred_by);
+    const newTotal = (allE || []).reduce((s, e) => s + parseFloat(e.commission_btc || 0), 0);
+    await supabaseAdmin.from('users').update({ referral_earnings_btc: parseFloat(newTotal.toFixed(8)) }).eq('id', buyer.referred_by);
     console.log(`✅ Affiliate commission: ${commissionBtc} BTC for referrer ${buyer.referred_by}`);
   } catch (error) {
     console.error('Create affiliate earning error:', error);
@@ -964,6 +967,13 @@ async function payReferralCommissions(tradeId, buyerId, sellerId, amountBtc, amo
     if (error) {
       console.error('[referral] Commission insert failed:', error.message);
       return;
+    }
+
+    // Update referral_earnings_btc for each referrer directly
+    for (const [referrerId] of payouts) {
+      const { data: allE } = await supabaseAdmin.from('affiliate_earnings').select('commission_btc').eq('referrer_id', referrerId);
+      const newTotal = (allE || []).reduce((s, e) => s + parseFloat(e.commission_btc || 0), 0);
+      await supabaseAdmin.from('users').update({ referral_earnings_btc: parseFloat(newTotal.toFixed(8)) }).eq('id', referrerId);
     }
 
     console.log(`✅ [referral] Trade ${tradeId.slice(0, 8)}: paid ₿${commissionBtc.toFixed(8)} to ${rows.length} referrer(s)`);
@@ -1115,10 +1125,10 @@ app.get('/api/auth/referrer', async (req, res) => {
 
 app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
-    const { email, password, username, fullName, referralCode } = req.body;
+    const { email, phone, password, username, fullName, referralCode } = req.body;
 
     // ── Validate inputs ────────────────────────────────────────────────────
-    if (!email || !password || !username) {
+    if ((!email && !phone) || !password || !username) {
       return res.status(400).json({ error: E.MISSING_FIELDS });
     }
     if (password.length < 6) {
@@ -1126,9 +1136,17 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     }
 
     // ── Check uniqueness (fast DB lookups) ─────────────────────────────────
-    const { data: existingUser } = await supabaseAdmin
-      .from('users').select('email').eq('email', email.toLowerCase().trim()).single();
-    if (existingUser) return res.status(400).json({ error: E.EMAIL_TAKEN });
+    if (email) {
+      const { data: existingUser } = await supabaseAdmin
+        .from('users').select('email').eq('email', email.toLowerCase().trim()).single();
+      if (existingUser) return res.status(400).json({ error: E.EMAIL_TAKEN });
+    }
+
+    if (phone) {
+      const { data: existingPhone } = await supabaseAdmin
+        .from('users').select('id').eq('phone', phone.trim()).single();
+      if (existingPhone) return res.status(400).json({ error: 'An account with this phone number already exists. Try logging in or use a different number.' });
+    }
 
     const { data: existingUsername } = await supabaseAdmin
       .from('users').select('id').eq('username', username.trim()).single();
@@ -1153,7 +1171,8 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     const referralCodeValue = await generateUniqueReferralCode(username);
 
     const { data, error } = await supabaseAdmin.from('users').insert([{
-      email:                  email.toLowerCase().trim(),
+      email:                  email ? email.toLowerCase().trim() : null,
+      phone:                  phone ? phone.trim() : null,
       password_hash:          passwordHash,
       username:               username.trim(),
       full_name:              fullName || username.trim(),
@@ -1190,16 +1209,19 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
       }).catch(() => {}), // ignore duplicate if row already exists
     ]);
 
-    // ── Generate 6-digit verification code & save to DB (fast) ────────────
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    verificationCodes.set(email, { code, expiresAt: Date.now() + 10 * 60 * 1000, userId: newUser.id });
-    await supabaseAdmin.from('users').update({
-      verification_code:         code,
-      verification_code_expires: new Date(Date.now() + 10 * 60 * 1000),
-    }).eq('id', newUser.id);
+    // ── Generate 6-digit verification code & save to DB (email users only) ──
+    let emailVerifyCode = null;
+    if (email) {
+      emailVerifyCode = Math.floor(100000 + Math.random() * 900000).toString();
+      verificationCodes.set(email, { code: emailVerifyCode, expiresAt: Date.now() + 10 * 60 * 1000, userId: newUser.id });
+      await supabaseAdmin.from('users').update({
+        verification_code:         emailVerifyCode,
+        verification_code_expires: new Date(Date.now() + 10 * 60 * 1000),
+      }).eq('id', newUser.id);
+    }
 
     // ── Sign JWT ───────────────────────────────────────────────────────────
-    const token = jwt.sign({ userId: newUser.id, email }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: newUser.id, email: email || null }, JWT_SECRET, { expiresIn: '7d' });
 
     // ── RESPOND IMMEDIATELY — never block on email or external APIs ────────
     res.json({
@@ -1225,13 +1247,13 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     // 1. Detect and save country from IP (fire and forget)
     detectAndSaveCountry(newUser.id, req).catch(() => {});
 
-    // 2. Send verification email (Brevo SMTP + logged)
-    emailService.sendVerificationEmail(email, code, newUser.id)
-      .catch(e => console.error('[Register] Verification email failed:', e.message));
-
-    // 2. Send welcome email (Brevo SMTP + logged)
-    emailService.sendWelcomeEmail({ id: newUser.id, email, username })
-      .catch(e => console.error('[Register] Welcome email failed:', e.message));
+    // 2. Send verification + welcome email (email users only)
+    if (email && emailVerifyCode) {
+      emailService.sendVerificationEmail(email, emailVerifyCode, newUser.id)
+        .catch(e => console.error('[Register] Verification email failed:', e.message));
+      emailService.sendWelcomeEmail({ id: newUser.id, email, username })
+        .catch(e => console.error('[Register] Welcome email failed:', e.message));
+    }
 
     // 2. Generate HD wallet address for this user
     Promise.resolve().then(async () => {
@@ -2878,6 +2900,123 @@ app.post('/api/listings', verifyToken, async (req, res) => {
   }
 });
 
+// ── Featured Offers of the Week ──────────────────────────────────────────────
+app.get('/api/featured-offers', async (req, res) => {
+  try {
+    const weekAgo  = new Date(Date.now() -  7 * 24 * 60 * 60 * 1000).toISOString();
+    const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    // Try last 7 days first, fall back to last 30 days so MVP always has data
+    let { data: trades } = await supabaseAdmin
+      .from('trades')
+      .select('seller_id, amount_usd, created_at')
+      .eq('status', 'COMPLETED')
+      .gte('created_at', weekAgo);
+
+    if (!trades || !trades.length) {
+      const { data: older } = await supabaseAdmin
+        .from('trades')
+        .select('seller_id, amount_usd, created_at')
+        .eq('status', 'COMPLETED')
+        .gte('created_at', monthAgo);
+      trades = older || [];
+    }
+
+    // Build per-seller stats (empty object is fine — we fall back to profile metrics)
+    const stats = {};
+    for (const t of trades || []) {
+      const id = t.seller_id;
+      if (!id) continue;
+      if (!stats[id]) stats[id] = { trades: 0, volume: 0 };
+      stats[id].trades++;
+      stats[id].volume += parseFloat(t.amount_usd || 0);
+    }
+
+    // Fetch ALL active listings (BTC + gift cards)
+    const { data: listings } = await supabaseAdmin
+      .from('listings')
+      .select('*')
+      .eq('status', 'ACTIVE')
+      .limit(300);
+
+    if (!listings || !listings.length) return res.json({ featured: [] });
+
+    const allSellerIds = [...new Set(listings.map(l => l.seller_id).filter(Boolean))];
+
+    // Fetch seller profiles — same fields as /api/listings so the query is known-good
+    let userMap = {};
+    if (allSellerIds.length > 0) {
+      const [profilesResult, avatarResult] = await Promise.all([
+        supabaseAdmin.from('users').select(
+          'id, username, full_name, average_rating, total_trades, completion_rate, is_id_verified, is_email_verified, last_login, last_seen_at, total_feedback_count, positive_feedback, negative_feedback, country, bio, badge'
+        ).in('id', allSellerIds),
+        supabaseAdmin.from('users').select('id, avatar_url').in('id', allSellerIds),
+      ]);
+      console.log('[featured] sellerIds:', allSellerIds.length, '| profilesResult count:', (profilesResult.data||[]).length, '| err:', profilesResult.error?.message);
+      (profilesResult.data || []).forEach(u => { userMap[u.id] = u; });
+      (avatarResult.data || []).forEach(u => { if (userMap[u.id]) userMap[u.id].avatar_url = u.avatar_url || null; });
+    }
+
+    const enriched = listings.map(l => ({ ...l, users: userMap[l.seller_id] || {} }));
+
+    // Pick the best listing for a seller, preferring certain types first
+    const bestListing = (sellerId, preferTypes) => {
+      const sl = enriched.filter(l => l.seller_id === sellerId);
+      const preferred = preferTypes ? sl.filter(l => preferTypes.includes(l.listing_type)) : [];
+      const pool = preferred.length ? preferred : sl;
+      return pool.sort((a, b) => parseFloat(a.margin || 0) - parseFloat(b.margin || 0))[0];
+    };
+
+    // Rank sellers: trade stats first, fall back to profile total_trades
+    const rank = (ids, key) => [...ids].sort((a, b) => {
+      const sa = stats[a]?.[key] ?? (key === 'trades' ? (userMap[a]?.total_trades || 0) : 0);
+      const sb = stats[b]?.[key] ?? (key === 'trades' ? (userMap[b]?.total_trades || 0) : 0);
+      return sb - sa;
+    });
+
+    // Winner 1: most trades — BTC seller
+    const btcSellerIds = [...new Set(enriched.filter(l => l.listing_type === 'SELL' || l.listing_type === 'SELL_BITCOIN').map(l => l.seller_id))];
+    const [activeSellerId] = rank(btcSellerIds.length ? btcSellerIds : allSellerIds, 'trades');
+
+    // Winner 2: fastest responder — gift card seller, rank by avg_response_time then positive_feedback
+    const gcSellerIds = [...new Set(enriched.filter(l => l.listing_type === 'SELL_GIFT_CARD' || l.listing_type === 'BUY_GIFT_CARD').map(l => l.seller_id))];
+    const gcPool = (gcSellerIds.length ? gcSellerIds : allSellerIds).filter(id => id !== activeSellerId);
+    // fast_responder: gift card seller with most positive feedback (best trust score)
+    const [fastSellerId] = gcPool.sort((a, b) =>
+      (userMap[b]?.positive_feedback || 0) - (userMap[a]?.positive_feedback || 0)
+    );
+
+    // Winner 3: highest volume
+    const [hotSellerId] = rank(
+      allSellerIds.filter(id => id !== activeSellerId && id !== fastSellerId),
+      'volume'
+    );
+
+    const featured = [];
+    const push = (sellerId, type, preferTypes) => {
+      if (!sellerId) return;
+      const listing = bestListing(sellerId, preferTypes);
+      if (!listing) return;
+      featured.push({
+        ...listing,
+        users: userMap[sellerId] || {},
+        featured_type: type,
+        week_trades:  stats[sellerId]?.trades || 0,
+        week_volume:  Math.round(stats[sellerId]?.volume || 0),
+      });
+    };
+
+    push(activeSellerId, 'active_trader',  ['SELL', 'SELL_BITCOIN']);
+    push(fastSellerId,   'fast_responder', ['SELL_GIFT_CARD', 'BUY_GIFT_CARD']);
+    push(hotSellerId,    'hot_offer',      ['SELL', 'SELL_BITCOIN', 'SELL_GIFT_CARD']);
+
+    res.json({ featured });
+  } catch (e) {
+    console.error('[featured-offers]', e.message);
+    res.json({ featured: [] });
+  }
+});
+
 app.get('/api/listings', async (req, res) => {
   try {
     const { brand, minPrice, maxPrice } = req.query;
@@ -4488,41 +4627,60 @@ app.get('/api/referral/earnings', verifyToken, async (req, res) => {
   }
 });
 
-// Public leaderboard — top 10 referrers by earnings
+// Public leaderboard — top 10 referrers by referrals + earnings (real data)
 app.get('/api/referral/leaderboard', async (req, res) => {
   try {
-    // Primary source: users table ordered by referral_earnings_btc (authoritative, covers all referrers)
-    const { data: topUsers, error } = await supabaseAdmin
+    // Step 1: compute real earnings + trade counts from affiliate_earnings table
+    const { data: earningsRows } = await supabaseAdmin
+      .from('affiliate_earnings')
+      .select('referrer_id, commission_btc');
+
+    const earningsMap    = {};
+    const tradeCountMap  = {};
+    (earningsRows || []).forEach(e => {
+      const rid = e.referrer_id;
+      earningsMap[rid]   = (earningsMap[rid]   || 0) + parseFloat(e.commission_btc || 0);
+      tradeCountMap[rid] = (tradeCountMap[rid] || 0) + 1;
+    });
+
+    // Step 2: get users who have referrals (total_referrals > 0)
+    const { data: referralUsers, error } = await supabaseAdmin
       .from('users')
-      .select('id, username, badge, total_referrals, total_trades, referral_earnings_btc')
-      .gt('referral_earnings_btc', 0)
-      .order('referral_earnings_btc', { ascending: false })
-      .limit(10);
+      .select('id, username, badge, total_referrals, total_trades')
+      .gt('total_referrals', 0)
+      .order('total_referrals', { ascending: false })
+      .limit(50);
 
     if (error) throw error;
 
-    // Secondary: also pull per-user commission count from affiliate_earnings
-    const ids = (topUsers || []).map(u => u.id);
-    let commissionCountMap = {};
-    if (ids.length > 0) {
-      const { data: entries } = await supabaseAdmin
-        .from('affiliate_earnings')
-        .select('referrer_id')
-        .in('referrer_id', ids);
-      (entries || []).forEach(e => {
-        commissionCountMap[e.referrer_id] = (commissionCountMap[e.referrer_id] || 0) + 1;
-      });
+    // Step 3: add any earners not in the referralUsers list
+    const knownIds  = new Set((referralUsers || []).map(u => u.id));
+    const extraIds  = Object.keys(earningsMap).filter(id => !knownIds.has(id));
+    let extraUsers  = [];
+    if (extraIds.length > 0) {
+      const { data: extra } = await supabaseAdmin
+        .from('users')
+        .select('id, username, badge, total_referrals, total_trades')
+        .in('id', extraIds);
+      extraUsers = extra || [];
     }
 
-    const leaderboard = (topUsers || []).map((u, rank) => ({
-      rank:         rank + 1,
-      username:     u.username || 'Trader',
-      badge:        u.badge || 'BEGINNER',
-      earned_btc:   parseFloat(u.referral_earnings_btc || 0),
-      referrals:    u.total_referrals || 0,
-      total_trades: u.total_trades || 0,
-      affiliate_trades: commissionCountMap[u.id] || 0,
-    }));
+    // Step 4: merge, sort by earnings desc then referrals desc, take top 10
+    const allUsers = [...(referralUsers || []), ...extraUsers];
+    const leaderboard = allUsers
+      .filter(u => (u.total_referrals || 0) > 0 || earningsMap[u.id] > 0)
+      .map(u => ({
+        id:              u.id,
+        username:        u.username  || 'Trader',
+        badge:           u.badge     || 'BEGINNER',
+        earned_btc:      parseFloat((earningsMap[u.id] || 0).toFixed(8)),
+        referrals:       u.total_referrals  || 0,
+        total_trades:    u.total_trades     || 0,
+        affiliate_trades: tradeCountMap[u.id] || 0,
+      }))
+      .sort((a, b) => b.earned_btc - a.earned_btc || b.referrals - a.referrals)
+      .slice(0, 10)
+      .map((u, i) => ({ ...u, rank: i + 1 }));
 
     res.json({ success: true, leaderboard });
   } catch (err) {

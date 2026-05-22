@@ -30,6 +30,36 @@ const C = {
   warn:'#F59E0B',
 };
 
+// ── Featured badge config ─────────────────────────────────────────────────────
+const FEATURED = {
+  fast_responder: {
+    tag:         '⚡ FAST RESPONDER OF THE WEEK',
+    ribbon:      'linear-gradient(90deg,#1E3A8A 0%,#3730A3 18%,#6366F1 38%,#A5B4FC 50%,#6366F1 62%,#3730A3 82%,#1E3A8A 100%)',
+    border:      '#4F46E5',
+    glow:        'rgba(79,70,229,0.38)',
+    bg:          '#F9F9FF',
+    bgGradient:  'linear-gradient(150deg,rgba(165,180,252,0.22) 0%,#F9F9FF 42%,rgba(99,102,241,0.12) 100%)',
+    divider:     'rgba(79,70,229,0.20)',
+    labelColor:  '#3730A3',
+    btnGradient: 'linear-gradient(135deg,#1E3A8A 0%,#4F46E5 55%,#818CF8 100%)',
+    btnShadow:   '0 4px 20px rgba(79,70,229,0.55)',
+    pulse:       true,
+  },
+  active_trader: {
+    tag:         '👑 ACTIVE TRADER OF THE WEEK',
+    ribbon:      'linear-gradient(90deg,#92400E 0%,#B45309 18%,#F59E0B 38%,#FDE68A 50%,#F59E0B 62%,#B45309 82%,#92400E 100%)',
+    border:      '#D97706',
+    glow:        'rgba(217,119,6,0.38)',
+    bg:          '#FFFDF5',
+    bgGradient:  'linear-gradient(150deg,rgba(253,230,138,0.28) 0%,#FFFDF5 42%,rgba(251,191,36,0.14) 100%)',
+    divider:     'rgba(217,119,6,0.22)',
+    labelColor:  '#92400E',
+    btnGradient: 'linear-gradient(135deg,#78350F 0%,#D97706 55%,#FBBF24 100%)',
+    btnShadow:   '0 4px 20px rgba(217,119,6,0.55)',
+    pulse:       true,
+  },
+};
+
 // ── Trust badge map ───────────────────────────────────────────────────────────
 
 const CUR_SYM = {
@@ -196,7 +226,7 @@ function Avatar({user, size=48, radius='rounded-xl'}) {
 }
 
 // ── Gift Card Offer Card ──────────────────────────────────────────────────────
-function GCCard({listing, btcPriceUSD, onViewSeller, onTrade}) {
+function GCCard({listing, btcPriceUSD, onViewSeller, onTrade, featuredType}) {
   const {rates:USD_RATES} = useRates();
   const u        = getUser(listing.users);
   const badge    = deriveBadge(u);
@@ -233,10 +263,37 @@ function GCCard({listing, btcPriceUSD, onViewSeller, onTrade}) {
   const neg   = parseInt(u.negative_feedback||0);
 
   const pmLabel  = listing.payment_method||'Payment';
+  const ft = featuredType ? FEATURED[featuredType] : null;
 
   return (
-    <div className="bg-white rounded-2xl overflow-hidden border hover:shadow-lg transition-all w-full min-w-0"
-      style={{borderColor:C.g200}}>
+    <div className="rounded-2xl overflow-hidden border transition-all w-full min-w-0"
+      style={{
+        background:   ft?.bgGradient || '#fff',
+        borderColor:  ft ? ft.border : C.g200,
+        borderWidth:  ft ? '2.5px' : '1px',
+        boxShadow:    ft ? `0 0 0 3px ${ft.glow}, 0 10px 36px ${ft.glow}` : undefined,
+        animation:    ft?.pulse ? (featuredType === 'fast_responder' ? 'fastResponderPulse 2.5s ease-in-out infinite' : 'featuredPulse 2.5s ease-in-out infinite') : undefined,
+      }}>
+
+      {/* ─ Featured ribbon ───────────────────────────────────────── */}
+      {ft && (
+        <div style={{position:'relative', overflow:'hidden'}}>
+          <div className="flex items-center justify-center gap-2"
+            style={{background: ft.ribbon, padding:'10px 16px'}}>
+            <span style={{fontSize:12, fontWeight:900, letterSpacing:'0.12em', color:'#fff', textShadow:'0 1px 6px rgba(0,0,0,0.45)', whiteSpace:'nowrap'}}>
+              {ft.tag}
+            </span>
+          </div>
+          {ft.pulse && (
+            <div style={{
+              position:'absolute', top:0, left:0, right:0, bottom:0,
+              background:'linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.30) 50%,transparent 100%)',
+              animation:'shimmer 2.4s linear infinite',
+              pointerEvents:'none',
+            }}/>
+          )}
+        </div>
+      )}
 
       {/* ─ Seller row ────────────────────────────────────────────── */}
       <div className="px-4 pt-3 pb-2">
@@ -311,9 +368,9 @@ function GCCard({listing, btcPriceUSD, onViewSeller, onTrade}) {
             {/* Card brand + type */}
             <div className="mt-2 flex items-center gap-2 flex-wrap">
               <span className="inline-flex flex-col px-2.5 py-1 rounded-xl min-w-0 max-w-full"
-                style={{backgroundColor:C.g100}}>
-                <span className="text-[10px] font-normal leading-snug" style={{color:C.g400}}>Seller accepts:</span>
-                <span className="text-xs font-black leading-snug tracking-wide truncate" style={{color:C.g700, maxWidth:'130px'}}>
+                style={{backgroundColor: ft ? `${ft.border}18` : C.g100}}>
+                <span className="text-[10px] font-normal leading-snug" style={{color: ft ? ft.labelColor : C.g400}}>Seller accepts:</span>
+                <span className="text-xs font-black leading-snug tracking-wide truncate" style={{color: ft ? ft.labelColor : C.g700, maxWidth:'130px'}}>
                   {/card/i.test(brand) ? brand.toUpperCase() : `${brand.toUpperCase()} CARD`}
                 </span>
               </span>
@@ -337,7 +394,7 @@ function GCCard({listing, btcPriceUSD, onViewSeller, onTrade}) {
       </div>
 
       {/* ─ Divider ───────────────────────────────────────────────── */}
-      <div style={{height:1,backgroundColor:C.g100}}/>
+      <div style={{height:1, backgroundColor: ft ? ft.divider : C.g100}}/>
 
       {/* ─ You Give / You Receive ────────────────────────────────── */}
       <div className="px-3 py-3 grid grid-cols-2 gap-2">
@@ -352,6 +409,10 @@ function GCCard({listing, btcPriceUSD, onViewSeller, onTrade}) {
             ₿{fBtc(btcOut)}
           </p>
           <p className="text-xs font-semibold mt-0.5" style={{color:C.g400}}>Bitcoin</p>
+          <span className="inline-block mt-1.5 font-semibold px-1.5 py-0.5 rounded"
+            style={{backgroundColor:marginBg, color:'#fff', fontSize:'10px'}}>
+            {marginLabel}
+          </span>
         </div>
       </div>
 
@@ -376,24 +437,16 @@ function GCCard({listing, btcPriceUSD, onViewSeller, onTrade}) {
         )}
       </div>
 
-      {/* ─ Margin ────────────────────────────────────────────────── */}
-      <div className="px-4 pb-2">
-        <span className="font-semibold px-1.5 py-0.5 rounded"
-          style={{backgroundColor:marginBg, color:'#fff', fontSize:'10px'}}>
-          {marginLabel}
-        </span>
-      </div>
-
       {/* ─ Actions ───────────────────────────────────────────────── */}
       <div className="px-4 pb-3 flex items-center gap-2">
         <button onClick={onViewSeller}
           className="w-10 h-11 rounded-xl border flex items-center justify-center flex-shrink-0 hover:bg-gray-50 transition"
-          style={{borderColor:C.g200}}>
-          <Info size={14} style={{color:C.g400}}/>
+          style={{borderColor: ft ? ft.border : C.g200, backgroundColor: ft ? `${ft.border}12` : 'transparent'}}>
+          <Info size={14} style={{color: ft ? ft.border : C.g400}}/>
         </button>
         <button onClick={onTrade}
           className="flex-1 h-11 rounded-xl text-white font-black text-base flex items-center justify-center gap-1.5 hover:opacity-90 transition active:scale-[0.98]"
-          style={{backgroundColor:C.forest}}>
+          style={{background: ft?.btnGradient || FEATURED.fast_responder.btnGradient, boxShadow: ft?.btnShadow || FEATURED.fast_responder.btnShadow}}>
           TRADE <ArrowRight size={14}/>
         </button>
       </div>
@@ -801,7 +854,7 @@ function SellerModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
           </button>
           <button onClick={() => { onClose(); onTrade(); }}
             className="flex-1 py-3 rounded-2xl text-white text-sm font-black flex items-center justify-center gap-2 shadow-md active:scale-[0.98] transition"
-            style={{backgroundColor:C.forest}}>
+            style={{background:FEATURED.fast_responder.btnGradient, boxShadow:FEATURED.fast_responder.btnShadow}}>
             Trade Now <ArrowRight size={14}/>
           </button>
         </div>
@@ -828,7 +881,7 @@ function SkeletonCard() {
 export default function GiftCards({user}) {
   const navigate = useNavigate();
   const {rates:USD_RATES, btcUsd:contextBtcUsd} = useRates();
-  const _cacheAll = () => { try { const c=JSON.parse(sessionStorage.getItem('praqen_market_all')||'null'); if(!c||Date.now()-c.ts>180000) return null; return c?.data||null; } catch { return null; } };
+  const _cacheAll = () => { try { const c=JSON.parse(localStorage.getItem('praqen_market_all')||'null'); if(!c||Date.now()-c.ts>300000) return null; return c?.data||null; } catch { return null; } };
   const _gcNow    = () => { const a=_cacheAll(); return a?a.filter(l=>l.listing_type==='BUY_GIFT_CARD'||l.listing_type==='SELL_GIFT_CARD'):[]; };
   const [listings,     setListings]     = useState(()=>_gcNow());
   const [loading,      setLoading]      = useState(()=>_gcNow().length===0);
@@ -903,11 +956,11 @@ export default function GiftCards({user}) {
     setLoadError(false);
     setRetrying(false);
     try {
-      const r = await axios.get(`${API_URL}/listings`, { timeout: 25000 });
+      const r = await axios.get(`${API_URL}/listings`, { timeout: 8000 });
       const all=(r.data.listings||[]).map(l=>({...l,users:Array.isArray(l.users)?l.users[0]:l.users}));
       const data=all.filter(l=>l.listing_type==='BUY_GIFT_CARD'||l.listing_type==='SELL_GIFT_CARD');
       setListings(data);
-      try { sessionStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() })); } catch {}
+      try { localStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() })); } catch {}
       const tk = localStorage.getItem('token');
       if (tk) {
         axios.get(`${API_URL}/my-listings`, { headers: { Authorization: `Bearer ${tk}` } })
@@ -922,7 +975,7 @@ export default function GiftCards({user}) {
       if (attempt < 3) {
         // Auto-retry up to 2 more times — server may be waking from cold start
         setRetrying(true);
-        setTimeout(() => loadListings(attempt + 1), 4000);
+        setTimeout(() => loadListings(attempt + 1), 2000);
       } else {
         setRetrying(false);
         if (!listings.length) setLoadError(true);
@@ -983,6 +1036,12 @@ export default function GiftCards({user}) {
   const btcLocal    = btcPrice*usdRate;
   const onlineCnt   = listings.filter(l=>(Date.now()-new Date(l.users?.last_seen_at||l.users?.last_login||0))/1000<300).length;
   const sellerCount = new Set(listings.map(l=>l.seller_id)).size;
+
+  // Fast Responder of the Week — pinned by username, stable for 1 week
+  const FAST_RESPONDER_USERNAME = 'kingkong79-pro';
+  const fastResponderListingId = filtered.find(l =>
+    (l.users?.username || '').toLowerCase() === FAST_RESPONDER_USERNAME
+  )?.id || null;
   const hasFilters  = amountInput.trim()!==''||selBrand!=='All Brands'||selCountry.code!=='ALL'||traderSearch.trim()!==''||sortBy!=='rate_low';
 
   return (
@@ -991,6 +1050,9 @@ export default function GiftCards({user}) {
       <SEO />
       <style>{`
         @keyframes slideUp{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}
+        @keyframes fastResponderPulse{0%,100%{box-shadow:0 0 0 3px rgba(79,70,229,0.28),0 8px 32px rgba(79,70,229,0.18)}50%{box-shadow:0 0 0 6px rgba(79,70,229,0.52),0 16px 48px rgba(79,70,229,0.34)}}
+        @keyframes featuredPulse{0%,100%{box-shadow:0 0 0 3px rgba(217,119,6,0.28),0 8px 32px rgba(217,119,6,0.18)}50%{box-shadow:0 0 0 6px rgba(217,119,6,0.52),0 16px 48px rgba(217,119,6,0.34)}}
+        @keyframes shimmer{0%{transform:translateX(-130%)}100%{transform:translateX(130%)}}
         input[type=number]::-webkit-inner-spin-button,
         input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
         *{-webkit-tap-highlight-color:transparent;box-sizing:border-box}
@@ -1391,6 +1453,7 @@ export default function GiftCards({user}) {
                 key={l.id}
                 listing={l}
                 btcPriceUSD={btcPrice}
+                featuredType={l.id === fastResponderListingId ? 'fast_responder' : undefined}
                 onViewSeller={()=>setModal({seller:l.users||{},listing:l})}
                 onTrade={()=>handleTrade(l.id)}
               />

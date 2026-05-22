@@ -321,7 +321,13 @@ export default function Register({ onLogin }) {
         setStep(4);
         setTimeout(() => navigate('/buy-bitcoin'), 1800);
       }
-    } catch (err) { setGlobalError(err.response?.data?.error || 'Registration failed. Try again.'); }
+    } catch (err) {
+      if (!err.response) {
+        setGlobalError('Cannot reach the server. Please check your internet connection and try again.');
+      } else {
+        setGlobalError(err.response.data?.error || 'Registration failed. Please try again.');
+      }
+    }
     finally { setLoading(false); }
   };
 

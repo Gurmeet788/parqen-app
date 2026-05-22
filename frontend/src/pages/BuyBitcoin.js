@@ -246,8 +246,47 @@ function Avatar({user, size=36, radius='rounded-xl'}) {
   );
 }
 
+// ── Featured badge config ─────────────────────────────────────────────────────
+const FEATURED = {
+  active_trader: {
+    tag:         '👑 ACTIVE TRADER OF THE WEEK',
+    ribbon:      'linear-gradient(90deg,#064E3B 0%,#065F46 18%,#059669 38%,#6EE7B7 50%,#059669 62%,#065F46 82%,#064E3B 100%)',
+    border:      '#059669',
+    glow:        'rgba(5,150,105,0.35)',
+    bg:          '#F0FAF5',
+    bgGradient:  'linear-gradient(150deg,rgba(110,231,183,0.22) 0%,#F0FAF5 42%,rgba(16,185,129,0.12) 100%)',
+    divider:     'rgba(5,150,105,0.20)',
+    labelColor:  '#064E3B',
+    btnGradient: 'linear-gradient(135deg,#064E3B 0%,#059669 55%,#34D399 100%)',
+    btnShadow:   '0 4px 20px rgba(5,150,105,0.50)',
+    pulse:       true,
+  },
+  fast_responder: {
+    tag:         '⚡ FAST RESPONDER OF THE WEEK',
+    ribbon:      'linear-gradient(90deg,#1E3A8A,#4338CA,#818CF8,#4338CA,#1E3A8A)',
+    border:      '#4F46E5',
+    glow:        'rgba(79,70,229,0.28)',
+    bg:          'rgba(79,70,229,0.05)',
+    divider:     'rgba(79,70,229,0.14)',
+    labelColor:  '#3730A3',
+    btnGradient: 'linear-gradient(135deg,#1E3A8A 0%,#4F46E5 60%,#818CF8 100%)',
+    btnShadow:   '0 4px 14px rgba(79,70,229,0.40)',
+  },
+  hot_offer: {
+    tag:         '🔥 HOT OFFER · TRENDING NOW',
+    ribbon:      'linear-gradient(90deg,#7C2D12,#EA580C,#FCD34D,#EA580C,#7C2D12)',
+    border:      '#EA580C',
+    glow:        'rgba(234,88,12,0.28)',
+    bg:          'rgba(234,88,12,0.05)',
+    divider:     'rgba(234,88,12,0.14)',
+    labelColor:  '#C2410C',
+    btnGradient: 'linear-gradient(135deg,#7C2D12 0%,#EA580C 60%,#F97316 100%)',
+    btnShadow:   '0 4px 14px rgba(234,88,12,0.40)',
+  },
+};
+
 // ── Offer Card ────────────────────────────────────────────────────────────────
-function OfferCard({listing, btcPriceUSD, onViewSeller, onBuy, liked, onToggleLike}) {
+function OfferCard({listing, btcPriceUSD, onViewSeller, onBuy, liked, onToggleLike, featuredType}) {
   const { rates: USD_RATES } = useRates();
   const u         = getUser(listing.users);
   const badge     = deriveBadge(u);
@@ -277,9 +316,44 @@ function OfferCard({listing, btcPriceUSD, onViewSeller, onBuy, liked, onToggleLi
 
   const pmLabel = listing.payment_method || 'Payment';
 
+  const ft = featuredType ? FEATURED[featuredType] : null;
+
   return (
-    <div className="bg-white rounded-2xl overflow-hidden border hover:shadow-lg transition-all w-full"
-      style={{borderColor:C.g200}}>
+    <div className="rounded-2xl overflow-hidden transition-all w-full"
+      style={{
+        background: ft?.bgGradient || (ft ? ft.bg : '#fff'),
+        border: ft ? `2.5px solid ${ft.border}` : `1px solid ${C.g200}`,
+        boxShadow: ft ? `0 0 0 3px ${ft.glow}, 0 10px 36px ${ft.glow}` : 'none',
+        animation: ft?.pulse ? 'featuredPulse 2.5s ease-in-out infinite' : undefined,
+      }}>
+      {ft && (
+        <div style={{position:'relative', overflow:'hidden'}}>
+          <div className="flex items-center justify-center gap-2"
+            style={{
+              background: ft.ribbon,
+              padding: ft.pulse ? '10px 16px' : '8px 16px',
+            }}>
+            <span style={{
+              fontSize: ft.pulse ? 12 : 11,
+              fontWeight: 900,
+              letterSpacing: '0.12em',
+              color: '#fff',
+              textShadow: '0 1px 6px rgba(0,0,0,0.45)',
+              whiteSpace: 'nowrap',
+            }}>
+              {ft.tag}
+            </span>
+          </div>
+          {ft.pulse && (
+            <div style={{
+              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+              background: 'linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.30) 50%,transparent 100%)',
+              animation: 'shimmer 2.4s linear infinite',
+              pointerEvents: 'none',
+            }}/>
+          )}
+        </div>
+      )}
       <div className="px-4 pt-4 pb-2">
         <div className="flex items-start gap-3">
           <div className="relative flex-shrink-0">
@@ -358,40 +432,40 @@ function OfferCard({listing, btcPriceUSD, onViewSeller, onBuy, liked, onToggleLi
 
         <div className="mt-2.5">
           <span className="inline-flex flex-col px-2.5 py-1.5 rounded-lg"
-            style={{backgroundColor:C.g100}}>
-            <span className="text-xs font-normal leading-tight" style={{color:C.g400}}>Seller accepts:</span>
-            <span className="text-xs font-black leading-tight tracking-wide" style={{color:C.g700}}>{pmLabel.toUpperCase()}</span>
+            style={{backgroundColor: ft ? `${ft.border}18` : C.g100}}>
+            <span className="text-xs font-normal leading-tight" style={{color: ft ? ft.labelColor : C.g400}}>Seller accepts:</span>
+            <span className="text-xs font-black leading-tight tracking-wide" style={{color: ft ? ft.labelColor : C.g700}}>{pmLabel.toUpperCase()}</span>
           </span>
         </div>
       </div>
 
-      <div style={{height:1, backgroundColor:C.g100}}/>
+      <div style={{height:1, backgroundColor: ft ? ft.divider : C.g100}}/>
 
       <div className="px-4 py-3 grid grid-cols-2 gap-2">
         <div>
-          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{color:C.g500}}>YOU PAY</p>
+          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{color: ft ? ft.labelColor : C.g500}}>YOU PAY</p>
           <p className="text-lg font-bold leading-tight truncate" style={{color:C.g800}}>
             {sym}{fmt(examplePay)}
           </p>
           <p className="text-xs font-semibold mt-0.5" style={{color:C.g400}}>{cur}</p>
         </div>
-        <div className="border-l pl-3" style={{borderColor:C.g100}}>
-          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{color:C.g500}}>YOU RECEIVE</p>
+        <div className="border-l pl-3" style={{borderColor: ft ? ft.divider : C.g100}}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{color: ft ? ft.labelColor : C.g500}}>YOU RECEIVE</p>
           <p className="text-lg font-bold leading-tight truncate" style={{color:C.g800}}>
             {sym}{fmt(parseFloat((btcReceived * btcPriceUSD * usdRate).toFixed(2)))} {cur}
           </p>
           <p className="text-xs font-semibold mt-0.5" style={{color:C.gold}}>₿{fBtc(btcReceived)}</p>
+          <span className="inline-block mt-1.5 font-semibold px-2 py-0.5 rounded"
+            style={{backgroundColor:marginBg, color:'#fff', fontSize:'10px', letterSpacing:'0.01em'}}>
+            {marginLabel}
+          </span>
         </div>
       </div>
 
-      <div className="px-4 pb-2 flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold truncate" style={{color:C.g600}}>
+      <div className="px-4 pb-2">
+        <p className="text-xs font-semibold" style={{color:C.g600}}>
           Rate: {sym}{fmt(rateLocal)}/BTC
         </p>
-        <span className="font-semibold px-2 py-0.5 rounded flex-shrink-0"
-          style={{backgroundColor:marginBg, color:'#fff', fontSize:'10px', letterSpacing:'0.01em'}}>
-          {marginLabel}
-        </span>
       </div>
 
       {(minLocal > 0 || maxLocal > 0) && (
@@ -404,13 +478,19 @@ function OfferCard({listing, btcPriceUSD, onViewSeller, onBuy, liked, onToggleLi
 
       <div className="px-4 pb-4 flex items-center gap-2">
         <button onClick={onViewSeller}
-          className="w-10 h-11 rounded-xl border flex items-center justify-center flex-shrink-0 hover:bg-gray-50 transition"
-          style={{borderColor:C.g200}}>
-          <Info size={15} style={{color:C.g400}}/>
+          className="w-10 h-11 rounded-xl border flex items-center justify-center flex-shrink-0 transition"
+          style={{
+            borderColor: ft ? ft.border : C.g200,
+            backgroundColor: ft ? `${ft.border}12` : 'transparent',
+          }}>
+          <Info size={15} style={{color: ft ? ft.border : C.g400}}/>
         </button>
         <button onClick={onBuy}
           className="flex-1 h-11 rounded-xl text-white font-black text-base flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition"
-          style={{backgroundColor:C.forest}}>
+          style={{
+            background: ft ? ft.btnGradient : C.forest,
+            boxShadow: ft ? ft.btnShadow : undefined,
+          }}>
           BUY BTC <ArrowRight size={15}/>
         </button>
       </div>
@@ -892,7 +972,7 @@ export default function BuyBitcoin({user}) {
   const { rates: USD_RATES, btcUsd: contextBtcUsd } = useRates();
   // Shared market cache — all 3 tabs (Buy/Sell/Gift Cards) read from the same key so
   // navigating between them is instant (no extra network requests).
-  const _cacheAll  = () => { try { const c=JSON.parse(sessionStorage.getItem('praqen_market_all')||'null'); return c?.data||null; } catch { return null; } };
+  const _cacheAll  = () => { try { const c=JSON.parse(localStorage.getItem('praqen_market_all')||'null'); if(!c||Date.now()-c.ts>300000) return null; return c?.data||null; } catch { return null; } };
   const _sellNow   = () => { const a=_cacheAll(); return a?a.filter(l=>l.listing_type==='SELL'||l.listing_type==='SELL_BITCOIN'):[]; };
   const [listings,     setListings]     = useState(()=>_sellNow());
   const [loading,      setLoading]      = useState(()=>_sellNow().length===0);
@@ -933,16 +1013,16 @@ export default function BuyBitcoin({user}) {
     setLoadError(false);
     setRetrying(false);
     try {
-      const r = await axios.get(`${API_URL}/listings`, { timeout: 25000 });
+      const r = await axios.get(`${API_URL}/listings`, { timeout: 8000 });
       const all = (r.data.listings || []).map(l => ({...l, users: Array.isArray(l.users) ? l.users[0] : l.users}));
       const sellOffers = all.filter(l => l.listing_type === 'SELL' || l.listing_type === 'SELL_BITCOIN');
       setListings(sellOffers);
       setLastSynced(new Date());
-      try { sessionStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() })); } catch {}
+      try { localStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() })); } catch {}
     } catch {
       if (attempt < 3) {
         setRetrying(true);
-        setTimeout(() => loadListings(attempt + 1), 4000);
+        setTimeout(() => loadListings(attempt + 1), 2000);
       } else {
         setRetrying(false);
         if (!listings.length) setLoadError(true);
@@ -1102,6 +1182,13 @@ export default function BuyBitcoin({user}) {
   const selPmInfo = PAYMENT_OPTIONS.find(p => p.value === selPayment);
   const onlineCnt = listings.filter(l => (Date.now() - new Date(l.users?.last_seen_at || l.users?.last_login || 0)) / 1000 < 300).length;
   const sellerCount = new Set(listings.map(l => l.seller_id)).size;
+
+  // Active Trader of the Week — pinned by username, stable for 1 week
+  const ACTIVE_TRADER_USERNAME = 'kingpablo1';
+  const activeTraderSellerId = listings.find(l =>
+    l.users?.username === ACTIVE_TRADER_USERNAME
+  )?.seller_id || null;
+
   const hasFilters = selPayment !== 'all' || buyAmt || selCountry.code !== 'ALL' || selCurrency.code !== 'USD' || !!traderSearch.trim();
 
   return (
@@ -1110,6 +1197,8 @@ export default function BuyBitcoin({user}) {
       <SEO />
       <style>{`
         @keyframes slideUp { from{transform:translateY(100%);opacity:0} to{transform:translateY(0);opacity:1} }
+        @keyframes featuredPulse { 0%,100%{box-shadow:0 0 0 3px rgba(5,150,105,0.25),0 8px 32px rgba(5,150,105,0.15)} 50%{box-shadow:0 0 0 6px rgba(5,150,105,0.45),0 16px 48px rgba(5,150,105,0.28)} }
+        @keyframes shimmer { 0%{transform:translateX(-130%)} 100%{transform:translateX(130%)} }
         input[type=number]::-webkit-inner-spin-button,
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
         * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
@@ -1461,6 +1550,7 @@ export default function BuyBitcoin({user}) {
         </div>
       )}
 
+
       {/* ══ 4. OFFER GRID ══════════════════════════════════════ */}
       <div className="max-w-7xl mx-auto w-full px-3 py-3 space-y-3">
 
@@ -1518,6 +1608,7 @@ export default function BuyBitcoin({user}) {
                 <OfferCard
                   listing={l}
                   btcPriceUSD={btcPrice}
+                  featuredType={l.seller_id === activeTraderSellerId ? 'active_trader' : undefined}
                   onViewSeller={()=>{
                     setModal({seller:l.users||{}, listing:l});
                     axios.post(`${API_URL}/offers/${l.id}/view`).catch(()=>{});

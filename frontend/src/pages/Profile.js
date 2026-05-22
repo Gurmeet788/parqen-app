@@ -129,6 +129,7 @@ export default function Profile({userId:propUserId}){
   const [editing,setEditing]=useState(false); const [saving,setSaving]=useState(false);
   const [badges,setBadges]=useState([]);
   const [form,setForm]=useState({username:'',full_name:'',bio:'',location:'',website:''});
+  const [visibleCount,setVisibleCount]=useState(5);
 
   useEffect(()=>{
     if(!userId){
@@ -162,22 +163,26 @@ export default function Profile({userId:propUserId}){
         setUser(u);
         try{ localStorage.setItem('user',JSON.stringify(u)); }catch{}
         setForm({username:u.username||'',full_name:u.full_name||'',bio:u.bio||'',location:u.location||'',website:u.website||''});
+
+        // Fetch reviews + badges in parallel — neither can break the profile load
+        const [rvRes, badgeRes] = await Promise.allSettled([
+          axios.get(`${API_URL}/users/${u.id}/reviews`),
+          axios.post(`${API_URL}/users/check-badges`,{},{headers:{Authorization:`Bearer ${tk}`}}),
+        ]);
+        if(rvRes.status==='fulfilled') setReviews(rvRes.value.data.reviews||[]);
+        setBadges(badgeRes.status==='fulfilled' ? badgeRes.value.data.badges||[] : []);
       } else {
         // Another user's profile — accepts both UUID and username in URL
         const r=await axios.get(`${API_URL}/users/${userId}`);
         const u=r.data.user;
         if(!u||!u.id) throw new Error('profile_empty');
-        setUser(u); setReviews(r.data.reviews||[]);
-      }
+        setUser(u);
 
-      // Badge check — isolated, NEVER allowed to break the profile load
-      if(isOwn && tk){
-        try{
-          const badgeRes=await axios.post(`${API_URL}/users/check-badges`,{},{headers:{Authorization:`Bearer ${tk}`}});
-          setBadges(badgeRes.data.badges||[]);
-        }catch{
-          setBadges([]);
-        }
+        // Fetch reviews — endpoint is more reliable than the join in the user response
+        const [rvRes] = await Promise.allSettled([
+          axios.get(`${API_URL}/users/${u.id}/reviews`),
+        ]);
+        setReviews(rvRes.status==='fulfilled' ? rvRes.value.data.reviews||[] : r.data.reviews||[]);
       }
     }catch(e){
       console.error('[Profile] load error:', e?.response?.status, e?.response?.data || e?.message);
@@ -786,10 +791,10 @@ export default function Profile({userId:propUserId}){
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <p className="font-black text-sm" style={{color:C.forest}}>Recent Reviews</p>
-                  {reviews.length>3&&<button onClick={()=>setTab('reputation')} className="text-xs font-bold" style={{color:C.green}}>View all →</button>}
+                  {reviews.length>5&&<button onClick={()=>setTab('reputation')} className="text-xs font-bold" style={{color:C.green}}>View all →</button>}
                 </div>
                 <div className="space-y-3">
-                  {reviews.slice(0,3).map(r=>(
+                  {reviews.slice(0,5).map(r=>(
                     <div key={r.id} className="bg-white rounded-2xl border shadow-sm p-4 flex gap-3" style={{borderColor:C.g200}}>
                       <div className="w-9 h-9 rounded-full flex items-center justify-center font-black text-sm text-white flex-shrink-0" style={{backgroundColor:C.green}}>
                         {r.reviewer?.username?.charAt(0)?.toUpperCase()||'?'}
@@ -1026,22 +1031,36 @@ export default function Profile({userId:propUserId}){
                   <MessageCircle size={32} className="mx-auto mb-2 opacity-20" style={{color:C.g400}}/>
                   <p className="text-xs" style={{color:C.g400}}>No reviews yet. Complete trades to get feedback.</p>
                 </div>
-              ):reviews.map(r=>(
-                <div key={r.id} className="flex gap-3 px-4 py-3 border-b last:border-0 hover:bg-gray-50" style={{borderColor:C.g50}}>
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center font-black text-xs text-white flex-shrink-0" style={{backgroundColor:C.green}}>
-                    {r.reviewer?.username?.charAt(0)?.toUpperCase()||'?'}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                      <span className="font-black text-xs" style={{color:C.forest}}>{r.reviewer?.username||'Trader'}</span>
-                      <div className="flex gap-0.5">{[1,2,3,4,5].map(i=><Star key={i} size={9} className={i<=r.rating?'fill-yellow-400 text-yellow-400':'text-gray-200'}/>)}</div>
-                      {r.is_verified_trade&&<span className="text-xs font-bold px-1.5 py-0.5 rounded-full" style={{backgroundColor:`${C.success}15`,color:C.success}}>✓ Verified Trade</span>}
+              ):(
+                <>
+                  {reviews.slice(0,visibleCount).map(r=>(
+                    <div key={r.id} className="flex gap-3 px-4 py-3 border-b last:border-0 hover:bg-gray-50" style={{borderColor:C.g50}}>
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center font-black text-xs text-white flex-shrink-0" style={{backgroundColor:C.green}}>
+                        {r.reviewer?.username?.charAt(0)?.toUpperCase()||'?'}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                          <span className="font-black text-xs" style={{color:C.forest}}>{r.reviewer?.username||'Trader'}</span>
+                          <div className="flex gap-0.5">{[1,2,3,4,5].map(i=><Star key={i} size={9} className={i<=r.rating?'fill-yellow-400 text-yellow-400':'text-gray-200'}/>)}</div>
+                          {r.is_verified_trade&&<span className="text-xs font-bold px-1.5 py-0.5 rounded-full" style={{backgroundColor:`${C.success}15`,color:C.success}}>✓ Verified Trade</span>}
+                        </div>
+                        {r.comment&&<p className="text-xs" style={{color:C.g600}}>{r.comment}</p>}
+                        <p className="text-xs mt-1" style={{color:C.g400}}>{fmtAge(r.created_at)}</p>
+                      </div>
                     </div>
-                    {r.comment&&<p className="text-xs" style={{color:C.g600}}>{r.comment}</p>}
-                    <p className="text-xs mt-1" style={{color:C.g400}}>{fmtAge(r.created_at)}</p>
-                  </div>
-                </div>
-              ))}
+                  ))}
+                  {visibleCount<reviews.length&&(
+                    <div className="px-4 py-3 border-t" style={{borderColor:C.g100}}>
+                      <button
+                        onClick={()=>setVisibleCount(v=>v+5)}
+                        className="w-full py-2.5 rounded-xl text-xs font-black border-2 transition hover:opacity-80"
+                        style={{borderColor:C.g200,color:C.g600,backgroundColor:C.g50}}>
+                        Load More · {reviews.length-visibleCount} remaining
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
         )}

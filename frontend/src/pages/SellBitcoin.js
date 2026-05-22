@@ -30,6 +30,23 @@ const C = {
   warn:'#F59E0B',
 };
 
+// ── Featured badge config ─────────────────────────────────────────────────────
+const FEATURED = {
+  hot_offer: {
+    tag:         '🔥 HOT OFFER · TRENDING NOW',
+    ribbon:      'linear-gradient(90deg,#78350F 0%,#C2410C 18%,#EA580C 38%,#FCD34D 50%,#EA580C 62%,#C2410C 82%,#78350F 100%)',
+    border:      '#D97706',
+    glow:        'rgba(217,119,6,0.38)',
+    bg:          '#FFFBEB',
+    bgGradient:  'linear-gradient(150deg,rgba(253,211,77,0.22) 0%,#FFFBEB 42%,rgba(234,88,12,0.12) 100%)',
+    divider:     'rgba(217,119,6,0.22)',
+    labelColor:  '#92400E',
+    btnGradient: 'linear-gradient(135deg,#78350F 0%,#D97706 55%,#FBBF24 100%)',
+    btnShadow:   '0 4px 20px rgba(217,119,6,0.50)',
+    pulse:       true,
+  },
+};
+
 
 const CUR_SYM = {
   GHS:'₵', NGN:'₦', KES:'KSh', ZAR:'R', UGX:'USh', TZS:'TSh',
@@ -255,7 +272,7 @@ function Avatar({user, size=48, radius='rounded-xl'}) {
 }
 
 // ── Offer Card (Sell side) ────────────────────────────────────────────────────
-function OfferCard({listing, btcPriceUSD, onViewBuyer, onSell}) {
+function OfferCard({listing, btcPriceUSD, onViewBuyer, onSell, featuredType}) {
   const { rates: USD_RATES } = useRates();
   const u         = getUser(listing.users);
   const badge     = deriveBadge(u);
@@ -284,10 +301,28 @@ function OfferCard({listing, btcPriceUSD, onViewBuyer, onSell}) {
   const neg  = parseInt(u.negative_feedback||0);
 
   const pmLabel = listing.payment_method || 'Payment';
+  const ft = featuredType ? FEATURED[featuredType] : null;
 
   return (
-    <div className="bg-white rounded-2xl overflow-hidden border hover:shadow-lg transition-all w-full"
-      style={{borderColor:C.g200}}>
+    <div className="rounded-2xl overflow-hidden transition-all w-full"
+      style={{
+        background:  ft?.bgGradient || '#fff',
+        border:      ft ? `2.5px solid ${ft.border}` : `1px solid ${C.g200}`,
+        boxShadow:   ft ? `0 0 0 3px ${ft.glow}, 0 10px 36px ${ft.glow}` : 'none',
+        animation:   ft?.pulse ? 'hotOfferPulse 2.5s ease-in-out infinite' : undefined,
+      }}>
+
+      {/* ─ Featured ribbon ───────────────────────────────────── */}
+      {ft && (
+        <div style={{position:'relative', overflow:'hidden', height:28, background:ft.ribbon, display:'flex', alignItems:'center', justifyContent:'center'}}>
+          <div style={{position:'absolute',inset:0,overflow:'hidden'}}>
+            <div style={{position:'absolute',top:0,left:0,width:'60%',height:'100%',background:'linear-gradient(90deg,transparent,rgba(255,255,255,0.18),transparent)',animation:'shimmer 2.2s ease-in-out infinite'}}/>
+          </div>
+          <span style={{position:'relative',zIndex:1,fontSize:10,fontWeight:900,letterSpacing:'0.08em',color:'#fff',textShadow:'0 1px 4px rgba(0,0,0,0.35)',textTransform:'uppercase'}}>
+            {ft.tag}
+          </span>
+        </div>
+      )}
 
       {/* ─ Header ────────────────────────────────────────────── */}
       <div className="px-4 pt-4 pb-2">
@@ -400,6 +435,10 @@ function OfferCard({listing, btcPriceUSD, onViewBuyer, onSell}) {
             {sym}{fmt(exampleRecv)} {cur}
           </p>
           <p className="text-xs font-semibold mt-0.5" style={{color:C.g400}}>Cash payment</p>
+          <span className="inline-block mt-1.5 font-semibold px-2 py-0.5 rounded"
+            style={{backgroundColor:marginBg, color:'#fff', fontSize:'10px'}}>
+            {marginLabel}
+          </span>
         </div>
       </div>
 
@@ -408,10 +447,6 @@ function OfferCard({listing, btcPriceUSD, onViewBuyer, onSell}) {
         <p className="text-xs font-semibold" style={{color:C.g600}}>
           Rate: {sym}{fmt(rateLocal)}/BTC
         </p>
-        <span className="inline-block mt-1 font-semibold px-2 py-0.5 rounded"
-          style={{backgroundColor:marginBg, color:'#fff', fontSize:'10px'}}>
-          {marginLabel}
-        </span>
       </div>
 
       {/* ─ Limit row ─────────────────────────────────────────── */}
@@ -432,7 +467,7 @@ function OfferCard({listing, btcPriceUSD, onViewBuyer, onSell}) {
         </button>
         <button onClick={onSell}
           className="flex-1 h-11 rounded-xl text-white font-black text-base flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition"
-          style={{backgroundColor:C.sell}}>
+          style={ft ? {background:ft.btnGradient, boxShadow:ft.btnShadow} : {backgroundColor:C.sell}}>
           SELL BTC <ArrowRight size={15}/>
         </button>
       </div>
@@ -878,7 +913,7 @@ function SkeletonCard() {
 export default function SellBitcoin({user}) {
   const navigate = useNavigate();
   const { rates: USD_RATES, btcUsd: contextBtcUsd } = useRates();
-  const _cacheAll = () => { try { const c=JSON.parse(sessionStorage.getItem('praqen_market_all')||'null'); return c?.data||null; } catch { return null; } };
+  const _cacheAll = () => { try { const c=JSON.parse(localStorage.getItem('praqen_market_all')||'null'); if(!c||Date.now()-c.ts>300000) return null; return c?.data||null; } catch { return null; } };
   const _buyNow   = () => { const a=_cacheAll(); return a?a.filter(l=>l.listing_type==='BUY'||l.listing_type==='BUY_BITCOIN'):[]; };
   const [offers,       setOffers]       = useState(()=>_buyNow());
   const [loading,      setLoading]      = useState(()=>_buyNow().length===0);
@@ -953,15 +988,15 @@ export default function SellBitcoin({user}) {
     setLoadError(false);
     setRetrying(false);
     try {
-      const res = await axios.get(`${API_URL}/listings`, { timeout: 25000 });
+      const res = await axios.get(`${API_URL}/listings`, { timeout: 8000 });
       const all = (res.data.listings||[]).map(l=>({...l, users:Array.isArray(l.users)?l.users[0]:l.users}));
       const data = all.filter(l=>l.listing_type==='BUY'||l.listing_type==='BUY_BITCOIN');
       setOffers(data);
-      try { sessionStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() })); } catch {}
+      try { localStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() })); } catch {}
     } catch {
       if (attempt < 3) {
         setRetrying(true);
-        setTimeout(() => loadOffers(attempt + 1), 4000);
+        setTimeout(() => loadOffers(attempt + 1), 2000);
       } else {
         setRetrying(false);
         if (!offers.length) setLoadError(true);
@@ -1025,6 +1060,13 @@ export default function SellBitcoin({user}) {
   const selPmInfo  = PAYMENT_OPTIONS.find(p=>p.value===selPayment);
   const onlineCnt   = offers.filter(l=>(Date.now()-new Date(l.users?.last_seen_at||l.users?.last_login||0))/1000<300).length;
   const buyerCount  = new Set(offers.map(l=>l.seller_id)).size;
+
+  // Hot Offer of the Week — king_cash1's MTN listing only
+  const HOT_OFFER_USERNAME = 'king_cash1';
+  const hotOfferListingId = offers.find(l =>
+    l.users?.username === HOT_OFFER_USERNAME &&
+    String(l.payment_method||'').toLowerCase().includes('mtn')
+  )?.id || null;
   const hasFilters  = selPayment!=='all' || sellAmt || selCountry.code!=='ALL' || selCurrency.code!=='USD' || !!traderSearch.trim();
 
   return (
@@ -1033,6 +1075,8 @@ export default function SellBitcoin({user}) {
       <SEO />
       <style>{`
         @keyframes slideUp { from{transform:translateY(100%);opacity:0} to{transform:translateY(0);opacity:1} }
+        @keyframes hotOfferPulse { 0%,100%{box-shadow:0 0 0 3px rgba(217,119,6,0.25),0 8px 32px rgba(217,119,6,0.15)} 50%{box-shadow:0 0 0 6px rgba(217,119,6,0.45),0 16px 48px rgba(217,119,6,0.28)} }
+        @keyframes shimmer { 0%{transform:translateX(-130%)} 100%{transform:translateX(130%)} }
         input[type=number]::-webkit-inner-spin-button,
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
         * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
@@ -1408,6 +1452,7 @@ export default function SellBitcoin({user}) {
                 <OfferCard
                   listing={l}
                   btcPriceUSD={btcPrice}
+                  featuredType={l.id === hotOfferListingId ? 'hot_offer' : undefined}
                   onViewBuyer={()=>{
                     setModal({buyer:l.users||{}, listing:l});
                     axios.post(`${API_URL}/listings/${l.id}/view`).catch(()=>{});

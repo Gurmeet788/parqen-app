@@ -930,19 +930,18 @@ export default function Dashboard({ user }) {
       if (res.data.success) {
         setReferralData(res.data);
         setEarnings(res.data.earnings || []);
-        // Always sync stats — use the larger of the two sources so stale cached
-        // values never override a freshly fetched amount, even when amount is tiny.
         const freshEarned    = Math.max(
           parseFloat(res.data.userReferralEarnings || 0),
           parseFloat(res.data.totalEarned          || 0),
         );
-        const freshReferrals = res.data.referralCount != null ? res.data.referralCount : 0;
+        const freshReferrals = res.data.referralCount != null ? res.data.referralCount : (res.data.referredUsers?.length || 0);
         const freshTrades    = res.data.tradeCount    != null ? res.data.tradeCount    : (res.data.earnings?.length || 0);
+        // Use fresh data directly — no Math.max so counts update in real time
         setStats(prev => ({
           ...prev,
-          referralEarnings:  Math.max(parseFloat(prev.referralEarnings || 0), freshEarned),
-          totalReferrals:    Math.max(prev.totalReferrals  || 0, freshReferrals),
-          referralTrades:    Math.max(prev.referralTrades  || 0, freshTrades),
+          referralEarnings: freshEarned,
+          totalReferrals:   freshReferrals,
+          referralTrades:   freshTrades,
         }));
       }
     } catch (e) { /* silent */ }
@@ -1052,8 +1051,10 @@ export default function Dashboard({ user }) {
     fetchLeaderboard();
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-refresh every 60s — heartbeat keeps user online, silent so no spinner flicker
+  // Refresh trades every 15s; referral data every 30s; other data every 60s
   useEffect(() => {
+    const tradeIv    = setInterval(fetchTrades, 15000);
+    const referralIv = setInterval(() => { fetchReferralData(); fetchLeaderboard(); }, 30000);
     const iv = setInterval(() => {
       const token = localStorage.getItem('token');
       if (token) {
@@ -1061,9 +1062,8 @@ export default function Dashboard({ user }) {
       }
       loadDashboardData(true);
       fetchWalletBalance();
-      fetchTrades();
     }, 60000);
-    return () => clearInterval(iv);
+    return () => { clearInterval(tradeIv); clearInterval(referralIv); clearInterval(iv); };
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return (
@@ -1210,44 +1210,86 @@ export default function Dashboard({ user }) {
             {/* Active trades + Quick actions row */}
             <div className="grid md:grid-cols-2 gap-4">
 
-              {/* Active trades */}
-              <div className="bg-white rounded-2xl border shadow-sm overflow-hidden" style={{borderColor:C.g200}}>
-                <div className="px-4 py-3 border-b" style={{borderColor:C.g100}}>
-                  <SectionHeader icon={Zap} title="Active Trades" action={activeTrades.length>0?'View All':undefined} onAction={()=>setActiveTab('trades')}/>
-                </div>
-                {activeTrades.length===0 ? (
-                  <div className="p-8 text-center">
-                    <Shield size={32} className="mx-auto mb-2 opacity-20" style={{color:C.g400}}/>
-                    <p className="text-xs" style={{color:C.g400}}>No active trades right now</p>
-                    <button onClick={()=>navigate('/buy-bitcoin')}
-                      className="mt-3 px-4 py-2 rounded-xl text-white text-xs font-bold"
-                      style={{backgroundColor:C.green}}>
-                      Browse Offers →
-                    </button>
+              {/* Active trades / Recent trades */}
+              {(() => {
+                const hasActive  = activeTrades.length > 0;
+                const recent3    = recentTrades.slice(0, 3);
+                const hasRecent  = recent3.length > 0;
+                const showTrades = hasActive ? activeTrades : recent3;
+                return (
+                <div className="bg-white rounded-2xl border shadow-sm overflow-hidden" style={{borderColor:C.g200}}>
+                  <div className="px-4 py-3 border-b" style={{borderColor:C.g100}}>
+                    <SectionHeader
+                      icon={Zap}
+                      title={hasActive ? 'Active Trades' : 'Recent Trades'}
+                      action={(hasActive || hasRecent) ? 'View All' : undefined}
+                      onAction={()=>setActiveTab('trades')}/>
                   </div>
-                ) : activeTrades.map(trade=>{
-                  const s = getStatusBadge(trade.status);
-                  const SI = s.icon;
-                  return (
-                    <div key={trade.id} onClick={()=>navigate(`/trade/${trade.id}`)}
-                      className="flex items-center gap-3 px-4 py-3 border-b hover:bg-gray-50 cursor-pointer transition"
-                      style={{borderColor:C.g50}}>
-                      <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-                        style={{backgroundColor:`${s.color}15`}}>
-                        <SI size={14} style={{color:s.color}}/>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-black" style={{color:C.forest}}>#{trade.id?.slice(0,8).toUpperCase()}</p>
-                        <p className="text-xs" style={{color:C.g500}}>{s.text}</p>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <p className="text-xs font-black" style={{color:C.forest}}>{fmtBtc(trade.amount_btc)} BTC</p>
-                        <p className="text-xs" style={{color:C.g400}}>${fmt(trade.amount_usd,0)}</p>
-                      </div>
+
+                  {(!hasActive && !hasRecent) ? (
+                    <div className="p-8 text-center">
+                      <Shield size={32} className="mx-auto mb-2 opacity-20" style={{color:C.g400}}/>
+                      <p className="text-xs font-semibold mb-1" style={{color:C.g500}}>No trades yet</p>
+                      <p className="text-xs mb-3" style={{color:C.g400}}>Start your first trade to see activity here</p>
+                      <button onClick={()=>navigate('/buy-bitcoin')}
+                        className="mt-1 px-4 py-2 rounded-xl text-white text-xs font-bold"
+                        style={{backgroundColor:C.green}}>
+                        Browse Offers →
+                      </button>
                     </div>
-                  );
-                })}
-              </div>
+                  ) : showTrades.map(trade=>{
+                    const s       = getStatusBadge(trade.status);
+                    const SI      = s.icon;
+                    const isBuyer = trade.buyer_id === user?.id;
+                    const cp      = isBuyer ? trade.seller : trade.buyer;
+                    const pos     = parseInt(cp?.positive_feedback || 0);
+                    const neg     = parseInt(cp?.negative_feedback || 0);
+                    return (
+                      <div key={trade.id} onClick={()=>navigate(`/trade/${trade.id}`)}
+                        className="flex items-center gap-3 px-4 py-3 border-b hover:bg-gray-50 cursor-pointer transition"
+                        style={{borderColor:C.g50}}>
+                        <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                          style={{backgroundColor:`${s.color}15`}}>
+                          <SI size={14} style={{color:s.color}}/>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="text-xs font-black" style={{color:C.forest}}>#{trade.id?.slice(0,8).toUpperCase()}</p>
+                            <span className="text-xs font-bold px-1.5 py-0.5 rounded-full text-white"
+                              style={{backgroundColor:s.color, fontSize:'9px'}}>
+                              {s.text}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <p className="text-xs truncate" style={{color:C.g500}}>
+                              with <span className="font-bold" style={{color:C.g700}}>{cp?.username || '—'}</span>
+                            </p>
+                            {pos > 0 && (
+                              <span className="inline-flex items-center gap-0.5 text-xs font-bold" style={{color:C.success}}>
+                                👍{pos}
+                              </span>
+                            )}
+                            {neg > 0 && (
+                              <span className="inline-flex items-center gap-0.5 text-xs font-bold" style={{color:C.danger}}>
+                                👎{neg}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-xs font-black" style={{color:C.forest}}>{fmtBtc(trade.amount_btc)} BTC</p>
+                          <p className="text-xs" style={{color:C.g400}}>
+                            {trade.completed_at || trade.created_at
+                              ? new Date(trade.completed_at || trade.created_at).toLocaleDateString(undefined,{month:'short',day:'numeric'})
+                              : `$${fmt(trade.amount_usd,0)}`}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                );
+              })()}
 
               {/* Quick actions */}
               <div className="space-y-3">
