@@ -34,7 +34,7 @@ const fmtAge = d => {
 };
 
 // ─── Withdraw Modal ────────────────────────────────────────────────────────────
-function WithdrawModal({ balance, btcPrice, onClose, onSend }) {
+function WithdrawModal({ balance, btcPrice, onClose, onSend, kycStatus }) {
   const [address,   setAddress]   = useState('');
   const [amount,    setAmount]    = useState('');
   const [usdAmount, setUsdAmount] = useState('');
@@ -124,7 +124,63 @@ function WithdrawModal({ balance, btcPrice, onClose, onSend }) {
           </button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="p-5">
+
+          {/* KYC gate — shown when user has not completed all 3 verification steps */}
+          {kycStatus && !(kycStatus.email && kycStatus.phone && kycStatus.kyc) ? (
+            <div className="space-y-4">
+              <div className="flex flex-col items-center text-center py-4">
+                <div className="w-14 h-14 rounded-full flex items-center justify-center mb-3"
+                  style={{ backgroundColor: `${C.warn}18` }}>
+                  <Shield size={28} style={{ color: C.warn }} />
+                </div>
+                <h3 className="font-black text-base mb-1" style={{ color: C.g800 }}>
+                  KYC Verification Required
+                </h3>
+                <p className="text-sm" style={{ color: C.g500 }}>
+                  You must complete all 3 verification steps before you can send Bitcoin to an external wallet.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                {[
+                  { label: 'Email Verified',    done: kycStatus.email, step: 1 },
+                  { label: 'Phone Verified',    done: kycStatus.phone, step: 2 },
+                  { label: 'ID / KYC Verified', done: kycStatus.kyc,   step: 3 },
+                ].map(({ label, done, step }) => (
+                  <div key={step} className="flex items-center gap-3 p-3 rounded-xl"
+                    style={{
+                      backgroundColor: done ? `${C.success}08` : `${C.warn}08`,
+                      border: `1px solid ${done ? C.success : C.warn}30`,
+                    }}>
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: done ? `${C.success}20` : `${C.warn}20` }}>
+                      {done
+                        ? <CheckCircle size={14} style={{ color: C.success }} />
+                        : <span className="text-xs font-black" style={{ color: C.warn }}>{step}</span>}
+                    </div>
+                    <p className="text-sm font-bold flex-1" style={{ color: done ? C.success : C.g700 }}>{label}</p>
+                    {done
+                      ? <CheckCircle size={14} style={{ color: C.success }} />
+                      : <span className="text-xs font-black px-2 py-0.5 rounded-full"
+                          style={{ backgroundColor: `${C.warn}20`, color: C.warn }}>Pending</span>}
+                  </div>
+                ))}
+              </div>
+
+              <a href="/profile"
+                className="w-full py-3 rounded-xl text-white font-black text-sm flex items-center justify-center gap-2 hover:opacity-90 transition"
+                style={{ backgroundColor: C.green }}
+                onClick={onClose}>
+                <Shield size={14} /> Complete Verification Now
+              </a>
+
+              <p className="text-xs text-center" style={{ color: C.g400 }}>
+                Internal transfers to PRAQEN users don't require KYC.
+              </p>
+            </div>
+          ) : (
+          <div className="space-y-4">
 
           {/* Balance */}
           <div className="flex items-center justify-between p-3 rounded-xl"
@@ -310,6 +366,8 @@ function WithdrawModal({ balance, btcPrice, onClose, onSend }) {
                 </button>
               </div>
             </div>
+          )}
+          </div>
           )}
         </div>
       </div>
@@ -716,6 +774,7 @@ export default function WalletPage({ user }) {
   const [showRecv,         setShowRecv]         = useState(false);
   const [showInternal,     setShowInternal]     = useState(false);
   const [displayCurrency,  setDisplayCurrency]  = useState(localStorage.getItem('praqen_currency') || 'USD');
+  const [userVerif,        setUserVerif]        = useState(null);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -726,6 +785,11 @@ export default function WalletPage({ user }) {
           setDisplayCurrency(res.data.preferred_currency);
           localStorage.setItem('praqen_currency', res.data.preferred_currency);
         }
+        setUserVerif({
+          email: !!(res.data.is_email_verified || res.data.email_verified),
+          phone: !!(res.data.is_phone_verified  || res.data.phone_verified),
+          kyc:   !!(res.data.is_id_verified     || res.data.kyc_verified),
+        });
       })
       .catch(() => {
         const saved = localStorage.getItem('praqen_currency');
@@ -1217,7 +1281,7 @@ export default function WalletPage({ user }) {
         </div>
       </footer>
 
-      {showSend && <WithdrawModal balance={availableBal} btcPrice={btcPrice} onClose={() => setShowSend(false)} onSend={sendBitcoin} />}
+      {showSend && <WithdrawModal balance={availableBal} btcPrice={btcPrice} onClose={() => setShowSend(false)} onSend={sendBitcoin} kycStatus={userVerif} />}
       {showRecv && <ReceiveModal address={walletData?.address} network={network} onClose={() => setShowRecv(false)} />}
       {showInternal && (
         <InternalTransferModal

@@ -499,7 +499,7 @@ router.post('/send', verifyToken, async (req, res) => {
     const sendCodeCheck = actionCodeService.verify(userId, 'send_btc', actionCode);
     if (!sendCodeCheck.valid) return res.status(403).json({ error: sendCodeCheck.error });
 
-    // 2 verifications required to withdraw BTC to an external address
+    // All 3 verifications required to withdraw BTC to an external address
     const { data: sendUser } = await supabaseAdmin
       .from('users')
       .select('is_email_verified, email_verified, is_phone_verified, phone_verified, is_id_verified, kyc_verified')
@@ -510,10 +510,11 @@ router.post('/send', verifyToken, async (req, res) => {
     const sHasKyc   = !!(sendUser?.is_id_verified      || sendUser?.kyc_verified);
     const sVerifCount = [sHasEmail, sHasPhone, sHasKyc].filter(Boolean).length;
 
-    if (sVerifCount < 2) {
+    if (sVerifCount < 3) {
       return res.status(403).json({
-        error: 'You need 2 verifications to withdraw Bitcoin to an external address. Please verify your email and phone number in Profile → Verification.',
-        requireVerification: 'two',
+        error: 'KYC required: You must complete all 3 verification steps — Email, Phone, and ID verification — before sending Bitcoin to an external wallet. Go to Profile → Verification to complete your KYC.',
+        requireVerification: 'kyc',
+        verified: { email: sHasEmail, phone: sHasPhone, id: sHasKyc },
       });
     }
 

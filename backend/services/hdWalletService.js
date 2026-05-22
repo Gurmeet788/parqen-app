@@ -24,6 +24,7 @@ class HDWalletService {
     this.network          = null;
     this.initialized      = false;
     this.apiBase          = null;
+    this.apiFallbacks     = [];
   }
 
   // ── Initialize from .env MNEMONIC ──────────────────────────────────────────
@@ -41,8 +42,9 @@ class HDWalletService {
     }
 
     // MAINNET ONLY — no testnet fallback
-    this.network = bitcoin.networks.bitcoin;
-    this.apiBase = 'https://mempool.space/api';
+    this.network      = bitcoin.networks.bitcoin;
+    this.apiBase      = 'https://mempool.space/api';
+    this.apiFallbacks = ['https://blockstream.info/api', 'https://mempool.emzy.de/api'];
 
     const seed = bip39.mnemonicToSeedSync(mnemonic);
     this.masterPrivateKey = seed.slice(0, 32);
@@ -82,6 +84,40 @@ class HDWalletService {
       format:     'Native SegWit (P2WPKH)',
       createdAt:  new Date().toISOString(),
     };
+  }
+
+  // ── Try request against primary API then fallbacks ────────────────────────
+  async apiGet(path) {
+    const apis = [this.apiBase, ...this.apiFallbacks];
+    let lastError;
+    for (const base of apis) {
+      try {
+        const r = await axios.get(`${base}${path}`, { timeout: 15000 });
+        return r.data;
+      } catch (err) {
+        console.warn(`[apiGet] ${base}${path} failed: ${err.message}`);
+        lastError = err;
+      }
+    }
+    throw new Error(`All blockchain APIs unreachable: ${lastError.message}`);
+  }
+
+  async apiPost(path, data) {
+    const apis = [this.apiBase, ...this.apiFallbacks];
+    let lastError;
+    for (const base of apis) {
+      try {
+        const r = await axios.post(`${base}${path}`, data, {
+          headers: { 'Content-Type': 'text/plain' },
+          timeout: 30000,
+        });
+        return r.data;
+      } catch (err) {
+        console.warn(`[apiPost] ${base}${path} failed: ${err.message}`);
+        lastError = err;
+      }
+    }
+    throw new Error(`Broadcast failed on all APIs: ${lastError.message}`);
   }
 
   // ── Convenience methods ───────────────────────────────────────────────────
@@ -168,14 +204,9 @@ class HDWalletService {
   async checkBalance(address) {
     this.initialize();
     try {
-      const response = await axios.get(`${this.apiBase}/address/${address}`, {
-        timeout: 15000,
-      });
-      const d = response.data;
-
+      const d = await this.apiGet(`/address/${address}`);
       const confirmedSats   = d.chain_stats.funded_txo_sum - d.chain_stats.spent_txo_sum;
       const unconfirmedSats = (d.mempool_stats?.funded_txo_sum || 0) - (d.mempool_stats?.spent_txo_sum || 0);
-
       return {
         address,
         confirmed_btc:   confirmedSats   / 1e8,
@@ -194,10 +225,8 @@ class HDWalletService {
   async getUTXOs(address, { throwOnError = false } = {}) {
     this.initialize();
     try {
-      const response = await axios.get(`${this.apiBase}/address/${address}/utxo`, {
-        timeout: 20000,
-      });
-      return response.data || [];
+      const data = await this.apiGet(`/address/${address}/utxo`);
+      return data || [];
     } catch (error) {
       console.error(`[getUTXOs] Error for ${address}:`, error.message);
       if (throwOnError) throw error;
@@ -303,13 +332,9 @@ class HDWalletService {
 
     // ── 8. Broadcast to network ─────────────────────────────────────────────
     try {
-      await axios.post(`${this.apiBase}/tx`, txHex, {
-        headers: { 'Content-Type': 'text/plain' },
-        timeout: 30000,
-      });
+      await this.apiPost('/tx', txHex);
     } catch (broadcastError) {
-      const detail = broadcastError.response?.data || broadcastError.message;
-      throw new Error(`Broadcast failed: ${detail}`);
+      throw new Error(`Broadcast failed: ${broadcastError.message}`);
     }
 
     const result = {
@@ -422,13 +447,9 @@ class HDWalletService {
 
     // Broadcast
     try {
-      await axios.post(`${this.apiBase}/tx`, txHex, {
-        headers: { 'Content-Type': 'text/plain' },
-        timeout: 30000,
-      });
+      await this.apiPost('/tx', txHex);
     } catch (broadcastError) {
-      const detail = broadcastError.response?.data || broadcastError.message;
-      throw new Error(`Escrow broadcast failed: ${detail}`);
+      throw new Error(`Escrow broadcast failed: ${broadcastError.message}`);
     }
 
     const result = {
