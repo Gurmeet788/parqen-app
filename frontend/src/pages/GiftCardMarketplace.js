@@ -71,75 +71,140 @@ const CUR_SYM = {
 
 const COUNTRY_REGIONS = {
   Africa:'#10B981', Asia:'#3B82F6', 'Middle East':'#F97316',
-  Americas:'#EC4899', Europe:'#7C3AED',
+  Americas:'#EC4899', Europe:'#7C3AED', Oceania:'#0EA5E9',
 };
 
 const COUNTRIES = [
-  {code:'ALL', name:'All Countries',  flag:'🌍', region:null},
+  {code:'ALL', name:'All Countries',    flag:'🌍', region:null},
   // Africa
-  {code:'GH',  name:'Ghana',          flag:'🇬🇭', region:'Africa'},
-  {code:'NG',  name:'Nigeria',        flag:'🇳🇬', region:'Africa'},
-  {code:'KE',  name:'Kenya',          flag:'🇰🇪', region:'Africa'},
-  {code:'TZ',  name:'Tanzania',       flag:'🇹🇿', region:'Africa'},
-  {code:'UG',  name:'Uganda',         flag:'🇺🇬', region:'Africa'},
-  {code:'RW',  name:'Rwanda',         flag:'🇷🇼', region:'Africa'},
-  {code:'CI',  name:"Côte d'Ivoire",  flag:'🇨🇮', region:'Africa'},
-  {code:'CM',  name:'Cameroon',       flag:'🇨🇲', region:'Africa'},
-  {code:'SN',  name:'Senegal',        flag:'🇸🇳', region:'Africa'},
-  {code:'ML',  name:'Mali',           flag:'🇲🇱', region:'Africa'},
-  {code:'BF',  name:'Burkina Faso',   flag:'🇧🇫', region:'Africa'},
-  {code:'BJ',  name:'Benin',          flag:'🇧🇯', region:'Africa'},
-  {code:'TG',  name:'Togo',           flag:'🇹🇬', region:'Africa'},
-  {code:'NE',  name:'Niger',          flag:'🇳🇪', region:'Africa'},
-  {code:'CD',  name:'DR Congo',       flag:'🇨🇩', region:'Africa'},
-  {code:'ZM',  name:'Zambia',         flag:'🇿🇲', region:'Africa'},
-  {code:'ZW',  name:'Zimbabwe',       flag:'🇿🇼', region:'Africa'},
-  {code:'MZ',  name:'Mozambique',     flag:'🇲🇿', region:'Africa'},
-  {code:'ZA',  name:'South Africa',   flag:'🇿🇦', region:'Africa'},
-  {code:'EG',  name:'Egypt',          flag:'🇪🇬', region:'Africa'},
-  {code:'MA',  name:'Morocco',        flag:'🇲🇦', region:'Africa'},
+  {code:'GH',  name:'Ghana',            flag:'🇬🇭', region:'Africa'},
+  {code:'NG',  name:'Nigeria',          flag:'🇳🇬', region:'Africa'},
+  {code:'KE',  name:'Kenya',            flag:'🇰🇪', region:'Africa'},
+  {code:'TZ',  name:'Tanzania',         flag:'🇹🇿', region:'Africa'},
+  {code:'UG',  name:'Uganda',           flag:'🇺🇬', region:'Africa'},
+  {code:'RW',  name:'Rwanda',           flag:'🇷🇼', region:'Africa'},
+  {code:'CI',  name:"Côte d'Ivoire",    flag:'🇨🇮', region:'Africa'},
+  {code:'CM',  name:'Cameroon',         flag:'🇨🇲', region:'Africa'},
+  {code:'SN',  name:'Senegal',          flag:'🇸🇳', region:'Africa'},
+  {code:'ML',  name:'Mali',             flag:'🇲🇱', region:'Africa'},
+  {code:'BF',  name:'Burkina Faso',     flag:'🇧🇫', region:'Africa'},
+  {code:'BJ',  name:'Benin',            flag:'🇧🇯', region:'Africa'},
+  {code:'TG',  name:'Togo',             flag:'🇹🇬', region:'Africa'},
+  {code:'NE',  name:'Niger',            flag:'🇳🇪', region:'Africa'},
+  {code:'CD',  name:'DR Congo',         flag:'🇨🇩', region:'Africa'},
+  {code:'ZM',  name:'Zambia',           flag:'🇿🇲', region:'Africa'},
+  {code:'ZW',  name:'Zimbabwe',         flag:'🇿🇼', region:'Africa'},
+  {code:'MZ',  name:'Mozambique',       flag:'🇲🇿', region:'Africa'},
+  {code:'ZA',  name:'South Africa',     flag:'🇿🇦', region:'Africa'},
+  {code:'EG',  name:'Egypt',            flag:'🇪🇬', region:'Africa'},
+  {code:'MA',  name:'Morocco',          flag:'🇲🇦', region:'Africa'},
+  {code:'ET',  name:'Ethiopia',         flag:'🇪🇹', region:'Africa'},
+  {code:'TN',  name:'Tunisia',          flag:'🇹🇳', region:'Africa'},
+  {code:'DZ',  name:'Algeria',          flag:'🇩🇿', region:'Africa'},
+  {code:'AO',  name:'Angola',           flag:'🇦🇴', region:'Africa'},
+  {code:'GN',  name:'Guinea',           flag:'🇬🇳', region:'Africa'},
   // Asia
-  {code:'IN',  name:'India',          flag:'🇮🇳', region:'Asia'},
-  {code:'CN',  name:'China',          flag:'🇨🇳', region:'Asia'},
-  {code:'PH',  name:'Philippines',    flag:'🇵🇭', region:'Asia'},
-  {code:'ID',  name:'Indonesia',      flag:'🇮🇩', region:'Asia'},
-  {code:'PK',  name:'Pakistan',       flag:'🇵🇰', region:'Asia'},
-  {code:'BD',  name:'Bangladesh',     flag:'🇧🇩', region:'Asia'},
-  {code:'VN',  name:'Vietnam',        flag:'🇻🇳', region:'Asia'},
-  {code:'TH',  name:'Thailand',       flag:'🇹🇭', region:'Asia'},
-  {code:'MY',  name:'Malaysia',       flag:'🇲🇾', region:'Asia'},
-  {code:'SG',  name:'Singapore',      flag:'🇸🇬', region:'Asia'},
+  {code:'IN',  name:'India',            flag:'🇮🇳', region:'Asia'},
+  {code:'CN',  name:'China',            flag:'🇨🇳', region:'Asia'},
+  {code:'JP',  name:'Japan',            flag:'🇯🇵', region:'Asia'},
+  {code:'KR',  name:'South Korea',      flag:'🇰🇷', region:'Asia'},
+  {code:'HK',  name:'Hong Kong',        flag:'🇭🇰', region:'Asia'},
+  {code:'TW',  name:'Taiwan',           flag:'🇹🇼', region:'Asia'},
+  {code:'PH',  name:'Philippines',      flag:'🇵🇭', region:'Asia'},
+  {code:'ID',  name:'Indonesia',        flag:'🇮🇩', region:'Asia'},
+  {code:'PK',  name:'Pakistan',         flag:'🇵🇰', region:'Asia'},
+  {code:'BD',  name:'Bangladesh',       flag:'🇧🇩', region:'Asia'},
+  {code:'VN',  name:'Vietnam',          flag:'🇻🇳', region:'Asia'},
+  {code:'TH',  name:'Thailand',         flag:'🇹🇭', region:'Asia'},
+  {code:'MY',  name:'Malaysia',         flag:'🇲🇾', region:'Asia'},
+  {code:'SG',  name:'Singapore',        flag:'🇸🇬', region:'Asia'},
   // Middle East
-  {code:'AE',  name:'UAE',            flag:'🇦🇪', region:'Middle East'},
-  {code:'SA',  name:'Saudi Arabia',   flag:'🇸🇦', region:'Middle East'},
+  {code:'AE',  name:'UAE',              flag:'🇦🇪', region:'Middle East'},
+  {code:'SA',  name:'Saudi Arabia',     flag:'🇸🇦', region:'Middle East'},
+  {code:'QA',  name:'Qatar',            flag:'🇶🇦', region:'Middle East'},
+  {code:'KW',  name:'Kuwait',           flag:'🇰🇼', region:'Middle East'},
+  {code:'IL',  name:'Israel',           flag:'🇮🇱', region:'Middle East'},
+  {code:'TR',  name:'Turkey',           flag:'🇹🇷', region:'Middle East'},
   // Americas
-  {code:'US',  name:'United States',  flag:'🇺🇸', region:'Americas'},
-  {code:'BR',  name:'Brazil',         flag:'🇧🇷', region:'Americas'},
-  {code:'MX',  name:'Mexico',         flag:'🇲🇽', region:'Americas'},
-  {code:'CO',  name:'Colombia',       flag:'🇨🇴', region:'Americas'},
+  {code:'US',  name:'United States',    flag:'🇺🇸', region:'Americas'},
+  {code:'CA',  name:'Canada',           flag:'🇨🇦', region:'Americas'},
+  {code:'BR',  name:'Brazil',           flag:'🇧🇷', region:'Americas'},
+  {code:'MX',  name:'Mexico',           flag:'🇲🇽', region:'Americas'},
+  {code:'CO',  name:'Colombia',         flag:'🇨🇴', region:'Americas'},
+  {code:'AR',  name:'Argentina',        flag:'🇦🇷', region:'Americas'},
+  {code:'CL',  name:'Chile',            flag:'🇨🇱', region:'Americas'},
+  {code:'PE',  name:'Peru',             flag:'🇵🇪', region:'Americas'},
   // Europe
-  {code:'GB',  name:'United Kingdom', flag:'🇬🇧', region:'Europe'},
-  {code:'TR',  name:'Turkey',         flag:'🇹🇷', region:'Europe'},
-  {code:'PL',  name:'Poland',         flag:'🇵🇱', region:'Europe'},
-  {code:'UA',  name:'Ukraine',        flag:'🇺🇦', region:'Europe'},
-  {code:'EU',  name:'Europe (EUR)',   flag:'🇪🇺', region:'Europe'},
+  {code:'GB',  name:'United Kingdom',   flag:'🇬🇧', region:'Europe'},
+  {code:'DE',  name:'Germany',          flag:'🇩🇪', region:'Europe'},
+  {code:'FR',  name:'France',           flag:'🇫🇷', region:'Europe'},
+  {code:'IT',  name:'Italy',            flag:'🇮🇹', region:'Europe'},
+  {code:'ES',  name:'Spain',            flag:'🇪🇸', region:'Europe'},
+  {code:'NL',  name:'Netherlands',      flag:'🇳🇱', region:'Europe'},
+  {code:'SE',  name:'Sweden',           flag:'🇸🇪', region:'Europe'},
+  {code:'NO',  name:'Norway',           flag:'🇳🇴', region:'Europe'},
+  {code:'DK',  name:'Denmark',          flag:'🇩🇰', region:'Europe'},
+  {code:'CH',  name:'Switzerland',      flag:'🇨🇭', region:'Europe'},
+  {code:'PL',  name:'Poland',           flag:'🇵🇱', region:'Europe'},
+  {code:'UA',  name:'Ukraine',          flag:'🇺🇦', region:'Europe'},
+  {code:'PT',  name:'Portugal',         flag:'🇵🇹', region:'Europe'},
+  {code:'IE',  name:'Ireland',          flag:'🇮🇪', region:'Europe'},
+  {code:'EU',  name:'Europe (EUR)',     flag:'🇪🇺', region:'Europe'},
+  // Oceania
+  {code:'AU',  name:'Australia',        flag:'🇦🇺', region:'Oceania'},
+  {code:'NZ',  name:'New Zealand',      flag:'🇳🇿', region:'Oceania'},
 ];
 
 const CURRENCIES = [
-  {code:'GHS', symbol:'₵',   name:'Ghana Cedi'},
-  {code:'NGN', symbol:'₦',   name:'Nigerian Naira'},
-  {code:'KES', symbol:'KSh', name:'Kenyan Shilling'},
-  {code:'ZAR', symbol:'R',   name:'SA Rand'},
-  {code:'USD', symbol:'$',   name:'US Dollar'},
-  {code:'GBP', symbol:'£',   name:'British Pound'},
-  {code:'EUR', symbol:'€',   name:'Euro'},
-  {code:'XAF', symbol:'CFA', name:'CFA Franc'},
-  {code:'INR', symbol:'₹',   name:'Indian Rupee'},
-  {code:'CNY', symbol:'¥',   name:'Chinese Yuan'},
-  {code:'JPY', symbol:'¥',   name:'Japanese Yen'},
-  {code:'KRW', symbol:'₩',   name:'Korean Won'},
-  {code:'RUB', symbol:'₽',   name:'Russian Ruble'},
-  {code:'PHP', symbol:'₱',   name:'Philippine Peso'},
+  {code:'GHS', symbol:'₵',    name:'Ghana Cedi',          region:'Africa'},
+  {code:'NGN', symbol:'₦',    name:'Nigerian Naira',       region:'Africa'},
+  {code:'KES', symbol:'KSh',  name:'Kenyan Shilling',      region:'Africa'},
+  {code:'ZAR', symbol:'R',    name:'SA Rand',              region:'Africa'},
+  {code:'UGX', symbol:'USh',  name:'Ugandan Shilling',     region:'Africa'},
+  {code:'TZS', symbol:'TSh',  name:'Tanzanian Shilling',   region:'Africa'},
+  {code:'RWF', symbol:'RF',   name:'Rwandan Franc',        region:'Africa'},
+  {code:'XOF', symbol:'CFA',  name:'CFA Franc (West)',     region:'Africa'},
+  {code:'XAF', symbol:'CFA',  name:'CFA Franc (Central)',  region:'Africa'},
+  {code:'EGP', symbol:'E£',   name:'Egyptian Pound',       region:'Africa'},
+  {code:'MAD', symbol:'MAD',  name:'Moroccan Dirham',      region:'Africa'},
+  {code:'ETB', symbol:'Br',   name:'Ethiopian Birr',       region:'Africa'},
+  {code:'USD', symbol:'$',    name:'US Dollar',            region:'Americas'},
+  {code:'CAD', symbol:'CA$',  name:'Canadian Dollar',      region:'Americas'},
+  {code:'BRL', symbol:'R$',   name:'Brazilian Real',       region:'Americas'},
+  {code:'MXN', symbol:'MX$',  name:'Mexican Peso',         region:'Americas'},
+  {code:'COP', symbol:'COP$', name:'Colombian Peso',       region:'Americas'},
+  {code:'ARS', symbol:'AR$',  name:'Argentine Peso',       region:'Americas'},
+  {code:'CLP', symbol:'CLP$', name:'Chilean Peso',         region:'Americas'},
+  {code:'GBP', symbol:'£',    name:'British Pound',        region:'Europe'},
+  {code:'EUR', symbol:'€',    name:'Euro',                 region:'Europe'},
+  {code:'CHF', symbol:'CHF',  name:'Swiss Franc',          region:'Europe'},
+  {code:'SEK', symbol:'kr',   name:'Swedish Krona',        region:'Europe'},
+  {code:'NOK', symbol:'kr',   name:'Norwegian Krone',      region:'Europe'},
+  {code:'DKK', symbol:'kr',   name:'Danish Krone',         region:'Europe'},
+  {code:'PLN', symbol:'zł',   name:'Polish Zloty',         region:'Europe'},
+  {code:'UAH', symbol:'₴',    name:'Ukrainian Hryvnia',    region:'Europe'},
+  {code:'TRY', symbol:'₺',    name:'Turkish Lira',         region:'Europe'},
+  {code:'RUB', symbol:'₽',    name:'Russian Ruble',        region:'Europe'},
+  {code:'INR', symbol:'₹',    name:'Indian Rupee',         region:'Asia'},
+  {code:'CNY', symbol:'¥',    name:'Chinese Yuan',         region:'Asia'},
+  {code:'JPY', symbol:'¥',    name:'Japanese Yen',         region:'Asia'},
+  {code:'KRW', symbol:'₩',    name:'Korean Won',           region:'Asia'},
+  {code:'HKD', symbol:'HK$',  name:'Hong Kong Dollar',     region:'Asia'},
+  {code:'SGD', symbol:'S$',   name:'Singapore Dollar',     region:'Asia'},
+  {code:'MYR', symbol:'RM',   name:'Malaysian Ringgit',    region:'Asia'},
+  {code:'THB', symbol:'฿',    name:'Thai Baht',            region:'Asia'},
+  {code:'IDR', symbol:'Rp',   name:'Indonesian Rupiah',    region:'Asia'},
+  {code:'PHP', symbol:'₱',    name:'Philippine Peso',      region:'Asia'},
+  {code:'PKR', symbol:'₨',    name:'Pakistani Rupee',      region:'Asia'},
+  {code:'BDT', symbol:'৳',    name:'Bangladeshi Taka',     region:'Asia'},
+  {code:'VND', symbol:'₫',    name:'Vietnamese Dong',      region:'Asia'},
+  {code:'TWD', symbol:'NT$',  name:'Taiwan Dollar',        region:'Asia'},
+  {code:'AED', symbol:'AED',  name:'UAE Dirham',           region:'Middle East'},
+  {code:'SAR', symbol:'SR',   name:'Saudi Riyal',          region:'Middle East'},
+  {code:'QAR', symbol:'QR',   name:'Qatari Riyal',         region:'Middle East'},
+  {code:'ILS', symbol:'₪',    name:'Israeli Shekel',       region:'Middle East'},
+  {code:'AUD', symbol:'A$',   name:'Australian Dollar',    region:'Oceania'},
+  {code:'NZD', symbol:'NZ$',  name:'New Zealand Dollar',   region:'Oceania'},
 ];
 
 const PAYMENT_OPTIONS = [
@@ -148,11 +213,47 @@ const PAYMENT_OPTIONS = [
   'Orange Money','Wave','Zelle','Revolut',
 ];
 
-const GC_BRANDS = [
-  'All Brands','Amazon','Apple / iTunes','Google Play','Steam','eBay',
-  'Walmart','Target','Visa Gift Card','Mastercard GC','Netflix',
-  'Spotify','Xbox','PlayStation','Nintendo','Razer Gold','Nike Gift Card','MoneyPak','PostePay','Roblox','Other',
+const GC_BRAND_GROUPS = [
+  { cat: null,                    color: null,      items: ['All Brands'] },
+  { cat: '🛍️ Shopping',          color: '#10B981', items: [
+    'Amazon','Amazon (US)','Amazon (UK)','Amazon (CA)','Amazon (AU)','Amazon (DE)',
+    'eBay','Walmart','Target','Best Buy','GameStop',
+    'IKEA','H&M','Zara','ASOS','Shein','Temu',
+    'Foot Locker','Nike Gift Card','Adidas','Old Navy',
+    'Home Depot',"Macy's",'Nordstrom','Sephora','Bath & Body Works',
+    'Jumia Voucher',
+  ]},
+  { cat: '📱 Tech',               color: '#3B82F6', items: [
+    'Apple / iTunes','Google Play','Microsoft / Xbox Store',
+  ]},
+  { cat: '🎮 Gaming',             color: '#7C3AED', items: [
+    'Steam','Xbox','PlayStation','Nintendo eShop',
+    'Roblox','Razer Gold','Epic Games / Fortnite',
+    'PUBG Mobile (UC)','Free Fire (Diamonds)','Garena',
+    'Valorant (VP)','League of Legends (RP)','EA Play / Origin',
+    'Minecraft','Clash of Clans','Mobile Legends',
+    'Call of Duty (CP)','Genshin Impact','Honor of Kings',
+  ]},
+  { cat: '🎬 Streaming',          color: '#EC4899', items: [
+    'Netflix','Spotify','YouTube Premium','Disney+',
+    'Hulu','HBO Max / Max','Amazon Prime','Apple TV+',
+    'Twitch','Crunchyroll','Deezer','Tidal','SoundCloud',
+  ]},
+  { cat: '🍔 Food & Delivery',    color: '#F97316', items: [
+    'Starbucks',"McDonald's",'Chipotle',"Dunkin'",
+    'Uber Eats','DoorDash','Grubhub',
+  ]},
+  { cat: '✈️ Travel',             color: '#0D9488', items: [
+    'Airbnb','Uber','Hotels.com','Booking.com',
+  ]},
+  { cat: '💳 Financial / Prepaid',color: '#F59E0B', items: [
+    'Visa Gift Card','Mastercard GC','American Express GC',
+    'Paysafe Card','Neosurf','MoneyPak','PostePay','Crypto Voucher',
+  ]},
+  { cat: '📦 Other',              color: '#64748B', items: ['Other'] },
 ];
+// Flat list used by filter logic
+const GC_BRANDS = GC_BRAND_GROUPS.flatMap(g => g.items);
 
 const GC_FACE_VALUES = [10,20,25,50,100,200,500,1000];
 
@@ -253,8 +354,9 @@ function GCCard({listing, btcPriceUSD, onViewSeller, onTrade, featuredType}) {
     if (cardRange.length===1) return {val:`$${cardRange[0]}`,sub:'USD card'};
     return {val:`$${cardRange[0]}`,sub:'USD starting'};
   })();
-  const refUSD   = cardRange ? (cardRange[0]?.isRange ? cardRange[0].min : cardRange[0]) : (fv||1);
-  const btcOut = refUSD / rateUSD;
+  const refUSD     = cardRange ? (cardRange[0]?.isRange ? cardRange[0].min : cardRange[0]) : (fv||1);
+  const btcOut     = refUSD / rateUSD;
+  const receiveUSD = btcOut * btcPriceUSD;
 
   const marginLabel = margin===0 ? 'Market rate' : margin>0 ? `+${margin}% above market` : `${Math.abs(margin)}% below market`;
   const marginBg    = margin>10?C.danger:margin>0?C.warn:C.success;
@@ -405,11 +507,12 @@ function GCCard({listing, btcPriceUSD, onViewSeller, onTrade, featuredType}) {
         </div>
         <div className="border-l pl-2.5 min-w-0" style={{borderColor:C.g100}}>
           <p className="text-xs font-bold uppercase tracking-wide mb-0.5" style={{color:C.g500}}>YOU RECEIVE</p>
-          <p className="font-black leading-tight truncate" style={{color:C.gold, fontSize:'16px'}}>
-            ₿{fBtc(btcOut)}
+          <p className="text-xl font-black leading-tight truncate" style={{color:C.g800}}>
+            ${receiveUSD < 1 ? receiveUSD.toFixed(2) : fmt(receiveUSD, 2)}
           </p>
-          <p className="text-xs font-semibold mt-0.5" style={{color:C.g400}}>Bitcoin</p>
-          <span className="inline-block mt-1.5 font-semibold px-1.5 py-0.5 rounded"
+          <p className="text-xs font-semibold mt-0.5" style={{color:C.gold}}>₿{fBtc(btcOut)}</p>
+          <p className="text-xs font-semibold" style={{color:C.g400}}>Bitcoin</p>
+          <span className="inline-block mt-1 font-semibold px-1.5 py-0.5 rounded"
             style={{backgroundColor:marginBg, color:'#fff', fontSize:'10px'}}>
             {marginLabel}
           </span>
@@ -912,7 +1015,7 @@ export default function GiftCards({user}) {
   useEffect(()=>{ if(contextBtcUsd>0) setBtcPrice(contextBtcUsd); },[contextBtcUsd]);
   useEffect(()=>{
     loadListings();
-    const interval = setInterval(loadListings, 60000);
+    const interval = setInterval(() => loadListings(1, true), 60000);
     return () => clearInterval(interval);
   },[]);
   useEffect(()=>{
@@ -952,15 +1055,35 @@ export default function GiftCards({user}) {
     }).catch(()=>{});
   },[]);
 
-  const loadListings = async (attempt = 1) => {
+  const loadListings = async (attempt = 1, force = false) => {
+    // Skip fetch if cache is fresh (< 90 seconds) and not forced
+    if (attempt === 1 && !force) {
+      try {
+        const c = JSON.parse(localStorage.getItem('praqen_market_all') || 'null');
+        if (c && Date.now() - c.ts < 90000) {
+          const gcOffers = (c.data || []).filter(l => l.listing_type === 'BUY_GIFT_CARD' || l.listing_type === 'SELL_GIFT_CARD');
+          if (gcOffers.length > 0) {
+            setListings(gcOffers);
+            setLoading(false);
+            return;
+          }
+        }
+      } catch {}
+    }
     setLoadError(false);
     setRetrying(false);
     try {
       const r = await axios.get(`${API_URL}/listings`, { timeout: 8000 });
       const all=(r.data.listings||[]).map(l=>({...l,users:Array.isArray(l.users)?l.users[0]:l.users}));
       const data=all.filter(l=>l.listing_type==='BUY_GIFT_CARD'||l.listing_type==='SELL_GIFT_CARD');
-      setListings(data);
-      try { localStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() })); } catch {}
+      // Only update if we got real data — never blank out the list on an empty response
+      if (data.length > 0) {
+        setListings(data);
+        try { localStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() })); } catch {}
+      } else if (!listings.length) {
+        setListings(data);
+        try { localStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() })); } catch {}
+      }
       const tk = localStorage.getItem('token');
       if (tk) {
         axios.get(`${API_URL}/my-listings`, { headers: { Authorization: `Bearer ${tk}` } })
@@ -973,9 +1096,8 @@ export default function GiftCards({user}) {
       }
     } catch {
       if (attempt < 3) {
-        // Auto-retry up to 2 more times — server may be waking from cold start
         setRetrying(true);
-        setTimeout(() => loadListings(attempt + 1), 2000);
+        setTimeout(() => loadListings(attempt + 1, force), 2000);
       } else {
         setRetrying(false);
         if (!listings.length) setLoadError(true);
@@ -1082,7 +1204,7 @@ export default function GiftCards({user}) {
                 </span>
               </div>
             </div>
-            <button onClick={loadListings}
+            <button onClick={() => loadListings(1, true)}
               className="w-9 h-9 rounded-xl flex items-center justify-center transition hover:bg-white/20 flex-shrink-0"
               style={{backgroundColor:'rgba(255,255,255,0.1)'}}>
               <RefreshCw size={15} className={`text-white ${loading?'animate-spin':''}`}/>
@@ -1217,19 +1339,33 @@ export default function GiftCards({user}) {
                         className="w-full px-2.5 py-1.5 rounded-lg focus:outline-none"
                         style={{border:`1.5px solid ${C.g200}`,color:C.g800,backgroundColor:C.g50,fontSize:'16px'}}/>
                     </div>
-                    <div style={{maxHeight:240,overflowY:'auto'}}>
-                      {CURRENCIES.filter(c=>c.name.toLowerCase().includes(currencySearch.toLowerCase())||c.code.toLowerCase().includes(currencySearch.toLowerCase())).map(c=>(
-                        <button key={c.code} onClick={()=>{setSelCurrency(c);setShowCurrency(false);setCurrencySearch('');}}
-                          className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 border-b last:border-0 transition"
-                          style={{borderColor:C.g50}}>
-                          <span className="text-sm font-black w-6 text-center flex-shrink-0" style={{color:C.forest}}>{c.symbol}</span>
-                          <div className="flex-1 text-left">
-                            <p className="font-bold text-xs" style={{color:C.g800}}>{c.code}</p>
-                            <p className="text-xs" style={{color:C.g400}}>{c.name}</p>
-                          </div>
-                          {selCurrency.code===c.code&&<CheckCircle size={13} style={{color:C.green}}/>}
-                        </button>
-                      ))}
+                    <div style={{maxHeight:260,overflowY:'auto'}}>
+                      {(() => {
+                        const q = currencySearch.toLowerCase();
+                        const filtered = CURRENCIES.filter(c=>!q||c.name.toLowerCase().includes(q)||c.code.toLowerCase().includes(q));
+                        let lastRegion = null;
+                        return filtered.map(c => {
+                          const regionHdr = !q && c.region !== lastRegion
+                            ? (lastRegion = c.region, (
+                                <div key={`r-${c.region}`} className="px-3 py-1.5" style={{backgroundColor:'#F8FAFC',borderBottom:`1px solid ${C.g100}`}}>
+                                  <span className="text-xs font-black uppercase tracking-wider" style={{color:COUNTRY_REGIONS[c.region]||C.g500}}>{c.region}</span>
+                                </div>
+                              ))
+                            : (lastRegion = c.region, null);
+                          return [regionHdr,
+                            <button key={c.code} onClick={()=>{setSelCurrency(c);setShowCurrency(false);setCurrencySearch('');}}
+                              className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 border-b last:border-0 transition"
+                              style={{borderColor:C.g50,backgroundColor:selCurrency.code===c.code?`${C.forest}08`:'transparent'}}>
+                              <span className="text-sm font-black w-6 text-center flex-shrink-0" style={{color:C.forest}}>{c.symbol}</span>
+                              <div className="flex-1 text-left">
+                                <p className="font-bold text-xs" style={{color:C.g800}}>{c.code}</p>
+                                <p className="text-xs" style={{color:C.g400}}>{c.name}</p>
+                              </div>
+                              {selCurrency.code===c.code&&<CheckCircle size={13} style={{color:C.green}}/>}
+                            </button>
+                          ];
+                        });
+                      })()}
                     </div>
                   </div>
                 )}
@@ -1262,15 +1398,35 @@ export default function GiftCards({user}) {
                         className="w-full px-2.5 py-1.5 rounded-lg focus:outline-none"
                         style={{border:`1.5px solid ${C.g200}`,color:C.g800,backgroundColor:C.g50,fontSize:'16px'}}/>
                     </div>
-                    <div style={{maxHeight:220,overflowY:'auto'}}>
-                      {GC_BRANDS.filter(b=>b.toLowerCase().includes(brandSearch.toLowerCase())).map(b=>(
-                        <button key={b} onClick={()=>{setSelBrand(b);setShowBrand(false);setBrandSearch('');}}
-                          className="w-full flex items-center justify-between px-3 py-2.5 text-xs hover:bg-gray-50 border-b last:border-0 transition"
-                          style={{borderColor:C.g50}}>
-                          <span className="font-semibold" style={{color:C.g800}}>{b}</span>
-                          {selBrand===b&&<CheckCircle size={11} style={{color:C.green}}/>}
-                        </button>
-                      ))}
+                    <div style={{maxHeight:260,overflowY:'auto'}}>
+                      {brandSearch.trim() ? (
+                        GC_BRANDS.filter(b=>b.toLowerCase().includes(brandSearch.toLowerCase())).map(b=>(
+                          <button key={b} onClick={()=>{setSelBrand(b);setShowBrand(false);setBrandSearch('');}}
+                            className="w-full flex items-center justify-between px-3 py-2.5 text-xs hover:bg-gray-50 border-b last:border-0 transition"
+                            style={{borderColor:C.g50,backgroundColor:selBrand===b?`${C.forest}08`:'transparent'}}>
+                            <span className="font-semibold" style={{color:C.g800}}>{b==='All Brands'?'All Cards':b}</span>
+                            {selBrand===b&&<CheckCircle size={11} style={{color:C.green}}/>}
+                          </button>
+                        ))
+                      ) : (
+                        GC_BRAND_GROUPS.map(group => (
+                          <div key={group.cat||'all'}>
+                            {group.cat && (
+                              <div className="px-3 py-1.5 sticky top-0" style={{backgroundColor:'#F8FAFC',borderBottom:`1px solid ${C.g100}`}}>
+                                <span className="text-xs font-black uppercase tracking-wider" style={{color:group.color||C.g500}}>{group.cat}</span>
+                              </div>
+                            )}
+                            {group.items.map(b=>(
+                              <button key={b} onClick={()=>{setSelBrand(b);setShowBrand(false);setBrandSearch('');}}
+                                className="w-full flex items-center justify-between px-3 py-2.5 text-xs hover:bg-gray-50 border-b last:border-0 transition"
+                                style={{borderColor:C.g50,backgroundColor:selBrand===b?`${C.forest}08`:'transparent'}}>
+                                <span className="font-semibold" style={{color:C.g800}}>{b==='All Brands'?'All Cards':b}</span>
+                                {selBrand===b&&<CheckCircle size={11} style={{color:C.green}}/>}
+                              </button>
+                            ))}
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
                 )}
@@ -1429,7 +1585,7 @@ export default function GiftCards({user}) {
             <p className="text-5xl mb-3">📡</p>
             <p className="font-black text-base mb-1" style={{color:C.g800}}>Couldn't load offers</p>
             <p className="text-sm mb-4" style={{color:C.g400}}>Server may be busy. Please try again.</p>
-            <button onClick={()=>{ setLoading(true); loadListings(); }}
+            <button onClick={()=>{ setLoading(true); loadListings(1, true); }}
               className="px-6 py-2.5 rounded-xl text-white text-sm font-black hover:opacity-90 transition flex items-center gap-2 mx-auto"
               style={{backgroundColor:C.forest}}>
               <RefreshCw size={14}/> Try Again

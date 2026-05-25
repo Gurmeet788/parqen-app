@@ -32,6 +32,21 @@ const STATUSES = {
   rejected:  { label: 'Not Planned',  color: '#6B7280', bg: '#F9FAFB',  dot: '❌' },
 };
 
+const SUPPORT_CATS = [
+  { id: 'general',  label: 'General',     emoji: '💬', color: '#3B82F6', bg: '#EFF6FF' },
+  { id: 'trade',    label: 'Trade Issue', emoji: '🔄', color: '#7C3AED', bg: '#F5F3FF' },
+  { id: 'payment',  label: 'Payment',     emoji: '💳', color: '#166534', bg: '#F0FDF4' },
+  { id: 'account',  label: 'Account',     emoji: '👤', color: '#92400E', bg: '#FFFBEB' },
+  { id: 'other',    label: 'Other',       emoji: '📦', color: '#6B7280', bg: '#F9FAFB' },
+];
+const SUPPORT_CAT_MAP = Object.fromEntries(SUPPORT_CATS.map(c => [c.id, c]));
+const TICKET_STATUSES = {
+  open:     { label: 'Open',     color: '#3B82F6', bg: '#EFF6FF', emoji: '🔵' },
+  active:   { label: 'Active',   color: '#166534', bg: '#F0FDF4', emoji: '🟢' },
+  resolved: { label: 'Resolved', color: '#6D28D9', bg: '#F5F3FF', emoji: '✅' },
+  closed:   { label: 'Closed',   color: '#6B7280', bg: '#F9FAFB', emoji: '🔒' },
+};
+
 const authH = () => {
   const t = localStorage.getItem('token');
   return t ? { Authorization: `Bearer ${t}` } : {};
@@ -142,6 +157,20 @@ export default function SuggestionsPanel({ user }) {
 
   const listRef = useRef(null);
 
+  // Support chat state
+  const [tickets, setTickets]           = useState([]);
+  const [ticketView, setTicketView]     = useState('list'); // 'list' | 'new' | 'chat'
+  const [activeTicket, setActiveTicket] = useState(null);
+  const [ticketMessages, setTMsgs]      = useState([]);
+  const [newMsg, setNewMsg]             = useState('');
+  const [sending, setSending]           = useState(false);
+  const [ticketSubject, setTSubject]    = useState('');
+  const [ticketCat, setTicketCat]       = useState('general');
+  const [firstMsg, setFirstMsg]         = useState('');
+  const [creating, setCreating]         = useState(false);
+  const pollRef = useRef(null);
+  const chatRef = useRef(null);
+
   const load = useCallback(async (reset = false) => {
     setLoading(true);
     const p = reset ? 1 : page;
@@ -201,6 +230,89 @@ export default function SuggestionsPanel({ user }) {
     setPage(p => p + 1);
     load(false);
   };
+
+  // ── Support ticket functions ──────────────────────────────────
+  const loadTickets = useCallback(async () => {
+    if (!user) return;
+    try {
+      const r = await axios.get(`${API_URL}/support/tickets`, { headers: authH() });
+      setTickets(r.data.tickets || []);
+    } catch {}
+  }, [user]);
+
+  const openTicketChat = async (ticket) => {
+    setActiveTicket(ticket);
+    setTicketView('chat');
+    setTMsgs([]);
+    try {
+      const r = await axios.get(`${API_URL}/support/tickets/${ticket.id}/messages`, { headers: authH() });
+      setTMsgs(r.data.messages || []);
+      setTimeout(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }, 100);
+    } catch {}
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      try {
+        const r = await axios.get(`${API_URL}/support/tickets/${ticket.id}/messages`, { headers: authH() });
+        const msgs = r.data.messages || [];
+        setTMsgs(prev => {
+          if (prev.length !== msgs.length) setTimeout(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }, 50);
+          return msgs;
+        });
+      } catch {}
+    }, 5000);
+  };
+
+  const leaveChat = () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    setTicketView('list');
+    setActiveTicket(null);
+    setTMsgs([]);
+    loadTickets();
+  };
+
+  const sendMsg = async () => {
+    if (!newMsg.trim() || sending || !activeTicket) return;
+    setSending(true);
+    const text = newMsg.trim();
+    setNewMsg('');
+    try {
+      const r = await axios.post(`${API_URL}/support/tickets/${activeTicket.id}/messages`, { message: text }, { headers: authH() });
+      setTMsgs(prev => [...prev, r.data.message]);
+      setTimeout(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }, 50);
+    } catch (e) {
+      setNewMsg(text);
+      toast.error(e.response?.data?.error || 'Failed to send');
+    } finally { setSending(false); }
+  };
+
+  const createTicket = async () => {
+    if (!ticketSubject.trim()) return toast.error('Please enter a subject');
+    if (!firstMsg.trim()) return toast.error('Please describe your issue');
+    setCreating(true);
+    try {
+      const r = await axios.post(`${API_URL}/support/tickets`, {
+        subject: ticketSubject.trim(), category: ticketCat, message: firstMsg.trim(),
+      }, { headers: authH() });
+      toast.success('Ticket submitted! Our team will reply soon 💬');
+      setTSubject(''); setTicketCat('general'); setFirstMsg('');
+      await openTicketChat(r.data.ticket);
+    } catch (e) {
+      const msg = e.response?.data?.error || e.message || 'Failed to create ticket';
+      toast.error(msg);
+      console.error('createTicket error:', e.response?.data || e.message);
+    }
+    finally { setCreating(false); }
+  };
+
+  useEffect(() => {
+    if (open && tab === 'support') loadTickets();
+    if (!open) {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+      setTicketView('list'); setActiveTicket(null); setTMsgs([]);
+    }
+  }, [open, tab, loadTickets]);
+
+  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
   return (
     <>
@@ -264,8 +376,9 @@ export default function SuggestionsPanel({ user }) {
               <div className="px-5 pb-4">
                 <div className="flex gap-1 p-1 rounded-xl" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}>
                   {[
-                    { id: 'browse', icon: TrendingUp, label: 'Browse Ideas' },
-                    { id: 'post',   icon: Sparkles,   label: 'Share Idea'   },
+                    { id: 'browse',  icon: TrendingUp,    label: 'Browse'   },
+                    { id: 'post',    icon: Sparkles,      label: 'Share'    },
+                    { id: 'support', icon: MessageCircle, label: 'Support'  },
                   ].map(t => {
                     const Icon = t.icon;
                     return (
@@ -354,6 +467,202 @@ export default function SuggestionsPanel({ user }) {
                   )}
                 </div>
               </>
+            ) : tab === 'support' ? (
+              /* ── Support tab ── */
+              !user ? (
+                <div className="flex-1 overflow-y-auto flex flex-col items-center py-16 text-center px-4">
+                  <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: C.g100 }}>
+                    <span className="text-3xl">🔒</span>
+                  </div>
+                  <p className="font-black text-base mb-2" style={{ color: C.g800 }}>Login to contact support</p>
+                  <p className="text-sm mb-6" style={{ color: C.g400 }}>Create an account to get help from the PRAQEN team</p>
+                  <a href="/login" className="px-8 py-3 rounded-xl text-sm font-black text-white block w-full text-center transition hover:opacity-90" style={{ backgroundColor: C.forest }}>
+                    Login / Register
+                  </a>
+                </div>
+              ) : ticketView === 'chat' && activeTicket ? (
+                <>
+                  {/* Chat header */}
+                  <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 border-b" style={{ borderColor: C.g200 }}>
+                    <button onClick={leaveChat}
+                      className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-gray-100 transition text-sm font-black"
+                      style={{ color: C.g600 }}>←</button>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-black text-sm truncate" style={{ color: C.g800 }}>{activeTicket.subject}</p>
+                      <p className="text-xs" style={{ color: C.g400 }}>
+                        {(TICKET_STATUSES[activeTicket.status] || TICKET_STATUSES.open).emoji}{' '}
+                        {(TICKET_STATUSES[activeTicket.status] || TICKET_STATUSES.open).label}
+                      </p>
+                    </div>
+                  </div>
+                  {/* Messages */}
+                  <div ref={chatRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+                    {ticketMessages.length === 0 ? (
+                      <div className="flex items-center justify-center py-12">
+                        <p className="text-xs" style={{ color: C.g400 }}>No messages yet. Our team will reply soon.</p>
+                      </div>
+                    ) : ticketMessages.map(m => (
+                      <div key={m.id} className={`flex ${m.is_admin ? 'justify-start' : 'justify-end'}`}>
+                        {m.is_admin && (
+                          <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mr-2 self-end"
+                            style={{ backgroundColor: C.forest }}>
+                            <span className="text-xs font-black text-white" style={{ fontFamily: 'Georgia,serif' }}>P</span>
+                          </div>
+                        )}
+                        <div className="max-w-[78%]">
+                          {m.is_admin && <p className="text-xs font-black mb-1 ml-1" style={{ color: C.forest }}>PRAQEN Support</p>}
+                          <div className="px-4 py-2.5 text-sm leading-relaxed"
+                            style={{
+                              backgroundColor: m.is_admin ? '#F0FDF4' : C.forest,
+                              color: m.is_admin ? '#166534' : '#fff',
+                              borderRadius: m.is_admin ? '4px 16px 16px 16px' : '16px 4px 16px 16px',
+                            }}>
+                            {m.message}
+                          </div>
+                          <p className="text-xs mt-1 px-1" style={{ color: C.g400, textAlign: m.is_admin ? 'left' : 'right' }}>
+                            {fmtAge(m.created_at)}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Chat input (replaces footer) */}
+                  {activeTicket.status === 'closed' ? (
+                    <div className="flex-shrink-0 px-4 py-3 border-t text-center text-xs" style={{ borderColor: C.g200, color: C.g400 }}>
+                      This ticket is closed. Open a new ticket if you need further help.
+                    </div>
+                  ) : (
+                    <div className="flex-shrink-0 flex gap-2 px-3 py-3 border-t" style={{ borderColor: C.g200 }}>
+                      <input
+                        value={newMsg}
+                        onChange={e => setNewMsg(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), sendMsg())}
+                        placeholder="Type your message…"
+                        className="flex-1 border rounded-xl px-4 py-2.5 text-sm outline-none transition focus:ring-2 focus:ring-green-100"
+                        style={{ borderColor: C.g200, color: C.g800 }}
+                      />
+                      <button onClick={sendMsg} disabled={sending || !newMsg.trim()}
+                        className="w-10 h-10 rounded-xl flex items-center justify-center transition hover:opacity-80"
+                        style={{ backgroundColor: newMsg.trim() ? C.forest : C.g100, color: newMsg.trim() ? '#fff' : C.g400 }}>
+                        {sending ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : ticketView === 'new' ? (
+                <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                  <button onClick={() => setTicketView('list')}
+                    className="flex items-center gap-1.5 text-xs font-black transition hover:opacity-70"
+                    style={{ color: C.forest }}>
+                    ← Back to tickets
+                  </button>
+                  <div className="p-4 rounded-2xl flex items-start gap-3"
+                    style={{ background: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)', border: '1px solid #BFDBFE' }}>
+                    <span className="text-2xl flex-shrink-0">💬</span>
+                    <div>
+                      <p className="font-black text-sm" style={{ color: '#1D4ED8' }}>Submit a support ticket</p>
+                      <p className="text-xs mt-0.5" style={{ color: '#3B82F6' }}>Our team typically responds within a few hours.</p>
+                    </div>
+                  </div>
+                  {/* Category */}
+                  <div>
+                    <label className="text-xs font-black block mb-2" style={{ color: C.g600 }}>Category</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {SUPPORT_CATS.map(c => (
+                        <button key={c.id} onClick={() => setTicketCat(c.id)}
+                          className="flex flex-col items-center gap-1 py-3 rounded-xl border-2 transition"
+                          style={{
+                            borderColor: ticketCat === c.id ? c.color : C.g200,
+                            backgroundColor: ticketCat === c.id ? c.bg : '#fff',
+                            color: ticketCat === c.id ? c.color : C.g500,
+                          }}>
+                          <span className="text-xl">{c.emoji}</span>
+                          <span className="text-xs font-bold leading-tight text-center">{c.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Subject */}
+                  <div>
+                    <label className="text-xs font-black block mb-1.5" style={{ color: C.g600 }}>
+                      Subject <span style={{ color: '#EF4444' }}>*</span>
+                    </label>
+                    <input value={ticketSubject} onChange={e => setTSubject(e.target.value)} maxLength={200}
+                      placeholder="e.g. Trade stuck in pending, can't withdraw…"
+                      className="w-full border rounded-xl px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-blue-100"
+                      style={{ borderColor: ticketSubject.length > 0 ? '#3B82F6' : C.g200, color: C.g800 }} />
+                  </div>
+                  {/* Message */}
+                  <div>
+                    <label className="text-xs font-black block mb-1.5" style={{ color: C.g600 }}>
+                      Describe your issue <span style={{ color: '#EF4444' }}>*</span>
+                    </label>
+                    <textarea value={firstMsg} onChange={e => setFirstMsg(e.target.value)} maxLength={2000} rows={5}
+                      placeholder="Please provide as much detail as possible — trade IDs, error messages, etc."
+                      className="w-full border rounded-xl px-4 py-3 text-sm outline-none resize-none transition focus:ring-2 focus:ring-blue-100"
+                      style={{ borderColor: C.g200, color: C.g800 }} />
+                    <p className="text-xs mt-1 text-right" style={{ color: C.g400 }}>{firstMsg.length}/2000</p>
+                  </div>
+                  <button onClick={createTicket} disabled={creating || !ticketSubject.trim() || !firstMsg.trim()}
+                    className="w-full py-4 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition hover:opacity-90"
+                    style={{
+                      backgroundColor: creating || !ticketSubject.trim() || !firstMsg.trim() ? C.g200 : '#3B82F6',
+                      color: creating || !ticketSubject.trim() || !firstMsg.trim() ? C.g400 : '#fff',
+                    }}>
+                    {creating ? <><RefreshCw size={14} className="animate-spin" /> Submitting…</> : <><Send size={14} /> Submit Ticket</>}
+                  </button>
+                </div>
+              ) : (
+                /* Ticket list */
+                <div className="flex-1 overflow-y-auto">
+                  <div className="flex items-center justify-between px-4 pt-4 pb-2">
+                    <p className="text-sm font-black" style={{ color: C.g800 }}>My Support Tickets</p>
+                    <button onClick={() => setTicketView('new')}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition hover:opacity-80"
+                      style={{ backgroundColor: '#3B82F6', color: '#fff' }}>
+                      + New Ticket
+                    </button>
+                  </div>
+                  {tickets.length === 0 ? (
+                    <div className="flex flex-col items-center py-16 px-6 text-center">
+                      <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: '#EFF6FF' }}>
+                        <span className="text-3xl">💬</span>
+                      </div>
+                      <p className="font-black text-base mb-1" style={{ color: C.g800 }}>No support tickets yet</p>
+                      <p className="text-sm mb-6" style={{ color: C.g400 }}>Having an issue? Our team is here to help.</p>
+                      <button onClick={() => setTicketView('new')}
+                        className="px-6 py-3 rounded-xl text-sm font-black text-white transition hover:opacity-90"
+                        style={{ backgroundColor: '#3B82F6' }}>
+                        Open a Ticket
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="px-4 pb-4 space-y-3">
+                      {tickets.map(t => {
+                        const st = TICKET_STATUSES[t.status] || TICKET_STATUSES.open;
+                        return (
+                          <button key={t.id} onClick={() => openTicketChat(t)}
+                            className="w-full text-left bg-white rounded-2xl border p-4 transition hover:shadow-md hover:-translate-y-0.5"
+                            style={{ borderColor: C.g200 }}>
+                            <div className="flex items-start justify-between gap-2 mb-1.5">
+                              <p className="font-black text-sm leading-snug" style={{ color: C.g800 }}>{t.subject}</p>
+                              <span className="text-xs px-2 py-0.5 rounded-full font-black flex-shrink-0"
+                                style={{ backgroundColor: st.bg, color: st.color }}>
+                                {st.emoji} {st.label}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs" style={{ color: C.g400 }}>
+                              <span>{(SUPPORT_CAT_MAP[t.category] || SUPPORT_CAT_MAP.general).emoji} {(SUPPORT_CAT_MAP[t.category] || SUPPORT_CAT_MAP.general).label}</span>
+                              <span>·</span>
+                              <span>{fmtAge(t.updated_at)}</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
             ) : (
               /* ── Post tab ── */
               <div className="flex-1 overflow-y-auto p-5">
@@ -469,7 +778,8 @@ export default function SuggestionsPanel({ user }) {
               </div>
             )}
 
-            {/* ── Footer ── */}
+            {/* ── Footer (hidden during chat view — chat has its own input bar) ── */}
+            {!(tab === 'support' && ticketView === 'chat' && activeTicket) && (
             <div className="flex-shrink-0 px-5 py-3 border-t flex items-center justify-between"
               style={{ borderColor: C.g100, backgroundColor: C.g50 }}>
               <p className="text-xs font-semibold flex items-center gap-1.5" style={{ color: C.g400 }}>
@@ -484,6 +794,7 @@ export default function SuggestionsPanel({ user }) {
                 </button>
               )}
             </div>
+            )}
           </div>
         </div>
       )}

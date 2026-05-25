@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import {
@@ -8,7 +8,7 @@ import {
   Ban, UserCheck, Trash2, RefreshCw, ChevronLeft,
   ChevronRight, Search, X, Menu, Lock, Bitcoin,
   ThumbsUp, ThumbsDown, Star, Activity,
-  Mail, Phone, UserPlus, MessageSquare, Maximize2,
+  Mail, Phone, UserPlus, MessageSquare, MessageCircle, Maximize2,
   ChevronUp, Lightbulb, Send,
 } from 'lucide-react';
 
@@ -2453,6 +2453,274 @@ function ActivitySection() {
 }
 
 // ================================================================
+// SUPPORT TICKETS SECTION
+// ================================================================
+function SupportTicketsSection() {
+  const [tickets, setTickets]   = useState([]);
+  const [total, setTotal]       = useState(0);
+  const [loading, setLoading]   = useState(true);
+  const [selected, setSelected] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [reply, setReply]       = useState('');
+  const [sending, setSending]   = useState(false);
+  const [statusFilter, setStat] = useState('');
+  const chatEndRef              = useRef(null);
+
+  const TICKET_STATUSES = {
+    open:     { label: 'Open',     color: '#3B82F6', bg: '#EFF6FF', dot: '🔵' },
+    active:   { label: 'Active',   color: '#166534', bg: '#F0FDF4', dot: '🟢' },
+    resolved: { label: 'Resolved', color: '#6D28D9', bg: '#F5F3FF', dot: '✅' },
+    closed:   { label: 'Closed',   color: '#6B7280', bg: '#F9FAFB', dot: '🔒' },
+  };
+
+  function fmtAge(ts) {
+    if (!ts) return '';
+    const s = (Date.now() - new Date(ts)) / 1000;
+    if (s < 60)    return 'just now';
+    if (s < 3600)  return `${~~(s / 60)}m ago`;
+    if (s < 86400) return `${~~(s / 3600)}h ago`;
+    return `${~~(s / 86400)}d ago`;
+  }
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await axios.get(`${API_URL}/admin/support/tickets`, {
+        headers: authH(),
+        params: { status: statusFilter, limit: 100 },
+      });
+      setTickets(r.data.tickets || []);
+      setTotal(r.data.total || 0);
+    } catch { toast.error('Failed to load tickets'); }
+    finally { setLoading(false); }
+  }, [statusFilter]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const openTicket = async (ticket) => {
+    setSelected(ticket);
+    setReply('');
+    setMessages([]);
+    try {
+      const r = await axios.get(`${API_URL}/admin/support/tickets/${ticket.id}/messages`, { headers: authH() });
+      setMessages(r.data.messages || []);
+      setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+    } catch { toast.error('Failed to load messages'); }
+  };
+
+  const sendReply = async () => {
+    if (!reply.trim() || !selected || sending) return;
+    setSending(true);
+    try {
+      const r = await axios.post(`${API_URL}/admin/support/tickets/${selected.id}/reply`, { message: reply.trim() }, { headers: authH() });
+      setMessages(prev => [...prev, r.data.message]);
+      setReply('');
+      setTickets(prev => prev.map(t => t.id === selected.id ? { ...t, status: 'active', updated_at: new Date().toISOString() } : t));
+      setSelected(prev => prev ? { ...prev, status: 'active' } : prev);
+      setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+      toast.success('Reply sent ✅');
+    } catch (e) { toast.error(e.response?.data?.error || 'Failed to send'); }
+    finally { setSending(false); }
+  };
+
+  const updateStatus = async (id, status) => {
+    try {
+      await axios.patch(`${API_URL}/admin/support/tickets/${id}/status`, { status }, { headers: authH() });
+      setTickets(prev => prev.map(t => t.id === id ? { ...t, status } : t));
+      if (selected?.id === id) setSelected(prev => prev ? { ...prev, status } : prev);
+      toast.success('Status updated');
+    } catch { toast.error('Failed to update status'); }
+  };
+
+  const counts = {
+    open:     tickets.filter(t => t.status === 'open').length,
+    active:   tickets.filter(t => t.status === 'active').length,
+    resolved: tickets.filter(t => t.status === 'resolved').length,
+  };
+
+  return (
+    <div className="space-y-5">
+      <SectionHead title={`Support Tickets (${total})`} sub="View and reply to user support tickets in real time"
+        action={<button onClick={load} className="p-2 rounded-xl border hover:bg-gray-50 transition" style={{ borderColor: C.g200 }}><RefreshCw size={14} style={{ color: C.g500 }} /></button>} />
+
+      {/* Stats */}
+      <div className="grid grid-cols-4 gap-3">
+        {[
+          { label: 'Total',    value: total,          color: C.forest,  bg: '#F0FDF4' },
+          { label: 'Open',     value: counts.open,    color: '#3B82F6', bg: '#EFF6FF' },
+          { label: 'Active',   value: counts.active,  color: '#166534', bg: '#F0FDF4' },
+          { label: 'Resolved', value: counts.resolved, color: '#6D28D9', bg: '#F5F3FF' },
+        ].map(s => (
+          <div key={s.label} className="bg-white rounded-2xl border p-4 text-center" style={{ borderColor: C.g200 }}>
+            <p className="text-2xl font-black" style={{ color: s.color }}>{s.value}</p>
+            <p className="text-xs font-bold mt-1" style={{ color: C.g600 }}>{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Filter + Table */}
+      <div className="bg-white rounded-2xl border overflow-hidden" style={{ borderColor: C.g200 }}>
+        <div className="flex items-center gap-2 px-4 py-3 border-b flex-wrap" style={{ borderColor: C.g100 }}>
+          <p className="text-xs font-black flex-1" style={{ color: C.g700 }}>Filter by Status</p>
+          {['', 'open', 'active', 'resolved', 'closed'].map(s => (
+            <button key={s} onClick={() => setStat(s)}
+              className="px-3 py-1.5 rounded-lg text-xs font-black transition"
+              style={{ backgroundColor: statusFilter === s ? C.forest : C.g100, color: statusFilter === s ? '#fff' : C.g600 }}>
+              {s === '' ? 'All' : `${TICKET_STATUSES[s]?.dot} ${TICKET_STATUSES[s]?.label}`}
+            </button>
+          ))}
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <RefreshCw size={20} className="animate-spin" style={{ color: C.g400 }} />
+          </div>
+        ) : tickets.length === 0 ? (
+          <div className="py-16 text-center">
+            <p className="text-sm font-semibold" style={{ color: C.g400 }}>No tickets found</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ backgroundColor: C.g50 }}>
+                  {['User', 'Subject', 'Category', 'Status', 'Last Update', 'Action'].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-black" style={{ color: C.g600 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {tickets.map(t => {
+                  const st = TICKET_STATUSES[t.status] || TICKET_STATUSES.open;
+                  return (
+                    <tr key={t.id} className="border-t hover:bg-gray-50 cursor-pointer transition"
+                      style={{ borderColor: C.g100 }} onClick={() => openTicket(t)}>
+                      <td className="px-4 py-3">
+                        <p className="text-xs font-black" style={{ color: C.g800 }}>{t.username || 'Unknown'}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-xs font-semibold max-w-[200px] truncate" style={{ color: C.g700 }}>{t.subject}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-xs capitalize font-bold" style={{ color: C.g500 }}>{t.category || 'general'}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-xs px-2 py-1 rounded-full font-black" style={{ backgroundColor: st.bg, color: st.color }}>
+                          {st.dot} {st.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-xs" style={{ color: C.g400 }}>{fmtAge(t.updated_at)}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <button onClick={e => { e.stopPropagation(); openTicket(t); }}
+                          className="text-xs px-3 py-1.5 rounded-lg font-black transition hover:opacity-80"
+                          style={{ backgroundColor: '#EFF6FF', color: '#3B82F6' }}>
+                          View Chat
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Chat Modal */}
+      {selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}>
+          <div className="bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col w-full" style={{ maxWidth: 560, height: '85vh' }}>
+            {/* Modal header */}
+            <div className="flex-shrink-0 flex items-start justify-between p-6 border-b" style={{ borderColor: C.g100 }}>
+              <div className="flex-1 min-w-0 pr-4">
+                <p className="font-black text-base leading-snug" style={{ color: C.g800 }}>{selected.subject}</p>
+                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                  <span className="text-xs font-black px-2 py-0.5 rounded-full"
+                    style={{ backgroundColor: (TICKET_STATUSES[selected.status] || TICKET_STATUSES.open).bg, color: (TICKET_STATUSES[selected.status] || TICKET_STATUSES.open).color }}>
+                    {(TICKET_STATUSES[selected.status] || TICKET_STATUSES.open).dot} {(TICKET_STATUSES[selected.status] || TICKET_STATUSES.open).label}
+                  </span>
+                  <span className="text-xs" style={{ color: C.g400 }}>by {selected.username}</span>
+                  <span className="text-xs capitalize px-2 py-0.5 rounded-full" style={{ backgroundColor: C.g100, color: C.g600 }}>{selected.category}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <select value={selected.status} onChange={e => updateStatus(selected.id, e.target.value)}
+                  className="text-xs border rounded-lg px-2 py-1 outline-none"
+                  style={{ borderColor: C.g200, color: C.g700, backgroundColor: '#fff' }}>
+                  <option value="open">🔵 Open</option>
+                  <option value="active">🟢 Active</option>
+                  <option value="resolved">✅ Resolved</option>
+                  <option value="closed">🔒 Closed</option>
+                </select>
+                <button onClick={() => { setSelected(null); setMessages([]); }}
+                  className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition">
+                  <X size={16} style={{ color: C.g500 }} />
+                </button>
+              </div>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {messages.length === 0 ? (
+                <div className="flex items-center justify-center py-12">
+                  <p className="text-sm" style={{ color: C.g400 }}>No messages yet.</p>
+                </div>
+              ) : messages.map(m => (
+                <div key={m.id} className={`flex ${m.is_admin ? 'justify-end' : 'justify-start'}`}>
+                  {!m.is_admin && (
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mr-2 self-end" style={{ backgroundColor: C.g200 }}>
+                      <span className="text-xs font-black" style={{ color: C.g600 }}>{(selected.username || 'U')[0].toUpperCase()}</span>
+                    </div>
+                  )}
+                  <div className="max-w-[75%]">
+                    {!m.is_admin && <p className="text-xs font-black mb-1 ml-1" style={{ color: C.g500 }}>{selected.username}</p>}
+                    <div className="px-4 py-2.5 text-sm leading-relaxed"
+                      style={{
+                        backgroundColor: m.is_admin ? C.forest : C.g100,
+                        color: m.is_admin ? '#fff' : C.g700,
+                        borderRadius: m.is_admin ? '16px 4px 16px 16px' : '4px 16px 16px 16px',
+                      }}>
+                      {m.message}
+                    </div>
+                    <p className="text-xs mt-1 px-1" style={{ color: C.g400, textAlign: m.is_admin ? 'right' : 'left' }}>{fmtAge(m.created_at)}</p>
+                  </div>
+                  {m.is_admin && (
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ml-2 self-end" style={{ backgroundColor: C.forest }}>
+                      <span className="text-xs font-black text-white" style={{ fontFamily: 'Georgia,serif' }}>P</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* Reply input */}
+            <div className="flex-shrink-0 flex gap-3 p-4 border-t" style={{ borderColor: C.g100 }}>
+              <textarea
+                value={reply}
+                onChange={e => setReply(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), sendReply())}
+                rows={2}
+                placeholder="Type your reply… (Enter to send, Shift+Enter for new line)"
+                className="flex-1 border rounded-xl px-4 py-3 text-sm outline-none resize-none transition"
+                style={{ borderColor: C.g200, color: C.g800 }}
+              />
+              <button onClick={sendReply} disabled={sending || !reply.trim()}
+                className="w-12 h-12 self-end rounded-xl flex items-center justify-center transition hover:opacity-80"
+                style={{ backgroundColor: reply.trim() ? C.forest : C.g100, color: reply.trim() ? '#fff' : C.g400 }}>
+                {sending ? <RefreshCw size={16} className="animate-spin" /> : <Send size={16} />}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ================================================================
 // MAIN ADMIN DASHBOARD
 // ================================================================
 const NAV = [
@@ -2466,6 +2734,7 @@ const NAV = [
   { id:'finance',      label:'Finance',       icon:DollarSign      },
   { id:'listings',     label:'Listings',      icon:List            },
   { id:'suggestions',  label:'User Messages',  icon:MessageSquare   },
+  { id:'support',      label:'Support Chat',   icon:MessageCircle   },
   { id:'reports',      label:'Reports',       icon:Star            },
   { id:'activity',     label:'Activity Log',  icon:Activity        },
   { id:'broadcast',    label:'Broadcast',     icon:Megaphone       },
@@ -2524,6 +2793,7 @@ export default function AdminDashboard({ user: appUser, onLogin }) {
     finance:     <FinanceSection />,
     listings:    <ListingsSection />,
     suggestions: <SuggestionsSection />,
+    support:     <SupportTicketsSection />,
     reports:     <ReportsSection />,
     activity:    <ActivitySection />,
     broadcast:   <BroadcastSection />,

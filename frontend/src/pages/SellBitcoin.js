@@ -944,7 +944,7 @@ export default function SellBitcoin({user}) {
   useEffect(()=>{ if(contextBtcUsd>0) setBtcPrice(contextBtcUsd); },[contextBtcUsd]);
   useEffect(()=>{
     loadOffers();
-    const interval = setInterval(loadOffers, 60000);
+    const interval = setInterval(() => loadOffers(1, true), 60000);
     return () => clearInterval(interval);
   },[]);
   useEffect(()=>{
@@ -984,19 +984,39 @@ export default function SellBitcoin({user}) {
     }).catch(()=>{});
   },[]);
 
-  const loadOffers = async (attempt = 1) => {
+  const loadOffers = async (attempt = 1, force = false) => {
+    // Skip fetch if cache is fresh (< 90 seconds) and not forced
+    if (attempt === 1 && !force) {
+      try {
+        const c = JSON.parse(localStorage.getItem('praqen_market_all') || 'null');
+        if (c && Date.now() - c.ts < 90000) {
+          const buyOffers = (c.data || []).filter(l => l.listing_type === 'BUY' || l.listing_type === 'BUY_BITCOIN');
+          if (buyOffers.length > 0) {
+            setOffers(buyOffers);
+            setLoading(false);
+            return;
+          }
+        }
+      } catch {}
+    }
     setLoadError(false);
     setRetrying(false);
     try {
       const res = await axios.get(`${API_URL}/listings`, { timeout: 8000 });
       const all = (res.data.listings||[]).map(l=>({...l, users:Array.isArray(l.users)?l.users[0]:l.users}));
       const data = all.filter(l=>l.listing_type==='BUY'||l.listing_type==='BUY_BITCOIN');
-      setOffers(data);
-      try { localStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() })); } catch {}
+      // Only update if we got real data — never blank out the list on an empty response
+      if (data.length > 0) {
+        setOffers(data);
+        try { localStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() })); } catch {}
+      } else if (!offers.length) {
+        setOffers(data);
+        try { localStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() })); } catch {}
+      }
     } catch {
       if (attempt < 3) {
         setRetrying(true);
-        setTimeout(() => loadOffers(attempt + 1), 2000);
+        setTimeout(() => loadOffers(attempt + 1, force), 2000);
       } else {
         setRetrying(false);
         if (!offers.length) setLoadError(true);
@@ -1106,7 +1126,7 @@ export default function SellBitcoin({user}) {
                 </span>
               </div>
             </div>
-            <button onClick={loadOffers}
+            <button onClick={() => loadOffers(1, true)}
               className="w-9 h-9 rounded-xl flex items-center justify-center transition hover:bg-white/20 flex-shrink-0"
               style={{backgroundColor:'rgba(255,255,255,0.1)'}}>
               <RefreshCw size={15} className={`text-white ${loading?'animate-spin':''}`}/>
@@ -1428,7 +1448,7 @@ export default function SellBitcoin({user}) {
             <p className="text-5xl mb-3">📡</p>
             <p className="font-black text-base mb-1" style={{color:C.g800}}>Couldn't load offers</p>
             <p className="text-sm mb-4" style={{color:C.g400}}>Server may be busy. Please try again.</p>
-            <button onClick={()=>{ setLoading(true); loadOffers(); }}
+            <button onClick={()=>{ setLoading(true); loadOffers(1, true); }}
               className="px-6 py-2.5 rounded-xl text-white text-sm font-black hover:opacity-90 transition flex items-center gap-2 mx-auto"
               style={{backgroundColor:C.sell}}>
               <RefreshCw size={14}/> Try Again

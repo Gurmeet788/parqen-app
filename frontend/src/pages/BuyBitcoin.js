@@ -1009,20 +1009,42 @@ export default function BuyBitcoin({user}) {
     if (contextBtcUsd > 0) setBtcPrice(contextBtcUsd);
   }, [contextBtcUsd]);
 
-  const loadListings = async (attempt = 1) => {
+  const loadListings = async (attempt = 1, force = false) => {
+    // Skip fetch if cache is fresh (< 90 seconds) and this is not a forced refresh
+    if (attempt === 1 && !force) {
+      try {
+        const c = JSON.parse(localStorage.getItem('praqen_market_all') || 'null');
+        if (c && Date.now() - c.ts < 90000) {
+          const sellOffers = (c.data || []).filter(l => l.listing_type === 'SELL' || l.listing_type === 'SELL_BITCOIN');
+          if (sellOffers.length > 0) {
+            setListings(sellOffers);
+            setLoading(false);
+            return;
+          }
+        }
+      } catch {}
+    }
     setLoadError(false);
     setRetrying(false);
     try {
       const r = await axios.get(`${API_URL}/listings`, { timeout: 8000 });
       const all = (r.data.listings || []).map(l => ({...l, users: Array.isArray(l.users) ? l.users[0] : l.users}));
       const sellOffers = all.filter(l => l.listing_type === 'SELL' || l.listing_type === 'SELL_BITCOIN');
-      setListings(sellOffers);
-      setLastSynced(new Date());
-      try { localStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() })); } catch {}
+      // Only update if we got real data — never blank out the list on an empty response
+      if (sellOffers.length > 0) {
+        setListings(sellOffers);
+        setLastSynced(new Date());
+        try { localStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() })); } catch {}
+      } else if (!listings.length) {
+        // Truly empty marketplace — update anyway
+        setListings(sellOffers);
+        setLastSynced(new Date());
+        try { localStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() })); } catch {}
+      }
     } catch {
       if (attempt < 3) {
         setRetrying(true);
-        setTimeout(() => loadListings(attempt + 1), 2000);
+        setTimeout(() => loadListings(attempt + 1, force), 2000);
       } else {
         setRetrying(false);
         if (!listings.length) setLoadError(true);
@@ -1033,7 +1055,7 @@ export default function BuyBitcoin({user}) {
 
   useEffect(() => {
     loadListings();
-    const interval = setInterval(loadListings, 60000);
+    const interval = setInterval(() => loadListings(1, true), 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -1055,7 +1077,9 @@ export default function BuyBitcoin({user}) {
       } catch {}
       return;
     }
-    fetch('https://ipapi.co/json/')
+    const geoController = new AbortController();
+    const geoTimeout = setTimeout(() => geoController.abort(), 3000);
+    fetch('https://ipapi.co/json/', { signal: geoController.signal })
       .then(r => r.json())
       .then(data => {
         const countryCode = (data.country_code || '').toUpperCase();
@@ -1063,7 +1087,8 @@ export default function BuyBitcoin({user}) {
         const match = COUNTRIES.find(c => c.code === countryCode);
         if (match && match.code !== 'ALL') setSelCountry(match);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => clearTimeout(geoTimeout));
   }, []);
 
   useEffect(() => {
@@ -1111,7 +1136,7 @@ export default function BuyBitcoin({user}) {
     if (isRefreshing) return;
     setIsRefreshing(true);
     try {
-      await loadListings();
+      await loadListings(1, true);
     } finally {
       setIsRefreshing(false);
     }
@@ -1584,7 +1609,7 @@ export default function BuyBitcoin({user}) {
             <p className="text-5xl mb-3">📡</p>
             <p className="font-black text-base mb-1" style={{color:C.g800}}>Couldn't load offers</p>
             <p className="text-sm mb-4" style={{color:C.g400}}>Server may be busy. Please try again.</p>
-            <button onClick={()=>{ setLoading(true); loadListings(); }}
+            <button onClick={()=>{ setLoading(true); loadListings(1, true); }}
               className="px-6 py-2.5 rounded-xl text-white text-sm font-black hover:opacity-90 transition flex items-center gap-2 mx-auto"
               style={{backgroundColor:C.forest}}>
               <RefreshCw size={14}/> Try Again

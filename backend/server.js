@@ -3034,31 +3034,21 @@ app.get('/api/listings', async (req, res) => {
 
     const { data: rawListings, error: listErr } = await Promise.race([
       listingsQ,
-      new Promise(resolve => setTimeout(() => resolve({ data: [], error: null }), 8000)),
+      new Promise(resolve => setTimeout(() => resolve({ data: [], error: null }), 5000)),
     ]);
     if (listErr) return res.status(400).json({ error: listErr.message });
 
-    // Step 2: fetch user profile fields + avatars in parallel
-    // avatars are fetched separately because base64 data is large and slows the main query
+    // Step 2: fetch all user fields (profile + avatar) in a single query
     const sellerIdSet = [...new Set((rawListings || []).map(l => l.seller_id).filter(Boolean))];
     let userMap = {};
     if (sellerIdSet.length > 0) {
-      const [usersResult, avatarResult] = await Promise.all([
-        Promise.race([
-          supabaseAdmin.from('users').select(
-            'id, username, full_name, average_rating, total_trades, completion_rate, is_id_verified, is_email_verified, last_login, last_seen_at, total_feedback_count, positive_feedback, negative_feedback, country, bio, badge'
-          ).in('id', sellerIdSet),
-          new Promise(resolve => setTimeout(() => resolve({ data: [] }), 10000)),
-        ]),
-        Promise.race([
-          supabaseAdmin.from('users').select('id, avatar_url').in('id', sellerIdSet),
-          new Promise(resolve => setTimeout(() => resolve({ data: [] }), 15000)),
-        ]),
+      const { data: usersData } = await Promise.race([
+        supabaseAdmin.from('users').select(
+          'id, username, full_name, average_rating, total_trades, completion_rate, is_id_verified, is_email_verified, last_login, last_seen_at, total_feedback_count, positive_feedback, negative_feedback, country, bio, badge, avatar_url'
+        ).in('id', sellerIdSet),
+        new Promise(resolve => setTimeout(() => resolve({ data: [] }), 5000)),
       ]);
-      (usersResult.data || []).forEach(u => { userMap[u.id] = u; });
-      (avatarResult.data || []).forEach(u => {
-        if (userMap[u.id]) userMap[u.id].avatar_url = u.avatar_url || null;
-      });
+      (usersData || []).forEach(u => { userMap[u.id] = u; });
     }
 
     let listings = (rawListings || []).map(l => ({ ...l, users: userMap[l.seller_id] || null }));
@@ -3073,7 +3063,7 @@ app.get('/api/listings', async (req, res) => {
       const sellerIds = [...new Set(balanceCheckedListings.map(l => l.seller_id))];
       const { data: walletRows } = await Promise.race([
         supabaseAdmin.from('wallets').select('user_id, balance_btc').in('user_id', sellerIds),
-        new Promise(resolve => setTimeout(() => resolve({ data: [] }), 4000)),
+        new Promise(resolve => setTimeout(() => resolve({ data: [] }), 3000)),
       ]);
 
       const balMap = {};
@@ -5932,6 +5922,140 @@ app.delete('/api/admin/suggestions/:id', verifyToken, async (req, res) => {
   try {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { error } = await supabaseAdmin.from('suggestions').delete().eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ============================================================
+// SUPPORT TICKETS
+// ============================================================
+
+// POST /api/support/tickets — create ticket + first message
+app.post('/api/support/tickets', verifyToken, async (req, res) => {
+  try {
+    const { subject, category, message } = req.body;
+    if (!subject?.trim()) return res.status(400).json({ error: 'Subject is required' });
+    if (!message?.trim()) return res.status(400).json({ error: 'Message is required' });
+
+    const { data: ticket, error: tErr } = await supabaseAdmin
+      .from('support_tickets')
+      .insert({ user_id: req.userId, subject: subject.trim(), category: category || 'general', status: 'open' })
+      .select().single();
+    if (tErr) return res.status(400).json({ error: tErr.message });
+
+    const { error: mErr } = await supabaseAdmin
+      .from('support_messages')
+      .insert({ ticket_id: ticket.id, sender_id: req.userId, is_admin: false, message: message.trim() });
+    if (mErr) return res.status(400).json({ error: mErr.message });
+
+    res.json({ success: true, ticket });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/support/tickets — user's own tickets
+app.get('/api/support/tickets', verifyToken, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('support_tickets')
+      .select('*')
+      .eq('user_id', req.userId)
+      .order('updated_at', { ascending: false });
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ tickets: data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/support/tickets/:id/messages — chat thread
+app.get('/api/support/tickets/:id/messages', verifyToken, async (req, res) => {
+  try {
+    const { data: ticket } = await supabaseAdmin.from('support_tickets').select('*').eq('id', req.params.id).single();
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+    const { data: u } = await supabaseAdmin.from('users').select('is_admin,is_moderator').eq('id', req.userId).single();
+    if (ticket.user_id !== req.userId && !u?.is_admin && !u?.is_moderator) return res.status(403).json({ error: 'Not authorized' });
+    const { data: messages, error } = await supabaseAdmin.from('support_messages').select('*').eq('ticket_id', req.params.id).order('created_at', { ascending: true });
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ ticket, messages: messages || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/support/tickets/:id/messages — user sends message
+app.post('/api/support/tickets/:id/messages', verifyToken, async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message?.trim()) return res.status(400).json({ error: 'Message is required' });
+    const { data: ticket } = await supabaseAdmin.from('support_tickets').select('user_id, status').eq('id', req.params.id).single();
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+    if (ticket.user_id !== req.userId) return res.status(403).json({ error: 'Not authorized' });
+    if (ticket.status === 'closed') return res.status(400).json({ error: 'Ticket is closed' });
+    const { data: msg, error } = await supabaseAdmin.from('support_messages')
+      .insert({ ticket_id: req.params.id, sender_id: req.userId, is_admin: false, message: message.trim() })
+      .select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    await supabaseAdmin.from('support_tickets').update({ updated_at: new Date() }).eq('id', req.params.id);
+    res.json({ success: true, message: msg });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/admin/support/tickets — admin lists all tickets
+app.get('/api/admin/support/tickets', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { status = '', page = 1, limit = 100 } = req.query;
+    const offset = (page - 1) * limit;
+    let query = supabaseAdmin.from('support_tickets')
+      .select('*, users!support_tickets_user_id_fkey(id, username, avatar_url)', { count: 'exact' })
+      .order('updated_at', { ascending: false })
+      .range(offset, offset + parseInt(limit) - 1);
+    if (status) query = query.eq('status', status);
+    const { data, error, count } = await query;
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ tickets: (data || []).map(t => ({ ...t, username: t.users?.username, avatar_url: t.users?.avatar_url })), total: count || 0 });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/admin/support/tickets/:id/messages — admin reads thread
+app.get('/api/admin/support/tickets/:id/messages', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { data: ticket } = await supabaseAdmin.from('support_tickets')
+      .select('*, users!support_tickets_user_id_fkey(id, username)').eq('id', req.params.id).single();
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+    const { data: messages } = await supabaseAdmin.from('support_messages').select('*').eq('ticket_id', req.params.id).order('created_at', { ascending: true });
+    res.json({ ticket: { ...ticket, username: ticket.users?.username }, messages: messages || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/admin/support/tickets/:id/reply — admin sends reply
+app.post('/api/admin/support/tickets/:id/reply', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { message } = req.body;
+    if (!message?.trim()) return res.status(400).json({ error: 'Reply is required' });
+    const { data: ticket } = await supabaseAdmin.from('support_tickets').select('user_id, subject').eq('id', req.params.id).single();
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+    const { data: msg, error } = await supabaseAdmin.from('support_messages')
+      .insert({ ticket_id: req.params.id, sender_id: req.userId, is_admin: true, message: message.trim() })
+      .select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    await supabaseAdmin.from('support_tickets').update({ updated_at: new Date(), status: 'active' }).eq('id', req.params.id);
+    await createNotification(
+      ticket.user_id, 'system',
+      '💬 Support team replied to your ticket',
+      `Your ticket "${(ticket.subject || '').slice(0, 60)}" has a new reply. Open Community Board → Support to read it.`,
+      '/'
+    );
+    res.json({ success: true, message: msg });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PATCH /api/admin/support/tickets/:id/status — admin updates status
+app.patch('/api/admin/support/tickets/:id/status', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { status } = req.body;
+    if (!['open', 'active', 'resolved', 'closed'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
+    const { error } = await supabaseAdmin.from('support_tickets').update({ status, updated_at: new Date() }).eq('id', req.params.id);
     if (error) return res.status(400).json({ error: error.message });
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
