@@ -244,13 +244,21 @@ class DepositMonitor {
 
       console.log(`[DepositMonitor] Scanning ${toCheck.length} wallet address(es)...`);
 
-      for (const entry of toCheck) {
-        if (!this.isValidMainnetAddress(entry.address)) {
-          console.log(`[DepositMonitor] ⚠️  Skipping invalid address for user ${entry.userId.slice(0, 8)}: ${entry.address.slice(0, 16)}…`);
-          continue;
+      // Process in batches of 5 concurrently with a 1s gap between batches
+      // This is ~3x faster than serial while still respecting mempool.space rate limits
+      const valid = toCheck.filter(e => {
+        if (!this.isValidMainnetAddress(e.address)) {
+          console.log(`[DepositMonitor] ⚠️  Skipping invalid address for user ${e.userId.slice(0, 8)}: ${e.address.slice(0, 16)}…`);
+          return false;
         }
-        await this.checkUserDeposit(entry);
-        await this.sleep(2000); // 0.5 req/sec — stays well under mempool.space rate limits
+        return true;
+      });
+
+      const BATCH = 5;
+      for (let i = 0; i < valid.length; i += BATCH) {
+        const batch = valid.slice(i, i + BATCH);
+        await Promise.allSettled(batch.map(entry => this.checkUserDeposit(entry)));
+        if (i + BATCH < valid.length) await this.sleep(1000); // 1s between batches
       }
 
     } catch (err) {
@@ -277,7 +285,7 @@ class DepositMonitor {
       }
 
       // ── Step 1: Fetch on-chain confirmed balance from mempool.space ──────
-      const resp = await axios.get(`${this.apiBase}/address/${address}`, { timeout: 15000 });
+      const resp = await axios.get(`${this.apiBase}/address/${address}`, { timeout: 8000 });
       const chainStats    = resp.data?.chain_stats || {};
       const blockchainSats = (chainStats.funded_txo_sum || 0) - (chainStats.spent_txo_sum || 0);
       const blockchainBTC  = parseFloat((blockchainSats / 1e8).toFixed(8));
@@ -537,7 +545,7 @@ class DepositMonitor {
     if (!address) return;
 
     try {
-      const resp = await axios.get(`${this.apiBase}/address/${address}`, { timeout: 15000 });
+      const resp = await axios.get(`${this.apiBase}/address/${address}`, { timeout: 8000 });
       const d    = resp.data;
       const confirmedSats = d.chain_stats.funded_txo_sum - d.chain_stats.spent_txo_sum;
       const confirmedBTC  = confirmedSats / 1e8;

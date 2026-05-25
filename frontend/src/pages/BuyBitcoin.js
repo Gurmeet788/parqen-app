@@ -286,15 +286,19 @@ const FEATURED = {
 };
 
 // ── Offer Card ────────────────────────────────────────────────────────────────
-function OfferCard({listing, btcPriceUSD, onViewSeller, onBuy, liked, onToggleLike, featuredType}) {
+function OfferCard({listing, btcPriceUSD, onViewSeller, onBuy, liked, onToggleLike, featuredType, liveSeenAt}) {
   const { rates: USD_RATES } = useRates();
   const u         = getUser(listing.users);
   const badge     = deriveBadge(u);
-  const [seen, setSeen] = useState(() => getLastSeen(u));
+  // liveSeenAt comes from the 30s server poll — always fresher than the cached listing
+  const [seen, setSeen] = useState(() => getLastSeen({ ...u, last_seen_at: liveSeenAt || u.last_seen_at }));
   useEffect(() => {
-    const id = setInterval(() => setSeen(getLastSeen(u)), 30000);
+    setSeen(getLastSeen({ ...u, last_seen_at: liveSeenAt || u.last_seen_at }));
+  }, [liveSeenAt]);
+  useEffect(() => {
+    const id = setInterval(() => setSeen(getLastSeen({ ...u, last_seen_at: liveSeenAt || u.last_seen_at })), 30000);
     return () => clearInterval(id);
-  }, []);
+  }, [liveSeenAt]);
   const trades    = getTrades(u);
   const margin    = parseFloat(listing.margin||0);
   const cur       = listing.currency || 'GHS';
@@ -970,9 +974,10 @@ function SkeletonCard() {
 export default function BuyBitcoin({user}) {
   const navigate = useNavigate();
   const { rates: USD_RATES, btcUsd: contextBtcUsd } = useRates();
-  // Shared market cache — all 3 tabs (Buy/Sell/Gift Cards) read from the same key so
-  // navigating between them is instant (no extra network requests).
-  const _cacheAll  = () => { try { const c=JSON.parse(localStorage.getItem('praqen_market_all')||'null'); if(!c||Date.now()-c.ts>300000) return null; return c?.data||null; } catch { return null; } };
+  // Use cached data (up to 30 min old) only if it actually has user profile data.
+  // If users are all null the cache is stale/bad — skip it and force a fresh fetch.
+  const _hasUsers  = (data) => Array.isArray(data) && data.some(l => l.users && (l.users.id || l.users.username));
+  const _cacheAll  = () => { try { const c=JSON.parse(localStorage.getItem('praqen_market_all')||'null'); if(!c||Date.now()-c.ts>1800000||!_hasUsers(c.data)) return null; return c?.data||null; } catch { return null; } };
   const _sellNow   = () => { const a=_cacheAll(); return a?a.filter(l=>l.listing_type==='SELL'||l.listing_type==='SELL_BITCOIN'):[]; };
   const [listings,     setListings]     = useState(()=>_sellNow());
   const [loading,      setLoading]      = useState(()=>_sellNow().length===0);
@@ -1001,6 +1006,7 @@ export default function BuyBitcoin({user}) {
   const [selCurrency,    setSelCurrency]    = useState(CURRENCIES[0]);
   const [showCurrency,   setShowCurrency]   = useState(false);
   const [currencySearch, setCurrencySearch] = useState('');
+  const [liveStatus,     setLiveStatus]     = useState({}); // userId → last_seen_at (fresh from server)
   const currencyRef = useRef(null);
   const countryRef  = useRef(null);
   const paymentRef  = useRef(null);
@@ -1014,7 +1020,7 @@ export default function BuyBitcoin({user}) {
     if (attempt === 1 && !force) {
       try {
         const c = JSON.parse(localStorage.getItem('praqen_market_all') || 'null');
-        if (c && Date.now() - c.ts < 90000) {
+        if (c && Date.now() - c.ts < 90000 && _hasUsers(c.data)) {
           const sellOffers = (c.data || []).filter(l => l.listing_type === 'SELL' || l.listing_type === 'SELL_BITCOIN');
           if (sellOffers.length > 0) {
             setListings(sellOffers);
@@ -1027,7 +1033,7 @@ export default function BuyBitcoin({user}) {
     setLoadError(false);
     setRetrying(false);
     try {
-      const r = await axios.get(`${API_URL}/listings`, { timeout: 8000 });
+      const r = await axios.get(`${API_URL}/listings`, { timeout: 20000 });
       const all = (r.data.listings || []).map(l => ({...l, users: Array.isArray(l.users) ? l.users[0] : l.users}));
       const sellOffers = all.filter(l => l.listing_type === 'SELL' || l.listing_type === 'SELL_BITCOIN');
       // Only update if we got real data — never blank out the list on an empty response
@@ -1058,6 +1064,21 @@ export default function BuyBitcoin({user}) {
     const interval = setInterval(() => loadListings(1, true), 60000);
     return () => clearInterval(interval);
   }, []);
+
+  // Poll fresh last_seen_at for all visible sellers every 30s — keeps online dots accurate
+  const fetchOnlineStatus = (currentListings) => {
+    const ids = [...new Set((currentListings || listings).map(l => l.users?.id).filter(Boolean))];
+    if (ids.length === 0) return;
+    axios.get(`${API_URL}/users/online-status?ids=${ids.join(',')}`)
+      .then(r => { if (r.data?.status) setLiveStatus(r.data.status); })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    if (listings.length > 0) fetchOnlineStatus(listings);
+    const iv = setInterval(() => fetchOnlineStatus(), 30000);
+    return () => clearInterval(iv);
+  }, [listings.length > 0]); // re-run when listings first populate
 
   useEffect(() => {
     axios.get(`${API_URL}/referral/leaderboard`).then(r => {
@@ -1634,6 +1655,7 @@ export default function BuyBitcoin({user}) {
                   listing={l}
                   btcPriceUSD={btcPrice}
                   featuredType={l.seller_id === activeTraderSellerId ? 'active_trader' : undefined}
+                  liveSeenAt={liveStatus[l.users?.id] || null}
                   onViewSeller={()=>{
                     setModal({seller:l.users||{}, listing:l});
                     axios.post(`${API_URL}/offers/${l.id}/view`).catch(()=>{});

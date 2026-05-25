@@ -1747,12 +1747,61 @@ function ListingsSection() {
 // ================================================================
 // BROADCAST SECTION
 // ================================================================
+const PROMO_EMAIL_SUBJECT = '🚀 Load $10+ & Get Instant Bonus — PLUS: Hot Trader Rewards & 0.5% Affiliate!';
+const PROMO_EMAIL_BODY = `<h1 style="font-size:26px;font-weight:900;color:#1B4332;margin:0 0 4px;text-align:center;">🔥 Big things are happening!</h1>
+<p style="margin:0 0 28px;color:#64748B;font-size:15px;text-align:center;">Hi <strong>{username}</strong>, the PRAQEN platform just leveled up!</p>
+
+<div style="background:linear-gradient(135deg,#FFF7ED,#FFFBEB);border-radius:14px;padding:22px;margin-bottom:14px;border:2px solid #FDE68A;">
+  <p style="margin:0 0 8px;font-size:17px;font-weight:900;color:#92400E;">🎁 LOAD YOUR WALLET &amp; GET AN INSTANT BONUS</p>
+  <p style="margin:0;font-size:14px;color:#78350F;line-height:1.7;">Deposit <strong>$10 or more</strong> in BTC and receive an instant trading bonus. Your wallet, your power.</p>
+</div>
+
+<div style="background:linear-gradient(135deg,#F0FDF4,#DCFCE7);border-radius:14px;padding:22px;margin-bottom:14px;border:2px solid #86EFAC;">
+  <p style="margin:0 0 8px;font-size:17px;font-weight:900;color:#166534;">💸 AFFILIATE COMMISSION INCREASED TO 0.5%!</p>
+  <p style="margin:0;font-size:14px;color:#15803D;line-height:1.7;">Share your referral link and earn <strong>0.5% commission</strong> on every trade your friends make — <strong>50× more than before!</strong> There has never been a better time to invite friends to PRAQEN.</p>
+</div>
+
+<div style="background:linear-gradient(135deg,#EFF6FF,#DBEAFE);border-radius:14px;padding:22px;margin-bottom:14px;border:2px solid #BFDBFE;">
+  <p style="margin:0 0 12px;font-size:17px;font-weight:900;color:#1E40AF;">🏆 BECOME A TOP TRADER — GET PROMOTED</p>
+  <p style="margin:4px 0;font-size:14px;color:#1E40AF;line-height:1.6;">🔥 <strong>HOT OFFER · Trending Now</strong> — Your offer featured at the top of the marketplace</p>
+  <p style="margin:4px 0;font-size:14px;color:#1E40AF;line-height:1.6;">⚡ <strong>FAST RESPONDER OF THE WEEK</strong> — Quick responses get you noticed</p>
+  <p style="margin:4px 0;font-size:14px;color:#1E40AF;line-height:1.6;">💰 <strong>TRADER OF THE WEEK</strong> — Your offer promoted for an entire week</p>
+</div>
+
+<div style="background:#F8FAFC;border-radius:14px;padding:22px;margin-bottom:24px;border:1px solid #E2E8F0;">
+  <p style="margin:0 0 12px;font-size:16px;font-weight:900;color:#334155;">What's New on PRAQEN:</p>
+  <p style="margin:5px 0;font-size:14px;color:#475569;line-height:1.6;">📱 <strong>SMS Trade Alerts</strong> — Get instant notifications when someone wants to trade with you</p>
+  <p style="margin:5px 0;font-size:14px;color:#475569;line-height:1.6;">🎮 <strong>Gift Card Trading</strong> — Convert iTunes, Amazon, Steam, Google Play cards to BTC instantly</p>
+  <p style="margin:5px 0;font-size:14px;color:#475569;line-height:1.6;">🔒 <strong>Stronger Escrow</strong> — Your BTC is always 100% protected</p>
+  <p style="margin:5px 0;font-size:14px;color:#475569;line-height:1.6;">💳 <strong>More Payment Methods</strong> — MTN, Vodafone, AirtelTigo, and bank transfer</p>
+</div>
+
+<p style="text-align:center;font-size:15px;color:#64748B;margin:0 0 6px;">Your wallet is ready. Your offers are waiting. The commissions have never been higher.</p>
+
+<div style="text-align:center;margin:24px 0;">
+  <a href="https://praqen.com/wallet" style="display:inline-block;background:linear-gradient(135deg,#1B4332,#2D6A4F);color:#fff;text-decoration:none;font-size:16px;font-weight:900;padding:16px 40px;border-radius:12px;letter-spacing:0.5px;">🚀 Load Your Wallet &amp; Start Trading Now</a>
+</div>
+
+<p style="text-align:center;font-size:15px;font-weight:700;color:#1B4332;margin:0 0 6px;">This is the best time to trade on PRAQEN! 🚀</p>
+<p style="text-align:center;font-size:14px;color:#94A3B8;margin:0;">— The PRAQEN Team 💙</p>`;
+
 function BroadcastSection() {
+  const [broadcastTab, setBTab] = useState('push');
+
+  // Push / in-app state
   const [title, setTitle]   = useState('');
   const [msg, setMsg]       = useState('');
   const [type, setType]     = useState('system');
   const [sending, setSend]  = useState(false);
   const [history, setHistory] = useState([]);
+
+  // Email blast state
+  const [emailSubject, setESubject]       = useState(PROMO_EMAIL_SUBJECT);
+  const [emailBody,    setEBody]          = useState(PROMO_EMAIL_BODY);
+  const [sendingEmail, setSendingEmail]   = useState(false);
+  const [emailResult,  setEmailResult]    = useState(null);
+  const [showPreview,  setShowPreview]    = useState(false);
+  const [showEmailConfirm, setShowEmailConfirm] = useState(false);
 
   const send = async () => {
     if (!title.trim() || !msg.trim()) return toast.error('Title and message required');
@@ -1767,66 +1816,271 @@ function BroadcastSection() {
     finally { setSend(false); }
   };
 
+  const sendEmail = async () => {
+    setSendingEmail(true);
+    setEmailResult(null);
+    try {
+      const r = await axios.post(`${API_URL}/admin/broadcast-email`, {
+        subject: emailSubject,
+        htmlBody: emailBody,
+        broadcastType: 'promo',
+      }, { headers: authH() });
+      toast.success('📧 Email broadcast started! Check server logs for progress.');
+      setEmailResult({ ok: true, message: r.data.message });
+    } catch (e) {
+      const err = e.response?.data?.error || 'Failed to send email broadcast';
+      toast.error(err);
+      setEmailResult({ ok: false, message: err });
+    }
+    finally { setSendingEmail(false); }
+  };
+
   return (
     <div className="space-y-5">
-      <SectionHead title="Broadcast Notifications" sub="Send system-wide notifications to all users" />
+      <SectionHead title="Broadcast Center" sub="Send push notifications or email blasts to all users" />
 
-      <div className="grid lg:grid-cols-2 gap-5">
-        <div className="bg-white rounded-2xl border p-6" style={{ borderColor: C.g200 }}>
-          <h3 className="font-black text-sm mb-4" style={{ color: C.g800 }}>Compose Notification</h3>
+      {/* Tab switcher */}
+      <div className="flex gap-1 p-1 rounded-2xl w-fit" style={{ backgroundColor: C.g100 }}>
+        {[
+          { id: 'push',  label: '📣 Push / In-App' },
+          { id: 'email', label: '📧 Email Blast'   },
+        ].map(t => (
+          <button key={t.id} onClick={() => setBTab(t.id)}
+            className="px-5 py-2.5 rounded-xl text-sm font-black transition"
+            style={{
+              backgroundColor: broadcastTab === t.id ? C.forest : 'transparent',
+              color: broadcastTab === t.id ? '#fff' : C.g600,
+            }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-          <div className="space-y-4">
-            <div>
-              <label className="text-xs font-bold block mb-1.5" style={{ color: C.g600 }}>Type</label>
-              <select value={type} onChange={e => setType(e.target.value)}
-                className="w-full border rounded-xl px-3 py-2.5 text-sm font-semibold outline-none" style={{ borderColor: C.g200, color: C.g700 }}>
-                <option value="system">📢 System Announcement</option>
-                <option value="promo">🎁 Promotion</option>
-                <option value="security">🔒 Security Alert</option>
-                <option value="update">🚀 Platform Update</option>
-              </select>
+      {broadcastTab === 'push' ? (
+        <div className="grid lg:grid-cols-2 gap-5">
+          <div className="bg-white rounded-2xl border p-6" style={{ borderColor: C.g200 }}>
+            <h3 className="font-black text-sm mb-4" style={{ color: C.g800 }}>Compose Notification</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-bold block mb-1.5" style={{ color: C.g600 }}>Type</label>
+                <select value={type} onChange={e => setType(e.target.value)}
+                  className="w-full border rounded-xl px-3 py-2.5 text-sm font-semibold outline-none" style={{ borderColor: C.g200, color: C.g700 }}>
+                  <option value="system">📢 System Announcement</option>
+                  <option value="promo">🎁 Promotion</option>
+                  <option value="security">🔒 Security Alert</option>
+                  <option value="update">🚀 Platform Update</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold block mb-1.5" style={{ color: C.g600 }}>Title</label>
+                <input value={title} onChange={e => setTitle(e.target.value)} maxLength={100}
+                  className="w-full border rounded-xl px-3 py-2.5 text-sm outline-none" style={{ borderColor: C.g200, color: C.g700 }}
+                  placeholder="Notification title…" />
+              </div>
+              <div>
+                <label className="text-xs font-bold block mb-1.5" style={{ color: C.g600 }}>Message</label>
+                <textarea value={msg} onChange={e => setMsg(e.target.value)} rows={4} maxLength={500}
+                  className="w-full border rounded-xl px-3 py-2.5 text-sm outline-none resize-none" style={{ borderColor: C.g200, color: C.g700 }}
+                  placeholder="Write your message to all users…" />
+                <p className="text-xs mt-1 text-right" style={{ color: C.g400 }}>{msg.length}/500</p>
+              </div>
+              <button onClick={send} disabled={sending || !title || !msg}
+                className="w-full py-3.5 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition"
+                style={{ backgroundColor: sending || !title || !msg ? C.g200 : C.forest, color: sending || !title || !msg ? C.g400 : '#fff' }}>
+                {sending ? <><RefreshCw size={14} className="animate-spin" /> Sending…</> : <><Megaphone size={14} /> Send to All Users</>}
+              </button>
             </div>
-            <div>
-              <label className="text-xs font-bold block mb-1.5" style={{ color: C.g600 }}>Title</label>
-              <input value={title} onChange={e => setTitle(e.target.value)} maxLength={100}
-                className="w-full border rounded-xl px-3 py-2.5 text-sm outline-none" style={{ borderColor: C.g200, color: C.g700 }}
-                placeholder="Notification title…" />
-            </div>
-            <div>
-              <label className="text-xs font-bold block mb-1.5" style={{ color: C.g600 }}>Message</label>
-              <textarea value={msg} onChange={e => setMsg(e.target.value)} rows={4} maxLength={500}
-                className="w-full border rounded-xl px-3 py-2.5 text-sm outline-none resize-none" style={{ borderColor: C.g200, color: C.g700 }}
-                placeholder="Write your message to all users…" />
-              <p className="text-xs mt-1 text-right" style={{ color: C.g400 }}>{msg.length}/500</p>
-            </div>
-            <button onClick={send} disabled={sending || !title || !msg}
-              className="w-full py-3.5 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition"
-              style={{ backgroundColor: sending || !title || !msg ? C.g200 : C.forest, color: sending || !title || !msg ? C.g400 : '#fff' }}>
-              {sending ? <><RefreshCw size={14} className="animate-spin" /> Sending…</> : <><Megaphone size={14} /> Send to All Users</>}
-            </button>
+          </div>
+
+          <div className="bg-white rounded-2xl border p-6" style={{ borderColor: C.g200 }}>
+            <h3 className="font-black text-sm mb-4" style={{ color: C.g800 }}>Recent Broadcasts</h3>
+            {history.length === 0 ? (
+              <Empty icon="📣" text="No broadcasts sent this session" />
+            ) : (
+              <div className="space-y-3">
+                {history.map((h, i) => (
+                  <div key={i} className="p-3 rounded-xl" style={{ backgroundColor: C.g50, border:`1px solid ${C.g200}` }}>
+                    <div className="flex items-start justify-between mb-1">
+                      <p className="text-xs font-black" style={{ color: C.g800 }}>{h.title}</p>
+                      <span className="text-xs" style={{ color: C.g400 }}>{h.time.toLocaleTimeString()}</span>
+                    </div>
+                    <p className="text-xs" style={{ color: C.g600 }}>{h.message.slice(0, 80)}…</p>
+                    <p className="text-xs mt-1 font-semibold" style={{ color: C.success }}>✅ Sent to {h.sent} users</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
+      ) : (
+        /* ── Email Blast ── */
+        <div className="grid lg:grid-cols-2 gap-5">
+          <div className="bg-white rounded-2xl border p-6 space-y-4" style={{ borderColor: C.g200 }}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-black text-sm" style={{ color: C.g800 }}>📧 Compose Email Blast</h3>
+              <span className="text-xs px-2 py-1 rounded-full font-black" style={{ backgroundColor: '#FFF7ED', color: '#C2410C' }}>
+                Sends to ALL users
+              </span>
+            </div>
 
-        <div className="bg-white rounded-2xl border p-6" style={{ borderColor: C.g200 }}>
-          <h3 className="font-black text-sm mb-4" style={{ color: C.g800 }}>Recent Broadcasts</h3>
-          {history.length === 0 ? (
-            <Empty icon="📣" text="No broadcasts sent this session" />
-          ) : (
-            <div className="space-y-3">
-              {history.map((h, i) => (
-                <div key={i} className="p-3 rounded-xl" style={{ backgroundColor: C.g50, border:`1px solid ${C.g200}` }}>
-                  <div className="flex items-start justify-between mb-1">
-                    <p className="text-xs font-black" style={{ color: C.g800 }}>{h.title}</p>
-                    <span className="text-xs" style={{ color: C.g400 }}>{h.time.toLocaleTimeString()}</span>
+            {/* Warning */}
+            <div className="p-3 rounded-xl flex items-start gap-2.5" style={{ backgroundColor: '#FFF7ED', border: '1px solid #FDE68A' }}>
+              <span className="text-lg flex-shrink-0">⚠️</span>
+              <p className="text-xs font-semibold leading-relaxed" style={{ color: '#92400E' }}>
+                This sends a real email to every user with a registered email address.
+                Use <strong>{'{{username}}'}</strong> in the body — it will be replaced with each user's name.
+              </p>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold block mb-1.5" style={{ color: C.g600 }}>Subject Line</label>
+              <input value={emailSubject} onChange={e => setESubject(e.target.value)}
+                className="w-full border rounded-xl px-3 py-2.5 text-sm outline-none" style={{ borderColor: C.g200, color: C.g700 }} />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold block mb-1.5" style={{ color: C.g600 }}>
+                HTML Body <span style={{ color: C.g400, fontWeight: 400 }}>(use {'{{username}}'} for personalisation)</span>
+              </label>
+              <textarea value={emailBody} onChange={e => setEBody(e.target.value)} rows={10}
+                className="w-full border rounded-xl px-3 py-2.5 text-xs font-mono outline-none resize-y" style={{ borderColor: C.g200, color: C.g700 }} />
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setShowPreview(p => !p)}
+                className="flex-1 py-3 rounded-xl text-sm font-black border transition hover:bg-gray-50"
+                style={{ borderColor: C.g200, color: C.g600 }}>
+                {showPreview ? '🙈 Hide Preview' : '👁 Preview Email'}
+              </button>
+              <button
+                onClick={() => {
+                  if (!emailSubject.trim() || !emailBody.trim()) return toast.error('Subject and body required');
+                  setShowEmailConfirm(true);
+                }}
+                disabled={sendingEmail || !emailSubject.trim() || !emailBody.trim()}
+                className="flex-1 py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition"
+                style={{
+                  backgroundColor: sendingEmail || !emailSubject.trim() ? C.g200 : '#DC2626',
+                  color: sendingEmail || !emailSubject.trim() ? C.g400 : '#fff',
+                }}>
+                {sendingEmail
+                  ? <><RefreshCw size={14} className="animate-spin" /> Sending…</>
+                  : <><Mail size={14} /> Send to All Users</>}
+              </button>
+            </div>
+
+            {emailResult && (
+              <div className="p-3 rounded-xl text-xs font-semibold"
+                style={{
+                  backgroundColor: emailResult.ok ? '#F0FDF4' : '#FEF2F2',
+                  color: emailResult.ok ? '#166534' : '#991B1B',
+                  border: `1px solid ${emailResult.ok ? '#86EFAC' : '#FECACA'}`,
+                }}>
+                {emailResult.ok ? '✅' : '❌'} {emailResult.message}
+              </div>
+            )}
+          </div>
+
+          {/* Preview pane */}
+          <div className="bg-white rounded-2xl border overflow-hidden" style={{ borderColor: C.g200 }}>
+            <div className="px-5 py-3 border-b flex items-center justify-between" style={{ borderColor: C.g100 }}>
+              <h3 className="font-black text-sm" style={{ color: C.g800 }}>📬 Email Preview</h3>
+              <span className="text-xs" style={{ color: C.g400 }}>Rendered for: <strong>Preview User</strong></span>
+            </div>
+            {showPreview ? (
+              <iframe
+                srcDoc={`<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:16px;background:#F0FAF5;font-family:Arial,sans-serif;">${emailBody.replace(/\{username\}/gi, 'yourname')}</body></html>`}
+                title="Email Preview"
+                style={{ width: '100%', height: 480, border: 'none' }}
+                sandbox="allow-same-origin"
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center py-20" style={{ color: C.g400 }}>
+                <span className="text-4xl mb-3">📧</span>
+                <p className="text-sm font-semibold">Click "Preview Email" to see how it looks</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Email Blast Confirm Modal ── */}
+      {showEmailConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setShowEmailConfirm(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-3xl overflow-hidden shadow-2xl"
+            style={{ backgroundColor: '#fff' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Top banner */}
+            <div className="px-7 pt-8 pb-6 text-center" style={{ background: 'linear-gradient(135deg,#FFF7ED 0%,#FEF3C7 100%)' }}>
+              <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
+                style={{ backgroundColor: '#FBBF24', boxShadow: '0 8px 24px rgba(251,191,36,0.4)' }}>
+                <Mail size={28} color="#fff" />
+              </div>
+              <h2 className="text-xl font-black" style={{ color: '#1B4332' }}>Send Email Blast?</h2>
+              <p className="text-sm mt-1 font-semibold" style={{ color: '#92400E' }}>This action cannot be undone</p>
+            </div>
+
+            {/* Body */}
+            <div className="px-7 py-6 space-y-4">
+              {/* Subject preview */}
+              <div className="p-3 rounded-2xl" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                <p className="text-xs font-bold mb-1" style={{ color: '#94A3B8' }}>SUBJECT</p>
+                <p className="text-sm font-semibold leading-snug" style={{ color: '#1E293B' }}>
+                  {emailSubject.length > 70 ? emailSubject.slice(0, 70) + '…' : emailSubject}
+                </p>
+              </div>
+
+              {/* Warning row */}
+              <div className="flex items-start gap-3 p-3 rounded-2xl" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+                <span className="text-xl flex-shrink-0 mt-0.5">📢</span>
+                <div>
+                  <p className="text-xs font-black" style={{ color: '#991B1B' }}>Sends to EVERY registered user</p>
+                  <p className="text-xs mt-0.5" style={{ color: '#B91C1C' }}>
+                    Each user will receive a personalised copy at their registered email address.
+                  </p>
+                </div>
+              </div>
+
+              {/* Checklist */}
+              {[
+                'Email is personalised with {username}',
+                'Subject line looks correct',
+                'HTML body has been previewed',
+              ].map(item => (
+                <div key={item} className="flex items-center gap-2.5">
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: '#F0FDF4', border: '1.5px solid #86EFAC' }}>
+                    <CheckCircle size={12} color="#16A34A" />
                   </div>
-                  <p className="text-xs" style={{ color: C.g600 }}>{h.message.slice(0, 80)}…</p>
-                  <p className="text-xs mt-1 font-semibold" style={{ color: C.success }}>✅ Sent to {h.sent} users</p>
+                  <p className="text-xs font-semibold" style={{ color: '#475569' }}>{item}</p>
                 </div>
               ))}
             </div>
-          )}
+
+            {/* Buttons */}
+            <div className="px-7 pb-7 flex gap-3">
+              <button
+                onClick={() => setShowEmailConfirm(false)}
+                className="flex-1 py-3.5 rounded-2xl text-sm font-black border transition hover:bg-gray-50"
+                style={{ borderColor: '#E2E8F0', color: '#475569' }}>
+                Cancel
+              </button>
+              <button
+                onClick={() => { setShowEmailConfirm(false); sendEmail(); }}
+                className="flex-1 py-3.5 rounded-2xl text-sm font-black text-white flex items-center justify-center gap-2 transition"
+                style={{ backgroundColor: '#DC2626', boxShadow: '0 4px 14px rgba(220,38,38,0.4)' }}>
+                <Mail size={15} /> Yes, Send Now
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

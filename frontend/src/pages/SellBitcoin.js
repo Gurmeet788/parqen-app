@@ -272,15 +272,18 @@ function Avatar({user, size=48, radius='rounded-xl'}) {
 }
 
 // ── Offer Card (Sell side) ────────────────────────────────────────────────────
-function OfferCard({listing, btcPriceUSD, onViewBuyer, onSell, featuredType}) {
+function OfferCard({listing, btcPriceUSD, onViewBuyer, onSell, featuredType, liveSeenAt}) {
   const { rates: USD_RATES } = useRates();
   const u         = getUser(listing.users);
   const badge     = deriveBadge(u);
-  const [seen, setSeen] = useState(() => getLastSeen(u));
+  const [seen, setSeen] = useState(() => getLastSeen({ ...u, last_seen_at: liveSeenAt || u.last_seen_at }));
   useEffect(() => {
-    const id = setInterval(() => setSeen(getLastSeen(u)), 30000);
+    setSeen(getLastSeen({ ...u, last_seen_at: liveSeenAt || u.last_seen_at }));
+  }, [liveSeenAt]);
+  useEffect(() => {
+    const id = setInterval(() => setSeen(getLastSeen({ ...u, last_seen_at: liveSeenAt || u.last_seen_at })), 30000);
     return () => clearInterval(id);
-  }, []);
+  }, [liveSeenAt]);
   const trades    = getTrades(u);
   const margin    = parseFloat(listing.margin||0);
   const cur       = listing.currency || 'GHS';
@@ -913,8 +916,10 @@ function SkeletonCard() {
 export default function SellBitcoin({user}) {
   const navigate = useNavigate();
   const { rates: USD_RATES, btcUsd: contextBtcUsd } = useRates();
-  const _cacheAll = () => { try { const c=JSON.parse(localStorage.getItem('praqen_market_all')||'null'); if(!c||Date.now()-c.ts>300000) return null; return c?.data||null; } catch { return null; } };
-  const _buyNow   = () => { const a=_cacheAll(); return a?a.filter(l=>l.listing_type==='BUY'||l.listing_type==='BUY_BITCOIN'):[]; };
+  // Use cached data only if it actually contains user profile data — null users = bad cache
+  const _hasUsers  = (data) => Array.isArray(data) && data.some(l => l.users && (l.users.id || l.users.username));
+  const _cacheAll  = () => { try { const c=JSON.parse(localStorage.getItem('praqen_market_all')||'null'); if(!c||Date.now()-c.ts>1800000||!_hasUsers(c.data)) return null; return c?.data||null; } catch { return null; } };
+  const _buyNow    = () => { const a=_cacheAll(); return a?a.filter(l=>l.listing_type==='BUY'||l.listing_type==='BUY_BITCOIN'):[]; };
   const [offers,       setOffers]       = useState(()=>_buyNow());
   const [loading,      setLoading]      = useState(()=>_buyNow().length===0);
   const [loadError,    setLoadError]    = useState(false);
@@ -937,6 +942,7 @@ export default function SellBitcoin({user}) {
   const [selCurrency,    setSelCurrency]    = useState(CURRENCIES[0]);
   const [showCurrency,   setShowCurrency]   = useState(false);
   const [currencySearch, setCurrencySearch] = useState('');
+  const [liveStatus,     setLiveStatus]     = useState({});
   const currencyRef = useRef(null);
   const countryRef  = useRef(null);
   const paymentRef  = useRef(null);
@@ -947,6 +953,20 @@ export default function SellBitcoin({user}) {
     const interval = setInterval(() => loadOffers(1, true), 60000);
     return () => clearInterval(interval);
   },[]);
+
+  const fetchOnlineStatus = (currentOffers) => {
+    const ids = [...new Set((currentOffers || offers).map(l => l.users?.id).filter(Boolean))];
+    if (ids.length === 0) return;
+    axios.get(`${API_URL}/users/online-status?ids=${ids.join(',')}`)
+      .then(r => { if (r.data?.status) setLiveStatus(r.data.status); })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    if (offers.length > 0) fetchOnlineStatus(offers);
+    const iv = setInterval(() => fetchOnlineStatus(), 30000);
+    return () => clearInterval(iv);
+  }, [offers.length > 0]);
   useEffect(()=>{
     const tk = localStorage.getItem('token');
     if (!tk) return;
@@ -989,7 +1009,7 @@ export default function SellBitcoin({user}) {
     if (attempt === 1 && !force) {
       try {
         const c = JSON.parse(localStorage.getItem('praqen_market_all') || 'null');
-        if (c && Date.now() - c.ts < 90000) {
+        if (c && Date.now() - c.ts < 90000 && _hasUsers(c.data)) {
           const buyOffers = (c.data || []).filter(l => l.listing_type === 'BUY' || l.listing_type === 'BUY_BITCOIN');
           if (buyOffers.length > 0) {
             setOffers(buyOffers);
@@ -1002,7 +1022,7 @@ export default function SellBitcoin({user}) {
     setLoadError(false);
     setRetrying(false);
     try {
-      const res = await axios.get(`${API_URL}/listings`, { timeout: 8000 });
+      const res = await axios.get(`${API_URL}/listings`, { timeout: 20000 });
       const all = (res.data.listings||[]).map(l=>({...l, users:Array.isArray(l.users)?l.users[0]:l.users}));
       const data = all.filter(l=>l.listing_type==='BUY'||l.listing_type==='BUY_BITCOIN');
       // Only update if we got real data — never blank out the list on an empty response
@@ -1473,6 +1493,7 @@ export default function SellBitcoin({user}) {
                   listing={l}
                   btcPriceUSD={btcPrice}
                   featuredType={l.id === hotOfferListingId ? 'hot_offer' : undefined}
+                  liveSeenAt={liveStatus[l.users?.id] || null}
                   onViewBuyer={()=>{
                     setModal({buyer:l.users||{}, listing:l});
                     axios.post(`${API_URL}/listings/${l.id}/view`).catch(()=>{});

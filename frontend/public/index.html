@@ -215,6 +215,8 @@
 
     <!-- ── Splash Screen Styles ──────────────────────────────────────────── -->
     <style>
+      /* Always hidden from users — only exists for search-engine crawlers */
+      #praqen-seo-body { display: none !important; }
       #praqen-loader {
         position: fixed;
         top: 0; left: 0; right: 0; bottom: 0;
@@ -362,12 +364,14 @@
           var root = document.getElementById('root');
           if (root && root.children.length > 0) {
             observer.disconnect();
-            hideSeoBody(); // hide SEO content immediately — React has taken over
+            hideSeoBody();
             setTimeout(hideLoader, 300);
           }
         });
         observer.observe(document.getElementById('root'), { childList: true });
-        setTimeout(hideLoader, 4000);
+        // Fallback: if React hasn't mounted after 15 s (very slow network),
+        // hide everything so users don't see the raw SEO text.
+        setTimeout(function () { hideSeoBody(); hideLoader(); }, 15000);
       })();
     </script>
   </body>

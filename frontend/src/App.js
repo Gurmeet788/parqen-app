@@ -124,6 +124,41 @@ function App() {
     }
   }, [token]);
 
+  // Cleanup: remove any bad market cache (empty array or all-null users) so cards
+  // always have avatar/flag/feedback data on the next load.
+  useEffect(() => {
+    try {
+      const c = JSON.parse(localStorage.getItem('praqen_market_all') || 'null');
+      if (c) {
+        const empty = !Array.isArray(c.data) || c.data.length === 0;
+        const noUsers = !empty && !c.data.some(l => l.users && (l.users.id || l.users.username));
+        if (empty || noUsers) localStorage.removeItem('praqen_market_all');
+      }
+    } catch {}
+  }, []);
+
+  // Pre-warm the backend and pre-fetch marketplace listings as soon as app loads.
+  // This means by the time the user clicks Buy/Sell, the server is already awake
+  // and the listings are cached — so those pages open instantly.
+  useEffect(() => {
+    const prefetch = async () => {
+      try {
+        const c = JSON.parse(localStorage.getItem('praqen_market_all') || 'null');
+        if (c && Date.now() - c.ts < 60000) return; // already fresh, skip
+        const r = await axios.get(`${API_URL}/listings`, { timeout: 20000 });
+        const all = (r.data.listings || []).map(l => ({
+          ...l, users: Array.isArray(l.users) ? l.users[0] : l.users,
+        }));
+        if (all.length > 0) {
+          localStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() }));
+        }
+      } catch {}
+    };
+    // Delay 800ms so it doesn't compete with the auth/profile fetch on startup
+    const t = setTimeout(prefetch, 800);
+    return () => clearTimeout(t);
+  }, []);
+
   // Load user profile on mount
   useEffect(() => {
     if (token) {

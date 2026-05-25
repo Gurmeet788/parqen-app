@@ -984,8 +984,9 @@ function SkeletonCard() {
 export default function GiftCards({user}) {
   const navigate = useNavigate();
   const {rates:USD_RATES, btcUsd:contextBtcUsd} = useRates();
-  const _cacheAll = () => { try { const c=JSON.parse(localStorage.getItem('praqen_market_all')||'null'); if(!c||Date.now()-c.ts>300000) return null; return c?.data||null; } catch { return null; } };
-  const _gcNow    = () => { const a=_cacheAll(); return a?a.filter(l=>l.listing_type==='BUY_GIFT_CARD'||l.listing_type==='SELL_GIFT_CARD'):[]; };
+  const _hasUsers  = (data) => Array.isArray(data) && data.some(l => l.users && (l.users.id || l.users.username));
+  const _cacheAll  = () => { try { const c=JSON.parse(localStorage.getItem('praqen_market_all')||'null'); if(!c||Date.now()-c.ts>1800000||!_hasUsers(c.data)) return null; return c?.data||null; } catch { return null; } };
+  const _gcNow     = () => { const a=_cacheAll(); return a?a.filter(l=>l.listing_type==='BUY_GIFT_CARD'||l.listing_type==='SELL_GIFT_CARD'):[]; };
   const [listings,     setListings]     = useState(()=>_gcNow());
   const [loading,      setLoading]      = useState(()=>_gcNow().length===0);
   const [loadError,    setLoadError]    = useState(false);
@@ -1060,7 +1061,7 @@ export default function GiftCards({user}) {
     if (attempt === 1 && !force) {
       try {
         const c = JSON.parse(localStorage.getItem('praqen_market_all') || 'null');
-        if (c && Date.now() - c.ts < 90000) {
+        if (c && Date.now() - c.ts < 90000 && _hasUsers(c.data)) {
           const gcOffers = (c.data || []).filter(l => l.listing_type === 'BUY_GIFT_CARD' || l.listing_type === 'SELL_GIFT_CARD');
           if (gcOffers.length > 0) {
             setListings(gcOffers);
@@ -1073,7 +1074,7 @@ export default function GiftCards({user}) {
     setLoadError(false);
     setRetrying(false);
     try {
-      const r = await axios.get(`${API_URL}/listings`, { timeout: 8000 });
+      const r = await axios.get(`${API_URL}/listings`, { timeout: 20000 });
       const all=(r.data.listings||[]).map(l=>({...l,users:Array.isArray(l.users)?l.users[0]:l.users}));
       const data=all.filter(l=>l.listing_type==='BUY_GIFT_CARD'||l.listing_type==='SELL_GIFT_CARD');
       // Only update if we got real data — never blank out the list on an empty response

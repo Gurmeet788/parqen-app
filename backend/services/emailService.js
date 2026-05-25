@@ -576,11 +576,15 @@ async function sendBroadcastToAllUsers(subject, htmlBody, broadcastType = 'broad
 
   let sent = 0, failed = 0;
   for (const user of targets) {
+    // Personalise {username} placeholder for each recipient
+    const personalised = htmlBody
+      .replace(/\{username\}/gi, user.username || 'Trader');
+
     const result = await sendEmail({
       userId: user.id,
       to:     user.email,
       subject,
-      html:   base(subject, htmlBody),
+      html:   base(subject, personalised),
       type:   broadcastType,
     });
     if (result.success) sent++; else failed++;

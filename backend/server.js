@@ -77,7 +77,58 @@ function getCached(key) {
   return c && Date.now() - c.ts < MARKET_CACHE_TTL ? c.data : null;
 }
 function setCached(key, data) { _marketCache.set(key, { data, ts: Date.now() }); }
-function bustCache() { _marketCache.clear(); } // Call after any listing status change
+
+// When something changes (trade started, listing updated), clear the cache but immediately
+// kick off a background refresh so the NEXT user request hits a warm cache.
+let _cacheRefreshTimer = null;
+function bustCache() {
+  _marketCache.clear();
+  // Debounce: wait 1s then warm up the default listings key in the background
+  clearTimeout(_cacheRefreshTimer);
+  _cacheRefreshTimer = setTimeout(() => _warmListingsCache(), 1000);
+}
+
+async function _warmListingsCache() {
+  try {
+    const { data: rawListings } = await Promise.race([
+      supabaseAdmin.from('listings').select(
+        'id, seller_id, listing_type, gift_card_brand, status, bitcoin_price, margin, pricing_type, currency, currency_symbol, country, country_name, payment_method, payment_methods, amount_usd, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local, time_limit, trade_instructions, listing_terms, description, created_at, card_values, card_type, face_value'
+      ).eq('status', 'ACTIVE').order('created_at', { ascending: false }).limit(200),
+      new Promise(resolve => setTimeout(() => resolve({ data: [] }), 6000)),
+    ]);
+    if (!rawListings || rawListings.length === 0) return;
+
+    const sellerIdSet = [...new Set(rawListings.map(l => l.seller_id).filter(Boolean))];
+    if (sellerIdSet.length === 0) return;
+
+    const { data: usersData } = await Promise.race([
+      supabaseAdmin.from('users').select(
+        'id, username, full_name, average_rating, total_trades, completion_rate, is_id_verified, is_email_verified, last_login, last_seen_at, total_feedback_count, positive_feedback, negative_feedback, country, bio, badge, avatar_url'
+      ).in('id', sellerIdSet),
+      new Promise(resolve => setTimeout(() => resolve({ data: [] }), 5000)),
+    ]);
+
+    // Safety: if users query failed or returned nothing, do NOT cache — better to let the
+    // main /api/listings route handle it with a fresh full query.
+    if (!usersData || usersData.length === 0) return;
+
+    const userMap = {};
+    usersData.forEach(u => { userMap[u.id] = u; });
+
+    // Only include listings whose seller data was successfully fetched
+    const listings = rawListings
+      .filter(l => userMap[l.seller_id]) // skip any listing with no user data
+      .map(l => {
+        const u = userMap[l.seller_id];
+        return { ...l, users: { ...u, display_name: computeDisplayName(u), country: u.country || null } };
+      });
+
+    if (listings.length === 0) return; // nothing valid to cache
+    setCached('listings|||', listings);
+  } catch (e) {
+    console.error('[_warmListingsCache] error:', e.message);
+  }
+}
 
 // ── 2. Read & validate env vars immediately after loading ──────────────────
 const SUPABASE_URL              = process.env.SUPABASE_URL;
@@ -1357,7 +1408,8 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
       }
       if (!data) return res.status(404).json({ error: 'No account found for this phone number. Please register first.' });
       const token = jwt.sign({ userId: data.id, email: data.email }, JWT_SECRET, { expiresIn: '7d' });
-      await supabaseAdmin.from('users').update({ last_login: new Date() }).eq('id', data.id);
+      const nowPhone = new Date().toISOString();
+      await supabaseAdmin.from('users').update({ last_login: nowPhone, last_seen_at: nowPhone }).eq('id', data.id);
       detectAndSaveCountry(data.id, req, phone).catch(() => {});
       let btcAddress = data.bitcoin_wallet_address;
       if (!isRealBtcAddress(btcAddress)) {
@@ -1383,7 +1435,8 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     const validPassword = await bcrypt.compare(password, data.password_hash);
     if (!validPassword) return res.status(401).json({ error: 'Invalid credentials' });
     const token = jwt.sign({ userId: data.id, email }, JWT_SECRET, { expiresIn: '7d' });
-    await supabaseAdmin.from('users').update({ last_login: new Date() }).eq('id', data.id);
+    const now = new Date().toISOString();
+    await supabaseAdmin.from('users').update({ last_login: now, last_seen_at: now }).eq('id', data.id);
     detectAndSaveCountry(data.id, req).catch(() => {});
 
     // ── Auto-upgrade fake mock address to real HD wallet address ──────────
@@ -2448,6 +2501,22 @@ app.post('/api/users/heartbeat', verifyToken, async (req, res) => {
   }
 });
 
+// Lightweight batch endpoint — returns fresh last_seen_at for a list of user IDs.
+// Used by marketplace pages to show real-time online status without re-fetching full listings.
+app.get('/api/users/online-status', async (req, res) => {
+  try {
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const ids = (req.query.ids || '').split(',').map(s => s.trim()).filter(id => UUID_RE.test(id)).slice(0, 100);
+    if (ids.length === 0) return res.json({ status: {} });
+    const { data } = await supabaseAdmin.from('users').select('id, last_seen_at, last_login').in('id', ids);
+    const status = {};
+    (data || []).forEach(u => { status[u.id] = u.last_seen_at || u.last_login || null; });
+    res.json({ status });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/me/security — returns caller's real IP + geo for the Settings page
 app.get('/api/me/security', verifyToken, async (req, res) => {
   try {
@@ -3038,34 +3107,47 @@ app.get('/api/listings', async (req, res) => {
     ]);
     if (listErr) return res.status(400).json({ error: listErr.message });
 
-    // Step 2: fetch all user fields (profile + avatar) in a single query
+    // Step 2+3: fetch user profiles AND wallet balances in parallel (not sequential)
     const sellerIdSet = [...new Set((rawListings || []).map(l => l.seller_id).filter(Boolean))];
+    const btcRequiredTypes = ['SELL', 'SELL_BITCOIN', 'BUY_GIFT_CARD'];
+    const btcSellerIds = [...new Set((rawListings || []).filter(l => btcRequiredTypes.includes(l.listing_type)).map(l => l.seller_id).filter(Boolean))];
+
     let userMap = {};
+    let walletRows = [];
+
     if (sellerIdSet.length > 0) {
-      const { data: usersData } = await Promise.race([
-        supabaseAdmin.from('users').select(
-          'id, username, full_name, average_rating, total_trades, completion_rate, is_id_verified, is_email_verified, last_login, last_seen_at, total_feedback_count, positive_feedback, negative_feedback, country, bio, badge, avatar_url'
-        ).in('id', sellerIdSet),
-        new Promise(resolve => setTimeout(() => resolve({ data: [] }), 5000)),
+      const [usersResult, walletsResult] = await Promise.all([
+        Promise.race([
+          supabaseAdmin.from('users').select(
+            'id, username, full_name, average_rating, total_trades, completion_rate, is_id_verified, is_email_verified, last_login, last_seen_at, total_feedback_count, positive_feedback, negative_feedback, country, bio, badge, avatar_url'
+          ).in('id', sellerIdSet),
+          new Promise(resolve => setTimeout(() => resolve({ data: [] }), 10000)),
+        ]),
+        btcSellerIds.length > 0
+          ? Promise.race([
+              supabaseAdmin.from('wallets').select('user_id, balance_btc').in('user_id', btcSellerIds),
+              new Promise(resolve => setTimeout(() => resolve({ data: [] }), 4000)),
+            ])
+          : Promise.resolve({ data: [] }),
       ]);
-      (usersData || []).forEach(u => { userMap[u.id] = u; });
+      if (usersResult.error) {
+        console.error('[/api/listings] Users query FAILED:', usersResult.error.message, '| code:', usersResult.error.code);
+        return res.status(503).json({ error: 'Could not load seller profiles. Please retry in a moment.' });
+      }
+      if (!usersResult.data || usersResult.data.length === 0) {
+        // Users query timed out or returned nothing — don't serve/cache null-user cards
+        console.warn('[/api/listings] Users query returned 0 rows for', sellerIdSet.length, 'seller IDs. Timed out or RLS blocking. Returning 503.');
+        return res.status(503).json({ error: 'Could not load seller profiles. Please retry in a moment.' });
+      }
+      (usersResult.data || []).forEach(u => { userMap[u.id] = u; });
+      walletRows = walletsResult.data || [];
     }
 
     let listings = (rawListings || []).map(l => ({ ...l, users: userMap[l.seller_id] || null }));
 
-    // Listings that require the creator to hold BTC:
-    //   SELL / SELL_BITCOIN  → seller locks BTC in escrow
-    //   BUY_GIFT_CARD        → creator pays BTC to receive a gift card
-    const btcRequiredTypes = ['SELL', 'SELL_BITCOIN', 'BUY_GIFT_CARD'];
     const balanceCheckedListings = listings.filter(l => btcRequiredTypes.includes(l.listing_type));
 
     if (balanceCheckedListings.length > 0) {
-      const sellerIds = [...new Set(balanceCheckedListings.map(l => l.seller_id))];
-      const { data: walletRows } = await Promise.race([
-        supabaseAdmin.from('wallets').select('user_id, balance_btc').in('user_id', sellerIds),
-        new Promise(resolve => setTimeout(() => resolve({ data: [] }), 3000)),
-      ]);
-
       const balMap = {};
       (walletRows || []).forEach(w => { balMap[w.user_id] = parseFloat(w.balance_btc || 0); });
 
@@ -6662,6 +6744,9 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`✅ PRAQEN Backend running on http://localhost:${PORT}`);
   console.log('📋 Routes: /api/auth, /api/users, /api/listings, /api/trades, /api/my-trades, /api/wallet, /api/hd-wallet, /api/notifications');
+
+  // Pre-warm the listings cache so the first page load has user data ready
+  setTimeout(() => _warmListingsCache(), 2000);
 
   // Pause/reactivate offers based on live wallet balance — runs at startup then every 10 min
   syncAllOfferStatuses().catch(err => console.error('[startup] syncAllOfferStatuses:', err.message));
