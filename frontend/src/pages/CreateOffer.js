@@ -157,6 +157,7 @@ const CAT_COLORS = {
 const GC_BRANDS = [
   { name:'Amazon',              icon:'📦', color:'#FF9900' },
   { name:'Apple / iTunes',      icon:'🍎', color:'#555555' },
+  { name:'iTunes Denmark',      icon:'🍎', color:'#C5001A' },
   { name:'Google Play',         icon:'▶️',  color:'#34A853' },
   { name:'Steam',               icon:'🎮', color:'#1B2838' },
   { name:'eBay',                icon:'🛍️', color:'#E53238' },
@@ -920,7 +921,12 @@ export default function CreateOffer() {
                   {filteredBrands.map(b => {
                     const active = gcBrand === b.name;
                     return (
-                      <button key={b.name} onClick={() => setGcBrand(b.name)}
+                      <button key={b.name} onClick={() => {
+                          setGcBrand(b.name);
+                          if (b.name === 'iTunes Denmark') {
+                            setGcCurrencies([{ region:'iTunes Denmark', currency:'DKK', symbol:'kr', flag:'🇩🇰' }]);
+                          }
+                        }}
                         className="flex items-center gap-2 p-2.5 rounded-xl border-2 text-left transition-all"
                         style={{
                           borderColor: active ? C.purple : C.g200,

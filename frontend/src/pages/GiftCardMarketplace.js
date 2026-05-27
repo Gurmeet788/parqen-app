@@ -224,7 +224,7 @@ const GC_BRAND_GROUPS = [
     'Jumia Voucher',
   ]},
   { cat: '📱 Tech',               color: '#3B82F6', items: [
-    'Apple / iTunes','Google Play','Microsoft / Xbox Store',
+    'Apple / iTunes','iTunes Denmark','Google Play','Microsoft / Xbox Store',
   ]},
   { cat: '🎮 Gaming',             color: '#7C3AED', items: [
     'Steam','Xbox','PlayStation','Nintendo eShop',
@@ -1057,11 +1057,11 @@ export default function GiftCards({user}) {
   },[]);
 
   const loadListings = async (attempt = 1, force = false) => {
-    // Skip fetch if cache is fresh (< 90 seconds) and not forced
+    // Skip fetch if cache is fresh (< 5 minutes) and not forced
     if (attempt === 1 && !force) {
       try {
         const c = JSON.parse(localStorage.getItem('praqen_market_all') || 'null');
-        if (c && Date.now() - c.ts < 90000 && _hasUsers(c.data)) {
+        if (c && Date.now() - c.ts < 300000 && _hasUsers(c.data)) {
           const gcOffers = (c.data || []).filter(l => l.listing_type === 'BUY_GIFT_CARD' || l.listing_type === 'SELL_GIFT_CARD');
           if (gcOffers.length > 0) {
             setListings(gcOffers);
@@ -1098,7 +1098,7 @@ export default function GiftCards({user}) {
     } catch {
       if (attempt < 3) {
         setRetrying(true);
-        setTimeout(() => loadListings(attempt + 1, force), 2000);
+        setTimeout(() => loadListings(attempt + 1, force), 1000);
       } else {
         setRetrying(false);
         if (!listings.length) setLoadError(true);
@@ -1623,84 +1623,119 @@ export default function GiftCards({user}) {
           <Shield size={11} style={{color:'#2D6A4F',flexShrink:0}}/>
           <span style={{fontSize:11,color:'#166534',lineHeight:1.3}}><strong>Trade Safely:</strong> Only share gift card codes inside the active escrow trade. Every trade is platform-protected.</span>
         </div>
-      </div>
 
-      {/* ══ AFFILIATE PROMO — compact white card ══════════════ */}
-      <div style={{background:'#fff',borderTop:'1px solid #E2E8F0',padding:'14px 14px 12px',fontFamily:"'DM Sans',sans-serif"}}>
+        {/* ── AFFILIATE PROMO card — aligned inside offer grid ── */}
+        <div style={{background:'#fff',borderRadius:12,border:'1px solid #E2E8F0',overflow:'hidden'}}>
 
-        {/* Top row: label + headline + CTA */}
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom:10}}>
-          <div style={{minWidth:0}}>
-            <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:3}}>
-              <span style={{fontSize:9,fontWeight:800,color:'#F59E0B',background:'#FEF3C7',border:'1px solid #FDE68A',borderRadius:4,padding:'1px 6px',letterSpacing:0.4,textTransform:'uppercase'}}>₿ Affiliate</span>
-              <span style={{fontSize:9,color:'#94A3B8',fontWeight:500}}>Earn on every referral trade</span>
-            </div>
-            <p style={{margin:0,fontSize:13,fontWeight:800,color:'#1E293B',lineHeight:1.2}}>Invite friends. Earn BTC forever.</p>
-          </div>
-          <button
-            onClick={()=>navigate('/dashboard?tab=affiliate')}
-            style={{flexShrink:0,padding:'7px 12px',borderRadius:8,border:'none',cursor:'pointer',background:'linear-gradient(135deg,#2D6A4F,#40916C)',color:'#fff',fontWeight:800,fontSize:10,whiteSpace:'nowrap',boxShadow:'0 2px 8px rgba(45,106,79,0.25)'}}>
-            Get Link →
-          </button>
-        </div>
-
-        {/* Commission tiers — compact horizontal pills */}
-        <div style={{display:'flex',gap:4,marginBottom:10,overflowX:'auto',paddingBottom:1}}>
-          {[
-            {refs:'0–9',rate:'0.20%',c:'#059669'},
-            {refs:'10–24',rate:'0.25%',c:'#0D9488'},
-            {refs:'25–49',rate:'0.35%',c:'#F59E0B'},
-            {refs:'50–99',rate:'0.40%',c:'#EA580C'},
-            {refs:'100+',rate:'0.50%',c:'#7C3AED'},
-          ].map(t=>(
-            <div key={t.refs} style={{flex:'0 0 auto',background:`${t.c}0D`,border:`1px solid ${t.c}30`,borderRadius:6,padding:'4px 8px',textAlign:'center'}}>
-              <div style={{fontSize:11,fontWeight:800,color:t.c,lineHeight:1}}>{t.rate}</div>
-              <div style={{fontSize:8,color:'#94A3B8',fontWeight:500,marginTop:1}}>{t.refs} refs</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Leaderboard — ultra-compact */}
-        {affLeaderboard.length>0&&(
-          <div style={{background:'#F8FAFC',border:'1px solid #E2E8F0',borderRadius:10,overflow:'hidden'}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'6px 10px',borderBottom:'1px solid #E2E8F0'}}>
-              <span style={{fontSize:9,fontWeight:800,color:'#64748B',textTransform:'uppercase',letterSpacing:0.8}}>Top Earners</span>
-              <span style={{fontSize:9,color:'#94A3B8',fontWeight:500}}>All Time</span>
-            </div>
-            {affLeaderboard.map((u,i)=>{
-              const medals=['🥇','🥈','🥉'];
-              const badgeColors={BEGINNER:'#7C3AED',PRO:'#059669',EXPERT:'#1E40AF',AMBASSADOR:'#0D9488',LEGEND:'#D97706'};
-              const bc=badgeColors[u.badge]||'#64748B';
-              const earnedUsd=((u.earned_btc||0)*(btcPrice||76000));
-              return(
-                <div key={u.username} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',borderBottom:i<affLeaderboard.length-1?'1px solid #F1F5F9':'none'}}>
-                  <span style={{fontSize:13,flexShrink:0}}>{medals[i]}</span>
-                  <div style={{width:22,height:22,borderRadius:'50%',flexShrink:0,background:`${bc}18`,border:`1.5px solid ${bc}40`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:900,color:bc}}>
-                    {(u.username||'?')[0].toUpperCase()}
-                  </div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap'}}>
-                      <span style={{fontSize:10,fontWeight:700,color:'#1E293B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.username}</span>
-                      <span style={{fontSize:7,fontWeight:900,color:bc,background:`${bc}12`,border:`1px solid ${bc}30`,borderRadius:3,padding:'1px 4px',letterSpacing:0.4,flexShrink:0,textTransform:'uppercase'}}>{u.badge||'BEGINNER'}</span>
-                    </div>
-                    <span style={{fontSize:8,color:'#94A3B8',fontWeight:500}}>{u.referrals} refs · {u.affiliate_trades||u.total_trades} trades</span>
-                  </div>
-                  <div style={{textAlign:'right',flexShrink:0}}>
-                    <div style={{fontSize:10,fontWeight:800,color:'#F59E0B'}}>₿{(()=>{const v=parseFloat(u.earned_btc||0);return v>0&&v<0.0001?v.toFixed(8):v.toFixed(5);})()}</div>
-                    <div style={{fontSize:8,color:'#94A3B8',fontWeight:500}}>${earnedUsd>=1000?(earnedUsd/1000).toFixed(1)+'k':earnedUsd>=1?earnedUsd.toFixed(2):earnedUsd<0.01?'<$0.01':earnedUsd.toFixed(2)}</div>
-                  </div>
+          {/* Welcome bonus strip — teal/gift card theme */}
+          <div style={{background:'linear-gradient(135deg,#134E4A 0%,#0F766E 60%,#0D9488 100%)',padding:'10px 12px',borderBottom:'2px solid #F4A422'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginBottom:7}}>
+              <div style={{display:'flex',alignItems:'center',gap:6}}>
+                <div style={{width:26,height:26,borderRadius:8,background:'#F4A422',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:13}}>🎁</div>
+                <div>
+                  <p style={{margin:0,fontSize:11,fontWeight:900,color:'#FFFFFF',lineHeight:1.1}}>New users earn <span style={{color:'#99F6E4'}}>$2 FREE Bitcoin!</span></p>
+                  <p style={{margin:0,fontSize:9,color:'rgba(255,255,255,0.55)',marginTop:1}}>Offer valid 30 days · Share your link so friends can claim it</p>
                 </div>
-              );
-            })}
-            <div style={{padding:'5px 10px',background:'#FFFBEB',borderTop:'1px solid #FDE68A',textAlign:'center'}}>
-              <span style={{fontSize:9,color:'#92400E',fontWeight:600}}>🏆 Could you be next?</span>
+              </div>
+              <button
+                onClick={()=>navigate('/register')}
+                style={{flexShrink:0,padding:'5px 10px',borderRadius:7,border:'none',cursor:'pointer',background:'#F4A422',color:'#134E4A',fontWeight:900,fontSize:9,whiteSpace:'nowrap'}}>
+                Claim →
+              </button>
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:4}}>
+              {[
+                {icon:'✅',label:'Register',sub:'$1 locked'},
+                {icon:'⚡',label:'Verify',  sub:'stays safe'},
+                {icon:'₿', label:'1 Trade', sub:'$2 unlocks'},
+              ].map(({icon,label,sub},i,arr)=>(
+                <div key={label} style={{display:'flex',alignItems:'center',gap:4,flex:1}}>
+                  <div style={{flex:1,background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.15)',borderRadius:6,padding:'4px 6px',textAlign:'center'}}>
+                    <div style={{fontSize:11,lineHeight:1}}>{icon}</div>
+                    <div style={{fontSize:9,fontWeight:800,color:'#fff',marginTop:1,lineHeight:1}}>{label}</div>
+                    <div style={{fontSize:7,color:'rgba(255,255,255,0.45)',marginTop:1}}>{sub}</div>
+                  </div>
+                  {i<arr.length-1&&<div style={{fontSize:8,color:'rgba(255,255,255,0.3)',flexShrink:0}}>›</div>}
+                </div>
+              ))}
             </div>
           </div>
-        )}
 
-        <p style={{margin:'8px 0 0',textAlign:'center',fontSize:9,color:'#94A3B8',fontWeight:500}}>
-          Free to join · No minimum payout · Lifetime commission
-        </p>
+          {/* Top row: label + headline + CTA */}
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'10px 12px 8px'}}>
+            <div style={{minWidth:0}}>
+              <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:3}}>
+                <span style={{fontSize:9,fontWeight:800,color:'#F59E0B',background:'#FEF3C7',border:'1px solid #FDE68A',borderRadius:4,padding:'1px 6px',letterSpacing:0.4,textTransform:'uppercase'}}>₿ Affiliate</span>
+                <span style={{fontSize:9,color:'#94A3B8',fontWeight:500}}>Earn on every referral trade</span>
+              </div>
+              <p style={{margin:0,fontSize:13,fontWeight:800,color:'#1E293B',lineHeight:1.2}}>Invite friends. Earn BTC forever.</p>
+            </div>
+            <button
+              onClick={()=>navigate('/dashboard?tab=affiliate')}
+              style={{flexShrink:0,padding:'7px 12px',borderRadius:8,border:'none',cursor:'pointer',background:'linear-gradient(135deg,#0F766E,#0D9488)',color:'#fff',fontWeight:800,fontSize:10,whiteSpace:'nowrap',boxShadow:'0 2px 8px rgba(13,148,136,0.25)'}}>
+              Get Link →
+            </button>
+          </div>
+
+          {/* Commission tiers */}
+          <div style={{display:'flex',gap:4,padding:'0 12px 10px',overflowX:'auto'}}>
+            {[
+              {refs:'0–9',  rate:'0.20%',c:'#059669'},
+              {refs:'10–24',rate:'0.25%',c:'#0D9488'},
+              {refs:'25–49',rate:'0.35%',c:'#F59E0B'},
+              {refs:'50–99',rate:'0.40%',c:'#EA580C'},
+              {refs:'100+', rate:'0.50%',c:'#7C3AED'},
+            ].map(t=>(
+              <div key={t.refs} style={{flex:'0 0 auto',background:`${t.c}0D`,border:`1px solid ${t.c}30`,borderRadius:6,padding:'4px 8px',textAlign:'center'}}>
+                <div style={{fontSize:11,fontWeight:800,color:t.c,lineHeight:1}}>{t.rate}</div>
+                <div style={{fontSize:8,color:'#94A3B8',fontWeight:500,marginTop:1}}>{t.refs} refs</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Leaderboard */}
+          {affLeaderboard.length>0&&(
+            <div style={{borderTop:'1px solid #F1F5F9'}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'6px 12px',borderBottom:'1px solid #F1F5F9',background:'#F8FAFC'}}>
+                <span style={{fontSize:9,fontWeight:800,color:'#64748B',textTransform:'uppercase',letterSpacing:0.8}}>Top Earners</span>
+                <span style={{fontSize:9,color:'#94A3B8',fontWeight:500}}>All Time</span>
+              </div>
+              {affLeaderboard.map((u,i)=>{
+                const medals=['🥇','🥈','🥉'];
+                const badgeColors={BEGINNER:'#7C3AED',PRO:'#059669',EXPERT:'#1E40AF',AMBASSADOR:'#0D9488',LEGEND:'#D97706'};
+                const bc=badgeColors[u.badge]||'#64748B';
+                const earnedUsd=((u.earned_btc||0)*(btcPrice||76000));
+                return(
+                  <div key={u.username} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 12px',borderBottom:i<affLeaderboard.length-1?'1px solid #F8FAFC':'none'}}>
+                    <span style={{fontSize:13,flexShrink:0}}>{medals[i]}</span>
+                    <div style={{width:22,height:22,borderRadius:'50%',flexShrink:0,background:`${bc}18`,border:`1.5px solid ${bc}40`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:900,color:bc}}>
+                      {(u.username||'?')[0].toUpperCase()}
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap'}}>
+                        <span style={{fontSize:10,fontWeight:700,color:'#1E293B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.username}</span>
+                        <span style={{fontSize:7,fontWeight:900,color:bc,background:`${bc}12`,border:`1px solid ${bc}30`,borderRadius:3,padding:'1px 4px',letterSpacing:0.4,flexShrink:0,textTransform:'uppercase'}}>{u.badge||'BEGINNER'}</span>
+                      </div>
+                      <span style={{fontSize:8,color:'#94A3B8',fontWeight:500}}>{u.referrals} refs · {u.affiliate_trades||u.total_trades} trades</span>
+                    </div>
+                    <div style={{textAlign:'right',flexShrink:0}}>
+                      <div style={{fontSize:10,fontWeight:800,color:'#F59E0B'}}>₿{(()=>{const v=parseFloat(u.earned_btc||0);return v>0&&v<0.0001?v.toFixed(8):v.toFixed(5);})()}</div>
+                      <div style={{fontSize:8,color:'#94A3B8',fontWeight:500}}>${earnedUsd>=1000?(earnedUsd/1000).toFixed(1)+'k':earnedUsd>=1?earnedUsd.toFixed(2):earnedUsd<0.01?'<$0.01':earnedUsd.toFixed(2)}</div>
+                    </div>
+                  </div>
+                );
+              })}
+              <div style={{padding:'5px 12px',background:'#F0FDF4',borderTop:'1px solid #BBF7D0',textAlign:'center'}}>
+                <span style={{fontSize:9,color:'#166534',fontWeight:600}}>🏆 Could you be next?</span>
+              </div>
+            </div>
+          )}
+
+          <p style={{margin:0,padding:'6px 12px 10px',textAlign:'center',fontSize:9,color:'#94A3B8',fontWeight:500}}>
+            Free to join · No minimum payout · Lifetime commission
+          </p>
+        </div>
+
       </div>
 
       {/* ══════════════════════════════════════════════════

@@ -971,9 +971,12 @@ export default function TradeDetail({user}) {
       if(t.seller) setSeller(t.seller);
       if(t.buyer)  setBuyer(t.buyer);
     }catch(e){
+      const status = e.response?.status;
+      if(status===401){navigate('/login');return;}
       setLoadErr(true);
-      if(e.response?.status===400)toast.error('Trade not found');
-      else toast.error('Failed to load trade');
+      if(status===404) toast.error('Trade not found');
+      else if(status===403) toast.error('You do not have access to this trade');
+      else toast.error('Failed to load trade — please try again');
     }finally{setLoading(false);}
   };
 
@@ -1187,9 +1190,14 @@ export default function TradeDetail({user}) {
         <AlertCircle size={56} style={{color:C.danger}} className="mx-auto"/>
         <p className="font-black text-xl" style={{color:C.forest}}>Trade not found</p>
         <p className="text-sm text-gray-500">This trade doesn't exist or you don't have access.</p>
-        <button onClick={()=>navigate('/dashboard')} className="px-6 py-2.5 rounded-xl font-bold text-white text-sm" style={{backgroundColor:C.green}}>
-          ← Back to Dashboard
-        </button>
+        <div className="flex gap-3 justify-center">
+          <button onClick={()=>{setLoadErr(false);setLoading(true);loadAll();}} className="px-6 py-2.5 rounded-xl font-bold text-sm border-2" style={{borderColor:C.green,color:C.green}}>
+            Try Again
+          </button>
+          <button onClick={()=>navigate('/dashboard')} className="px-6 py-2.5 rounded-xl font-bold text-white text-sm" style={{backgroundColor:C.green}}>
+            ← Dashboard
+          </button>
+        </div>
       </div>
     </div>
   );

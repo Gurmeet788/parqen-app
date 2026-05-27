@@ -215,7 +215,7 @@
 
     <!-- ── Splash Screen Styles ──────────────────────────────────────────── -->
     <style>
-      /* Always hidden from users — only exists for search-engine crawlers */
+      /* Always hidden from users — belt-and-suspenders with inline hidden + display:none */
       #praqen-seo-body { display: none !important; }
       #praqen-loader {
         position: fixed;
@@ -294,7 +294,7 @@
 
     <!-- SEO content — Google reads this before JavaScript runs.
          Hidden immediately once React mounts via the MutationObserver below. -->
-    <main id="praqen-seo-body" style="font-family:Arial,sans-serif;max-width:900px;margin:0 auto;padding:32px 24px;color:#1B4332;">
+    <div id="praqen-seo-body" hidden aria-hidden="true" style="display:none;font-family:Arial,sans-serif;max-width:900px;margin:0 auto;padding:32px 24px;color:#1B4332;">
       <h1>PRAQEN — Buy &amp; Sell Bitcoin P2P in Africa</h1>
       <p>Africa's most trusted peer-to-peer Bitcoin and gift card trading platform. Buy or sell Bitcoin instantly with MTN Mobile Money, Airtel Money, M-Pesa, and bank transfer. Escrow-protected. 0.5% flat fee. 180+ countries. No hidden charges.</p>
 
@@ -335,7 +335,7 @@
         <a href="/signup" style="margin-right:16px;">Create Account</a>
         <a href="/login">Login</a>
       </nav>
-    </main>
+    </div>
 
     <!-- PRAQEN Splash Loader — hidden once React mounts -->
     <div id="praqen-loader" aria-hidden="true">
@@ -369,9 +369,8 @@
           }
         });
         observer.observe(document.getElementById('root'), { childList: true });
-        // Fallback: if React hasn't mounted after 15 s (very slow network),
-        // hide everything so users don't see the raw SEO text.
-        setTimeout(function () { hideSeoBody(); hideLoader(); }, 15000);
+        // Fallback: hide loader/SEO body after 3 s if React hasn't mounted.
+        setTimeout(function () { hideSeoBody(); hideLoader(); }, 3000);
       })();
     </script>
   </body>

@@ -1,5 +1,6 @@
 ﻿import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import BonusBanner from '../components/BonusBanner';
 import axios from 'axios';
 import { useLocalUser } from '../hooks/useLocalUser';
 import {
@@ -1188,6 +1189,9 @@ export default function Dashboard({ user }) {
           </button>
         </div>
       </div>
+
+      {/* ── WELCOME BONUS BANNER ────────────────────────────────────────────────── */}
+      <BonusBanner userId={user?.id} />
 
       <div className="max-w-6xl mx-auto px-4 py-5 space-y-5">
 

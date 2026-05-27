@@ -9,6 +9,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
 import WelcomeModal from './components/WelcomeModal';
+import WelcomeBonusModal from './components/WelcomeBonusModal';
 import SuggestionsPanel from './components/SuggestionsPanel';
 import { NotificationPrompt, AndroidInstallBanner, IOSInstallGuide } from './components/PushSetup';
 
@@ -113,6 +114,7 @@ function App() {
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
   const [showWelcome, setShowWelcome] = useState(false);
+  const [showBonusModal, setShowBonusModal] = useState(false);
 
   // Setup axios interceptor for auth
   useEffect(() => {
@@ -179,9 +181,14 @@ function App() {
     return () => window.removeEventListener('userUpdated', handleUserUpdated);
   }, [token]);
 
-  // Show welcome tour once per user — fires whenever user object is set
+  // Show welcome bonus modal first, then the tour — each fires once per user
   useEffect(() => {
-    if (user?.id && !localStorage.getItem(`prq_welcomed_${user.id}`)) {
+    if (!user?.id) return;
+    const bonusKey  = `prq_bonus_shown_${user.id}`;
+    const tourKey   = `prq_welcomed_${user.id}`;
+    if (!localStorage.getItem(bonusKey)) {
+      setShowBonusModal(true); // tour deferred until bonus modal closes
+    } else if (!localStorage.getItem(tourKey)) {
       setShowWelcome(true);
     }
   }, [user?.id]);
@@ -265,7 +272,17 @@ function App() {
       <AppShell>
         <Navbar user={user} onLogout={logout} />
 
-        {showWelcome && user && (
+        {showBonusModal && user && (
+          <WelcomeBonusModal user={user} onClose={() => {
+            localStorage.setItem(`prq_bonus_shown_${user.id}`, '1');
+            setShowBonusModal(false);
+            if (!localStorage.getItem(`prq_welcomed_${user.id}`)) {
+              setShowWelcome(true);
+            }
+          }} />
+        )}
+
+        {showWelcome && user && !showBonusModal && (
           <WelcomeModal user={user} onClose={() => setShowWelcome(false)} />
         )}
 

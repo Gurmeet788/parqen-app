@@ -133,6 +133,33 @@ class DepositMonitor {
     this.intervalId = null;
     this.network    = null;
     this.apiBase    = null;
+    // Fallback APIs tried in order when primary times out
+    this._apiFallbacks = [
+      'https://mempool.space/api',
+      'https://blockstream.info/api',
+    ];
+  }
+
+  // ── Fetch address data with automatic fallback ────────────────────────────
+  async _fetchAddress(address) {
+    let lastErr;
+    for (const api of this._apiFallbacks) {
+      try {
+        const resp = await axios.get(`${api}/address/${address}`, { timeout: 14000 });
+        if (this.apiBase !== api) {
+          console.log(`[DepositMonitor] Using API: ${api}`);
+          this.apiBase = api; // switch primary to the one that's working
+        }
+        return resp.data;
+      } catch (err) {
+        lastErr = err;
+        const isNetwork = ['ETIMEDOUT','ECONNREFUSED','ENOTFOUND','ECONNRESET'].includes(err.code);
+        if (!isNetwork) throw err; // non-network errors propagate immediately
+        // rotate: put the failed API at the back so the next one is tried first
+        this._apiFallbacks.push(this._apiFallbacks.shift());
+      }
+    }
+    throw lastErr;
   }
 
   // ── Start background polling ───────────────────────────────────────────────
@@ -284,9 +311,9 @@ class DepositMonitor {
         username = u?.username || userId.slice(0, 8);
       }
 
-      // ── Step 1: Fetch on-chain confirmed balance from mempool.space ──────
-      const resp = await axios.get(`${this.apiBase}/address/${address}`, { timeout: 8000 });
-      const chainStats    = resp.data?.chain_stats || {};
+      // ── Step 1: Fetch on-chain confirmed balance (mempool.space → blockstream fallback) ──
+      const addrData      = await this._fetchAddress(address);
+      const chainStats    = addrData?.chain_stats || {};
       const blockchainSats = (chainStats.funded_txo_sum || 0) - (chainStats.spent_txo_sum || 0);
       const blockchainBTC  = parseFloat((blockchainSats / 1e8).toFixed(8));
 
@@ -479,9 +506,14 @@ class DepositMonitor {
 
     } catch (err) {
       if (err.response?.status === 429) {
-        console.warn(`[DepositMonitor] Rate limited by mempool.space — will retry next cycle`);
+        console.warn(`[DepositMonitor] Rate limited — will retry next cycle`);
       } else {
-        console.error(`[DepositMonitor] Error checking ${address.slice(0, 12)}…:`, err.message || err.code || String(err));
+        const isTimeout = ['ETIMEDOUT','ECONNREFUSED','ENOTFOUND','ECONNRESET'].includes(err.code);
+        if (isTimeout) {
+          console.warn(`[DepositMonitor] All APIs unreachable for ${address.slice(0, 12)}… — will retry next cycle`);
+        } else {
+          console.error(`[DepositMonitor] Error checking ${address.slice(0, 12)}…:`, err.message || err.code || String(err));
+        }
       }
     }
   }
@@ -545,8 +577,7 @@ class DepositMonitor {
     if (!address) return;
 
     try {
-      const resp = await axios.get(`${this.apiBase}/address/${address}`, { timeout: 8000 });
-      const d    = resp.data;
+      const d    = await this._fetchAddress(address);
       const confirmedSats = d.chain_stats.funded_txo_sum - d.chain_stats.spent_txo_sum;
       const confirmedBTC  = confirmedSats / 1e8;
       const requiredBTC   = parseFloat(amount_btc || 0);

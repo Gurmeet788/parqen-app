@@ -1,14 +1,15 @@
 // services/balanceIntegrityService.js
 // PRAQEN — Daily Balance Integrity Checker
 //
-// What it does:
-//   For every user, recompute their true balance from the wallet_transactions
-//   ledger (the source of truth) and compare it to what user_balances shows.
-//   If they disagree by more than 1 satoshi, auto-correct and log the discrepancy.
+// Strategy: compare wallets.balance_btc (primary source of truth, updated
+// atomically on every trade/deposit/withdrawal) against user_balances.balance_btc
+// (secondary denormalised table). When they drift, sync user_balances to match wallets.
 //
-// When it runs:
-//   Called once on server startup and then every 24 hours.
-//   Also exported so it can be triggered manually from the admin panel.
+// We do NOT recompute from wallet_transactions because that ledger is incomplete —
+// escrow releases, referral commissions, admin credits and bonus payouts update
+// wallets directly without always creating a wallet_transactions entry.
+//
+// When it runs: once on startup, then every 24 hours.
 
 'use strict';
 
@@ -22,116 +23,99 @@ const supabaseAdmin = createClient(
 
 // 1 satoshi tolerance for floating-point rounding
 const TOLERANCE_BTC = 0.000000011;
+const PAGE_SIZE     = 50;
 
 async function runIntegrityCheck() {
   console.log('\n🔍 [BalanceIntegrity] Starting daily balance check...');
   const started = Date.now();
   let checked = 0, corrected = 0, errors = 0;
 
-  const PAGE_SIZE = 50;
-  const CREDIT_TYPES = new Set(['DEPOSIT', 'ESCROW_REFUND', 'ESCROW_RELEASE', 'TRANSFER_IN', 'AFFILIATE_WITHDRAWAL']);
-  const DEBIT_TYPES  = new Set(['ESCROW_LOCK', 'WITHDRAWAL', 'TRANSFER_OUT', 'FEE']);
-
   try {
-    // Process user_balances in pages to avoid one massive table scan
-    let offset = 0;
+    let offset  = 0;
     let hasMore = true;
 
     while (hasMore) {
-      const { data: users, error: usersErr } = await supabaseAdmin
-        .from('user_balances')
+      // wallets is the source of truth — read it in pages
+      const { data: walletRows, error: wErr } = await supabaseAdmin
+        .from('wallets')
         .select('user_id, balance_btc')
         .range(offset, offset + PAGE_SIZE - 1);
 
-      if (usersErr || !users) {
-        console.error('[BalanceIntegrity] Could not fetch users:', usersErr?.message);
+      if (wErr || !walletRows) {
+        console.error('[BalanceIntegrity] Could not fetch wallets:', wErr?.message);
         break;
       }
 
-      hasMore = users.length === PAGE_SIZE;
-      offset += PAGE_SIZE;
+      hasMore  = walletRows.length === PAGE_SIZE;
+      offset  += PAGE_SIZE;
 
-      for (const row of users) {
+      for (const walletRow of walletRows) {
         try {
-          const userId = row.user_id;
+          const userId        = walletRow.user_id;
+          const trueBtc       = parseFloat(parseFloat(walletRow.balance_btc || 0).toFixed(8));
 
-          // Sum all CONFIRMED wallet_transactions for this user
-          // Credits: DEPOSIT, ESCROW_REFUND, ESCROW_RELEASE, TRANSFER_IN, AFFILIATE_WITHDRAWAL
-          // Debits: ESCROW_LOCK, WITHDRAWAL, TRANSFER_OUT, FEE
-          const { data: txs, error: txErr } = await supabaseAdmin
-            .from('wallet_transactions')
-            .select('type, amount_btc, status')
-            .eq('user_id', userId)
-            .eq('status', 'CONFIRMED');
-
-          if (txErr) { errors++; continue; }
-
-          let computedBtc = 0;
-          for (const tx of (txs || [])) {
-            const amt = parseFloat(tx.amount_btc || 0);
-            if (CREDIT_TYPES.has(tx.type)) computedBtc += amt;
-            else if (DEBIT_TYPES.has(tx.type)) computedBtc -= amt;
+          // Negative wallet balance is itself a data problem — skip and flag
+          if (trueBtc < 0) {
+            console.error(
+              `[BalanceIntegrity] ❌ Negative wallets.balance_btc for user ${userId.slice(0,8)} ` +
+              `(${trueBtc.toFixed(8)} BTC) — manual review needed`
+            );
+            errors++;
+            continue;
           }
-          computedBtc = parseFloat(computedBtc.toFixed(8));
-
-          const storedBtc = parseFloat(row.balance_btc || 0);
-          const diff = Math.abs(computedBtc - storedBtc);
 
           checked++;
 
-          if (diff > TOLERANCE_BTC) {
-            console.warn(
-              `[BalanceIntegrity] ⚠️  MISMATCH user ${userId.slice(0,8)}: ` +
-              `stored=${storedBtc.toFixed(8)} computed=${computedBtc.toFixed(8)} diff=${diff.toFixed(8)}`
-            );
+          // Read user_balances (secondary)
+          const { data: ubRow, error: ubErr } = await supabaseAdmin
+            .from('user_balances')
+            .select('balance_btc')
+            .eq('user_id', userId)
+            .maybeSingle();
 
-            // Never auto-correct to a negative balance — that means the transaction
-            // ledger has more debits than credits, which is a data issue to investigate,
-            // not something we should stamp onto the user's wallet.
-            if (computedBtc < 0) {
-              console.error(
-                `[BalanceIntegrity] ❌ SKIPPING correction for user ${userId.slice(0,8)} — ` +
-                `computed balance is negative (${computedBtc.toFixed(8)} BTC). Manual review needed.`
-              );
-              errors++;
-              continue;
-            }
+          if (ubErr) { errors++; continue; }
 
-            // Auto-correct all balance tables to match the transaction ledger.
-            // wallets is updated first as it is the single source of truth.
-            await supabaseAdmin.from('wallets')
-              .upsert(
-                { user_id: userId, balance_btc: computedBtc, locked_balance_btc: 0, private_key: 'placeholder_private_key', updated_at: new Date().toISOString() },
-                { onConflict: 'user_id' }
-              );
-            await supabaseAdmin.from('user_balances')
-              .update({ balance_btc: computedBtc, updated_at: new Date().toISOString() })
-              .eq('user_id', userId);
-            await supabaseAdmin.from('user_wallets')
-              .update({ balance_btc: computedBtc, updated_at: new Date().toISOString() })
-              .eq('user_id', userId);
+          const secondaryBtc = parseFloat(parseFloat(ubRow?.balance_btc || 0).toFixed(8));
+          const diff         = Math.abs(trueBtc - secondaryBtc);
 
-            // Log the correction so you can investigate root cause later
-            // Use try/catch instead of .catch() — Supabase v2 builder is PromiseLike, not a full Promise
-            try {
-              await supabaseAdmin.from('balance_audit').insert({
-                user_id:     userId,
-                change_btc:  parseFloat((computedBtc - storedBtc).toFixed(8)),
-                new_balance: computedBtc,
-                reason:      'INTEGRITY_CORRECTION',
-                created_at:  new Date().toISOString(),
-              });
-            } catch (_) { /* balance_audit table may not exist yet — non-fatal */ }
+          if (diff <= TOLERANCE_BTC) continue; // in sync — nothing to do
 
-            corrected++;
+          console.warn(
+            `[BalanceIntegrity] ⚠️  MISMATCH user ${userId.slice(0,8)}: ` +
+            `wallets=${trueBtc.toFixed(8)} user_balances=${secondaryBtc.toFixed(8)} diff=${diff.toFixed(8)}`
+          );
+
+          // Sync user_balances to match wallets (never the other way — wallets is authoritative)
+          const { error: updateErr } = await supabaseAdmin
+            .from('user_balances')
+            .update({ balance_btc: trueBtc, updated_at: new Date().toISOString() })
+            .eq('user_id', userId);
+
+          if (updateErr) {
+            console.error(`[BalanceIntegrity] Failed to sync user ${userId.slice(0,8)}:`, updateErr.message);
+            errors++;
+            continue;
           }
+
+          // Log to audit table (non-fatal if table doesn't exist)
+          try {
+            await supabaseAdmin.from('balance_audit').insert({
+              user_id:     userId,
+              change_btc:  parseFloat((trueBtc - secondaryBtc).toFixed(8)),
+              new_balance: trueBtc,
+              reason:      'INTEGRITY_SYNC',
+              created_at:  new Date().toISOString(),
+            });
+          } catch (_) {}
+
+          corrected++;
         } catch (userErr) {
           errors++;
           console.error('[BalanceIntegrity] Error processing user:', userErr.message);
         }
       }
 
-      // Small pause between pages to spread Disk IO instead of bursting
+      // Small pause between pages to avoid DB bursts
       if (hasMore) await new Promise(r => setTimeout(r, 500));
     }
   } catch (err) {
@@ -147,14 +131,15 @@ async function runIntegrityCheck() {
   return { checked, corrected, errors };
 }
 
-// Start the 24-hour recurring check
 function start() {
-  // Run once immediately on startup (catches anything that happened while server was offline)
-  runIntegrityCheck().catch(err => console.error('[BalanceIntegrity] Startup check failed:', err.message));
+  runIntegrityCheck().catch(err =>
+    console.error('[BalanceIntegrity] Startup check failed:', err.message)
+  );
 
-  // Then every 24 hours
   setInterval(() => {
-    runIntegrityCheck().catch(err => console.error('[BalanceIntegrity] Scheduled check failed:', err.message));
+    runIntegrityCheck().catch(err =>
+      console.error('[BalanceIntegrity] Scheduled check failed:', err.message)
+    );
   }, 24 * 60 * 60 * 1000);
 
   console.log('🛡️  Balance integrity checker: runs every 24 hours');

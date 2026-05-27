@@ -1295,7 +1295,12 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     });
 
     // ── BACKGROUND WORK (runs after response is sent) ──────────────────────
-    // 1. Detect and save country from IP (fire and forget)
+    // 1. Welcome bonus — step 1 (registered, awaiting verification), 30-day window
+    const bonusExpires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    supabaseAdmin.from('users').update({ bonus_step: 1, bonus_expires_at: bonusExpires })
+      .eq('id', newUser.id).catch(() => {});
+
+    // 2. Detect and save country from IP (fire and forget)
     detectAndSaveCountry(newUser.id, req).catch(() => {});
 
     // 2. Send verification + welcome email (email users only)
@@ -1746,6 +1751,19 @@ app.post('/api/auth/verify-otp', otpLimiter, async (req, res) => {
           .eq('phone', normalizedContact);
       } catch (_) {}
     }
+
+    // Advance welcome bonus: step 1 (registered) → step 2 (verified, $1 locked)
+    setImmediate(async () => {
+      try {
+        let q = supabaseAdmin.from('users').select('id, bonus_step, bonus_expires_at');
+        q = ch !== 'email' ? q.eq('phone', normalizedContact) : q.eq('email', normalizedContact);
+        const { data: bonusUser } = await q.single();
+        if (bonusUser?.id && bonusUser.bonus_step === 1 &&
+            bonusUser.bonus_expires_at && new Date(bonusUser.bonus_expires_at) > new Date()) {
+          supabaseAdmin.from('users').update({ bonus_step: 2 }).eq('id', bonusUser.id).catch(() => {});
+        }
+      } catch (_) {}
+    });
 
     console.log(`[OTP verify] success for ${normalizedContact}`);
     return res.json({ success: true, message: 'Verified!' });
@@ -2585,6 +2603,46 @@ app.get('/api/me/security', verifyToken, async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Welcome bonus status ────────────────────────────────────────────────────────
+app.get('/api/bonus/status', verifyToken, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin.from('users')
+      .select('bonus_step, bonus_expires_at, bonus_unlocked_at')
+      .eq('id', req.userId).single();
+    if (error || !data) return res.status(404).json({ error: 'User not found' });
+
+    const now = new Date();
+    const expires = data.bonus_expires_at ? new Date(data.bonus_expires_at) : null;
+    const expired = expires ? now > expires : false;
+    const msLeft = expires ? Math.max(0, expires - now) : 0;
+
+    // Fetch BTC price for USD→BTC conversion
+    let btcPrice = 88000;
+    try {
+      const pr = await fetch('https://api.coinbase.com/v2/prices/BTC-USD/spot');
+      const pd = await pr.json();
+      btcPrice = parseFloat(pd.data.amount) || 88000;
+    } catch (_) {}
+
+    const step = expired && data.bonus_step < 3 ? 0 : (data.bonus_step || 0);
+    const bonusBtcLocked  = parseFloat((1 / btcPrice).toFixed(8));
+    const bonusBtcTotal   = parseFloat((2 / btcPrice).toFixed(8));
+
+    res.json({
+      step,
+      bonus_expires_at:  data.bonus_expires_at,
+      bonus_unlocked_at: data.bonus_unlocked_at,
+      expired,
+      ms_remaining: msLeft,
+      btc_price: btcPrice,
+      locked_btc:   step === 2 ? bonusBtcLocked : 0,
+      unlocked_btc: step === 3 ? bonusBtcTotal  : 0,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -4134,6 +4192,26 @@ app.post('/api/trades/:id/release', tradeLimiter, verifyToken, async (req, res) 
         try {
           updateUserTradeStats(releasedTrade.seller_id).catch(() => {});
           updateUserTradeStats(releasedTrade.buyer_id).catch(() => {});
+          // Welcome bonus: buyer at step 2 → step 3, credit $2 in BTC
+          try {
+            const { data: bonusBuyer } = await supabaseAdmin.from('users')
+              .select('id, bonus_step, bonus_expires_at')
+              .eq('id', releasedTrade.buyer_id).single();
+            if (bonusBuyer?.bonus_step === 2 && bonusBuyer?.bonus_expires_at &&
+                new Date(bonusBuyer.bonus_expires_at) > new Date()) {
+              const btcPx = await getCurrentBTCPrice();
+              const bonusBtc = parseFloat((2 / btcPx).toFixed(8));
+              const { data: wal } = await supabaseAdmin.from('wallets')
+                .select('balance_btc').eq('user_id', releasedTrade.buyer_id).maybeSingle();
+              const newBal = parseFloat((parseFloat(wal?.balance_btc || 0) + bonusBtc).toFixed(8));
+              await supabaseAdmin.from('wallets').update({ balance_btc: newBal, updated_at: new Date().toISOString() })
+                .eq('user_id', releasedTrade.buyer_id);
+              await supabaseAdmin.from('users').update({
+                bonus_step: 3, bonus_unlocked_at: new Date().toISOString(),
+              }).eq('id', releasedTrade.buyer_id);
+              console.log(`[bonus] Credited ${bonusBtc} BTC ($2) to buyer ${releasedTrade.buyer_id}`);
+            }
+          } catch (e) { console.error('[bonus] Credit failed:', e.message); }
           payReferralCommissions(
             releasedTrade.id,
             releasedTrade.buyer_id,
@@ -6745,8 +6823,10 @@ app.listen(PORT, () => {
   console.log(`✅ PRAQEN Backend running on http://localhost:${PORT}`);
   console.log('📋 Routes: /api/auth, /api/users, /api/listings, /api/trades, /api/my-trades, /api/wallet, /api/hd-wallet, /api/notifications');
 
-  // Pre-warm the listings cache so the first page load has user data ready
-  setTimeout(() => _warmListingsCache(), 2000);
+  // Pre-warm the listings cache immediately so the very first request hits a warm cache
+  _warmListingsCache();
+  // Keep re-warming every 4 min so cache never expires between user visits
+  setInterval(() => _warmListingsCache(), 4 * 60 * 1000);
 
   // Pause/reactivate offers based on live wallet balance — runs at startup then every 10 min
   syncAllOfferStatuses().catch(err => console.error('[startup] syncAllOfferStatuses:', err.message));

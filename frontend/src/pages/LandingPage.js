@@ -7,6 +7,7 @@ import {
   HeadphonesIcon, Check, ChevronRight, Star,
   MessageCircle, Award, Flame, Play, CheckCircle,
   Smartphone, Building2, CreditCard, Mail,
+  Copy, UserPlus, Share2,
 } from 'lucide-react';
 
 /* ─── palette ─────────────────────────────────────────────────────────── */
@@ -88,9 +89,10 @@ function Label({children}) {
 ════════════════════════════════════════════════════════════════════════ */
 export default function LandingPage({ user }) {
   const navigate   = useNavigate();
-  const [faq, setFaq] = useState(null);
-  const [btc, setBtc] = useState(808425);
-  const [up,  setUp]  = useState(true);
+  const [faq,    setFaq]    = useState(null);
+  const [btc,    setBtc]    = useState(808425);
+  const [up,     setUp]     = useState(true);
+  const [copied, setCopied] = useState(false);
 
   /* simulated live price */
   useEffect(() => {
@@ -734,6 +736,195 @@ export default function LandingPage({ user }) {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* ══════════════════════════════════════════════════
+          8.5 BONUS + AFFILIATE INVITE BANNER
+      ══════════════════════════════════════════════════ */}
+      <section className="py-10 md:py-16 px-4" style={{background:'#fff'}}>
+        <div className="max-w-5xl mx-auto">
+
+          {user ? (
+            /* ── LOGGED-IN: invite friends + referral link ── */
+            <div className="rounded-3xl overflow-hidden shadow-lg"
+              style={{background:`linear-gradient(135deg,${C.forest} 0%,#0c2418 55%,${C.green} 100%)`,border:`2px solid ${C.gold}30`}}>
+              {/* dot grid */}
+              <div className="absolute pointer-events-none inset-0 rounded-3xl"
+                style={{backgroundImage:'radial-gradient(circle at 2px 2px,rgba(255,255,255,.04) 1px,transparent 0)',backgroundSize:'22px 22px'}}/>
+              <div className="relative p-6 md:p-10">
+                <div className="flex flex-col md:flex-row items-start md:items-center gap-8">
+
+                  {/* left — text */}
+                  <div className="flex-1 min-w-0">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold mb-4"
+                      style={{background:`${C.gold}20`,border:`1px solid ${C.gold}35`,color:C.gold}}>
+                      <UserPlus size={12}/> Affiliate Programme
+                    </div>
+                    <h2 className="text-xl md:text-3xl font-black text-white mb-2"
+                      style={{fontFamily:"'Syne',sans-serif"}}>
+                      Invite Friends.<br className="hidden md:block"/>
+                      <span className="grad-text">Earn Bitcoin Together.</span>
+                    </h2>
+                    <p className="text-sm mb-5" style={{color:'rgba(255,255,255,.65)'}}>
+                      Share your link — earn <strong style={{color:'#FDE68A'}}>0.1–0.3% BTC commission</strong> on
+                      every trade your referrals complete. No cap, no expiry.
+                    </p>
+
+                    {/* referral link box */}
+                    <div className="flex gap-2 mb-4">
+                      <div className="flex-1 flex items-center gap-2 px-3 py-2.5 rounded-xl"
+                        style={{background:'rgba(255,255,255,.09)',border:'1px solid rgba(255,255,255,.15)'}}>
+                        <span style={{color:'rgba(255,255,255,.35)',fontSize:13}}>🔗</span>
+                        <p className="flex-1 text-xs font-mono truncate" style={{color:'rgba(255,255,255,.75)'}}>
+                          praqen.com/signup?ref={user.referral_code || '...'}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const link = `https://praqen.com/signup?ref=${user.referral_code || ''}`;
+                          navigator.clipboard.writeText(link);
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 2200);
+                        }}
+                        className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-black text-xs flex-shrink-0 transition"
+                        style={{background:copied?C.mint:C.gold,color:copied?'#fff':C.forest}}>
+                        {copied ? <><CheckCircle size={12}/> Copied!</> : <><Copy size={12}/> Copy</>}
+                      </button>
+                    </div>
+
+                    {/* share buttons */}
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => {
+                          const link = `https://praqen.com/signup?ref=${user.referral_code || ''}`;
+                          const msg  = `Join me on PRAQEN — the safest P2P Bitcoin platform. Get $2 free BTC when you sign up: ${link}`;
+                          window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs transition hover:opacity-90"
+                        style={{background:'#25D366',color:'#fff'}}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                        WhatsApp
+                      </button>
+                      <button
+                        onClick={() => {
+                          const link = `https://praqen.com/signup?ref=${user.referral_code || ''}`;
+                          const text = `Join me on PRAQEN — earn $2 free BTC when you sign up!`;
+                          window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(link)}`, '_blank');
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs transition hover:opacity-90"
+                        style={{background:'#000',color:'#fff'}}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.748l7.73-8.835L1.254 2.25H8.08l4.253 5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                        X / Twitter
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (navigator.share) {
+                            navigator.share({
+                              title: 'Earn $2 Bitcoin free on PRAQEN',
+                              text: `Join me on PRAQEN — the safest P2P Bitcoin platform in Africa. Get $2 free BTC!`,
+                              url: `https://praqen.com/signup?ref=${user.referral_code || ''}`,
+                            }).catch(() => {});
+                          }
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs transition hover:opacity-90"
+                        style={{background:'rgba(255,255,255,.1)',color:'rgba(255,255,255,.75)',border:'1px solid rgba(255,255,255,.15)'}}>
+                        <Share2 size={12}/> More…
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* right — earn stats */}
+                  <div className="flex-shrink-0 w-full md:w-56">
+                    <div className="rounded-2xl p-5 text-center"
+                      style={{background:'rgba(255,255,255,.07)',border:'1px solid rgba(255,255,255,.12)'}}>
+                      <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3"
+                        style={{background:`${C.gold}25`,border:`1px solid ${C.gold}40`}}>
+                        <Gift size={26} color={C.gold}/>
+                      </div>
+                      <p className="font-black text-white text-base mb-1">$2 BTC Bonus</p>
+                      <p className="text-xs mb-3" style={{color:'rgba(255,255,255,.5)'}}>
+                        Your friends earn $2 in free Bitcoin when they join via your link.
+                      </p>
+                      <div className="space-y-1.5">
+                        {[
+                          {dot:C.gold,   text:'They register → $1 BTC locked'},
+                          {dot:C.mint,   text:'They verify  → $1 stays locked'},
+                          {dot:C.online, text:'First trade   → $2 unlocked!'},
+                        ].map(({dot,text})=>(
+                          <div key={text} className="flex items-center gap-2 text-left">
+                            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{background:dot}}/>
+                            <span className="text-xs" style={{color:'rgba(255,255,255,.6)'}}>{text}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+
+          ) : (
+
+            /* ── VISITOR: show the $2 BTC bonus offer ── */
+            <div className="rounded-3xl overflow-hidden shadow-xl"
+              style={{background:`linear-gradient(135deg,${C.forest} 0%,#0c2418 55%,${C.green} 100%)`,border:`2px solid ${C.gold}35`}}>
+              <div className="p-6 md:p-10">
+                <div className="flex flex-col md:flex-row items-center gap-8 md:gap-12">
+
+                  {/* left — headline */}
+                  <div className="flex-1 text-center md:text-left">
+                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold mb-5"
+                      style={{background:`${C.gold}20`,border:`1px solid ${C.gold}40`,color:C.gold}}>
+                      <Gift size={12}/> Welcome Bonus · Limited Offer
+                    </div>
+                    <h2 className="text-2xl md:text-4xl font-black text-white mb-3"
+                      style={{fontFamily:"'Syne',sans-serif",lineHeight:1.1}}>
+                      Earn <span className="grad-text">$2 in Bitcoin</span><br/>
+                      Just for Joining PRAQEN
+                    </h2>
+                    <p className="text-sm mb-6 max-w-md mx-auto md:mx-0" style={{color:'rgba(255,255,255,.65)'}}>
+                      New accounts get $1 BTC locked on sign-up. Verify your account, complete your first trade — and the full $2 unlocks instantly to your wallet.
+                    </p>
+                    <button onClick={() => goTo('/register')}
+                      className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl font-black text-base hover:opacity-90 active:scale-95 transition"
+                      style={{background:C.gold,color:C.forest,boxShadow:`0 4px 22px ${C.gold}50`}}>
+                      <Gift size={18}/> Claim My $2 Bonus <ArrowRight size={16}/>
+                    </button>
+                    <p className="mt-3 text-xs" style={{color:'rgba(255,255,255,.35)'}}>
+                      Free · No credit card · Offer valid 30 days after sign-up
+                    </p>
+                  </div>
+
+                  {/* right — 3 steps */}
+                  <div className="flex-shrink-0 w-full md:w-64 space-y-3">
+                    {[
+                      {num:1,icon:<CheckCircle size={18}/>,color:C.gold,  title:'Create Account',  desc:'$1 BTC locked instantly'},
+                      {num:2,icon:<Zap         size={18}/>,color:C.mint,  title:'Verify Account',  desc:'Your $1 stays safe & locked'},
+                      {num:3,icon:<Bitcoin     size={18}/>,color:C.online,title:'Complete 1 Trade', desc:'$2 BTC unlocks to your wallet'},
+                    ].map(({num,icon,color,title,desc})=>(
+                      <div key={num} className="flex items-center gap-3 rounded-xl p-3"
+                        style={{background:'rgba(255,255,255,.07)',border:'1px solid rgba(255,255,255,.1)'}}>
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                          style={{background:`${color}25`,color,border:`1px solid ${color}40`}}>
+                          {icon}
+                        </div>
+                        <div>
+                          <p className="font-black text-white text-sm">{title}</p>
+                          <p className="text-xs" style={{color:'rgba(255,255,255,.55)'}}>{desc}</p>
+                        </div>
+                        <span className="ml-auto text-xs font-black px-2 py-0.5 rounded-full flex-shrink-0"
+                          style={{background:`${color}20`,color}}>{num}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                </div>
+              </div>
+            </div>
+
+          )}
         </div>
       </section>
 
