@@ -563,6 +563,198 @@ async function sendDisputeResolvedEmail(user, trade, resolution, notes) {
   });
 }
 
+// ── Eid Mubarak + Bonus announcement email (full personalization) ─────────────
+function buildEidBonusHtml(username, referralCode) {
+  const link = `https://praqen.com/signup?ref=${referralCode || ''}`;
+  const yr   = new Date().getFullYear();
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Eid Mubarak + $2 Free Bitcoin!</title>
+</head>
+<body style="margin:0;padding:0;background:#0c1a10;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#0c1a10;padding:32px 16px;">
+<tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:20px;overflow:hidden;max-width:560px;width:100%;">
+
+  <!-- ═══ EID HEADER ═══ -->
+  <tr>
+    <td style="background:linear-gradient(160deg,#0c1a10 0%,#1B4332 40%,#2D6A4F 100%);padding:40px 32px 32px;text-align:center;position:relative;">
+      <!-- Stars decorative row -->
+      <p style="margin:0 0 10px;font-size:22px;letter-spacing:8px;">✦ ✦ ✦ ✦ ✦</p>
+      <!-- Crescent + logo -->
+      <div style="display:inline-block;background:#F4A422;border-radius:50%;width:72px;height:72px;line-height:72px;text-align:center;margin-bottom:16px;box-shadow:0 0 32px rgba(244,164,34,0.55);">
+        <span style="font-size:36px;font-weight:900;color:#1B4332;font-family:Georgia,serif;line-height:72px;">🌙</span>
+      </div>
+      <h1 style="color:#F4A422;font-size:30px;font-weight:900;margin:0 0 4px;font-family:Georgia,serif;letter-spacing:1px;">Eid Mubarak!</h1>
+      <p style="color:#ffffff;font-size:13px;margin:0 0 6px;opacity:0.7;letter-spacing:3px;text-transform:uppercase;">عيد مبارك</p>
+      <p style="color:rgba(255,255,255,0.6);font-size:13px;margin:0;">From the entire PRAQEN team to you and your family 🤲</p>
+    </td>
+  </tr>
+
+  <!-- ═══ GREETING ═══ -->
+  <tr>
+    <td style="padding:32px 36px 24px;background:#ffffff;">
+      <p style="color:#1B4332;font-size:17px;font-weight:800;margin:0 0 10px;">Salaam ${username || 'Trader'},</p>
+      <p style="color:#475569;font-size:14px;line-height:1.75;margin:0 0 18px;">
+        On this blessed occasion of Eid ul-Adha, we pray that joy, peace, and prosperity find you and everyone you love.
+        May this Eid be filled with moments of gratitude, togetherness, and new beginnings. 🌟
+      </p>
+      <p style="color:#475569;font-size:14px;line-height:1.75;margin:0;">
+        To celebrate with you, we have something special — a <strong style="color:#1B4332;">$2 FREE Bitcoin gift</strong> for every PRAQEN trader!
+      </p>
+    </td>
+  </tr>
+
+  <!-- ═══ $2 BONUS HERO ═══ -->
+  <tr>
+    <td style="padding:0 36px 24px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#1B4332 0%,#2D6A4F 60%,#40916C 100%);border-radius:16px;overflow:hidden;">
+        <tr>
+          <td style="padding:28px 28px 20px;text-align:center;">
+            <p style="margin:0 0 6px;font-size:11px;font-weight:800;color:#F4A422;letter-spacing:2px;text-transform:uppercase;">🎁 Welcome Bonus</p>
+            <p style="margin:0 0 4px;font-size:34px;font-weight:900;color:#ffffff;font-family:Georgia,serif;">$2 Free Bitcoin</p>
+            <p style="margin:0 0 20px;font-size:13px;color:rgba(255,255,255,0.65);">That's $2 Free Bitcoin — Yours to Keep!</p>
+            <!-- 3-step table -->
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td width="33%" style="text-align:center;padding:0 4px;">
+                  <div style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:12px 8px;">
+                    <p style="margin:0;font-size:20px;">✅</p>
+                    <p style="margin:4px 0 2px;font-size:11px;font-weight:800;color:#ffffff;">Register</p>
+                    <p style="margin:0;font-size:9px;color:rgba(255,255,255,0.5);">$1 BTC locked</p>
+                  </div>
+                </td>
+                <td width="4%" style="text-align:center;color:rgba(255,255,255,0.3);font-size:16px;">›</td>
+                <td width="33%" style="text-align:center;padding:0 4px;">
+                  <div style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:12px 8px;">
+                    <p style="margin:0;font-size:20px;">⚡</p>
+                    <p style="margin:4px 0 2px;font-size:11px;font-weight:800;color:#ffffff;">Verify</p>
+                    <p style="margin:0;font-size:9px;color:rgba(255,255,255,0.5);">stays locked safe</p>
+                  </div>
+                </td>
+                <td width="4%" style="text-align:center;color:rgba(255,255,255,0.3);font-size:16px;">›</td>
+                <td width="33%" style="text-align:center;padding:0 4px;">
+                  <div style="background:rgba(244,164,34,0.2);border:1px solid rgba(244,164,34,0.4);border-radius:10px;padding:12px 8px;">
+                    <p style="margin:0;font-size:20px;">₿</p>
+                    <p style="margin:4px 0 2px;font-size:11px;font-weight:800;color:#F4A422;">1st Trade</p>
+                    <p style="margin:0;font-size:9px;color:rgba(255,255,255,0.5);">$2 unlocks! 🔓</p>
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- ═══ REFERRAL SECTION ═══ -->
+  <tr>
+    <td style="padding:0 36px 24px;">
+      <p style="color:#1B4332;font-size:16px;font-weight:900;margin:0 0 6px;">Already Trading? Share &amp; Earn Even More! 💰</p>
+      <p style="color:#475569;font-size:13px;line-height:1.7;margin:0 0 16px;">
+        Invite friends to PRAQEN and earn up to <strong style="color:#1B4332;">0.5% commission</strong> on every trade they make — forever.
+        The more friends you bring in, the more you earn. No cap. No expiry.
+      </p>
+      <!-- Referral link box -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0FAF5;border:2px dashed #40916C;border-radius:12px;margin-bottom:16px;">
+        <tr>
+          <td style="padding:14px 18px;">
+            <p style="margin:0 0 4px;font-size:10px;font-weight:700;color:#40916C;text-transform:uppercase;letter-spacing:1px;">🔗 Your Personal Referral Link</p>
+            <p style="margin:0;font-size:12px;font-family:monospace;color:#1B4332;word-break:break-all;">${link}</p>
+          </td>
+        </tr>
+      </table>
+      <!-- Commission tiers -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:6px;">
+        <tr>
+          ${[
+            {refs:'0–9',    rate:'0.20%', bg:'#D1FAE5', c:'#065F46'},
+            {refs:'10–24',  rate:'0.25%', bg:'#CCFBF1', c:'#0D9488'},
+            {refs:'25–49',  rate:'0.35%', bg:'#FEF3C7', c:'#92400E'},
+            {refs:'50–99',  rate:'0.40%', bg:'#FFEDD5', c:'#C2410C'},
+            {refs:'100+',   rate:'0.50%', bg:'#EDE9FE', c:'#6D28D9'},
+          ].map(t => `
+          <td width="20%" style="text-align:center;padding:0 3px;">
+            <div style="background:${t.bg};border-radius:8px;padding:7px 4px;">
+              <p style="margin:0;font-size:12px;font-weight:900;color:${t.c};">${t.rate}</p>
+              <p style="margin:2px 0 0;font-size:9px;color:#64748B;">${t.refs} refs</p>
+            </div>
+          </td>`).join('')}
+        </tr>
+      </table>
+      <p style="margin:6px 0 0;font-size:10px;color:#94A3B8;text-align:center;">Commission increases as your referral count grows</p>
+    </td>
+  </tr>
+
+  <!-- ═══ CTA BUTTONS ═══ -->
+  <tr>
+    <td style="padding:0 36px 32px;text-align:center;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td width="48%" style="padding-right:6px;">
+            <a href="https://praqen.com/buy-bitcoin" style="display:block;background:linear-gradient(135deg,#1B4332,#2D6A4F);color:#ffffff;text-decoration:none;padding:13px 10px;border-radius:12px;font-size:13px;font-weight:800;text-align:center;">
+              ₿ Start Trading Now
+            </a>
+          </td>
+          <td width="4%"></td>
+          <td width="48%" style="padding-left:6px;">
+            <a href="${link}" style="display:block;background:#F4A422;color:#1B4332;text-decoration:none;padding:13px 10px;border-radius:12px;font-size:13px;font-weight:800;text-align:center;">
+              🎁 Share &amp; Earn
+            </a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- ═══ EID CLOSING ═══ -->
+  <tr>
+    <td style="background:#F8FAFC;padding:22px 36px;text-align:center;border-top:1px solid #E2E8F0;">
+      <p style="margin:0 0 6px;font-size:20px;">🌙 ✦ 🤲 ✦ 🌙</p>
+      <p style="margin:0 0 4px;color:#1B4332;font-size:14px;font-weight:800;">Eid Mubarak — تقبل الله منا ومنكم</p>
+      <p style="margin:0;color:#64748B;font-size:12px;">May Allah accept our good deeds. Wishing you a blessed Eid.</p>
+    </td>
+  </tr>
+
+  <!-- ═══ FOOTER ═══ -->
+  <tr>
+    <td style="background:#1B4332;padding:22px 36px;text-align:center;">
+      <p style="margin:0 0 6px;font-size:20px;font-weight:900;color:#F4A422;font-family:Georgia,serif;">PRAQEN</p>
+      <p style="margin:0 0 10px;font-size:10px;color:rgba(255,255,255,0.45);letter-spacing:2px;text-transform:uppercase;">Africa's Trusted P2P Bitcoin Platform</p>
+      <p style="margin:0 0 10px;">
+        <a href="https://praqen.com/buy-bitcoin" style="color:rgba(255,255,255,0.5);text-decoration:none;font-size:11px;margin:0 8px;">Buy Bitcoin</a>
+        <a href="https://praqen.com/sell-bitcoin" style="color:rgba(255,255,255,0.5);text-decoration:none;font-size:11px;margin:0 8px;">Sell Bitcoin</a>
+        <a href="${link}" style="color:rgba(255,255,255,0.5);text-decoration:none;font-size:11px;margin:0 8px;">Refer Friends</a>
+      </p>
+      <p style="margin:0;font-size:10px;color:rgba(255,255,255,0.3);">
+        © ${yr} PRAQEN · You're receiving this because you have an account with us.<br>
+        <a href="https://praqen.com" style="color:rgba(255,255,255,0.3);text-decoration:underline;">praqen.com</a>
+      </p>
+    </td>
+  </tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+}
+
+async function sendEidBonusEmail({ userId, to, username, referralCode }) {
+  return sendEmail({
+    userId,
+    to,
+    subject: '🌙 Eid Mubarak + $2 FREE Bitcoin — Just for You!',
+    html:    buildEidBonusHtml(username, referralCode),
+    type:    'eid_bonus_broadcast',
+    metadata: { referral_code: referralCode, campaign: 'eid_2025' },
+  });
+}
+
 async function sendBroadcastToAllUsers(subject, htmlBody, broadcastType = 'broadcast') {
   const { data: users, error } = await supabase
     .from('users')
@@ -609,4 +801,5 @@ module.exports = {
   sendDepositAlertEmail,
   sendWithdrawalAlertEmail,
   sendBroadcastToAllUsers,
+  sendEidBonusEmail,
 };

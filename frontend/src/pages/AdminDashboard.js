@@ -1803,6 +1803,11 @@ function BroadcastSection() {
   const [showPreview,  setShowPreview]    = useState(false);
   const [showEmailConfirm, setShowEmailConfirm] = useState(false);
 
+  // Eid blast state
+  const [sendingEid, setSendingEid]     = useState(false);
+  const [eidResult,  setEidResult]      = useState(null);
+  const [showEidConfirm, setShowEidConfirm] = useState(false);
+
   const send = async () => {
     if (!title.trim() || !msg.trim()) return toast.error('Title and message required');
     if (!window.confirm(`Send this notification to ALL active users?`)) return;
@@ -1835,6 +1840,20 @@ function BroadcastSection() {
     finally { setSendingEmail(false); }
   };
 
+  const sendEidBlast = async () => {
+    setSendingEid(true);
+    setEidResult(null);
+    try {
+      const r = await axios.post(`${API_URL}/admin/broadcast/eid-bonus`, {}, { headers: authH() });
+      toast.success('🌙 Eid broadcast started! Check server logs for progress.');
+      setEidResult({ ok: true, message: r.data.message });
+    } catch (e) {
+      const err = e.response?.data?.error || 'Failed to send Eid broadcast';
+      toast.error(err);
+      setEidResult({ ok: false, message: err });
+    } finally { setSendingEid(false); }
+  };
+
   return (
     <div className="space-y-5">
       <SectionHead title="Broadcast Center" sub="Send push notifications or email blasts to all users" />
@@ -1844,6 +1863,7 @@ function BroadcastSection() {
         {[
           { id: 'push',  label: '📣 Push / In-App' },
           { id: 'email', label: '📧 Email Blast'   },
+          { id: 'eid',   label: '🌙 Eid Blast'     },
         ].map(t => (
           <button key={t.id} onClick={() => setBTab(t.id)}
             className="px-5 py-2.5 rounded-xl text-sm font-black transition"
@@ -2000,6 +2020,167 @@ function BroadcastSection() {
                 <p className="text-sm font-semibold">Click "Preview Email" to see how it looks</p>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Eid Blast Tab ── */}
+      {broadcastTab === 'eid' && (
+        <div className="grid lg:grid-cols-2 gap-5">
+          {/* Left: send panel */}
+          <div className="bg-white rounded-2xl border p-6 space-y-4" style={{ borderColor: C.g200 }}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-black text-sm" style={{ color: C.g800 }}>🌙 Eid Mubarak Email Blast</h3>
+              <span className="text-xs px-2 py-1 rounded-full font-black" style={{ backgroundColor: '#FFF7ED', color: '#C2410C' }}>
+                Sends to ALL users
+              </span>
+            </div>
+
+            {/* Email preview card */}
+            <div className="rounded-2xl overflow-hidden" style={{ border: '2px solid #F4A422' }}>
+              <div className="px-5 py-4 text-center" style={{ background: 'linear-gradient(135deg,#1B4332 0%,#2D6A4F 60%,#40916C 100%)' }}>
+                <p style={{ fontSize: 28, margin: '0 0 4px' }}>🌙</p>
+                <p className="font-black text-lg" style={{ color: '#F4A422', margin: 0 }}>Eid Mubarak!</p>
+                <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: 13, margin: '4px 0 0' }}>عيد مبارك</p>
+              </div>
+              <div className="px-5 py-4 space-y-3" style={{ backgroundColor: '#FFFBEB' }}>
+                <div>
+                  <p className="text-xs font-black mb-1" style={{ color: '#92400E' }}>SUBJECT</p>
+                  <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>🌙 Eid Mubarak + $2 FREE Bitcoin — Just for You!</p>
+                </div>
+                <div className="h-px" style={{ backgroundColor: '#FDE68A' }} />
+                <p className="text-xs leading-relaxed" style={{ color: '#78350F' }}>
+                  Each user gets a <strong>fully personalised</strong> email with their name, a $2 Bitcoin bonus announcement, and their unique referral link pre-filled. Commission tiers and CTAs are included.
+                </p>
+                <div className="grid grid-cols-3 gap-2 pt-1">
+                  {[
+                    { icon: '🎁', label: '$2 BTC Bonus' },
+                    { icon: '🔗', label: 'Personal Link' },
+                    { icon: '💸', label: '0.5% Commission' },
+                  ].map(({ icon, label }) => (
+                    <div key={label} className="text-center p-2 rounded-xl" style={{ backgroundColor: '#FEF3C7' }}>
+                      <p style={{ fontSize: 18, margin: '0 0 2px' }}>{icon}</p>
+                      <p className="text-xs font-black" style={{ color: '#92400E' }}>{label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Warning */}
+            <div className="p-3 rounded-xl flex items-start gap-2.5" style={{ backgroundColor: '#FFF7ED', border: '1px solid #FDE68A' }}>
+              <span className="text-lg flex-shrink-0">⚠️</span>
+              <p className="text-xs font-semibold leading-relaxed" style={{ color: '#92400E' }}>
+                This sends a real personalised email to every user. Each email includes their actual username and referral code from the database.
+              </p>
+            </div>
+
+            <button
+              onClick={() => setShowEidConfirm(true)}
+              disabled={sendingEid}
+              className="w-full py-4 rounded-2xl text-sm font-black flex items-center justify-center gap-2 transition"
+              style={{
+                background: sendingEid ? C.g200 : 'linear-gradient(135deg,#1B4332 0%,#2D6A4F 100%)',
+                color: sendingEid ? C.g400 : '#fff',
+                boxShadow: sendingEid ? 'none' : '0 6px 20px rgba(27,67,50,0.35)',
+              }}>
+              {sendingEid
+                ? <><RefreshCw size={14} className="animate-spin" /> Sending…</>
+                : <>🌙 Send Eid Mubarak Email to All Users</>}
+            </button>
+
+            {eidResult && (
+              <div className="p-3 rounded-xl text-xs font-semibold"
+                style={{
+                  backgroundColor: eidResult.ok ? '#F0FDF4' : '#FEF2F2',
+                  color: eidResult.ok ? '#166534' : '#991B1B',
+                  border: `1px solid ${eidResult.ok ? '#86EFAC' : '#FECACA'}`,
+                }}>
+                {eidResult.ok ? '✅' : '❌'} {eidResult.message}
+              </div>
+            )}
+          </div>
+
+          {/* Right: what's included */}
+          <div className="bg-white rounded-2xl border p-6" style={{ borderColor: C.g200 }}>
+            <h3 className="font-black text-sm mb-4" style={{ color: C.g800 }}>📋 What's in the Email</h3>
+            <div className="space-y-3">
+              {[
+                { icon: '🌙', title: 'Eid Mubarak header', desc: 'Dark green gradient with crescent and Arabic text "عيد مبارك"' },
+                { icon: '👋', title: 'Personal greeting', desc: 'Addressed to each user by their username from the database' },
+                { icon: '🎁', title: '$2 BTC bonus announcement', desc: '3-step table: Register → Verify → Trade to unlock $2 in Bitcoin' },
+                { icon: '🔗', title: 'Referral link pre-filled', desc: "Their unique https://praqen.com/register?ref=CODE link in a styled box" },
+                { icon: '💸', title: '5-tier commission breakdown', desc: '0.20% → 0.50% commission pills shown visually' },
+                { icon: '🚀', title: 'Two action buttons', desc: '"Start Trading Now" and "Share & Earn" CTAs' },
+                { icon: '🤲', title: "Eid du'a closing", desc: '"Eid Mubarak — تقبل الله منا ومنكم" with PRAQEN footer' },
+              ].map(({ icon, title, desc }) => (
+                <div key={title} className="flex items-start gap-3 p-3 rounded-xl" style={{ backgroundColor: C.g50, border: `1px solid ${C.g100}` }}>
+                  <span className="text-xl flex-shrink-0">{icon}</span>
+                  <div>
+                    <p className="text-xs font-black" style={{ color: C.g800 }}>{title}</p>
+                    <p className="text-xs mt-0.5" style={{ color: C.g500 }}>{desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Eid Confirm Modal ── */}
+      {showEidConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setShowEidConfirm(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-3xl overflow-hidden shadow-2xl"
+            style={{ backgroundColor: '#fff' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-7 pt-8 pb-6 text-center" style={{ background: 'linear-gradient(135deg,#1B4332 0%,#2D6A4F 60%,#40916C 100%)' }}>
+              <p style={{ fontSize: 48, margin: '0 0 8px' }}>🌙</p>
+              <h2 className="text-xl font-black" style={{ color: '#F4A422' }}>Send Eid Mubarak Email?</h2>
+              <p className="text-sm mt-1 font-semibold" style={{ color: 'rgba(255,255,255,0.75)' }}>This will send to ALL users — cannot be undone</p>
+            </div>
+
+            <div className="px-7 py-6 space-y-4">
+              <div className="p-4 rounded-2xl" style={{ backgroundColor: '#FFFBEB', border: '2px solid #FDE68A' }}>
+                <p className="text-xs font-black mb-1" style={{ color: '#92400E' }}>WHAT WILL BE SENT</p>
+                <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>
+                  🌙 Eid Mubarak + $2 FREE Bitcoin — Just for You!
+                </p>
+                <p className="text-xs mt-2" style={{ color: '#78350F' }}>
+                  Personalised with each user's name and their unique referral code.
+                </p>
+              </div>
+
+              <div className="flex items-start gap-3 p-3 rounded-2xl" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+                <span className="text-xl flex-shrink-0 mt-0.5">📢</span>
+                <div>
+                  <p className="text-xs font-black" style={{ color: '#991B1B' }}>Sends to EVERY registered user</p>
+                  <p className="text-xs mt-0.5" style={{ color: '#B91C1C' }}>
+                    Sent in batches of 5 with rate-limit delays. Check server logs for progress.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-7 pb-7 flex gap-3">
+              <button
+                onClick={() => setShowEidConfirm(false)}
+                className="flex-1 py-3.5 rounded-2xl text-sm font-black border transition hover:bg-gray-50"
+                style={{ borderColor: '#E2E8F0', color: '#475569' }}>
+                Cancel
+              </button>
+              <button
+                onClick={() => { setShowEidConfirm(false); sendEidBlast(); }}
+                className="flex-1 py-3.5 rounded-2xl text-sm font-black text-white flex items-center justify-center gap-2 transition"
+                style={{ background: 'linear-gradient(135deg,#1B4332,#2D6A4F)', boxShadow: '0 4px 14px rgba(27,67,50,0.4)' }}>
+                🌙 Yes, Send Now
+              </button>
+            </div>
           </div>
         </div>
       )}

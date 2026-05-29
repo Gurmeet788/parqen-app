@@ -5558,6 +5558,79 @@ app.post('/api/admin/broadcast-email', verifyToken, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// POST /api/admin/broadcast/eid-bonus — send personalised Eid Mubarak + $2 bonus email to all users
+app.post('/api/admin/broadcast/eid-bonus', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+
+    // Count eligible users first so we can respond immediately
+    const { count, error: countErr } = await supabaseAdmin
+      .from('users')
+      .select('id', { count: 'exact', head: true })
+      .not('email', 'is', null);
+
+    if (countErr) return res.status(500).json({ error: 'Failed to count users: ' + countErr.message });
+
+    res.json({
+      success: true,
+      message: `Eid broadcast started in background for ~${count} users. Check server logs for progress.`,
+      total: count,
+    });
+
+    // Run the bulk send after response is flushed — keeps HTTP fast
+    setImmediate(async () => {
+      console.log(`\n🌙 [eid-bonus] Starting Eid broadcast to ~${count} users...`);
+      let sent = 0, failed = 0, page = 0;
+      const PAGE = 100;
+
+      try {
+        while (true) {
+          const { data: users, error: fetchErr } = await supabaseAdmin
+            .from('users')
+            .select('id, email, username, referral_code')
+            .not('email', 'is', null)
+            .not('email', 'eq', '')
+            .range(page * PAGE, page * PAGE + PAGE - 1);
+
+          if (fetchErr) { console.error('[eid-bonus] Fetch error:', fetchErr.message); break; }
+          if (!users || users.length === 0) break;
+
+          // Send in mini-batches of 5 to respect SMTP rate limits
+          for (let i = 0; i < users.length; i += 5) {
+            const batch = users.slice(i, i + 5);
+            await Promise.allSettled(batch.map(async (u) => {
+              try {
+                const result = await emailService.sendEidBonusEmail({
+                  userId:       u.id,
+                  to:           u.email,
+                  username:     u.username || 'Trader',
+                  referralCode: u.referral_code || '',
+                });
+                if (result.success) sent++; else { failed++; console.warn(`[eid-bonus] Failed for ${u.email}: ${result.error}`); }
+              } catch (e) {
+                failed++;
+                console.warn(`[eid-bonus] Exception for ${u.email}:`, e.message);
+              }
+            }));
+            // 1.5s between mini-batches
+            if (i + 5 < users.length) await new Promise(r => setTimeout(r, 1500));
+          }
+
+          console.log(`[eid-bonus] Page ${page + 1}: sent=${sent} failed=${failed}`);
+          if (users.length < PAGE) break;
+          page++;
+          // 3s pause between pages to give SMTP room to breathe
+          await new Promise(r => setTimeout(r, 3000));
+        }
+
+        console.log(`✅ [eid-bonus] Broadcast complete — sent:${sent} failed:${failed} total:${sent + failed}`);
+      } catch (e) {
+        console.error('[eid-bonus] ❌ Fatal broadcast error:', e.message);
+      }
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // GET /api/admin/revenue — revenue over time
 app.get('/api/admin/revenue', verifyToken, async (req, res) => {
   try {
