@@ -192,7 +192,7 @@ app.use(cors({
   maxAge:           86400, // browser caches preflight for 24 hours
 }));
 
-app.use(express.json({ limit: '2mb' })); // 10mb was dangerously large for a JSON API
+app.use(express.json({ limit: '6mb' })); // raised from 2mb — KYC route needs headroom for 2 compressed base64 images (~1.1–1.9mb each after canvas compression)
 
 // ── Rate Limiters ──────────────────────────────────────────────────────────
 const rateLimit = require('express-rate-limit');
@@ -2344,7 +2344,7 @@ app.post('/api/users/verify-phone-otp', verifyToken, async (req, res) => {
 });
 
 // POST /api/kyc/upload — receive base64 ID front + back, store in Supabase Storage, set status pending
-app.post('/api/kyc/upload', verifyToken, async (req, res) => {
+app.post('/api/kyc/upload', express.json({ limit: '25mb' }), verifyToken, async (req, res) => {
   try {
     const { idImage, idImageBack, idType = 'national_id' } = req.body;
     if (!idImage)     return res.status(400).json({ error: 'Front of ID card is required' });
@@ -2404,16 +2404,20 @@ app.post('/api/kyc/upload', verifyToken, async (req, res) => {
       }
     }
 
-    // In-app notification for user
-    await supabaseAdmin.from('notifications').insert({
-      user_id:    userId,
-      type:       'kyc',
-      title:      '📋 KYC Submitted — Under Review',
-      message:    'Your identity documents have been submitted. We will review within 24 hours and update your profile.',
-      action:     '/profile',
-      is_read:    false,
-      created_at: new Date().toISOString(),
-    });
+    // In-app notification — must NOT block the success response if it fails
+    try {
+      await supabaseAdmin.from('notifications').insert({
+        user_id:    userId,
+        type:       'kyc',
+        title:      '📋 KYC Submitted — Under Review',
+        message:    'Your identity documents have been submitted. We will review within 24 hours and update your profile.',
+        action:     '/profile',
+        is_read:    false,
+        created_at: new Date().toISOString(),
+      });
+    } catch (notifErr) {
+      console.warn('[kyc/upload] Notification insert failed (non-fatal):', notifErr.message);
+    }
 
     console.log(`[kyc/upload] KYC submitted by user ${userId}`);
     res.json({ success: true, message: 'Documents submitted! We will review within 24 hours.' });

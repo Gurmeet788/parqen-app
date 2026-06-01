@@ -777,11 +777,23 @@ export default function Settings({ user, setUser }) {
     window.dispatchEvent(new Event('userUpdated'));
   };
 
-  const fileToBase64 = (file) => new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+  // Resize + compress to JPEG before base64 so the payload stays under the server limit
+  const compressImage = (file, maxPx = 1400, quality = 0.82) => new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width  = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed')); };
+    img.src = url;
   });
 
   const handleKycSubmit = async () => {
@@ -793,8 +805,8 @@ export default function Settings({ user, setUser }) {
     setKycStep('processing');
     try {
       const [idImage, idImageBack] = await Promise.all([
-        fileToBase64(kycFiles.front),
-        fileToBase64(kycFiles.back),
+        compressImage(kycFiles.front),
+        compressImage(kycFiles.back),
       ]);
       await axios.post(`${API_URL}/kyc/upload`,
         { idImage, idImageBack, idType: kycIdType },
@@ -814,7 +826,10 @@ export default function Settings({ user, setUser }) {
         submitted_at: submittedAt,
       }));
     } catch (e) {
-      toast.error(e?.response?.data?.error || 'Failed to submit KYC');
+      const msg = e?.response?.data?.error
+        || (e?.response?.status === 413 ? 'Images are too large. Please use smaller photos and try again.' : null)
+        || 'Failed to submit KYC. Please check your connection and try again.';
+      toast.error(msg);
       setKycStep('ready');
     }
     finally { setKycLoading(false); }

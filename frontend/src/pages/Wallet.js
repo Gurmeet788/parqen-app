@@ -781,14 +781,15 @@ export default function WalletPage({ user }) {
     if (!token) return;
     axios.get(`${API_URL}/users/profile`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => {
-        if (res.data.preferred_currency) {
-          setDisplayCurrency(res.data.preferred_currency);
-          localStorage.setItem('praqen_currency', res.data.preferred_currency);
+        const profile = res.data.user || res.data;
+        if (profile.preferred_currency) {
+          setDisplayCurrency(profile.preferred_currency);
+          localStorage.setItem('praqen_currency', profile.preferred_currency);
         }
         setUserVerif({
-          email: !!(res.data.is_email_verified || res.data.email_verified),
-          phone: !!(res.data.is_phone_verified  || res.data.phone_verified),
-          kyc:   !!(res.data.is_id_verified     || res.data.kyc_verified),
+          email: !!(profile.is_email_verified || profile.email_verified),
+          phone: !!(profile.is_phone_verified  || profile.phone_verified),
+          kyc:   !!(profile.is_id_verified     || profile.kyc_verified),
         });
       })
       .catch(() => {
