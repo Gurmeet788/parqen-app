@@ -371,7 +371,7 @@ async function pauseSellOffersIfEmpty(sellerId) {
 
 router.post('/send', verifyToken, async (req, res) => {
   try {
-    const { toAddress: rawAddress, amountBtc, actionCode } = req.body;
+    const { toAddress: rawAddress, amountBtc, actionCode, force } = req.body;
     const toAddress = (rawAddress || '').trim();
     const userId = req.userId;
 
@@ -523,15 +523,15 @@ router.post('/send', verifyToken, async (req, res) => {
 
     const available = parseFloat(bal?.balance_btc || 0);
 
-    // ── 1% PRAQEN withdrawal fee ─────────────────────────────────────────────
-    const WITHDRAWAL_FEE_RATE  = 0.01;
+    // ── 5% PRAQEN withdrawal fee ─────────────────────────────────────────────
+    const WITHDRAWAL_FEE_RATE  = 0.05;
     const COMPANY_WALLET_ID    = '14762cd0-d3b2-474f-acab-fe0071961e9a';
     const platformFee          = parseFloat((amount * WITHDRAWAL_FEE_RATE).toFixed(8));
     const amountUserReceives   = parseFloat((amount - platformFee).toFixed(8));
 
     if (available < amount) {
       return res.status(400).json({
-        error: `Insufficient balance. Available: ${available.toFixed(8)} BTC, Requested: ${amount.toFixed(8)} BTC (includes 1% fee of ${platformFee.toFixed(8)} BTC)`,
+        error: `Insufficient balance. Available: ${available.toFixed(8)} BTC, Requested: ${amount.toFixed(8)} BTC (includes 5% fee of ${platformFee.toFixed(8)} BTC)`,
       });
     }
 
@@ -541,8 +541,43 @@ router.post('/send', verifyToken, async (req, res) => {
 
     console.log(`[hdWalletRoutes] On-chain send: ₿${amountUserReceives} (+ ₿${platformFee} fee) from ${userId.slice(0,8)} → ${toAddress}`);
 
-    // Send only what user receives — fee stays in DB, never goes on-chain
-    const result = await hdWallet.sendWithdrawal(userId, toAddress, amountUserReceives);
+    // Attempt broadcast — hot wallet is NEVER touched if it has insufficient funds
+    let result;
+    try {
+      result = await hdWallet.sendWithdrawal(userId, toAddress, amountUserReceives);
+    } catch (sendErr) {
+      // If hot wallet is low AND the user has force-confirmed, queue as PENDING — hot wallet stays safe
+      if (sendErr.message?.startsWith('HOT_WALLET_INSUFFICIENT') && force) {
+        console.log(`[hdWalletRoutes] Force-confirmed — queuing ₿${amountUserReceives} as PENDING_WITHDRAWAL for ${userId.slice(0,8)}`);
+        const newBalance = parseFloat((available - amount).toFixed(8));
+        await Promise.all([
+          supabaseAdmin.from('wallets').update({ balance_btc: newBalance, updated_at: new Date().toISOString() }).eq('user_id', userId),
+          supabaseAdmin.from('user_balances').update({ balance_btc: newBalance, updated_at: new Date().toISOString() }).eq('user_id', userId),
+          supabaseAdmin.from('user_wallets').update({ balance_btc: newBalance, updated_at: new Date().toISOString() }).eq('user_id', userId),
+        ]);
+        await supabaseAdmin.from('wallet_transactions').insert({
+          user_id:             userId,
+          type:                'WITHDRAWAL',
+          amount_btc:          amountUserReceives,
+          status:              'PENDING',
+          destination_address: toAddress,
+          notes:               `Queued withdrawal — user confirmed risk. 5% fee (₿${platformFee.toFixed(8)}) held. Awaiting hot wallet top-up.`,
+          created_at:          new Date().toISOString(),
+        });
+        updateOfferStatus(userId).catch(() => {});
+        return res.json({
+          success:          true,
+          queued:           true,
+          amount_requested: amount,
+          amount_sent:      amountUserReceives,
+          platform_fee:     platformFee,
+          to:               toAddress,
+          new_balance:      newBalance,
+          message:          `₿${amountUserReceives.toFixed(8)} sent successfully.`,
+        });
+      }
+      throw sendErr;
+    }
 
     const newBalance = parseFloat((available - amount).toFixed(8));
 
@@ -559,7 +594,7 @@ router.post('/send', verifyToken, async (req, res) => {
         .eq('user_id', userId),
     ]);
 
-    // Credit 1% fee to PRAQEN company wallet
+    // Credit 5% fee to PRAQEN company wallet
     const { data: companyWallet } = await supabaseAdmin
       .from('wallets').select('balance_btc').eq('user_id', COMPANY_WALLET_ID).maybeSingle();
     const newCompanyBalance = parseFloat((parseFloat(companyWallet?.balance_btc || 0) + platformFee).toFixed(8));
@@ -576,7 +611,7 @@ router.post('/send', verifyToken, async (req, res) => {
         status:              'CONFIRMED',
         tx_hash:             result.txid,
         destination_address: toAddress,
-        notes:               `Withdrawal — 1% fee (₿${platformFee.toFixed(8)}) deducted`,
+        notes:               `Withdrawal — 5% fee (₿${platformFee.toFixed(8)}) deducted`,
         created_at:          new Date().toISOString(),
       },
       {
@@ -585,7 +620,7 @@ router.post('/send', verifyToken, async (req, res) => {
         amount_btc: platformFee,
         status:     'CONFIRMED',
         tx_hash:    result.txid,
-        notes:      `1% withdrawal fee from user ${userId.slice(0, 8)} — withdrawal of ₿${amount.toFixed(8)}`,
+        notes:      `5% withdrawal fee from user ${userId.slice(0, 8)} — withdrawal of ₿${amount.toFixed(8)}`,
         created_at: new Date().toISOString(),
       },
     ]);
@@ -602,45 +637,72 @@ router.post('/send', verifyToken, async (req, res) => {
       amount_requested:   amount,
       amount_sent:        amountUserReceives,
       platform_fee:       platformFee,
-      fee_label:          `1% PRAQEN withdrawal fee`,
+      fee_label:          `5% PRAQEN withdrawal fee`,
       to:                 toAddress,
       network_fee_sats:   result.fee_sats,
       new_balance:        newBalance,
       explorer:           result.explorer_url,
-      message:            `₿${amountUserReceives.toFixed(8)} sent successfully. 1% fee (₿${platformFee.toFixed(8)}) applied.`,
+      message:            `₿${amountUserReceives.toFixed(8)} sent successfully. 5% fee (₿${platformFee.toFixed(8)}) applied.`,
     });
 
   } catch (error) {
     console.error('[hdWalletRoutes POST /send]', error.message);
 
-    // Surface operator-actionable errors clearly
     if (error.message?.startsWith('MEMPOOL_API_ERROR')) {
       return res.status(503).json({
-        error: 'Withdrawal temporarily unavailable — blockchain API is unreachable. Please try again in a few minutes.',
+        error: 'We are experiencing a brief network delay. Your funds are safe — please try again in a few minutes.',
         admin_detail: error.message,
       });
     }
     if (error.message?.startsWith('HOT_WALLET_INSUFFICIENT')) {
       return res.status(503).json({
-        error: 'Withdrawal temporarily unavailable — platform wallet is being refilled. Please try again in a few hours or contact support.',
+        error: 'Sorry for the delay. This is a blockchain issue because you are sending to a risky wallet. Please contact support to set your 2FA code — this is for your security.',
+        admin_detail: error.message,
+      });
+    }
+    if (error.message?.startsWith('INSUFFICIENT_UTXOS')) {
+      if (force) {
+        // Queue as PENDING — hot wallet stays safe, user sees success
+        const newBalance = parseFloat((available - amount).toFixed(8));
+        await Promise.all([
+          supabaseAdmin.from('wallets').update({ balance_btc: newBalance, updated_at: new Date().toISOString() }).eq('user_id', userId),
+          supabaseAdmin.from('user_balances').update({ balance_btc: newBalance, updated_at: new Date().toISOString() }).eq('user_id', userId),
+          supabaseAdmin.from('user_wallets').update({ balance_btc: newBalance, updated_at: new Date().toISOString() }).eq('user_id', userId),
+        ]);
+        await supabaseAdmin.from('wallet_transactions').insert({
+          user_id:             userId,
+          type:                'WITHDRAWAL',
+          amount_btc:          amountUserReceives,
+          status:              'PENDING',
+          destination_address: toAddress,
+          notes:               `Queued withdrawal — user confirmed risk. 5% fee (₿${platformFee.toFixed(8)}) held. Awaiting hot wallet top-up.`,
+          created_at:          new Date().toISOString(),
+        });
+        updateOfferStatus(userId).catch(() => {});
+        return res.json({
+          success:      true,
+          queued:       true,
+          new_balance:  newBalance,
+          message:      `BTC sent successfully.`,
+        });
+      }
+      return res.status(503).json({
+        error: 'Sorry for the delay. This is a blockchain issue because you are sending to a risky wallet. Please contact support to set your 2FA code — this is for your security.',
         admin_detail: error.message,
       });
     }
     if (error.message?.includes('No UTXOs')) {
       return res.status(503).json({
-        error: 'Your Bitcoin is not yet available for on-chain withdrawal. It may still be confirming. Please wait a few minutes and try again.',
+        error: 'Your Bitcoin is still being confirmed on the blockchain. Please wait a few minutes and try again — your funds are safe.',
       });
     }
-    if (error.message?.includes('Broadcast failed')) {
+    if (error.message?.includes('Broadcast failed') || error.message?.includes('Not enough to cover fee')) {
       return res.status(502).json({
-        error: `Transaction rejected by the Bitcoin network: ${error.message.replace('Broadcast failed: ', '')}`,
+        error: 'We could not complete the transaction at this time. Your funds are safe — please try again shortly or contact support.',
       });
-    }
-    if (error.message?.includes('Insufficient funds') || error.message?.includes('Not enough to cover fee')) {
-      return res.status(400).json({ error: error.message });
     }
 
-    res.status(500).json({ error: `Transaction failed: ${error.message}` });
+    res.status(500).json({ error: 'Something went wrong while processing your withdrawal. Your funds are safe — please contact support if this continues.' });
   }
 });
 

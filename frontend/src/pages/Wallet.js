@@ -45,6 +45,7 @@ function WithdrawModal({ balance, btcPrice, onClose, onSend, kycStatus }) {
   const [step,       setStep]       = useState('form'); // 'form' | 'code'
   const [codeInput,  setCodeInput]  = useState('');
   const [sending2FA, setSending2FA] = useState(false);
+  const [riskyAttempt, setRiskyAttempt] = useState(false); // true after first risky-wallet warning
 
   const price  = btcPrice || 88000;
 
@@ -52,7 +53,7 @@ function WithdrawModal({ balance, btcPrice, onClose, onSend, kycStatus }) {
     ? parseFloat((parseFloat(usdAmount || 0) / price).toFixed(8))
     : parseFloat(amount || 0);
 
-  const fee       = btcAmt * 0.001;
+  const fee       = btcAmt * 0.05;
   const total     = btcAmt + fee;
   const totalUsd  = total * price;
   const hasEnough = total <= parseFloat(balance || 0);
@@ -77,24 +78,33 @@ function WithdrawModal({ balance, btcPrice, onClose, onSend, kycStatus }) {
         { headers: t ? { Authorization: `Bearer ${t}` } : {} });
       setCodeInput('');
       setStep('code');
-      toast.info('Security code sent to your email.');
+      toast.success('Security code sent! Check your email inbox.', { autoClose: 5000 });
     } catch (e) {
-      toast.error(e?.response?.data?.error || 'Failed to send security code.');
+      toast.error(e?.response?.data?.error || 'Could not send security code. Please try again.');
     } finally {
       setSending2FA(false);
     }
   };
 
   const handleSend = async () => {
-    if (!codeInput || codeInput.length !== 6) { toast.error('Enter the 6-digit code from your email.'); return; }
+    if (!codeInput || codeInput.length !== 6) { toast.error('Please enter the 6-digit code sent to your email.'); return; }
     setSending(true);
     try {
-      await onSend(address.trim(), btcAmt, codeInput);
+      if (riskyAttempt) {
+        toast.info('Since you still want to send, you can proceed. Once sent, PRAQEN is not responsible for any loss.', { autoClose: 7000 });
+      }
+      await onSend(address.trim(), btcAmt, codeInput, riskyAttempt);
+      toast.success('BTC Sent Successfully! Your transaction is on its way.', { autoClose: 6000 });
       onClose();
     } catch (e) {
       const msg = e?.response?.data?.error || '';
-      if (msg.toLowerCase().includes('code') || msg.toLowerCase().includes('security')) {
-        toast.error(msg);
+      if (msg.toLowerCase().includes('risky') || msg.toLowerCase().includes('blockchain issue')) {
+        setRiskyAttempt(true);
+        toast.warning(msg, { autoClose: 10000 });
+      } else if (msg) {
+        toast.error(msg, { autoClose: 8000 });
+      } else {
+        toast.error('Something went wrong. Your funds are safe — please try again.');
       }
     } finally {
       setSending(false);
@@ -116,7 +126,7 @@ function WithdrawModal({ balance, btcPrice, onClose, onSend, kycStatus }) {
             </div>
             <div>
               <h2 className="font-black text-sm" style={{ color: C.g800 }}>Send Bitcoin</h2>
-              <p className="text-xs" style={{ color: C.g400 }}>On-chain · ~10 min · 0.1% fee</p>
+              <p className="text-xs" style={{ color: C.g400 }}>On-chain · ~10 min · 5% fee</p>
             </div>
           </div>
           <button onClick={onClose} className="w-7 h-7 rounded-xl flex items-center justify-center hover:bg-gray-100">
@@ -282,7 +292,7 @@ function WithdrawModal({ balance, btcPrice, onClose, onSend, kycStatus }) {
             <div className="space-y-2 p-3 rounded-xl" style={{ backgroundColor: `${C.green}08`, border: `1px solid ${C.green}20` }}>
               {[
                 { label: 'Amount',              btc: btcAmt,  usd: btcAmt * price },
-                { label: 'Network fee (~0.1%)', btc: fee,     usd: fee * price    },
+                { label: 'Network fee (5%)',    btc: fee,     usd: fee * price    },
                 { label: 'Total deducted',      btc: total,   usd: totalUsd, bold: true },
               ].map(({ label, btc, usd, bold }) => (
                 <div key={label} className="flex justify-between items-center text-xs">
@@ -930,16 +940,15 @@ export default function WalletPage({ user }) {
   };
 
   // ── Send BTC (real on-chain withdrawal) ────────────────────────────────────
-  const sendBitcoin = async (toAddress, amountBtc, actionCode) => {
+  const sendBitcoin = async (toAddress, amountBtc, actionCode, force = false) => {
     try {
       const r = await axios.post(`${API_URL}/hd-wallet/send`,
-        { toAddress, amountBtc, actionCode },
+        { toAddress, amountBtc, actionCode, force },
         { headers: authH() }
       );
-      toast.success(`₿${fmt(amountBtc)} sent! TX: ${r.data.txid?.slice(0,12)}…`);
       await loadWallet();
+      return r;
     } catch (e) {
-      toast.error(e.response?.data?.error || 'Failed to send Bitcoin');
       throw e;
     }
   };

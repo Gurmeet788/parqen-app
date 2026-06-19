@@ -288,7 +288,7 @@ class HDWalletService {
 
     if (inputSum < amountSats) {
       throw new Error(
-        `Insufficient funds: have ${inputSum} sats (${inputSum / 1e8} BTC), need ${amountSats} sats (${amountBTC} BTC)`
+        `INSUFFICIENT_UTXOS: have ${inputSum} sats, need ${amountSats} sats`
       );
     }
 
