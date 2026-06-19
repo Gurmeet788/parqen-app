@@ -129,4 +129,86 @@ async function syncAllOfferStatuses() {
   }
 }
 
-module.exports = { updateOfferStatus, syncAllOfferStatuses };
+/**
+ * Deactivates offers from sellers who haven't been active for 10+ days.
+ * Runs at startup and every 6 hours. Sends one in-app notification per seller.
+ */
+async function deactivateStaleOffers() {
+  try {
+    const TEN_DAYS_AGO = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+
+    // All currently ACTIVE listings
+    const { data: activeListings, error: listErr } = await supabaseAdmin
+      .from('listings')
+      .select('id, seller_id, payment_method, currency')
+      .eq('status', 'ACTIVE');
+
+    if (listErr) { console.error('[deactivateStaleOffers] listings query:', listErr.message); return; }
+    if (!activeListings?.length) return;
+
+    const sellerIds = [...new Set(activeListings.map(l => l.seller_id))];
+
+    // Fetch last activity for all sellers
+    const { data: sellers, error: usersErr } = await supabaseAdmin
+      .from('users')
+      .select('id, username, last_seen_at, last_login')
+      .in('id', sellerIds);
+
+    if (usersErr || !sellers?.length) return;
+
+    // Sellers where BOTH last_seen_at and last_login are older than 10 days (or null)
+    const staleSellers = new Set(
+      sellers
+        .filter(s => {
+          const lastActive = s.last_seen_at || s.last_login;
+          return !lastActive || new Date(lastActive) < new Date(TEN_DAYS_AGO);
+        })
+        .map(s => s.id)
+    );
+
+    if (staleSellers.size === 0) {
+      console.log('[deactivateStaleOffers] ✅ No stale sellers — all sellers active within 10 days.');
+      return;
+    }
+
+    const staleListings = activeListings.filter(l => staleSellers.has(l.seller_id));
+    if (!staleListings.length) return;
+
+    // Pause all stale listings
+    const staleIds = staleListings.map(l => l.id);
+    await supabaseAdmin
+      .from('listings')
+      .update({ status: 'PAUSED', updated_at: new Date().toISOString() })
+      .in('id', staleIds);
+
+    console.log(`[deactivateStaleOffers] ⏸  Paused ${staleIds.length} offer(s) for ${staleSellers.size} inactive seller(s).`);
+
+    // One notification per seller (not per offer)
+    const seen = new Set();
+    const notifications = [];
+    for (const l of staleListings) {
+      if (seen.has(l.seller_id)) continue;
+      seen.add(l.seller_id);
+      const count = staleListings.filter(x => x.seller_id === l.seller_id).length;
+      const plural = count > 1;
+      notifications.push({
+        user_id:    l.seller_id,
+        type:       'offer_paused',
+        title:      `⏸ Your offer${plural ? 's have' : ' has'} been paused`,
+        message:    `Your ${plural ? count + ' offers were' : 'offer was'} automatically paused — you haven't been active on PRAQEN for over 10 days. Visit My Offers to reactivate and start receiving trade requests again.`,
+        action:     '/my-listings',
+        is_read:    false,
+        created_at: new Date().toISOString(),
+      });
+    }
+
+    if (notifications.length > 0) {
+      await supabaseAdmin.from('notifications').insert(notifications);
+      console.log(`[deactivateStaleOffers] 🔔 Sent ${notifications.length} reactivation notification(s).`);
+    }
+  } catch (err) {
+    console.error('[deactivateStaleOffers]', err.message);
+  }
+}
+
+module.exports = { updateOfferStatus, syncAllOfferStatuses, deactivateStaleOffers };

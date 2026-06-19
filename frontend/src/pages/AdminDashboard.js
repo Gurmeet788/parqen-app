@@ -1747,42 +1747,36 @@ function ListingsSection() {
 // ================================================================
 // BROADCAST SECTION
 // ================================================================
-const PROMO_EMAIL_SUBJECT = '🚀 Load $10+ & Get Instant Bonus — PLUS: Hot Trader Rewards & 0.5% Affiliate!';
-const PROMO_EMAIL_BODY = `<h1 style="font-size:26px;font-weight:900;color:#1B4332;margin:0 0 4px;text-align:center;">🔥 Big things are happening!</h1>
-<p style="margin:0 0 28px;color:#64748B;font-size:15px;text-align:center;">Hi <strong>{username}</strong>, the PRAQEN platform just leveled up!</p>
+const PROMO_EMAIL_SUBJECT = '⚠️ Keep Your Offers Active — Verify KYC & Trade on PRAQEN!';
+const PROMO_EMAIL_BODY = `<h1 style="font-size:24px;font-weight:900;color:#1B4332;margin:0 0 6px;text-align:center;">⚠️ Important: Keep Your Offers Active!</h1>
+<p style="margin:0 0 28px;color:#64748B;font-size:15px;text-align:center;">Dear <strong style="color:#1B4332;">{username}</strong>, your activity matters. Inactive offers will be deactivated automatically.</p>
 
 <div style="background:linear-gradient(135deg,#FFF7ED,#FFFBEB);border-radius:14px;padding:22px;margin-bottom:14px;border:2px solid #FDE68A;">
-  <p style="margin:0 0 8px;font-size:17px;font-weight:900;color:#92400E;">🎁 LOAD YOUR WALLET &amp; GET AN INSTANT BONUS</p>
-  <p style="margin:0;font-size:14px;color:#78350F;line-height:1.7;">Deposit <strong>$10 or more</strong> in BTC and receive an instant trading bonus. Your wallet, your power.</p>
+  <p style="margin:0 0 8px;font-size:17px;font-weight:900;color:#92400E;">🔒 Verify Your KYC Now</p>
+  <p style="margin:0;font-size:14px;color:#78350F;line-height:1.7;">Complete your identity verification to unlock unlimited trading and keep your badge active. Go to <strong>Settings → Identity Verification</strong>.</p>
 </div>
 
 <div style="background:linear-gradient(135deg,#F0FDF4,#DCFCE7);border-radius:14px;padding:22px;margin-bottom:14px;border:2px solid #86EFAC;">
-  <p style="margin:0 0 8px;font-size:17px;font-weight:900;color:#166534;">💸 AFFILIATE COMMISSION INCREASED TO 0.5%!</p>
-  <p style="margin:0;font-size:14px;color:#15803D;line-height:1.7;">Share your referral link and earn <strong>0.5% commission</strong> on every trade your friends make — <strong>50× more than before!</strong> There has never been a better time to invite friends to PRAQEN.</p>
+  <p style="margin:0 0 8px;font-size:17px;font-weight:900;color:#166534;">🚀 Keep Trading — Keep Your Badge</p>
+  <p style="margin:0;font-size:14px;color:#15803D;line-height:1.7;">Active traders keep their badges and feedback growing. Inactive offers will be paused. Stay active to stay on top!</p>
 </div>
 
 <div style="background:linear-gradient(135deg,#EFF6FF,#DBEAFE);border-radius:14px;padding:22px;margin-bottom:14px;border:2px solid #BFDBFE;">
-  <p style="margin:0 0 12px;font-size:17px;font-weight:900;color:#1E40AF;">🏆 BECOME A TOP TRADER — GET PROMOTED</p>
-  <p style="margin:4px 0;font-size:14px;color:#1E40AF;line-height:1.6;">🔥 <strong>HOT OFFER · Trending Now</strong> — Your offer featured at the top of the marketplace</p>
-  <p style="margin:4px 0;font-size:14px;color:#1E40AF;line-height:1.6;">⚡ <strong>FAST RESPONDER OF THE WEEK</strong> — Quick responses get you noticed</p>
-  <p style="margin:4px 0;font-size:14px;color:#1E40AF;line-height:1.6;">💰 <strong>TRADER OF THE WEEK</strong> — Your offer promoted for an entire week</p>
+  <p style="margin:0 0 8px;font-size:17px;font-weight:900;color:#1E40AF;">🎁 New Features &amp; Promotions Coming!</p>
+  <p style="margin:0;font-size:14px;color:#1E40AF;line-height:1.7;">We're bringing exciting new features and promotions to PRAQEN. Stay active to be the first to benefit!</p>
 </div>
 
-<div style="background:#F8FAFC;border-radius:14px;padding:22px;margin-bottom:24px;border:1px solid #E2E8F0;">
-  <p style="margin:0 0 12px;font-size:16px;font-weight:900;color:#334155;">What's New on PRAQEN:</p>
-  <p style="margin:5px 0;font-size:14px;color:#475569;line-height:1.6;">📱 <strong>SMS Trade Alerts</strong> — Get instant notifications when someone wants to trade with you</p>
-  <p style="margin:5px 0;font-size:14px;color:#475569;line-height:1.6;">🎮 <strong>Gift Card Trading</strong> — Convert iTunes, Amazon, Steam, Google Play cards to BTC instantly</p>
-  <p style="margin:5px 0;font-size:14px;color:#475569;line-height:1.6;">🔒 <strong>Stronger Escrow</strong> — Your BTC is always 100% protected</p>
-  <p style="margin:5px 0;font-size:14px;color:#475569;line-height:1.6;">💳 <strong>More Payment Methods</strong> — MTN, Vodafone, AirtelTigo, and bank transfer</p>
+<div style="background:#F8FAFC;border-radius:14px;padding:20px 24px;margin-bottom:24px;border:1.5px solid #E2E8F0;">
+  <p style="margin:0 0 14px;font-size:15px;font-weight:900;color:#1B4332;">✅ What to do right now:</p>
+  <p style="margin:6px 0;font-size:14px;color:#334155;"><strong>1.</strong> Update your active offers in the marketplace</p>
+  <p style="margin:6px 0;font-size:14px;color:#334155;"><strong>2.</strong> Complete KYC — Email ✓ Phone ✓ ID Verification</p>
+  <p style="margin:6px 0;font-size:14px;color:#334155;"><strong>3.</strong> Start a trade and grow your reputation score</p>
 </div>
-
-<p style="text-align:center;font-size:15px;color:#64748B;margin:0 0 6px;">Your wallet is ready. Your offers are waiting. The commissions have never been higher.</p>
 
 <div style="text-align:center;margin:24px 0;">
-  <a href="https://praqen.com/wallet" style="display:inline-block;background:linear-gradient(135deg,#1B4332,#2D6A4F);color:#fff;text-decoration:none;font-size:16px;font-weight:900;padding:16px 40px;border-radius:12px;letter-spacing:0.5px;">🚀 Load Your Wallet &amp; Start Trading Now</a>
+  <a href="https://praqen.com/trade" style="display:inline-block;background:linear-gradient(135deg,#1B4332,#2D6A4F);color:#fff;text-decoration:none;font-size:16px;font-weight:900;padding:16px 40px;border-radius:12px;letter-spacing:0.5px;">🚀 Start Trading Now</a>
 </div>
 
-<p style="text-align:center;font-size:15px;font-weight:700;color:#1B4332;margin:0 0 6px;">This is the best time to trade on PRAQEN! 🚀</p>
 <p style="text-align:center;font-size:14px;color:#94A3B8;margin:0;">— The PRAQEN Team 💙</p>`;
 
 function BroadcastSection() {

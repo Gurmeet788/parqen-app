@@ -268,104 +268,374 @@ function TradeCard({ n, trade, userId, onNavigate }) {
 
 // ─── System / broadcast / generic card ───────────────────────────────────────
 function BasicCard({ n, onNavigate }) {
-  // Detect notification category
   const title = (n.title || '').toLowerCase();
-  const isExpired    = /expir/i.test(title);
-  const isCancelled  = /cancel/i.test(title);
-  const isNewTrade   = /new trade|trade request/i.test(title);
-  const isDispute    = /disput/i.test(title);
-  const isBroadcast  = n.type === 'update' || n.type === 'broadcast' || (!n.trade && !isExpired && !isCancelled && !isNewTrade && !isDispute);
-  const isPayment    = /payment|paid/i.test(title);
+  const msg   = n.message || '';
 
-  // Visual config per type
-  let Icon, accent, bg, iconBg, badgeLabel;
-  if (isExpired)   { Icon = Clock;         accent = C.warn;    bg = '#FFFBEB'; iconBg = `${C.warn}18`;    badgeLabel = 'Expired'; }
-  else if (isCancelled){ Icon = XCircle;   accent = C.danger;  bg = '#FEF2F2'; iconBg = `${C.danger}15`;  badgeLabel = 'Cancelled'; }
-  else if (isNewTrade){ Icon = ShoppingBag;accent = C.paid;    bg = '#EFF6FF'; iconBg = `${C.paid}15`;    badgeLabel = 'New Request'; }
-  else if (isDispute){ Icon = AlertTriangle;accent='#7C3AED';  bg = '#F5F3FF'; iconBg = '#EDE9FE';         badgeLabel = 'Dispute'; }
-  else if (isPayment){ Icon = CheckCircle; accent = C.success; bg = '#F0FDF4'; iconBg = `${C.success}15`; badgeLabel = 'Payment'; }
-  else if (isBroadcast){ Icon = Megaphone; accent = C.green;   bg = C.mist;   iconBg = `${C.mint}18`;     badgeLabel = 'PRAQEN'; }
-  else               { Icon = Bell;        accent = C.g400;    bg = '#fff';   iconBg = C.g100;             badgeLabel = 'Info'; }
+  const isCancelled = /cancel/i.test(title);
+  const isExpired   = /expir/i.test(title);
+  const isNewTrade  = /new trade|trade request/i.test(title);
+  const isDispute   = /disput/i.test(title);
+  const isPayment   = /payment|paid/i.test(title);
+  const isRefund    = /refund/i.test(msg);
+  const isBroadcast = n.type === 'update' || n.type === 'broadcast' ||
+    (!isCancelled && !isExpired && !isNewTrade && !isDispute && !isPayment);
 
-  // Extract trade ID from message if present
-  const tradeIdMatch = (n.message || '').match(/trade\s*#?([A-F0-9]{6,8})/i);
+  // ── Parse trade ID ──────────────────────────────────────────────────────────
+  const tradeIdMatch = msg.match(/trade\s*#?([A-F0-9]{6,10})/i);
   const tradeId = tradeIdMatch ? tradeIdMatch[1].toUpperCase() : null;
 
-  // Truncate long broadcast messages
-  const msg = n.message || '';
-  const shortMsg = msg.length > 120 ? msg.slice(0, 117) + '…' : msg;
+  // ── Parse cancellation reason (text after " — " or ". ") ───────────────────
+  const reasonMatch = msg.match(/cancelled[^.]*[.—–]\s*(.+)/i);
+  const cancelReason = reasonMatch ? reasonMatch[1].trim() : null;
+
+  // ── Parse new-trade-request fields ─────────────────────────────────────────
+  // Backend format: "RICHYDeFi wants to buy Bitcoin · ₵1,000 GHS via MTN Mobile Money"
+  // Gift card format: "RICHYDeFi wants to buy Apple Gift Card · ₵1,000 GHS via MTN Mobile Money"
+  const traderMatch = msg.match(/^([^\s]+)\s+wants\s+to\s+(buy|sell)/i);
+  const traderName  = traderMatch ? traderMatch[1] : null;
+  const tradeAction = traderMatch ? traderMatch[2].toLowerCase() : null;
+  const pmMatch     = msg.match(/via\s+(.+)$/i);
+  const payMethod   = pmMatch ? pmMatch[1].trim() : null;
+  const amtMatch    = msg.match(/(₵|₦|KSh|R\s|USh|TSh|CFA|\$|£|€)([\d,]+)\s*([A-Z]{3})/);
+  const amtDisplay  = amtMatch ? `${amtMatch[1]}${amtMatch[2]} ${amtMatch[3]}` : null;
+  // BTC amount — present in new format: "· ₿0.00028065 ·"
+  const btcAmtMatch = msg.match(/₿([\d.]+)/);
+  const btcDisplay  = btcAmtMatch ? `₿${parseFloat(btcAmtMatch[1]).toFixed(8)}` : null;
+
+  // Extract asset: text between the action word and " ·"
+  const assetMatch  = msg.match(/wants\s+to\s+(?:buy|sell)\s+(.+?)\s+·/i);
+  const rawAsset    = assetMatch ? assetMatch[1].replace(/^(buy|sell)\s+/i, '').trim() : null;
+  // Normalise: "Bitcoin" or "Bitcoin Gift Card" both mean a BTC trade (DB artefact)
+  const isBtcTrade  = !rawAsset || /^bitcoin(\s+gift\s+card)?$/i.test(rawAsset);
+  const isGiftCard  = !isBtcTrade && /gift\s*card/i.test(rawAsset);
+  // product: for BTC show "Bitcoin (BTC)", for gift cards show brand only
+  const product     = isBtcTrade
+    ? 'Bitcoin (BTC)'
+    : isGiftCard
+      ? rawAsset.replace(/\s*gift\s*card\s*/i, '').trim() || rawAsset
+      : rawAsset;
+
+  // trade ID from notification metadata, trade object, or parsed from message/title
+  const newTradeId   = n.trade_id
+    || n.trade?.id
+    || n.metadata?.trade_id
+    || (msg.match(/#([A-F0-9]{6,10})/i) || [])[1]
+    || null;
+
+  // ── Visual config — all brand colours ────────────────────────────────────────
+  let Icon, accent, headerBg, cardBg, badgeLabel;
+  if (isCancelled || isExpired) {
+    Icon = XCircle;      accent = C.danger;
+    headerBg = `linear-gradient(90deg,#B91C1C,${C.danger})`;
+    cardBg = '#FEF2F2';  badgeLabel = isExpired ? 'Expired' : 'Cancelled';
+  } else if (isNewTrade) {
+    Icon = ShoppingBag;  accent = C.forest;
+    headerBg = `linear-gradient(90deg,${C.forest},${C.mint})`;
+    cardBg = C.mist;     badgeLabel = 'New Request';
+  } else if (isDispute) {
+    Icon = AlertTriangle; accent = C.amber;
+    headerBg = `linear-gradient(90deg,${C.amber},${C.gold})`;
+    cardBg = '#FFFBEB';  badgeLabel = 'Dispute 🚨';
+  } else if (isPayment) {
+    Icon = CheckCircle;  accent = C.success;
+    headerBg = `linear-gradient(90deg,${C.forest},${C.green})`;
+    cardBg = C.mist;     badgeLabel = 'Payment';
+  } else {
+    Icon = Megaphone;    accent = C.green;
+    headerBg = `linear-gradient(90deg,${C.forest},${C.mint})`;
+    cardBg = C.mist;     badgeLabel = 'PRAQEN';
+  }
 
   return (
     <button onClick={() => onNavigate(n)}
       className="w-full text-left transition hover:brightness-[0.97]"
       style={{
         borderBottom: `1px solid ${C.g100}`,
-        backgroundColor: !n.is_read ? bg : '#fff',
-        borderLeft: `3px solid ${accent}`,
+        backgroundColor: !n.is_read ? cardBg : '#fff',
         display: 'block', padding: 0,
       }}>
 
-      <div style={{ padding: '11px 14px' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+      {/* ── Coloured header strip ─────────────────────────────────────────── */}
+      <div style={{
+        background: headerBg, padding: '6px 14px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Icon size={11} color="#fff" />
+          <span style={{ color: '#fff', fontWeight: 900, fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+            {badgeLabel}
+          </span>
+          {!n.is_read && (
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%',
+              backgroundColor: '#fff', display: 'inline-block', opacity: 0.9,
+            }} />
+          )}
+        </div>
+        <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: 10, fontWeight: 700 }}>
+          {relTime(n.created_at)}
+        </span>
+      </div>
 
-          {/* Icon circle */}
-          <div style={{
-            width: 42, height: 42, borderRadius: 12, flexShrink: 0,
-            backgroundColor: iconBg,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            border: `1.5px solid ${accent}25`,
-          }}>
-            <Icon size={18} style={{ color: accent }} />
-          </div>
+      {/* ── Card body ─────────────────────────────────────────────────────── */}
+      <div style={{ padding: '10px 14px' }}>
 
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {/* Title row */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 3 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', flex: 1 }}>
-                <span style={{ fontWeight: 900, fontSize: 12.5, color: C.g800, lineHeight: 1.2 }}>{n.title}</span>
+        {/* ── CANCELLED / EXPIRED ────────────────────────────────────────── */}
+        {(isCancelled || isExpired) && (
+          <div>
+            {/* Trade ref row */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              {tradeId ? (
                 <span style={{
-                  fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em',
-                  padding: '1px 7px', borderRadius: 20,
-                  backgroundColor: `${accent}15`, color: accent,
-                  border: `1px solid ${accent}30`, flexShrink: 0,
-                }}>{badgeLabel}</span>
-              </div>
-              <span style={{ fontSize: 10, color: C.g400, fontWeight: 700, flexShrink: 0, whiteSpace: 'nowrap' }}>
-                {relTime(n.created_at)}
+                  fontSize: 11, fontWeight: 900, fontFamily: 'monospace',
+                  padding: '3px 10px', borderRadius: 8,
+                  backgroundColor: `${C.danger}12`, color: C.danger,
+                  border: `1px solid ${C.danger}25`, letterSpacing: '0.05em',
+                }}>
+                  #{tradeId}
+                </span>
+              ) : <span />}
+              <span style={{
+                fontSize: 9, fontWeight: 900, textTransform: 'uppercase',
+                padding: '2px 8px', borderRadius: 20,
+                backgroundColor: `${C.danger}15`, color: C.danger,
+                border: `1px solid ${C.danger}25`,
+              }}>
+                ● {isExpired ? 'Expired' : 'Cancelled'}
               </span>
             </div>
 
-            {/* Trade ID pill */}
-            {tradeId && (
-              <span style={{
-                display: 'inline-block', marginBottom: 5,
-                fontSize: 10, fontWeight: 900, fontFamily: 'monospace',
-                padding: '2px 8px', borderRadius: 6,
-                backgroundColor: `${accent}10`, color: accent,
-                border: `1px solid ${accent}25`,
-              }}>
-                #{tradeId}
-              </span>
-            )}
-
-            {/* Message body */}
-            <p style={{ fontSize: 11, color: C.g600, lineHeight: 1.55, fontWeight: 500, marginBottom: 6 }}>
-              {shortMsg}
-            </p>
+            {/* What happened */}
+            <div style={{
+              backgroundColor: `${C.danger}08`, borderRadius: 10,
+              border: `1px solid ${C.danger}20`, padding: '10px 12px', marginBottom: 8,
+            }}>
+              <p style={{ fontSize: 12, fontWeight: 800, color: C.danger, marginBottom: 3 }}>
+                {isExpired ? '⏰ Trade Expired — Time Limit Reached' : '❌ Trade Has Been Cancelled'}
+              </p>
+              {cancelReason && (
+                <p style={{ fontSize: 11, color: C.g600, lineHeight: 1.55, fontWeight: 500, margin: 0 }}>
+                  Reason: <strong style={{ color: C.g800 }}>{cancelReason}</strong>
+                </p>
+              )}
+              {isRefund && (
+                <p style={{ fontSize: 11, color: C.success, fontWeight: 700, marginTop: 4, marginBottom: 0 }}>
+                  ✅ Your BTC has been refunded to your wallet
+                </p>
+              )}
+            </div>
 
             {/* Footer */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 10, color: C.g400, fontWeight: 600 }}>
-                {absTime(n.created_at)}
-              </span>
+              <span style={{ fontSize: 10, color: C.g400, fontWeight: 600 }}>{absTime(n.created_at)}</span>
               {n.action && (
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 900, color: accent }}>
-                  {isBroadcast ? 'Read more' : 'View details'} <ArrowRight size={10} />
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 900, color: C.danger }}>
+                  View details <ArrowRight size={10} />
                 </span>
               )}
             </div>
           </div>
-        </div>
+        )}
+
+        {/* ── NEW TRADE REQUEST ───────────────────────────────────────────── */}
+        {isNewTrade && (
+          <div>
+            {/* Trader row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: 13, flexShrink: 0,
+                background: `linear-gradient(135deg,${C.forest},${C.mint})`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontWeight: 900, fontSize: 17, color: '#fff',
+                border: `2px solid ${C.mint}50`,
+              }}>
+                {(traderName || 'T')[0].toUpperCase()}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontWeight: 900, fontSize: 14, color: C.g800, marginBottom: 1, lineHeight: 1.2 }}>
+                  {traderName || 'A trader'}
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                  <span style={{
+                    fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.05em',
+                    padding: '2px 8px', borderRadius: 20,
+                    backgroundColor: `${C.success}15`, color: C.success,
+                    border: `1px solid ${C.success}40`,
+                  }}>
+                    ↑ BUYING
+                  </span>
+                  <span style={{ fontSize: 11, color: C.g500, fontWeight: 600 }}>
+                    {isBtcTrade ? 'your Bitcoin' : isGiftCard ? `${product} Gift Card` : product} from you
+                  </span>
+                </div>
+              </div>
+              {/* Relative time top-right */}
+              <span style={{ fontSize: 10, color: C.g400, fontWeight: 700, flexShrink: 0 }}>
+                {relTime(n.created_at)}
+              </span>
+            </div>
+
+            {/* ── Exchange summary: YOU GIVE ↔ YOU GET ── */}
+            <div style={{ display: 'flex', gap: 7, marginBottom: 8 }}>
+
+              {/* You Send */}
+              <div style={{
+                flex: 1, borderRadius: 12, padding: '9px 10px 8px',
+                background: `linear-gradient(135deg,${C.forest}12,${C.forest}06)`,
+                border: `1.5px solid ${C.forest}30`,
+              }}>
+                <p style={{ fontSize: 9, fontWeight: 900, color: C.forest, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 5 }}>
+                  📤 You Send
+                </p>
+                {btcDisplay ? (
+                  <p style={{ fontSize: 13, fontWeight: 900, color: C.forest, marginBottom: 1, lineHeight: 1.2, fontFamily: 'monospace' }}>
+                    {btcDisplay}
+                  </p>
+                ) : (
+                  <p style={{ fontSize: 13, fontWeight: 900, color: C.forest, marginBottom: 1, lineHeight: 1.2 }}>
+                    ₿ Bitcoin
+                  </p>
+                )}
+                <p style={{ fontSize: 9, color: C.g500, fontWeight: 700, marginTop: 1 }}>
+                  from your BTC wallet
+                </p>
+              </div>
+
+              {/* Arrow */}
+              <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                <div style={{
+                  width: 24, height: 24, borderRadius: '50%',
+                  backgroundColor: C.g100, border: `1px solid ${C.g200}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <ArrowRight size={12} style={{ color: C.g500 }} />
+                </div>
+              </div>
+
+              {/* You Receive */}
+              <div style={{
+                flex: 1, borderRadius: 12, padding: '9px 10px 8px',
+                background: `linear-gradient(135deg,${C.success}10,${C.success}05)`,
+                border: `1.5px solid ${C.success}35`,
+              }}>
+                <p style={{ fontSize: 9, fontWeight: 900, color: C.success, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 5 }}>
+                  📥 You Receive
+                </p>
+                <p style={{ fontSize: 13, fontWeight: 900, color: C.success, marginBottom: 1, lineHeight: 1.2 }}>
+                  {amtDisplay || '—'}
+                </p>
+                <p style={{ fontSize: 9, color: C.g500, fontWeight: 700, marginTop: 1 }}>
+                  cash · {payMethod ? payMethod.split(' ')[0] : 'Mobile Money'}
+                </p>
+              </div>
+            </div>
+
+            {/* ── Extra details ── */}
+            <div style={{
+              borderRadius: 12, border: `1px solid ${C.forest}15`,
+              backgroundColor: C.mist, overflow: 'hidden', marginBottom: 10,
+            }}>
+              {[
+                payMethod  && { icon: '📲', label: 'Payment via', value: payMethod },
+                newTradeId && { icon: '🔖', label: 'Trade ID',    value: `#${String(newTradeId).slice(0,8).toUpperCase()}`, mono: true },
+                             { icon: '🕐', label: 'Time',         value: absTime(n.created_at) },
+              ].filter(Boolean).map(({ icon, label, value, mono }, i, arr) => (
+                <div key={label} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '7px 12px',
+                  borderBottom: i < arr.length - 1 ? `1px solid ${C.forest}10` : 'none',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 12 }}>{icon}</span>
+                    <span style={{ fontSize: 11, color: C.g500, fontWeight: 700 }}>{label}</span>
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: C.g800, fontFamily: mono ? 'monospace' : 'inherit' }}>
+                    {value}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* CTA button */}
+            {n.action && (
+              <button style={{
+                width: '100%', padding: '9px 0',
+                background: `linear-gradient(135deg,${C.forest},${C.green})`,
+                color: '#fff', border: 'none', borderRadius: 10,
+                fontSize: 12, fontWeight: 900, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              }}>
+                View & Respond <ArrowRight size={12} />
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* ── DISPUTE ─────────────────────────────────────────────────────── */}
+        {isDispute && (
+          <div>
+            {tradeId && (
+              <span style={{
+                display: 'inline-block', marginBottom: 8,
+                fontSize: 11, fontWeight: 900, fontFamily: 'monospace',
+                padding: '3px 10px', borderRadius: 8,
+                backgroundColor: `${C.warn}15`, color: C.amber,
+                border: `1px solid ${C.warn}30`,
+              }}>#{tradeId}</span>
+            )}
+            <div style={{
+              backgroundColor: '#FFFBEB', borderRadius: 10,
+              border: `1px solid ${C.warn}30`, padding: '10px 12px', marginBottom: 8,
+            }}>
+              <p style={{ fontSize: 12, fontWeight: 800, color: C.amber, marginBottom: 3 }}>
+                🚨 Dispute Filed — Moderator Notified
+              </p>
+              <p style={{ fontSize: 11, color: C.g600, lineHeight: 1.55, margin: 0 }}>
+                {msg.length > 110 ? msg.slice(0, 107) + '…' : msg}
+              </p>
+              <p style={{ fontSize: 11, fontWeight: 700, color: C.amber, marginTop: 5, marginBottom: 0 }}>
+                ⚠️ Do NOT release funds until the dispute is resolved.
+              </p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 10, color: C.g400, fontWeight: 600 }}>{absTime(n.created_at)}</span>
+              {n.action && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 900, color: C.amber }}>
+                  View dispute <ArrowRight size={10} />
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── PAYMENT / BROADCAST / GENERIC ───────────────────────────────── */}
+        {!isCancelled && !isExpired && !isNewTrade && !isDispute && (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+                backgroundColor: `${accent}12`, border: `1.5px solid ${accent}25`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Icon size={17} style={{ color: accent }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontWeight: 900, fontSize: 13, color: C.g800, marginBottom: 3 }}>{n.title}</p>
+                <p style={{ fontSize: 11, color: C.g600, lineHeight: 1.6, fontWeight: 500, marginBottom: 6 }}>
+                  {msg.length > 130 ? msg.slice(0, 127) + '…' : msg}
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 10, color: C.g400, fontWeight: 600 }}>{absTime(n.created_at)}</span>
+                  {n.action && (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 900, color: accent }}>
+                      {isBroadcast ? 'Read more' : 'View details'} <ArrowRight size={10} />
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </button>
   );

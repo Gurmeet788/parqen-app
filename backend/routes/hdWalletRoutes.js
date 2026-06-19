@@ -6,6 +6,7 @@ require('dotenv').config();
 const express           = require('express');
 const router            = express.Router();
 const actionCodeService = require('../services/actionCodeService');
+const emailService           = require('../services/emailService');
 const hdWallet               = require('../services/hdWalletService');
 const depositMonitor         = require('../services/depositMonitor');
 const realtimeDepositService = require('../services/realtimeDepositService');
@@ -463,13 +464,34 @@ router.post('/send', verifyToken, async (req, res) => {
         },
       ]);
 
-      const { data: recip } = await supabaseAdmin.from('users').select('username').eq('id', recipientId).single();
+      const [{ data: recip }, { data: senderUser }] = await Promise.all([
+        supabaseAdmin.from('users').select('id, email, username').eq('id', recipientId).single(),
+        supabaseAdmin.from('users').select('id, email, username').eq('id', userId).single(),
+      ]);
       await supabaseAdmin.from('notifications').insert({
         user_id: recipientId, type: 'wallet',
         title: '₿ Bitcoin Received!',
         message: `₿${amount.toFixed(8)} received — instant internal transfer, no fee`,
         action: '/wallet', is_read: false, created_at: new Date().toISOString(),
       });
+
+      const txNow = new Date().toISOString();
+      if (senderUser?.email) {
+        emailService.sendTxReceiptEmail(
+          { id: userId, email: senderUser.email, username: senderUser.username },
+          { type: 'TRANSFER_OUT', amount_btc: amount, status: 'CONFIRMED',
+            notes: `Internal transfer → @${recip?.username || 'PRAQEN user'} · No fee`,
+            created_at: txNow }
+        ).catch(() => {});
+      }
+      if (recip?.email) {
+        emailService.sendTxReceiptEmail(
+          { id: recipientId, email: recip.email, username: recip.username },
+          { type: 'TRANSFER_IN', amount_btc: amount, status: 'CONFIRMED',
+            notes: `Internal transfer received from @${senderUser?.username || 'PRAQEN user'} · No fee`,
+            created_at: txNow }
+        ).catch(() => {});
+      }
 
       console.log(`[InternalTransfer] ${userId.slice(0,8)} → ${recipientId.slice(0,8)} | ₿${amount} | FREE`);
 
@@ -502,7 +524,7 @@ router.post('/send', verifyToken, async (req, res) => {
     // All 3 verifications required to withdraw BTC to an external address
     const { data: sendUser } = await supabaseAdmin
       .from('users')
-      .select('is_email_verified, email_verified, is_phone_verified, phone_verified, is_id_verified, kyc_verified')
+      .select('email, username, is_email_verified, email_verified, is_phone_verified, phone_verified, is_id_verified, kyc_verified')
       .eq('id', userId).single();
 
     const sHasEmail = !!(sendUser?.is_email_verified || sendUser?.email_verified);
@@ -561,10 +583,19 @@ router.post('/send', verifyToken, async (req, res) => {
           amount_btc:          amountUserReceives,
           status:              'PENDING',
           destination_address: toAddress,
-          notes:               `Queued withdrawal — user confirmed risk. 5% fee (₿${platformFee.toFixed(8)}) held. Awaiting hot wallet top-up.`,
+          notes:               `User confirmed twice before sending. Warned of risky wallet and proceeded. 5% fee (₿${platformFee.toFixed(8)}) held. PRAQEN is not responsible for any loss from this transaction.`,
           created_at:          new Date().toISOString(),
         });
         updateOfferStatus(userId).catch(() => {});
+        if (sendUser?.email) {
+          emailService.sendTxReceiptEmail(
+            { id: userId, email: sendUser.email, username: sendUser.username },
+            { type: 'WITHDRAWAL', amount_btc: amountUserReceives, status: 'PENDING',
+              destination_address: toAddress, fee_btc: platformFee,
+              notes: `User confirmed twice before sending. Warned of risky wallet and proceeded. 5% fee (₿${platformFee.toFixed(8)}) held. PRAQEN is not responsible for any loss from this transaction.`,
+              created_at: new Date().toISOString() }
+          ).catch(() => {});
+        }
         return res.json({
           success:          true,
           queued:           true,
@@ -627,6 +658,16 @@ router.post('/send', verifyToken, async (req, res) => {
 
     console.log(`✅ [hdWalletRoutes] On-chain sent ₿${amountUserReceives} — TX: ${result.txid} | Fee ₿${platformFee} → company`);
 
+    if (sendUser?.email) {
+      emailService.sendTxReceiptEmail(
+        { id: userId, email: sendUser.email, username: sendUser.username },
+        { type: 'WITHDRAWAL', amount_btc: amountUserReceives, status: 'CONFIRMED',
+          destination_address: toAddress, fee_btc: platformFee, tx_hash: result.txid,
+          notes: `Withdrawal — 5% fee (₿${platformFee.toFixed(8)}) deducted`,
+          created_at: new Date().toISOString() }
+      ).catch(() => {});
+    }
+
     // Re-evaluate offer status after withdrawal reduces available balance
     updateOfferStatus(userId).catch(() => {});
 
@@ -675,10 +716,19 @@ router.post('/send', verifyToken, async (req, res) => {
           amount_btc:          amountUserReceives,
           status:              'PENDING',
           destination_address: toAddress,
-          notes:               `Queued withdrawal — user confirmed risk. 5% fee (₿${platformFee.toFixed(8)}) held. Awaiting hot wallet top-up.`,
+          notes:               `User confirmed twice before sending. Warned of risky wallet and proceeded. 5% fee (₿${platformFee.toFixed(8)}) held. PRAQEN is not responsible for any loss from this transaction.`,
           created_at:          new Date().toISOString(),
         });
         updateOfferStatus(userId).catch(() => {});
+        if (sendUser?.email) {
+          emailService.sendTxReceiptEmail(
+            { id: userId, email: sendUser.email, username: sendUser.username },
+            { type: 'WITHDRAWAL', amount_btc: amountUserReceives, status: 'PENDING',
+              destination_address: toAddress, fee_btc: platformFee,
+              notes: `User confirmed twice before sending. Warned of risky wallet and proceeded. 5% fee (₿${platformFee.toFixed(8)}) held. PRAQEN is not responsible for any loss from this transaction.`,
+              created_at: new Date().toISOString() }
+          ).catch(() => {});
+        }
         return res.json({
           success:      true,
           queued:       true,

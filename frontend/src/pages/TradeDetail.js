@@ -1474,13 +1474,6 @@ export default function TradeDetail({user}) {
                           <p className="text-xs font-black" style={{color:C.danger}}>Report a Problem</p>
                         </button>
 
-                        <a href="https://chat.whatsapp.com/LHVjrw9SK8qGoXcKvprjWz?mode=gi_t"
-                          target="_blank" rel="noopener noreferrer"
-                          className="w-full flex items-center gap-2 p-2.5 rounded-xl hover:bg-green-50 transition border"
-                          style={{borderColor:C.g100}}>
-                          <MessageCircle size={12} style={{color:C.success}}/>
-                          <p className="text-xs font-black" style={{color:C.forest}}>Reach PRAQEN Support</p>
-                        </a>
                       </div>
                     </div>
                   )}

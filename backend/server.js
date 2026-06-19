@@ -235,7 +235,7 @@ const tradeEscrowService    = require('./services/tradeEscrowService');
 const actionCodeService     = require('./services/actionCodeService');
 const balanceIntegrity      = require('./services/balanceIntegrityService');
 const { checkAndAwardBadges } = require('./services/badgeService');
-const { syncAllOfferStatuses } = require('./services/offerStatusService');
+const { syncAllOfferStatuses, deactivateStaleOffers } = require('./services/offerStatusService');
 app.use('/api/hd-wallet', hdWalletRoutes);
 
 // NOTE: walletRoutes removed — wallet routes are defined inline below
@@ -831,10 +831,10 @@ async function getCurrentBTCPrice() {
 // Live FX rates cache — refreshed every 5 minutes
 const _fxCache = { rates: null, fetchedAt: 0 };
 const FX_FALLBACK = {
-  GHS:11.06, NGN:1610, KES:129, ZAR:18.2, UGX:3720,
-  TZS:2680,  USD:1,    GBP:0.79, EUR:0.92, XAF:612,
-  XOF:612,   RWF:1320, ETB:58,  AUD:1.55, CAD:1.36,
-  SGD:1.35,  INR:83,
+  GHS:11.21, NGN:1635, KES:129, ZAR:18.4, UGX:3730,
+  TZS:2690,  USD:1,    GBP:0.79, EUR:0.92, XAF:614,
+  XOF:614,   RWF:1325, ETB:58,  AUD:1.55, CAD:1.37,
+  SGD:1.35,  INR:83.5,
 };
 
 async function getLiveFXRates() {
@@ -889,6 +889,20 @@ async function getLiveFXRates() {
   }
   return _fxCache.rates || FX_FALLBACK;
 }
+
+// GET /api/rates — serves live BTC price + FX rates to the frontend (avoids browser CORS issues)
+app.get('/api/rates', async (req, res) => {
+  try {
+    const [fxRates, btcPrice] = await Promise.all([
+      getLiveFXRates(),
+      getCurrentBTCPrice(),
+    ]);
+    res.json({ btcUsd: btcPrice, rates: fxRates, updatedAt: new Date().toISOString() });
+  } catch (err) {
+    console.error('[GET /api/rates]', err.message);
+    res.json({ btcUsd: 0, rates: FX_FALLBACK, updatedAt: new Date().toISOString() });
+  }
+});
 
 async function getModeratorUserIds() {
   const { data, error } = await supabaseAdmin.from('users').select('id').or('is_moderator.eq.true,is_admin.eq.true');
@@ -2874,6 +2888,61 @@ app.get('/api/users/:userId/reviews', async (req, res) => {
   } catch { res.json({ reviews: [] }); }
 });
 
+// POST /api/users/:userId/view-profile — record a profile view + notify the owner
+app.post('/api/users/:userId/view-profile', async (req, res) => {
+  try {
+    const profileOwnerId = req.params.userId;
+    // viewer may or may not be logged in — read from token if present
+    let viewerId = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const decoded = jwt.verify(authHeader.slice(7), process.env.JWT_SECRET);
+        viewerId = decoded.userId || decoded.id || null;
+      } catch {}
+    }
+    // Don't count self-views
+    if (viewerId && viewerId === profileOwnerId) return res.json({ ok: true });
+
+    // Increment profile_views counter (safe even if column doesn't exist yet — will just error silently)
+    const { data: cur } = await supabaseAdmin
+      .from('users').select('profile_views').eq('id', profileOwnerId).maybeSingle();
+    const next = (parseInt(cur?.profile_views) || 0) + 1;
+    await supabaseAdmin.from('users').update({ profile_views: next }).eq('id', profileOwnerId);
+
+    // Send notification — throttle to max 1 per viewer per 24h to avoid spam
+    const alreadyNotified = viewerId
+      ? (await supabaseAdmin.from('notifications')
+          .select('id').eq('user_id', profileOwnerId).eq('type', 'profile_view')
+          .gte('created_at', new Date(Date.now() - 24*60*60*1000).toISOString())
+          .maybeSingle()).data
+      : null;
+
+    if (!alreadyNotified) {
+      // Resolve viewer's display name if logged in
+      let viewerLabel = 'Someone';
+      if (viewerId) {
+        const { data: vUser } = await supabaseAdmin
+          .from('users').select('username').eq('id', viewerId).maybeSingle();
+        if (vUser?.username) viewerLabel = vUser.username;
+      }
+      await createNotification(
+        profileOwnerId,
+        'profile_view',
+        '👀 Profile View',
+        `${viewerLabel} just viewed your profile`,
+        '/profile'
+      );
+    }
+
+    res.json({ ok: true, views: next });
+  } catch (err) {
+    console.error('[view-profile]', err.message);
+    res.json({ ok: true }); // never block navigation
+  }
+});
+
 // ============================================================
 // BALANCE ROUTES
 // ============================================================
@@ -4062,11 +4131,13 @@ app.post('/api/trades', verifyToken, async (req, res) => {
           ? `${tradeSym||''}${fmtLocalN(tradeLocalAmt)} ${tradeCur}`
           : `$${fmtLocalN(tradeAmountUsd)} USD`;
         const pmDisp     = paymentMethod || listing.payment_method || 'Mobile Money';
-        const assetLabel = listing.gift_card_brand
+        const isGiftCardListing = (listing.listing_type || '').toUpperCase() === 'BUY_GIFT_CARD';
+        const assetLabel = isGiftCardListing && listing.gift_card_brand
           ? `${listing.gift_card_brand} Gift Card`
           : 'Bitcoin';
+        const btcDisp = `₿${parseFloat(trade[0].amount_btc || 0).toFixed(8)}`;
         await createNotification(sellerId, 'trade', '💰 New Trade Request',
-          `${buyerName} wants to buy ${assetLabel} · ${localDisp} via ${pmDisp}`,
+          `${buyerName} wants to buy ${assetLabel} · ${btcDisp} · ${localDisp} via ${pmDisp}`,
           `/trade/${trade[0].id}`);
         // Send personalized emails to buyer and seller in parallel
         const [buyerEmailRes, sellerEmailRes] = await Promise.allSettled([
@@ -6908,6 +6979,11 @@ app.listen(PORT, () => {
   // Pause/reactivate offers based on live wallet balance — runs at startup then every 10 min
   syncAllOfferStatuses().catch(err => console.error('[startup] syncAllOfferStatuses:', err.message));
   setInterval(() => syncAllOfferStatuses().catch(err => console.error('[interval] syncAllOfferStatuses:', err.message)), 10 * 60 * 1000);
+
+  // Deactivate offers from sellers inactive for 10+ days — runs at startup then every 6 hours
+  deactivateStaleOffers().catch(err => console.error('[startup] deactivateStaleOffers:', err.message));
+  setInterval(() => deactivateStaleOffers().catch(err => console.error('[interval] deactivateStaleOffers:', err.message)), 6 * 60 * 60 * 1000);
+  console.log('🔕 Stale offer cron: pauses offers from sellers inactive 10+ days — checks every 6 hours');
 
   // Backfill missing country codes for existing users using phone/KYC data
   backfillCountriesFromPhone().catch(err => console.error('[startup] backfillCountries:', err.message));

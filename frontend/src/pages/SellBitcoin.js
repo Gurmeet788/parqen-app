@@ -571,7 +571,12 @@ function BuyerModal({buyer, listing, onClose, onTrade, btcPriceUSD}) {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-                <span className="font-black text-white text-base leading-tight truncate">{getDisplayName(u) || 'Buyer'}</span>
+                <a href={u?.id ? `/profile/${u.id}` : '#'}
+                  onClick={() => u?.id && axios.post(`${API_URL}/users/${u.id}/view-profile`).catch(()=>{})}
+                  className="font-black text-white text-base leading-tight truncate"
+                  style={{textDecoration:'none', borderBottom:'1.5px solid rgba(255,255,255,0.4)', paddingBottom:'1px'}}>
+                  {getDisplayName(u) || 'Buyer'}
+                </a>
                 {kycOk && <BadgeCheck size={15} style={{color:'#93C5FD', flexShrink:0}}/>}
               </div>
               <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
@@ -625,6 +630,24 @@ function BuyerModal({buyer, listing, onClose, onTrade, btcPriceUSD}) {
               </div>
             </div>
           </div>
+
+          {/* ── VIEW FULL PROFILE LINK ── */}
+          {u?.id && (
+            <a href={`/profile/${u.id}`}
+              onClick={() => axios.post(`${API_URL}/users/${u.id}/view-profile`).catch(()=>{})}
+              className="mt-3 flex items-center justify-center gap-1.5 w-full py-2 rounded-xl text-xs font-bold transition hover:bg-white/20 active:scale-95"
+              style={{
+                color:'rgba(255,255,255,0.9)',
+                border:'1.5px solid rgba(255,255,255,0.25)',
+                backgroundColor:'rgba(255,255,255,0.1)',
+                textDecoration:'none',
+              }}>
+              <span>View Full Profile</span>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M7 17L17 7M17 7H7M17 7v10"/>
+              </svg>
+            </a>
+          )}
         </div>
 
         {/* Tabs */}

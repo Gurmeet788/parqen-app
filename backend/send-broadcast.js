@@ -7,97 +7,180 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 const { createClient } = require('@supabase/supabase-js');
 const nodemailer = require('nodemailer');
 
-// ── Config ──────────────────────────────────────────────────
+// ── Config ───────────────────────────────────────────────────
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Use Resend API (more reliable, no daily Gmail limits)
-const { Resend } = require('resend');
-const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM_ADDRESS = process.env.RESEND_FROM || `PRAQEN Team <${process.env.EMAIL_USER}>`;
-
-// Fallback: Gmail SMTP via nodemailer (only if Resend key missing)
+// Brevo SMTP — primary bulk sender (no sandbox restriction)
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host:   process.env.SMTP_HOST,
+  port:   parseInt(process.env.SMTP_PORT || '587'),
+  secure: false,
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
   },
 });
 
-const SUBJECT = '💙 You Matter to PRAQEN! Market is OPEN!';
+const FROM_ADDRESS = `PRAQEN <${process.env.SMTP_FROM || process.env.EMAIL_USER}>`;
 
-const HTML_BODY = `<!DOCTYPE html>
-<html>
+const SUBJECT = '⚠️ Keep Your Offers Active — Verify KYC & Trade on PRAQEN!';
+
+const buildHTML = (name) => `<!DOCTYPE html>
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PRAQEN - You Matter to Us!</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Keep Your Offers Active — PRAQEN</title>
 </head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-    <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 30px; text-align: center; border-radius: 12px 12px 0 0;">
-        <h1 style="margin: 0;">💙 PRAQEN</h1>
-        <p style="margin: 10px 0 0;">You Matter to Us!</p>
-    </div>
-    <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 12px 12px;">
-        <p style="font-size: 18px;"><strong>Hello PRAQEN User! 💙</strong></p>
-        <p><strong>YOU ARE IMPORTANT TO US!</strong></p>
+<body style="margin:0;padding:0;background:#F0FAF5;font-family:'Segoe UI',Arial,sans-serif;">
 
-        <p>Please take a moment to:</p>
-        <ul>
-            <li>✅ Verify your phone number</li>
-            <li>✅ Complete KYC verification</li>
-        </ul>
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0FAF5;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="100%" style="max-width:600px;background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(27,67,50,0.10);">
 
-        <p><strong>🔓 This unlocks:</strong></p>
-        <ul>
-            <li>✓ Full market access</li>
-            <li>✓ Your earned badge</li>
-            <li>✓ Level 3 benefits</li>
-        </ul>
+        <!-- ── HEADER ── -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#1B4332 0%,#2D6A4F 60%,#40916C 100%);padding:36px 32px 28px;text-align:center;">
+            <div style="display:inline-block;background:rgba(255,255,255,0.12);border-radius:50%;padding:12px 18px;margin-bottom:12px;">
+              <span style="font-size:34px;">₿</span>
+            </div>
+            <h1 style="margin:0 0 6px;font-size:28px;font-weight:900;color:#ffffff;letter-spacing:-0.5px;">PRAQEN</h1>
+            <p style="margin:0;font-size:14px;color:#A7F3D0;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;">P2P Bitcoin Trading Platform</p>
+          </td>
+        </tr>
 
-        <div style="background: #10b981; color: white; padding: 15px; text-align: center; border-radius: 8px; margin: 20px 0;">
-            <strong>📊 THE MARKET IS FULLY OPEN!</strong><br>
-            Buyers and sellers are waiting for YOU!
-        </div>
+        <!-- ── ALERT BANNER ── -->
+        <tr>
+          <td style="background:linear-gradient(90deg,#FEF3C7,#FDE68A);padding:14px 32px;text-align:center;border-bottom:2px solid #FCD34D;">
+            <p style="margin:0;font-size:15px;font-weight:800;color:#92400E;">
+              ⚠️ &nbsp;Action Required — Keep Your Account Active
+            </p>
+          </td>
+        </tr>
 
-        <p>👉 Create your offers<br>
-        👉 Load your PRAQEN wallet<br>
-        👉 Start trading today!</p>
+        <!-- ── BODY ── -->
+        <tr>
+          <td style="padding:32px 32px 8px;">
 
-        <p>💡 Share suggestions via the 💡 button</p>
+            <h1 style="font-size:24px;font-weight:900;color:#1B4332;margin:0 0 6px;text-align:center;">
+              ⚠️ Important: Keep Your Offers Active!
+            </h1>
+            <p style="margin:0 0 28px;color:#64748B;font-size:15px;text-align:center;line-height:1.6;">
+              Dear <strong style="color:#1B4332;">${name}</strong>, your activity matters.<br/>Inactive offers will be deactivated automatically.
+            </p>
 
-        <hr style="margin: 20px 0;">
-        <p style="color: #6b7280; font-size: 12px; text-align: center;">Trade safely on PRAQEN! 🚀</p>
-    </div>
+            <!-- KYC Card -->
+            <div style="background:linear-gradient(135deg,#FFF7ED,#FFFBEB);border-radius:14px;padding:22px 24px;margin-bottom:14px;border:2px solid #FDE68A;">
+              <p style="margin:0 0 8px;font-size:17px;font-weight:900;color:#92400E;">🔒 Verify Your KYC Now</p>
+              <p style="margin:0;font-size:14px;color:#78350F;line-height:1.7;">
+                Complete your identity verification to unlock unlimited trading and keep your badge active.<br/>
+                Go to <strong>Settings → Identity Verification</strong> to get started.
+              </p>
+            </div>
+
+            <!-- Stay Active Card -->
+            <div style="background:linear-gradient(135deg,#F0FDF4,#DCFCE7);border-radius:14px;padding:22px 24px;margin-bottom:14px;border:2px solid #86EFAC;">
+              <p style="margin:0 0 8px;font-size:17px;font-weight:900;color:#166534;">🚀 Keep Trading — Keep Your Badge</p>
+              <p style="margin:0;font-size:14px;color:#15803D;line-height:1.7;">
+                Active traders keep their badges, grow their feedback score, and appear at the top of the marketplace.<br/>
+                <strong>Inactive offers will be paused.</strong> Stay active to stay on top!
+              </p>
+            </div>
+
+            <!-- Promotions Card -->
+            <div style="background:linear-gradient(135deg,#EFF6FF,#DBEAFE);border-radius:14px;padding:22px 24px;margin-bottom:14px;border:2px solid #BFDBFE;">
+              <p style="margin:0 0 8px;font-size:17px;font-weight:900;color:#1E40AF;">🎁 New Features & Promotions Coming!</p>
+              <p style="margin:0;font-size:14px;color:#1E40AF;line-height:1.7;">
+                We're bringing exciting new features and exclusive promotions to PRAQEN very soon.<br/>
+                <strong>Stay active to be the first to benefit!</strong>
+              </p>
+            </div>
+
+            <!-- Steps -->
+            <div style="background:#F8FAFC;border-radius:14px;padding:20px 24px;margin-bottom:24px;border:1.5px solid #E2E8F0;">
+              <p style="margin:0 0 14px;font-size:15px;font-weight:900;color:#1B4332;">✅ What to do right now:</p>
+              <table cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+                  <td style="padding:6px 0;">
+                    <span style="display:inline-block;background:#1B4332;color:#fff;font-size:11px;font-weight:900;border-radius:50%;width:22px;height:22px;text-align:center;line-height:22px;margin-right:10px;">1</span>
+                    <span style="font-size:14px;color:#334155;font-weight:600;">Update your active offers in the marketplace</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:6px 0;">
+                    <span style="display:inline-block;background:#2D6A4F;color:#fff;font-size:11px;font-weight:900;border-radius:50%;width:22px;height:22px;text-align:center;line-height:22px;margin-right:10px;">2</span>
+                    <span style="font-size:14px;color:#334155;font-weight:600;">Complete KYC — Email ✓ Phone ✓ ID Verification</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:6px 0;">
+                    <span style="display:inline-block;background:#F4A422;color:#fff;font-size:11px;font-weight:900;border-radius:50%;width:22px;height:22px;text-align:center;line-height:22px;margin-right:10px;">3</span>
+                    <span style="font-size:14px;color:#334155;font-weight:600;">Start a trade and grow your reputation score</span>
+                  </td>
+                </tr>
+              </table>
+            </div>
+
+            <!-- CTA Button -->
+            <div style="text-align:center;margin:8px 0 28px;">
+              <a href="https://praqen.com/trade"
+                style="display:inline-block;background:linear-gradient(135deg,#1B4332,#2D6A4F);color:#fff;text-decoration:none;font-size:16px;font-weight:900;padding:16px 44px;border-radius:12px;letter-spacing:0.5px;box-shadow:0 4px 14px rgba(27,67,50,0.35);">
+                🚀 &nbsp;Start Trading Now
+              </a>
+            </div>
+
+            <p style="text-align:center;font-size:13px;color:#94A3B8;margin:0 0 8px;">
+              Have questions? Reply to this email or visit our support page.
+            </p>
+
+          </td>
+        </tr>
+
+        <!-- ── FOOTER ── -->
+        <tr>
+          <td style="background:#F8FAFC;padding:20px 32px;border-top:1.5px solid #E2E8F0;text-align:center;">
+            <p style="margin:0 0 6px;font-size:13px;font-weight:800;color:#1B4332;">— The PRAQEN Team 💙</p>
+            <p style="margin:0;font-size:11px;color:#CBD5E1;">
+              You're receiving this because you have an account on PRAQEN.<br/>
+              © ${new Date().getFullYear()} PRAQEN. All rights reserved.
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+
 </body>
 </html>`;
 
-const TEXT_BODY = `Hello PRAQEN User! 💙
+const buildText = (name) => `Hi ${name},
 
-YOU ARE IMPORTANT TO US!
+⚠️ IMPORTANT: Keep Your Offers Active!
 
-Please take a moment to:
-✅ Verify your phone number
-✅ Complete KYC verification
+Dear PRAQEN Trader, your activity matters. Inactive offers will be deactivated.
 
-🔓 This unlocks:
-✓ Full market access
-✓ Your earned badge
-✓ Level 3 benefits
+🔒 VERIFY YOUR KYC NOW
+Complete your identity verification to unlock unlimited trading and keep your badge active.
+Go to Settings → Identity Verification.
 
-📊 THE MARKET IS FULLY OPEN!
-Buyers and sellers are waiting for YOU!
+🚀 KEEP TRADING — KEEP YOUR BADGE
+Active traders keep their badges and feedback growing. Inactive offers will be paused. Stay active to stay on top!
 
-👉 Create your offers
-👉 Load your PRAQEN wallet
-👉 Start trading today!
+🎁 NEW FEATURES & PROMOTIONS COMING!
+We're bringing exciting new features and promotions to PRAQEN. Stay active to be the first to benefit!
 
-💡 Share suggestions via the 💡 button
+✅ What to do right now:
+1. Update your active offers in the marketplace
+2. Complete KYC — Email ✓ Phone ✓ ID Verification
+3. Start a trade and grow your reputation score
 
-Trade safely on PRAQEN! 🚀`;
+👉 Start Trading Now: https://praqen.com/trade
+
+— The PRAQEN Team 💙`;
 
 // ── Delay helper ─────────────────────────────────────────────
 const delay = (ms) => new Promise((res) => setTimeout(res, ms));
@@ -106,22 +189,14 @@ const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 async function main() {
   console.log('🚀 PRAQEN Broadcast Email — Starting...\n');
 
-  // 1. Check which sender to use
-  const useResend = !!process.env.RESEND_API_KEY;
-  if (useResend) {
-    console.log(`✅ Using Resend API (from: ${FROM_ADDRESS})\n`);
-  } else {
-    try {
-      await transporter.verify();
-      console.log('✅ Gmail SMTP connection verified\n');
-    } catch (err) {
-      console.error('❌ Gmail SMTP failed:', err.message);
-      console.error('   → Generate a new App Password at: https://myaccount.google.com/apppasswords');
-      process.exit(1);
-    }
+  try {
+    await transporter.verify();
+    console.log(`✅ Brevo SMTP connected (from: ${FROM_ADDRESS})\n`);
+  } catch (err) {
+    console.error('❌ Brevo SMTP connection failed:', err.message);
+    process.exit(1);
   }
 
-  // 2. Fetch all users with emails
   const { data: users, error } = await supabase
     .from('users')
     .select('id, email, full_name, username')
@@ -132,44 +207,26 @@ async function main() {
     process.exit(1);
   }
 
-  if (!users || users.length === 0) {
-    console.log('⚠️  No users found in the users table.');
-    process.exit(0);
-  }
-
-  // Filter out empty emails
-  const targets = users.filter((u) => u.email && u.email.trim() !== '');
+  const targets = (users || []).filter((u) => u.email && u.email.trim() !== '');
   console.log(`📋 Found ${targets.length} users with email addresses\n`);
 
-  // 3. Send emails one by one
   let sent = 0;
   let failed = 0;
   const failures = [];
 
   for (let i = 0; i < targets.length; i++) {
     const user = targets[i];
-    const name = user.full_name || user.username || 'PRAQEN User';
-    const num = `[${i + 1}/${targets.length}]`;
+    const name = user.full_name || user.username || 'PRAQEN Trader';
+    const num  = `[${i + 1}/${targets.length}]`;
 
     try {
-      if (useResend) {
-        const { error: sendErr } = await resend.emails.send({
-          from: FROM_ADDRESS,
-          to: user.email,
-          subject: SUBJECT,
-          text: TEXT_BODY,
-          html: HTML_BODY,
-        });
-        if (sendErr) throw new Error(sendErr.message);
-      } else {
-        await transporter.sendMail({
-          from: `PRAQEN Team <${process.env.EMAIL_USER}>`,
-          to: user.email,
-          subject: SUBJECT,
-          text: TEXT_BODY,
-          html: HTML_BODY,
-        });
-      }
+      await transporter.sendMail({
+        from:    FROM_ADDRESS,
+        to:      user.email,
+        subject: SUBJECT,
+        text:    buildText(name),
+        html:    buildHTML(name),
+      });
 
       console.log(`✅ ${num} Sent → ${user.email} (${name})`);
       sent++;
@@ -179,13 +236,9 @@ async function main() {
       failures.push({ email: user.email, error: err.message });
     }
 
-    // Small delay between sends
-    if (i < targets.length - 1) {
-      await delay(500);
-    }
+    if (i < targets.length - 1) await delay(500);
   }
 
-  // 4. Summary
   console.log('\n══════════════════════════════════════');
   console.log('📊 BROADCAST COMPLETE — SUMMARY');
   console.log('══════════════════════════════════════');

@@ -370,6 +370,184 @@ function withdrawalAlertHtml(name, amountBtc, toAddress) {
   `);
 }
 
+function txReceiptHtml(name, tx) {
+  const isSend     = tx.type === 'WITHDRAWAL' || tx.type === 'SEND' || tx.type === 'TRANSFER_OUT';
+  const isInternal = tx.type === 'TRANSFER_IN' || tx.type === 'TRANSFER_OUT';
+  const isPending  = tx.status === 'PENDING';
+  const amountSign  = isSend ? '−' : '+';
+  const amountLabel = `${amountSign}₿${parseFloat(tx.amount_btc || 0).toFixed(8)}`;
+  const amountColor = isSend ? '#EF4444' : '#10B981';
+  const statusColor = isPending ? '#F59E0B' : '#10B981';
+  const statusBg    = isPending ? '#FEF3C7' : '#D1FAE5';
+  const statusText  = isPending ? '#92400E' : '#065F46';
+  const statusLabel = isPending ? '⏳ PENDING' : '✅ CONFIRMED';
+
+  const dateStr = tx.created_at
+    ? new Date(tx.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  const refId = tx.id ? `#${String(tx.id).slice(0, 16).toUpperCase()}` : `#${Date.now().toString(36).toUpperCase()}`;
+  const isRisky = tx.notes && /confirmed twice|risky wallet/i.test(tx.notes);
+  const feeMatch = tx.notes && tx.notes.match(/₿([\d.]+)\)/);
+  const feeAmt  = feeMatch ? feeMatch[1] : (tx.fee_btc ? parseFloat(tx.fee_btc).toFixed(8) : null);
+
+  // Helper: one receipt row (label left, value right, divider)
+  const row = (label, valueHtml) => `
+    <tr>
+      <td colspan="2" style="padding:0;"><div style="height:1px;background:#F1F5F9;"></div></td>
+    </tr>
+    <tr>
+      <td style="padding:10px 0 10px 0;font-size:12px;font-weight:700;color:#94A3B8;vertical-align:top;width:38%;">${label}</td>
+      <td style="padding:10px 0 10px 0;font-size:13px;font-weight:600;color:#1E293B;text-align:right;word-break:break-all;">${valueHtml}</td>
+    </tr>`;
+
+  const addrRow  = tx.destination_address
+    ? row('To Address', `<span style="font-size:11px;font-family:monospace;color:#64748B;">${tx.destination_address.slice(0,20)}…</span>`)
+    : '';
+  const txHashRow = tx.tx_hash
+    ? row('TX Hash', `<a href="https://mempool.space/tx/${tx.tx_hash}" style="font-size:11px;font-family:monospace;color:#3B82F6;text-decoration:none;">${tx.tx_hash.slice(0,20)}…↗</a>`)
+    : '';
+
+  // Notes section — risky wallet card or plain text
+  const notesSection = isRisky ? `
+    <tr>
+      <td colspan="2" style="padding:0;"><div style="height:1px;background:#F1F5F9;"></div></td>
+    </tr>
+    <tr>
+      <td style="padding:10px 0 6px;font-size:12px;font-weight:700;color:#94A3B8;vertical-align:top;width:38%;">Notes</td>
+      <td style="padding:10px 0 6px;text-align:right;"></td>
+    </tr>
+    <tr>
+      <td colspan="2" style="padding:0 0 10px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-radius:10px;overflow:hidden;border:1px solid #FDE68A;">
+          <tr>
+            <td style="background:#FEF3C7;padding:9px 14px;">
+              <span style="font-size:13px;font-weight:800;color:#92400E;">⚠️&nbsp; Risky Wallet Warning</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#FFFDF5;padding:12px 14px;">
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td width="24" style="vertical-align:top;padding:4px 0;font-size:15px;">✅</td>
+                  <td style="padding:4px 0;font-size:12px;color:#475569;line-height:1.55;">User confirmed twice before sending</td>
+                </tr>
+                <tr>
+                  <td width="24" style="vertical-align:top;padding:4px 0;font-size:15px;">⚠️</td>
+                  <td style="padding:4px 0;font-size:12px;color:#475569;line-height:1.55;">Warned this is a risky wallet and chose to proceed</td>
+                </tr>
+                ${feeAmt ? `<tr>
+                  <td width="24" style="vertical-align:top;padding:4px 0;font-size:15px;">💰</td>
+                  <td style="padding:4px 0;font-size:12px;color:#475569;line-height:1.55;">Fee of ₿${feeAmt} held by PRAQEN</td>
+                </tr>` : ''}
+                <tr>
+                  <td width="24" style="vertical-align:top;padding:4px 0;font-size:15px;">🚫</td>
+                  <td style="padding:4px 0;font-size:12px;color:#475569;line-height:1.55;">PRAQEN is not responsible for any loss from this transaction</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>` : (tx.notes ? row('Notes', `<span style="font-size:12px;color:#475569;">${tx.notes}</span>`) : '');
+
+  const blockchainNote = isSend ? `
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;border-radius:10px;overflow:hidden;background:#EFF6FF;border:1px solid #BFDBFE;">
+      <tr><td style="padding:12px 16px;">
+        <p style="margin:0 0 4px;font-size:13px;font-weight:800;color:#1D4ED8;">🔗 Blockchain External Wallet Send-Out</p>
+        <p style="margin:0;font-size:12px;color:#3B82F6;line-height:1.55;">⚠️ The blockchain network is responsible for this external wallet transaction. PRAQEN is not liable once funds leave to an external address.</p>
+      </td></tr>
+    </table>` : '';
+
+  const yr = new Date().getFullYear();
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Transaction Receipt</title>
+</head>
+<body style="margin:0;padding:0;background:#F0FAF5;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#F0FAF5;padding:32px 0;">
+<tr><td align="center">
+<table width="480" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(16,185,129,0.10);max-width:480px;width:100%;">
+
+  <!-- ═══ GREEN HEADER ═══ -->
+  <tr><td style="background:linear-gradient(135deg,#1B4332 0%,#2D6A4F 60%,#40916C 100%);padding:32px 32px 40px;text-align:center;">
+    <p style="margin:0 0 2px;font-size:10px;font-weight:800;color:rgba(255,255,255,0.5);letter-spacing:3px;text-transform:uppercase;">PRAQEN</p>
+    <p style="margin:0 0 20px;font-size:16px;font-weight:900;color:#ffffff;">Transaction Receipt</p>
+    <!-- Amount circle -->
+    <div style="display:inline-block;width:72px;height:72px;border-radius:50%;background:${isPending ? 'rgba(245,158,11,0.25)' : isSend ? 'rgba(239,68,68,0.25)' : 'rgba(16,185,129,0.25)'};border:2px solid ${isPending ? 'rgba(245,158,11,0.5)' : isSend ? 'rgba(239,68,68,0.5)' : 'rgba(16,185,129,0.5)'};line-height:72px;text-align:center;font-size:28px;">
+      ${isPending ? '⏳' : isSend ? '↑' : '↓'}
+    </div>
+    <p style="margin:12px 0 4px;font-size:26px;font-weight:900;color:#ffffff;letter-spacing:-0.5px;">${amountLabel}</p>
+    <span style="display:inline-block;background:${statusBg};color:${statusText};font-size:11px;font-weight:800;padding:4px 16px;border-radius:20px;">${statusLabel}</span>
+  </td></tr>
+
+  <!-- ═══ RECEIPT BODY ═══ -->
+  <tr><td style="padding:24px 28px 8px;">
+    <p style="margin:0 0 20px;font-size:13px;color:#64748B;line-height:1.6;">Hello <strong style="color:#1E293B;">${name}</strong>, here is your transaction receipt.</p>
+
+    <!-- Dashed top rule -->
+    <div style="border-top:2px dashed #E2E8F0;margin-bottom:4px;"></div>
+
+    <table width="100%" cellpadding="0" cellspacing="0">
+      ${row('Type',         isSend ? 'Bitcoin Sent' : 'Bitcoin Received')}
+      ${row('Wallet',       'On-chain Bitcoin')}
+      ${row('Amount',       `<strong style="color:${amountColor};font-size:15px;">${amountLabel}</strong>`)}
+      ${row('Status',       `<span style="background:${statusBg};color:${statusText};font-size:11px;font-weight:800;padding:3px 10px;border-radius:6px;">${isPending ? 'Pending' : 'Confirmed'}</span>`)}
+      ${row('Date &amp; Time', dateStr)}
+      ${addrRow}
+      ${txHashRow}
+      ${notesSection}
+      ${row('Reference',    `<span style="font-family:monospace;font-size:12px;color:#64748B;">${refId}</span>`)}
+    </table>
+
+    <!-- Dashed bottom rule -->
+    <div style="border-top:2px dashed #E2E8F0;margin-top:4px;margin-bottom:20px;"></div>
+
+    ${blockchainNote}
+  </td></tr>
+
+  <!-- ═══ CTA ═══ -->
+  <tr><td style="padding:16px 28px 28px;text-align:center;">
+    <a href="https://praqen.com/wallet" style="display:inline-block;background:linear-gradient(135deg,#1B4332,#2D6A4F);color:#fff;text-decoration:none;font-size:14px;font-weight:800;padding:13px 36px;border-radius:12px;">View Wallet →</a>
+  </td></tr>
+
+  <!-- ═══ FOOTER ═══ -->
+  <tr><td style="background:#F8FAFC;padding:18px 28px;text-align:center;border-top:1px solid #E2E8F0;">
+    <p style="margin:0 0 3px;font-size:12px;color:#94A3B8;">Need help? <a href="mailto:hello@praqen.com" style="color:#10b981;font-weight:700;">hello@praqen.com</a></p>
+    <p style="margin:0;font-size:11px;color:#CBD5E1;">© ${yr} PRAQEN · Africa's Safest P2P Bitcoin Marketplace</p>
+  </td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+}
+
+async function sendTxReceiptEmail(user, tx) {
+  const name = user.username || user.email || 'Trader';
+  const isSend    = tx.type === 'WITHDRAWAL' || tx.type === 'SEND';
+  const isPending = tx.status === 'PENDING';
+  const amountStr = `₿${parseFloat(tx.amount_btc || 0).toFixed(8)}`;
+  const subject = isPending
+    ? `⏳ Withdrawal Queued — ${amountStr} Pending`
+    : isSend
+      ? `✅ Transaction Receipt — ${amountStr} Sent`
+      : `✅ Transaction Receipt — ${amountStr} Received`;
+  return sendEmail({
+    userId:   user.id,
+    to:       user.email,
+    subject,
+    html:     txReceiptHtml(name, tx),
+    type:     'tx_receipt',
+    metadata: { amount_btc: tx.amount_btc, status: tx.status, type: tx.type },
+  });
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 async function sendWelcomeEmail(user) {
@@ -800,6 +978,7 @@ module.exports = {
   sendTradeCancelledEmail,
   sendDepositAlertEmail,
   sendWithdrawalAlertEmail,
+  sendTxReceiptEmail,
   sendBroadcastToAllUsers,
   sendEidBonusEmail,
 };

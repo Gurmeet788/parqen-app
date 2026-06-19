@@ -33,6 +33,14 @@ const fmtAge = d => {
   return `${~~(s / 86400)}d ago`;
 };
 
+const fmtDate = d => {
+  if (!d) return '—';
+  const dt = new Date(d);
+  const date = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const time = dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  return { date, time };
+};
+
 // ─── Withdraw Modal ────────────────────────────────────────────────────────────
 function WithdrawModal({ balance, btcPrice, onClose, onSend, kycStatus }) {
   const [address,   setAddress]   = useState('');
@@ -451,8 +459,205 @@ function ReceiveModal({ address, network, onClose }) {
   );
 }
 
+const normalizeNotes = (notes) => {
+  if (!notes) return notes;
+  if (/^Queued withdrawal/i.test(notes)) {
+    const feeMatch = notes.match(/₿([\d.]+)\)/);
+    const feePart  = feeMatch ? ` Fee (₿${feeMatch[1]}) held.` : '';
+    return `User confirmed twice before sending. Warned of risky wallet and proceeded.${feePart} PRAQEN is not responsible for any loss from this transaction.`;
+  }
+  return notes;
+};
+
+// ─── Transaction Receipt Modal ─────────────────────────────────────────────────
+function TxReceiptModal({ tx, onClose }) {
+  const type       = (tx.type || '').toUpperCase();
+  const isSend     = type === 'WITHDRAWAL' || type === 'SEND' || type === 'TRANSFER_OUT';
+  const isInternal = type === 'TRANSFER_IN' || type === 'TRANSFER_OUT';
+  const isTrade    = type === 'TRADE' || type === 'ESCROW';
+  const isPending  = tx.status === 'PENDING' || tx.status === 'pending';
+  const color      = isSend ? C.danger : C.success;
+
+  const label = type === 'TRANSFER_OUT' ? 'PRAQEN Send'
+    : type === 'TRANSFER_IN'  ? 'PRAQEN Received'
+    : type === 'WITHDRAWAL'   ? 'Bitcoin Sent'
+    : type === 'DEPOSIT'      ? 'Bitcoin Received'
+    : isTrade                 ? 'Trade'
+    : isSend                  ? 'Sent'
+    : 'Received';
+
+  const walletType = isInternal ? 'PRAQEN Internal Transfer'
+    : isTrade       ? 'PRAQEN Escrow'
+    : 'On-chain Bitcoin';
+
+  const txHash = tx.tx_hash || tx.txHash;
+  const fullDate = tx.created_at
+    ? new Date(tx.created_at).toLocaleString('en-US', {
+        year: 'numeric', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      })
+    : '—';
+  const refId = tx.id ? `#${String(tx.id).slice(0, 16).toUpperCase()}` : '—';
+
+  const rows = [
+    { label: 'Type',         value: label },
+    { label: 'Wallet',       value: walletType },
+    { label: 'Amount',       value: `${isSend ? '−' : '+'}₿${fmt(Math.abs(tx.amount_btc || 0))}`, colored: true },
+    tx.fee_btc ? { label: 'Fee',         value: `₿${fmt(tx.fee_btc)}` }       : null,
+    { label: 'Status',       value: isPending ? 'Pending' : 'Confirmed',        statusBadge: true },
+    { label: 'Date & Time',  value: fullDate },
+    tx.to_address   ? { label: 'To Address',   value: tx.to_address,   mono: true } : null,
+    tx.from_address ? { label: 'From Address', value: tx.from_address, mono: true } : null,
+    txHash          ? { label: 'TX Hash',      value: txHash, mono: true,
+                        link: `https://mempool.space/tx/${txHash}` }              : null,
+    tx.notes        ? { label: 'Notes',        value: normalizeNotes(tx.notes), isNotes: true } : null,
+    { label: 'Reference',    value: refId, mono: true },
+  ].filter(Boolean);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}>
+      <div className="bg-white w-full md:max-w-sm rounded-t-3xl md:rounded-3xl overflow-hidden shadow-2xl">
+
+        {/* Receipt header — green gradient (screenshot branding) */}
+        <div className="relative" style={{ background: `linear-gradient(135deg,${C.forest} 0%,${C.green} 100%)` }}>
+          <div className="px-5 pt-5 pb-10 text-center">
+            {/* Close button */}
+            <button onClick={onClose}
+              className="absolute top-4 right-4 w-7 h-7 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
+              <X size={13} className="text-white" />
+            </button>
+
+            <p className="text-white/50 text-xs font-black tracking-widest mb-0.5">PRAQEN</p>
+            <p className="text-white font-black text-base">Transaction Receipt</p>
+
+            <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mt-4"
+              style={{
+                backgroundColor: isPending ? 'rgba(245,158,11,0.25)' : isSend ? 'rgba(239,68,68,0.25)' : 'rgba(16,185,129,0.25)',
+                border: `2px solid ${isPending ? C.warn : isSend ? C.danger : C.success}50`,
+              }}>
+              {isPending
+                ? <Clock size={24} style={{ color: C.warn }} />
+                : isSend
+                  ? <ArrowUpRight size={24} style={{ color: C.danger }} />
+                  : <ArrowDownLeft size={24} style={{ color: C.success }} />}
+            </div>
+
+            <p className="text-white font-black text-2xl mt-3">
+              {isSend ? '−' : '+'}₿{fmt(Math.abs(tx.amount_btc || 0))}
+            </p>
+            <span className="text-xs font-black px-3 py-1 rounded-full mt-2 inline-block"
+              style={{
+                backgroundColor: isPending ? 'rgba(245,158,11,0.3)' : 'rgba(16,185,129,0.3)',
+                color: isPending ? '#FDE68A' : '#6EE7B7',
+              }}>
+              {isPending ? '⏳ PENDING' : '✅ CONFIRMED'}
+            </span>
+          </div>
+          {/* Wave cut */}
+          <div className="h-5 bg-white" style={{ borderRadius: '50% 50% 0 0 / 100% 100% 0 0', marginTop: -1 }} />
+        </div>
+
+        {/* Receipt rows */}
+        <div className="px-5 pb-2 overflow-y-auto" style={{ maxHeight: '40vh' }}>
+          <div className="border-t-2 border-dashed mb-3" style={{ borderColor: C.g200 }} />
+          {rows.map(({ label, value, colored, mono, link, statusBadge, isNotes }) => {
+            if (isNotes) {
+              const isRisky = /confirmed twice|risky wallet/i.test(value);
+              const feeMatch = value.match(/Fee \(₿([\d.]+)\)/);
+              const feeAmt = feeMatch ? feeMatch[1] : null;
+              return (
+                <div key={label} className="py-3 border-b" style={{ borderColor: C.g100 }}>
+                  <p className="text-xs font-black mb-2" style={{ color: C.g400 }}>Notes</p>
+                  {isRisky ? (
+                    <div className="rounded-2xl overflow-hidden border" style={{ borderColor: `${C.warn}40` }}>
+                      {/* Header strip */}
+                      <div className="px-3 py-2 flex items-center gap-2"
+                        style={{ backgroundColor: `${C.warn}18` }}>
+                        <AlertTriangle size={13} style={{ color: C.warn, flexShrink: 0 }} />
+                        <p className="text-xs font-black" style={{ color: C.warn }}>Risky Wallet Warning</p>
+                      </div>
+                      {/* Bullet points */}
+                      <div className="px-3 py-3 space-y-2.5" style={{ backgroundColor: '#FFFDF5' }}>
+                        {[
+                          { icon: '✅', text: 'User confirmed twice before sending' },
+                          { icon: '⚠️', text: 'Warned this is a risky wallet and chose to proceed' },
+                          feeAmt ? { icon: '💰', text: `Fee of ₿${feeAmt} held by PRAQEN` } : null,
+                          { icon: '🚫', text: 'PRAQEN is not responsible for any loss from this transaction' },
+                        ].filter(Boolean).map(({ icon, text }) => (
+                          <div key={text} className="flex items-start gap-2">
+                            <span className="text-sm flex-shrink-0 mt-0.5">{icon}</span>
+                            <p className="text-xs font-semibold leading-relaxed" style={{ color: C.g700 }}>{text}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs font-semibold leading-relaxed" style={{ color: C.g700 }}>{value}</p>
+                  )}
+                </div>
+              );
+            }
+            return (
+            <div key={label} className="flex justify-between items-center py-2 border-b last:border-0"
+              style={{ borderColor: C.g100 }}>
+              <p className="text-xs font-bold flex-shrink-0 mr-4" style={{ color: C.g400 }}>{label}</p>
+              {link ? (
+                <a href={link} target="_blank" rel="noopener noreferrer"
+                  className="text-xs font-mono hover:underline text-right"
+                  style={{ color: C.paid }}>
+                  {value.slice(0, 18)}…↗
+                </a>
+              ) : statusBadge ? (
+                <span className="text-xs font-black px-2 py-0.5 rounded-full"
+                  style={{
+                    backgroundColor: value === 'Pending' ? `${C.warn}20` : `${C.success}15`,
+                    color: value === 'Pending' ? C.warn : C.success,
+                  }}>
+                  {value}
+                </span>
+              ) : (
+                <p className={`text-xs text-right break-all ${mono ? 'font-mono' : 'font-semibold'}`}
+                  style={{ color: colored ? color : C.g700, maxWidth: '60%' }}>
+                  {mono && value.length > 22 ? `${value.slice(0, 22)}…` : value}
+                </p>
+              )}
+            </div>
+            );
+          })}
+          <div className="border-t-2 border-dashed mt-3 pt-3 text-center">
+            <p className="text-xs font-semibold" style={{ color: C.g400 }}>
+              🔗 Blockchain External Wallet Send-Out
+            </p>
+            <p className="text-xs mt-1 font-semibold" style={{ color: C.warn }}>
+              ⚠️ The blockchain network is responsible for this external wallet transaction. PRAQEN is not liable once funds leave to an external address.
+            </p>
+          </div>
+        </div>
+
+        {/* Action buttons */}
+        <div className="px-5 pt-3 pb-5 space-y-2">
+          {txHash && (
+            <a href={`https://mempool.space/tx/${txHash}`} target="_blank" rel="noopener noreferrer"
+              className="w-full py-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 hover:bg-gray-50"
+              style={{ borderColor: C.g200, color: C.g600 }}>
+              View on Mempool Explorer ↗
+            </a>
+          )}
+          <button onClick={onClose}
+            className="w-full py-3 rounded-xl text-white font-black text-sm hover:opacity-90 transition"
+            style={{ backgroundColor: C.forest }}>
+            Close Receipt
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Transaction Row ───────────────────────────────────────────────────────────
-function TxRow({ tx }) {
+function TxRow({ tx, onClick }) {
   const type      = (tx.type || '').toUpperCase();
   const isSend    = type === 'WITHDRAWAL' || type === 'SEND' || type === 'TRANSFER_OUT';
   const isInternal = type === 'TRANSFER_IN' || type === 'TRANSFER_OUT';
@@ -467,7 +672,11 @@ function TxRow({ tx }) {
   const explorerBase = 'https://mempool.space/tx';
 
   return (
-    <div className="flex items-center gap-3 py-3 border-b last:border-0" style={{ borderColor: C.g100 }}>
+    <div
+      className="flex items-center gap-3 py-3 border-b last:border-0 cursor-pointer hover:bg-gray-50 rounded-xl px-2 -mx-2 transition"
+      style={{ borderColor: C.g100 }}
+      onClick={onClick}
+    >
       <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
         style={{ backgroundColor: isInternal ? `${C.paid}15` : `${color}10` }}>
         {isInternal
@@ -490,21 +699,31 @@ function TxRow({ tx }) {
         </div>
         <div className="flex items-center gap-1">
           <p className="text-xs truncate" style={{ color: C.g400 }}>
-            {tx.notes || (txHash ? `${txHash.slice(0, 14)}…` : fmtAge(tx.created_at))}
+            {normalizeNotes(tx.notes) || (txHash ? `${txHash.slice(0, 14)}…` : fmtAge(tx.created_at))}
           </p>
           {txHash && !isInternal && (
             <a href={`${explorerBase}/${txHash}`} target="_blank" rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
               className="text-xs font-bold flex-shrink-0 hover:underline"
               style={{ color: C.paid }}>↗</a>
           )}
         </div>
       </div>
-      <div className="text-right flex-shrink-0">
+      <div className="text-right flex-shrink-0 min-w-0">
         <p className="text-sm font-black" style={{ color }}>
           {isSend ? '−' : '+'}₿{fmt(Math.abs(tx.amount_btc || 0))}
         </p>
-        <p className="text-xs" style={{ color: C.g400 }}>{fmtAge(tx.created_at)}</p>
+        {tx.created_at && (() => {
+          const { date, time } = fmtDate(tx.created_at);
+          return (
+            <>
+              <p className="text-xs font-semibold" style={{ color: C.g600 }}>{date}</p>
+              <p className="text-xs" style={{ color: C.g400 }}>{time} · {fmtAge(tx.created_at)}</p>
+            </>
+          );
+        })()}
       </div>
+      <ChevronRight size={13} style={{ color: C.g300, flexShrink: 0 }} />
     </div>
   );
 }
@@ -783,6 +1002,7 @@ export default function WalletPage({ user }) {
   const [showSend,         setShowSend]         = useState(false);
   const [showRecv,         setShowRecv]         = useState(false);
   const [showInternal,     setShowInternal]     = useState(false);
+  const [selectedTx,       setSelectedTx]       = useState(null);
   const [displayCurrency,  setDisplayCurrency]  = useState(localStorage.getItem('praqen_currency') || 'USD');
   const [userVerif,        setUserVerif]        = useState(null);
 
@@ -1212,25 +1432,13 @@ export default function WalletPage({ user }) {
                 </button>
               </div>
             ) : (
-              transactions.map((tx, i) => <TxRow key={tx.id || i} tx={tx} />)
+              transactions.map((tx, i) => (
+                <TxRow key={tx.id || i} tx={tx} onClick={() => setSelectedTx(tx)} />
+              ))
             )}
           </div>
         </div>
 
-        {/* ── SUPPORT ──────────────────────────────────────────────── */}
-        <a href="https://chat.whatsapp.com/LHVjrw9SK8qGoXcKvprjWz?mode=gi_t"
-          target="_blank" rel="noopener noreferrer"
-          className="flex items-center justify-between p-4 rounded-2xl border hover:bg-gray-50 transition"
-          style={{ borderColor: C.g200, backgroundColor: 'white' }}>
-          <div className="flex items-center gap-3">
-            <span className="text-xl">💬</span>
-            <div>
-              <p className="text-sm font-black" style={{ color: C.g800 }}>Need wallet help?</p>
-              <p className="text-xs" style={{ color: C.g400 }}>Reach PRAQEN support on WhatsApp</p>
-            </div>
-          </div>
-          <ChevronRight size={15} style={{ color: C.g400 }} />
-        </a>
       </div>
 
       {/* ── FOOTER ─────────────────────────────────────────────────── */}
@@ -1249,7 +1457,6 @@ export default function WalletPage({ user }) {
                   {label:'TikTok',    href:'https://www.tiktok.com/@praqen', bg:'rgba(0,0,0,0.55)', color:'#ffffff', d:'M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z'},
                   {label:'Instagram', href:'https://www.instagram.com/praqen?igsh=MTRkZWg2amp5YnJlYQ%3D%3D&utm_source=qr', bg:'rgba(228,64,95,0.3)', color:'#E4405F', d:'M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z'},
                   {label:'X (Twitter)', href:'https://x.com/praqenapp?s=21', bg:'rgba(255,255,255,0.12)', color:'#ffffff', d:'M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z'},
-                  {label:'WhatsApp',  href:'https://chat.whatsapp.com/LHVjrw9SK8qGoXcKvprjWz?mode=gi_t', bg:'rgba(37,211,102,0.25)', color:'#25D366', d:'M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z'},
                   {label:'Discord',   href:'https://discord.gg/V6zCZxfdy', bg:'rgba(88,101,242,0.35)', color:'#5865F2', d:'M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z'},
                   {label:'LinkedIn',  href:'https://www.linkedin.com/in/pra-qen-045373402/', bg:'rgba(10,102,194,0.35)', color:'#0A66C2', d:'M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z'},
                 ].map(({label,href,bg,color,d})=>(
@@ -1291,6 +1498,7 @@ export default function WalletPage({ user }) {
         </div>
       </footer>
 
+      {selectedTx && <TxReceiptModal tx={selectedTx} onClose={() => setSelectedTx(null)} />}
       {showSend && <WithdrawModal balance={availableBal} btcPrice={btcPrice} onClose={() => setShowSend(false)} onSend={sendBitcoin} kycStatus={userVerif} />}
       {showRecv && <ReceiveModal address={walletData?.address} network={network} onClose={() => setShowRecv(false)} />}
       {showInternal && (
