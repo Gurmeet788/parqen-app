@@ -69,6 +69,13 @@ setInterval(() => {
   for (const [k, v] of twilioVerifyPending) { if (v.expires < now) twilioVerifyPending.delete(k); }
 }, 60000);
 
+// Email login OTP store — Key: email (lowercase), Value: { code, expires, userId }
+const emailLoginOtpStore = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of emailLoginOtpStore) { if (v.expires < now) emailLoginOtpStore.delete(k); }
+}, 60000);
+
 // In-memory market cache — serves offers/listings without hitting DB on every page load
 const _marketCache = new Map(); // key -> { data, ts }
 const MARKET_CACHE_TTL = 300000; // 5 minutes
@@ -819,22 +826,36 @@ function calculateFee(btcAmount) {
 }
 
 async function getCurrentBTCPrice() {
-  try {
-    const response = await fetch('https://api.coinbase.com/v2/prices/BTC-USD/spot');
-    const data = await response.json();
-    return parseFloat(data.data.amount);
-  } catch {
-    return 88000;
+  // Try Binance first (most reliable, real-time), then Coinbase, then CoinGecko
+  const sources = [
+    () => fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT', { signal: AbortSignal.timeout(5000) })
+            .then(r => r.json()).then(d => parseFloat(d.price)),
+    () => fetch('https://api.coinbase.com/v2/prices/BTC-USD/spot', { signal: AbortSignal.timeout(5000) })
+            .then(r => r.json()).then(d => parseFloat(d.data.amount)),
+    () => fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd', { signal: AbortSignal.timeout(5000) })
+            .then(r => r.json()).then(d => parseFloat(d.bitcoin.usd)),
+  ];
+  for (const src of sources) {
+    try {
+      const price = await src();
+      if (price > 1000) {
+        _btcCache = price;
+        console.log(`[BTC] live price: $${Math.round(price).toLocaleString()}`);
+        return price;
+      }
+    } catch {}
   }
+  return _btcCache || 88000;
 }
+let _btcCache = 0;
 
 // Live FX rates cache — refreshed every 5 minutes
 const _fxCache = { rates: null, fetchedAt: 0 };
 const FX_FALLBACK = {
-  GHS:11.21, NGN:1635, KES:129, ZAR:18.4, UGX:3730,
-  TZS:2690,  USD:1,    GBP:0.79, EUR:0.92, XAF:614,
-  XOF:614,   RWF:1325, ETB:58,  AUD:1.55, CAD:1.37,
-  SGD:1.35,  INR:83.5,
+  GHS:16.0, NGN:1650, KES:129, ZAR:18.4, UGX:3730,
+  TZS:2690, USD:1,    GBP:0.79, EUR:0.92, XAF:614,
+  XOF:614,  RWF:1325, ETB:58,  AUD:1.55, CAD:1.37,
+  SGD:1.35, INR:83.5, MAD:10.1, ZMW:26.5,
 };
 
 async function getLiveFXRates() {
@@ -843,52 +864,131 @@ async function getLiveFXRates() {
     return _fxCache.rates;
   }
   try {
-    // Fetch base rates from open.er-api.com + live GHS/NGN from Frankfurter (same as frontend)
-    const [fxRes, ghsRes, ngnRes] = await Promise.all([
-      fetch('https://open.er-api.com/v6/latest/USD'),
-      fetch('https://api.frankfurter.app/latest?from=USD&to=GHS'),
-      fetch('https://api.frankfurter.app/latest?from=USD&to=NGN'),
-    ]);
+    // open.er-api.com supports GHS, NGN and all African currencies natively
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const fxRes = await fetch('https://open.er-api.com/v6/latest/USD', { signal: ctrl.signal });
+    clearTimeout(timer);
 
     if (fxRes.ok) {
       const fxData = await fxRes.json();
       if (fxData.result === 'success' && fxData.rates) {
         _fxCache.rates = { ...FX_FALLBACK, ...fxData.rates };
+        _fxCache.fetchedAt = now;
+        console.log(`[FX] rates refreshed — GHS:${_fxCache.rates.GHS?.toFixed(4)} NGN:${_fxCache.rates.NGN?.toFixed(2)}`);
+        return _fxCache.rates;
       }
     }
-
-    // Fetch live GHS rate from Frankfurter (overrides any API or fallback value)
-    if (ghsRes.ok) {
-      const ghsData = await ghsRes.json();
-      if (ghsData && ghsData.rates && ghsData.rates.GHS) {
-        _fxCache.rates.GHS = ghsData.rates.GHS;
-        console.log('✅ Live GHS rate updated from Frankfurter:', _fxCache.rates.GHS);
-      }
-    } else {
-      _fxCache.rates.GHS = FX_FALLBACK.GHS;
-      console.warn('⚠️ Could not fetch live GHS rate from Frankfurter, using fallback:', _fxCache.rates.GHS);
-    }
-
-    // Fetch live NGN rate from Frankfurter (overrides any API or fallback value)
-    if (ngnRes.ok) {
-      const ngnData = await ngnRes.json();
-      if (ngnData && ngnData.rates && ngnData.rates.NGN) {
-        _fxCache.rates.NGN = ngnData.rates.NGN;
-        console.log('✅ Live NGN rate updated from Frankfurter:', _fxCache.rates.NGN);
-      }
-    } else {
-      _fxCache.rates.NGN = FX_FALLBACK.NGN;
-      console.warn('⚠️ Could not fetch live NGN rate from Frankfurter, using fallback:', _fxCache.rates.NGN);
-    }
-
-    _fxCache.fetchedAt = now;
-    console.log(`[FX] rates refreshed — GHS:${_fxCache.rates.GHS} NGN:${_fxCache.rates.NGN}`);
-    return _fxCache.rates;
   } catch (e) {
-    console.warn('[FX] fetch failed, using fallback:', e.message);
+    console.warn('[FX] open.er-api failed, trying exchangerate.host:', e.message);
   }
+
+  // Secondary fallback: exchangerate.host
+  try {
+    const r = await fetch('https://api.exchangerate.host/latest?base=USD', { signal: AbortSignal.timeout(6000) });
+    if (r.ok) {
+      const d = await r.json();
+      if (d.rates) {
+        _fxCache.rates = { ...FX_FALLBACK, ...d.rates };
+        _fxCache.fetchedAt = now;
+        console.log(`[FX] rates from exchangerate.host — GHS:${_fxCache.rates.GHS?.toFixed(4)}`);
+        return _fxCache.rates;
+      }
+    }
+  } catch (e) {
+    console.warn('[FX] all FX sources failed:', e.message);
+  }
+
   return _fxCache.rates || FX_FALLBACK;
 }
+
+// ── AI Chat endpoint ─────────────────────────────────────────────────────────
+const PRAQEN_CONTEXT = `You are PRAQEN AI, the helpful support assistant for PRAQEN — a peer-to-peer (P2P) Bitcoin trading platform where users buy and sell Bitcoin using local currencies (GHS, NGN, KES, ZAR, etc.) via mobile money, bank transfer, and gift cards. All trades are escrow-protected.
+
+Key facts about PRAQEN:
+- Users can Buy Bitcoin by browsing seller offers and initiating a trade
+- Users can Sell Bitcoin by creating a sell offer listing
+- Trades are secured by Bitcoin escrow — the seller locks BTC before the buyer pays
+- Payment methods: MTN MoMo, Vodafone Cash, AirtelTigo, bank transfer, gift cards
+- KYC (ID verification) is required for higher trade limits
+- Users build reputation through completed trades and feedback ratings
+- Trust score is based on completed trades, positive feedback, and account age
+- Disputes can be raised during an active trade for moderator review
+- Wallets hold Bitcoin; fiat payments happen directly between users
+- Referral program rewards users for inviting others
+
+Keep responses concise (2-4 sentences), friendly, and practical. If you don't know something specific about the user's account, tell them to visit the relevant page or contact support. Never make up account-specific details.`;
+
+app.post('/api/ai-chat', async (req, res) => {
+  try {
+    const { message, section, history = [], user: chatUser } = req.body;
+    if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+
+    if (apiKey) {
+      // Use Claude API
+      const messages = [
+        ...history.slice(-6).map(m => ({
+          role: m.role === 'user' ? 'user' : 'assistant',
+          content: m.text,
+        })),
+        { role: 'user', content: message },
+      ];
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 400,
+          system: PRAQEN_CONTEXT + (section ? `\n\nThe user selected topic: "${section}". Focus your answer on this area.` : '') +
+                  (chatUser ? `\n\nUser: ${chatUser.username}` : ''),
+          messages,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return res.json({ reply: data.content?.[0]?.text || 'Sorry, I couldn\'t generate a response.' });
+      }
+    }
+
+    // Fallback: smart keyword-based responses
+    const q = message.toLowerCase();
+    let reply = '';
+    if (section === 'buy' || q.includes('buy') || q.includes('purchase')) {
+      reply = 'To **buy Bitcoin**, go to the **Buy BTC** page and browse seller offers. Filter by your country and payment method, then click **BUY BTC** on any offer to start a trade. The seller will lock Bitcoin in escrow before you send payment.';
+    } else if (section === 'sell' || q.includes('sell') || q.includes('listing')) {
+      reply = 'To **sell Bitcoin**, go to **Sell BTC** and browse buy offers from buyers, or create your own sell listing. Make sure your wallet has enough BTC — your offer only appears when your balance is above $10.';
+    } else if (section === 'trade' || q.includes('trade') || q.includes('escrow') || q.includes('dispute')) {
+      reply = 'For trade issues, open the trade from **My Trades** and use the **Raise Dispute** button if there\'s a problem. Our moderators review disputes within 24 hours. Never release escrow until you\'ve confirmed you received payment.';
+    } else if (section === 'payment' || q.includes('payment') || q.includes('momo') || q.includes('bank')) {
+      reply = 'Payments are made directly between you and the other trader. Always send payment via the method shown in the trade. Keep your payment receipt as proof. If the seller doesn\'t release BTC after you pay, raise a dispute.';
+    } else if (section === 'account' || q.includes('account') || q.includes('login') || q.includes('password')) {
+      reply = 'For account issues, go to **Settings** to update your profile, change your password, or verify your email. If you\'re locked out, use **Forgot Password** on the login page to reset via your email.';
+    } else if (section === 'wallet' || q.includes('wallet') || q.includes('balance') || q.includes('withdraw')) {
+      reply = 'Your Bitcoin wallet is in the **Wallet** section. You can deposit BTC to your PRAQEN wallet address. Withdrawals send BTC to any external Bitcoin address. Locked balance is BTC held in active trade escrow.';
+    } else if (section === 'kyc' || q.includes('kyc') || q.includes('verif') || q.includes('id')) {
+      reply = 'To verify your identity, go to your **Profile → Verification** tab and upload a government-issued ID. KYC unlocks higher trade limits and builds trust with other traders. Verification is usually reviewed within 24 hours.';
+    } else if (q.includes('fee') || q.includes('cost') || q.includes('charge')) {
+      reply = 'PRAQEN charges a small **0.5% fee** on completed trades, deducted from the Bitcoin amount. There are no listing fees or deposit fees. Withdrawal fees depend on current Bitcoin network fees.';
+    } else if (q.includes('referral') || q.includes('invite') || q.includes('earn')) {
+      reply = 'Share your **referral link** from your profile to earn a commission when people you invite complete trades. You can find your referral code and earnings in your profile page.';
+    } else {
+      reply = 'I\'m here to help with anything on PRAQEN! You can ask me about buying or selling Bitcoin, trade issues, payments, your account, KYC verification, or your wallet. What would you like to know?';
+    }
+
+    res.json({ reply });
+  } catch (err) {
+    console.error('[ai-chat]', err.message);
+    res.status(500).json({ reply: 'I\'m having trouble right now. Please try again in a moment.' });
+  }
+});
 
 // GET /api/rates — serves live BTC price + FX rates to the frontend (avoids browser CORS issues)
 app.get('/api/rates', async (req, res) => {
@@ -1454,15 +1554,59 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     if (error || !data) return res.status(401).json({ error: 'Invalid credentials' });
     const validPassword = await bcrypt.compare(password, data.password_hash);
     if (!validPassword) return res.status(401).json({ error: 'Invalid credentials' });
-    const token = jwt.sign({ userId: data.id, email }, JWT_SECRET, { expiresIn: '7d' });
+
+    // Generate 6-digit OTP and store it for 10 minutes
+    const loginOtp = String(Math.floor(100000 + Math.random() * 900000));
+    emailLoginOtpStore.set(email.toLowerCase(), {
+      code: loginOtp,
+      expires: Date.now() + 10 * 60 * 1000,
+      userId: data.id,
+    });
+
+    // Send OTP email (non-blocking — but we await to catch send failures)
+    emailService.sendLoginOtpEmail(
+      { id: data.id, email: data.email, username: data.username },
+      loginOtp
+    ).catch(err => console.error('[login-otp] email send failed:', err.message));
+
+    return res.json({ success: true, requiresOtp: true, email: data.email });
+
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Login failed. Please try again.' });
+  }
+});
+
+// ── Email login OTP verification ─────────────────────────────────────────────
+app.post('/api/auth/verify-login-otp', authLimiter, async (req, res) => {
+  try {
+    const { email, code } = req.body;
+    if (!email || !code) return res.status(400).json({ error: 'Email and code are required' });
+
+    const key = email.toLowerCase();
+    const record = emailLoginOtpStore.get(key);
+    if (!record) return res.status(400).json({ error: 'No pending verification for this email. Please log in again.' });
+    if (Date.now() > record.expires) {
+      emailLoginOtpStore.delete(key);
+      return res.status(400).json({ error: 'Code has expired. Please log in again.' });
+    }
+    if (record.code !== String(code).trim()) {
+      return res.status(400).json({ error: 'Incorrect code. Please try again.' });
+    }
+
+    // OTP valid — delete it and complete login
+    emailLoginOtpStore.delete(key);
+
+    const { data } = await supabaseAdmin.from('users').select('*').eq('id', record.userId).single();
+    if (!data) return res.status(404).json({ error: 'User not found' });
+
+    const token = jwt.sign({ userId: data.id, email: data.email }, JWT_SECRET, { expiresIn: '7d' });
     const now = new Date().toISOString();
     await supabaseAdmin.from('users').update({ last_login: now, last_seen_at: now }).eq('id', data.id);
     detectAndSaveCountry(data.id, req).catch(() => {});
 
-    // ── Auto-upgrade fake mock address to real HD wallet address ──────────
     let btcAddress = data.bitcoin_wallet_address;
     if (!isRealBtcAddress(btcAddress)) {
-      console.log(`[login] Upgrading ${data.username} from fake address to real HD address`);
       btcAddress = await upgradeToHDAddress(data.id, data.username) || btcAddress;
     }
 
@@ -1478,13 +1622,11 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
       token,
     });
 
-    // Login alert email (fire and forget — never block login)
     emailService.sendLoginAlertEmail({ id: data.id, email: data.email, username: data.username })
       .catch(() => {});
-
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Login failed. Please try again.' });
+  } catch (err) {
+    console.error('[verify-login-otp] error:', err);
+    res.status(500).json({ error: 'Verification failed. Please try again.' });
   }
 });
 
@@ -1525,20 +1667,43 @@ app.post('/api/team/setup-account', async (req, res) => {
     const { data: existing } = await supabaseAdmin.from('users').select('id').eq('email', email).single();
     if (existing) return res.status(400).json({ error: 'An account with this email already exists. Please log in.' });
     const hash = await bcrypt.hash(password, 12);
-    const username = email.split('@')[0].replace(/[^a-z0-9_]/gi, '_').toLowerCase();
-    const { data: newUser, error } = await supabaseAdmin.from('users').insert({
+    const baseUsername = email.split('@')[0].replace(/[^a-z0-9_]/gi, '_').toLowerCase();
+    const referralCode = await generateUniqueReferralCode(baseUsername);
+    // Ensure username is unique by appending suffix if needed
+    let username = baseUsername;
+    const { data: taken } = await supabaseAdmin.from('users').select('id').eq('username', username).single();
+    if (taken) username = `${baseUsername}_${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const { data: inserted, error } = await supabaseAdmin.from('users').insert([{
       email, username, full_name: full_name.trim(), password_hash: hash,
       is_moderator: true, is_admin: false, is_email_verified: true,
+      account_status: 'ACTIVE', badge: 'BEGINNER',
+      average_rating: 0, total_trades: 0, completion_rate: 100,
+      referral_code: referralCode,
+      avatar_url: null, bitcoin_wallet_address: null,
       created_at: new Date().toISOString(),
-    }).select().single();
-    if (error || !newUser) { console.error('team/setup-account insert error:', error); return res.status(500).json({ error: 'Failed to create account. Try again.' }); }
-    await supabaseAdmin.from('user_balances').insert({ user_id: newUser.id, balance_btc: 0, balance_usd: 0 }).catch(() => {});
+    }]).select();
+
+    if (error || !inserted || inserted.length === 0) {
+      console.error('team/setup-account insert error:', JSON.stringify(error));
+      if (error?.code === '23505' || error?.message?.includes('duplicate') || error?.message?.includes('unique')) {
+        return res.status(400).json({ error: 'Username or email already taken. Try a different email.' });
+      }
+      return res.status(500).json({ error: `Failed to create account: ${error?.message || error?.code || 'unknown DB error'}` });
+    }
+    const newUser = inserted[0];
+
+    await Promise.all([
+      supabaseAdmin.from('user_balances').insert([{ user_id: newUser.id, balance_btc: 0, balance_usd: 0 }]).catch(() => {}),
+      supabaseAdmin.from('wallets').insert({ user_id: newUser.id, balance_btc: 0, locked_balance_btc: 0, updated_at: new Date().toISOString() }).catch(() => {}),
+    ]);
+
     const token = jwt.sign({ userId: newUser.id, email }, JWT_SECRET, { expiresIn: '7d' });
     return res.json({
       success: true, token,
       user: { id: newUser.id, email, username: newUser.username, full_name: newUser.full_name,
         is_moderator: true, is_admin: false, avatar_url: null,
-        average_rating: 0, total_trades: 0, referral_code: null, total_referrals: 0, referral_earnings_btc: 0 },
+        average_rating: 0, total_trades: 0, referral_code: referralCode, total_referrals: 0, referral_earnings_btc: 0 },
     });
   } catch (err) {
     console.error('team/setup-account error:', err);
@@ -2771,7 +2936,7 @@ app.get('/api/users/:userId', async (req, res) => {
     const param  = req.params.userId?.trim();
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(param);
     // Core fields — referral fields included directly to avoid silent failure in secondary query
-    const coreFields = 'id, username, full_name, bio, location, website, avatar_url, average_rating, total_trades, completion_rate, created_at, is_admin, is_moderator, is_id_verified, is_email_verified, is_phone_verified, total_feedback_count, positive_feedback, negative_feedback, last_login, last_seen_at, badge, country, referral_code, total_referrals, referral_earnings_btc';
+    const coreFields = 'id, username, full_name, bio, location, website, avatar_url, average_rating, total_trades, completion_rate, created_at, is_admin, is_moderator, is_id_verified, is_email_verified, is_phone_verified, total_feedback_count, positive_feedback, negative_feedback, last_login, last_seen_at, badge, country, referral_code, total_referrals, referral_earnings_btc, trusted_by_count, blocked_by_count, blocked_count';
 
     let data = null;
 
@@ -2857,8 +3022,13 @@ app.put('/api/users/profile', verifyToken, async (req, res) => {
       updateData.full_name = newName;
     }
 
-    if (bio            !== undefined) updateData.bio            = bio;
-    if (location       !== undefined) updateData.location       = location;
+    if (bio !== undefined) updateData.bio = bio;
+    if (location !== undefined) {
+      if (current?.is_id_verified) {
+        return res.status(403).json({ error: 'Location cannot be changed after ID verification.' });
+      }
+      updateData.location = location;
+    }
     if (website        !== undefined) updateData.website        = website;
     if (phone          !== undefined) updateData.phone          = phone;
     if (hide_full_name !== undefined) updateData.hide_full_name = hide_full_name;
@@ -2882,6 +3052,50 @@ app.put('/api/users/profile', verifyToken, async (req, res) => {
   } catch (error) {
     console.error('Update profile error:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ── Trust / Relationship endpoints ───────────────────────────────────────────
+
+// Toggle trust: POST /api/users/:userId/trust
+app.post('/api/users/:userId/trust', verifyToken, async (req, res) => {
+  try {
+    const targetId = req.params.userId;
+    if (targetId === req.userId) return res.status(400).json({ error: 'You cannot trust yourself.' });
+
+    const { data: existing } = await supabaseAdmin
+      .from('user_trust').select('id').eq('user_id', req.userId).eq('target_id', targetId).eq('type', 'trust').maybeSingle();
+
+    if (existing) {
+      // Untrust — remove record then recount
+      await supabaseAdmin.from('user_trust').delete().eq('id', existing.id);
+    } else {
+      // Trust — insert record
+      await supabaseAdmin.from('user_trust').insert({ user_id: req.userId, target_id: targetId, type: 'trust' });
+    }
+
+    // Recount trusted_by for target user (always accurate)
+    const { count } = await supabaseAdmin.from('user_trust').select('id', { count: 'exact', head: true }).eq('target_id', targetId).eq('type', 'trust');
+    await supabaseAdmin.from('users').update({ trusted_by_count: count || 0 }).eq('id', targetId);
+
+    res.json({ trusted: !existing, trusted_by_count: count || 0 });
+  } catch (err) {
+    console.error('[trust] error:', err.message);
+    res.status(500).json({ error: 'Failed to update trust.' });
+  }
+});
+
+// Get relationship status: GET /api/users/:userId/relationship
+app.get('/api/users/:userId/relationship', verifyToken, async (req, res) => {
+  try {
+    const { data } = await supabaseAdmin
+      .from('user_trust').select('type').eq('user_id', req.userId).eq('target_id', req.params.userId);
+    res.json({
+      is_trusted: data?.some(r => r.type === 'trust') || false,
+      is_blocked: data?.some(r => r.type === 'block') || false,
+    });
+  } catch (err) {
+    res.json({ is_trusted: false, is_blocked: false });
   }
 });
 
@@ -6453,13 +6667,25 @@ app.get('/api/admin/support/tickets', verifyToken, async (req, res) => {
     const { status = '', page = 1, limit = 100 } = req.query;
     const offset = (page - 1) * limit;
     let query = supabaseAdmin.from('support_tickets')
-      .select('*, users!support_tickets_user_id_fkey(id, username, avatar_url)', { count: 'exact' })
+      .select('*, users!support_tickets_user_id_fkey(id, username, full_name, email, avatar_url, phone, country, created_at)', { count: 'exact' })
       .order('updated_at', { ascending: false })
       .range(offset, offset + parseInt(limit) - 1);
     if (status) query = query.eq('status', status);
     const { data, error, count } = await query;
     if (error) return res.status(400).json({ error: error.message });
-    res.json({ tickets: (data || []).map(t => ({ ...t, username: t.users?.username, avatar_url: t.users?.avatar_url })), total: count || 0 });
+    res.json({
+      tickets: (data || []).map(t => ({
+        ...t,
+        username:   t.users?.username,
+        full_name:  t.users?.full_name,
+        user_email: t.users?.email,
+        avatar_url: t.users?.avatar_url,
+        user_phone: t.users?.phone,
+        user_country: t.users?.country,
+        user_joined: t.users?.created_at,
+      })),
+      total: count || 0,
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -6468,10 +6694,23 @@ app.get('/api/admin/support/tickets/:id/messages', verifyToken, async (req, res)
   try {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { data: ticket } = await supabaseAdmin.from('support_tickets')
-      .select('*, users!support_tickets_user_id_fkey(id, username)').eq('id', req.params.id).single();
+      .select('*, users!support_tickets_user_id_fkey(id, username, full_name, email, avatar_url, phone, country, created_at)')
+      .eq('id', req.params.id).single();
     if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
     const { data: messages } = await supabaseAdmin.from('support_messages').select('*').eq('ticket_id', req.params.id).order('created_at', { ascending: true });
-    res.json({ ticket: { ...ticket, username: ticket.users?.username }, messages: messages || [] });
+    res.json({
+      ticket: {
+        ...ticket,
+        username:    ticket.users?.username,
+        full_name:   ticket.users?.full_name,
+        user_email:  ticket.users?.email,
+        avatar_url:  ticket.users?.avatar_url,
+        user_phone:  ticket.users?.phone,
+        user_country: ticket.users?.country,
+        user_joined: ticket.users?.created_at,
+      },
+      messages: messages || [],
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

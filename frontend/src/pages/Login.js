@@ -111,6 +111,8 @@ export default function Login({ onLogin }) {
   const [showDrop, setShowDrop] = useState(false);
   const [search, setSearch] = useState('');
   const [otp, setOtp] = useState('');
+  const [emailOtp, setEmailOtp] = useState('');
+  const [pendingEmail, setPendingEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -119,7 +121,7 @@ export default function Login({ onLogin }) {
 
   const go = newStep => {
     setStep(newStep); setError(''); setNotice('');
-    setOtp(''); setOtpSent(false); setShowDrop(false); setSearch('');
+    setOtp(''); setEmailOtp(''); setOtpSent(false); setShowDrop(false); setSearch('');
   };
 
   const filteredCountries = COUNTRIES.filter(c =>
@@ -142,13 +144,45 @@ export default function Login({ onLogin }) {
     setLoading(true);
     try {
       const { data } = await axios.post(`${API_URL}/auth/login`, { email, password });
-      if (data.success) {
+      if (data.requiresOtp) {
+        if (remember) localStorage.setItem('remember_contact', email);
+        setPendingEmail(data.email || email);
+        setEmailOtp('');
+        setStep('email-otp');
+        setNotice(`A 6-digit code was sent to ${data.email || email}`);
+      } else if (data.success) {
         if (remember) localStorage.setItem('remember_contact', email);
         onLogin(data.user, data.token);
         navigate('/buy-bitcoin');
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Login failed. Check your details and try again.');
+    } finally { setLoading(false); }
+  };
+
+  const handleVerifyEmailOtp = async () => {
+    if (emailOtp.length !== 6) { setError('Enter the full 6-digit code'); return; }
+    setLoading(true); setError('');
+    try {
+      const { data } = await axios.post(`${API_URL}/auth/verify-login-otp`, { email: pendingEmail, code: emailOtp });
+      if (data.success) {
+        onLogin(data.user, data.token);
+        navigate('/buy-bitcoin');
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || 'Invalid code. Please try again.');
+      setEmailOtp('');
+    } finally { setLoading(false); }
+  };
+
+  const resendEmailOtp = async () => {
+    setError(''); setEmailOtp(''); setNotice('');
+    setLoading(true);
+    try {
+      const { data } = await axios.post(`${API_URL}/auth/login`, { email: pendingEmail, password });
+      if (data.requiresOtp) setNotice(`New code sent to ${pendingEmail}`);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not resend code. Try logging in again.');
     } finally { setLoading(false); }
   };
 
@@ -606,11 +640,12 @@ export default function Login({ onLogin }) {
                   letterSpacing: '-0.3px',
                   fontFamily: "'Outfit', sans-serif"
                 }}>
-                  {step === 'choose' ? 'Sign In' : step === 'email' ? 'Email Sign In' : otpSent ? 'Verify Code' : 'Phone Sign In'}
+                  {step === 'choose' ? 'Sign In' : step === 'email' ? 'Email Sign In' : step === 'email-otp' ? 'Check Your Email' : otpSent ? 'Verify Code' : 'Phone Sign In'}
                 </h1>
                 <p style={{ fontSize: 13, color: '#64748B', margin: 0, fontWeight: 400 }}>
                   {step === 'choose' ? 'Choose your sign-in method'
                     : step === 'email' ? 'Sign in with your email & password'
+                    : step === 'email-otp' ? `We sent a 6-digit code to ${pendingEmail}`
                     : otpSent ? `Code sent to ${fullPhone}`
                     : "We'll send a 6-digit code via SMS"}
                 </p>
@@ -775,6 +810,61 @@ export default function Login({ onLogin }) {
                   </div>
                 )}
 
+                {/* EMAIL OTP STEP */}
+                {step === 'email-otp' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '14px', borderRadius: 14,
+                      background: 'rgba(45,106,79,0.06)', border: '1.5px solid rgba(45,106,79,0.15)'
+                    }}>
+                      <div style={{
+                        width: 40, height: 40, borderRadius: 12,
+                        background: 'linear-gradient(135deg, #2D6A4F, #40916C)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                      }}>
+                        <Mail size={18} color="white" />
+                      </div>
+                      <div>
+                        <p style={{ fontWeight: 700, fontSize: 13, color: '#1B4332', margin: '0 0 2px' }}>Code sent!</p>
+                        <p style={{ fontSize: 12, color: '#2D6A4F', margin: 0 }}>Check your inbox at {pendingEmail}</p>
+                      </div>
+                    </div>
+
+                    <div style={{ textAlign: 'center' }}>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 12, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Enter 6-digit code
+                      </label>
+                      <OtpBoxes value={emailOtp} onChange={v => { setEmailOtp(v); setError(''); }} />
+                    </div>
+
+                    <button onClick={handleVerifyEmailOtp} disabled={loading || emailOtp.length !== 6}
+                      className="submit-btn"
+                      style={{
+                        background: 'linear-gradient(135deg, #2D6A4F, #40916C)',
+                        color: 'white',
+                        boxShadow: '0 6px 20px rgba(45, 106, 79, 0.25)',
+                        opacity: (loading || emailOtp.length !== 6) ? 0.55 : 1
+                      }}>
+                      {loading ? (
+                        <><RefreshCw size={16} className="animate-spin" />Verifying…</>
+                      ) : (
+                        <>Verify & Sign In <ArrowRight size={16} /></>
+                      )}
+                    </button>
+
+                    <button onClick={resendEmailOtp} disabled={loading}
+                      style={{
+                        width: '100%', padding: '12px', borderRadius: 12,
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        fontSize: 13, fontWeight: 600, color: '#2D6A4F',
+                        fontFamily: "'Inter', sans-serif"
+                      }}>
+                      ← Resend code
+                    </button>
+                  </div>
+                )}
+
                 {/* SMS STEP */}
                 {step === 'sms' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -930,23 +1020,27 @@ export default function Login({ onLogin }) {
                   </div>
                 )}
 
-                {/* Divider & Register CTA */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
-                  <div style={{ flex: 1, height: 1, background: '#E2E8F0' }} />
-                  <span style={{ fontSize: 11, fontWeight: 600, color: '#94A3B8' }}>OR</span>
-                  <div style={{ flex: 1, height: 1, background: '#E2E8F0' }} />
-                </div>
+                {/* Divider & Register CTA — hidden during OTP verification */}
+                {step !== 'email-otp' && (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
+                      <div style={{ flex: 1, height: 1, background: '#E2E8F0' }} />
+                      <span style={{ fontSize: 11, fontWeight: 600, color: '#94A3B8' }}>OR</span>
+                      <div style={{ flex: 1, height: 1, background: '#E2E8F0' }} />
+                    </div>
 
-                <button onClick={() => navigate('/register')}
-                  className="submit-btn"
-                  style={{
-                    background: 'none',
-                    border: '2px solid #2D6A4F',
-                    color: '#2D6A4F',
-                    boxShadow: 'none'
-                  }}>
-                  Create a Free Account
-                </button>
+                    <button onClick={() => navigate('/register')}
+                      className="submit-btn"
+                      style={{
+                        background: 'none',
+                        border: '2px solid #2D6A4F',
+                        color: '#2D6A4F',
+                        boxShadow: 'none'
+                      }}>
+                      Create a Free Account
+                    </button>
+                  </>
+                )}
               </div>
 
               {/* Card Footer */}
@@ -955,7 +1049,7 @@ export default function Login({ onLogin }) {
                   <Shield size={11} />
                   <span>SSL · Zero fraud</span>
                 </div>
-                <button onClick={() => go('choose')}
+                <button onClick={() => go(step === 'email-otp' ? 'email' : 'choose')}
                   style={{
                     background: 'none', border: 'none', cursor: 'pointer',
                     fontSize: 12, fontWeight: 600, color: '#64748B',

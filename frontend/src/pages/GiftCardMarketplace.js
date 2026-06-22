@@ -1016,7 +1016,7 @@ export default function GiftCards({user}) {
   const [retrying,     setRetrying]     = useState(false);
   const [btcPrice,     setBtcPrice]     = useState(68000);
   const [affLeaderboard, setAffLeaderboard] = useState([]);
-  const [selCurrency,  setSelCurrency]  = useState(CURRENCIES[0]);
+  const [selCurrency,  setSelCurrency]  = useState(CURRENCIES.find(c=>c.code==='USD')||CURRENCIES[0]);
   const [selBrand,     setSelBrand]     = useState('All Brands');
   const [selCountry,   setSelCountry]   = useState(COUNTRIES[0]);
   const [amountInput,  setAmountInput]  = useState('');
@@ -1245,7 +1245,7 @@ export default function GiftCards({user}) {
         <div className="flex w-full">
           {[
             {label:'Buy BTC',    path:'/buy-bitcoin',  active:false, color:'#1B4332'},
-            {label:'Sell BTC',   path:'/sell-bitcoin', active:false, color:'#D97706'},
+            {label:'Sell',       path:'/sell-bitcoin', active:false, color:'#D97706'},
             {label:'Gift Cards', path:'/gift-cards',   active:true,  color:'#0D9488'},
           ].map(tab=>(
             <Link key={tab.path} to={tab.path}
@@ -1258,21 +1258,6 @@ export default function GiftCards({user}) {
               {tab.label}
             </Link>
           ))}
-        </div>
-        {/* Stats row — always visible below tabs */}
-        <div className="flex items-center justify-between px-3 py-1.5 border-t" style={{borderColor:C.g100, backgroundColor:C.g50}}>
-          <span className="text-xs font-semibold" style={{color:C.g400}}>
-            {sellerCount} seller{sellerCount!==1?'s':''}
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full flex-shrink-0"
-              style={{backgroundColor: onlineCnt>0 ? C.online : C.g300,
-                      boxShadow: onlineCnt>0 ? `0 0 0 3px ${C.online}30` : 'none'}}/>
-            <span className="text-xs font-semibold"
-              style={{color: onlineCnt>0 ? C.online : C.g400}}>
-              {onlineCnt>0 ? `${onlineCnt} online` : 'offline — offers still available'}
-            </span>
-          </span>
         </div>
       </div>
 
@@ -1345,9 +1330,9 @@ export default function GiftCards({user}) {
                 <button onClick={()=>{setShowCurrency(!showCurrency);setCurrencySearch('');setShowBrand(false);setShowCountry(false);}}
                   className="w-full flex items-center gap-1.5 px-3 py-2.5 rounded-xl border-2 font-bold transition"
                   style={{
-                    borderColor:selCurrency.code!=='GHS'?C.forest:C.g200,
-                    color:selCurrency.code!=='GHS'?C.forest:C.g600,
-                    backgroundColor:selCurrency.code!=='GHS'?`${C.forest}08`:'transparent'
+                    borderColor:selCurrency.code!=='USD'?C.forest:C.g200,
+                    color:selCurrency.code!=='USD'?C.forest:C.g600,
+                    backgroundColor:selCurrency.code!=='USD'?`${C.forest}08`:'transparent'
                   }}>
                   <span className="text-xs font-black flex-shrink-0">{selCurrency.symbol}</span>
                   <span className="text-xs font-black flex-1 text-left">{selCurrency.code}</span>
@@ -1556,7 +1541,7 @@ export default function GiftCards({user}) {
       {/* ══════════════════════════════════════════════════
           5. OFFER GRID
       ══════════════════════════════════════════════════ */}
-      <div className="max-w-7xl mx-auto w-full px-2 sm:px-3 py-3 space-y-3">
+      <div className="max-w-7xl mx-auto w-full px-2 sm:px-3 pt-2 pb-3 space-y-3">
 
         {/* ── Inline active trade cards ── */}
         {activeTrades.length > 0 && (
@@ -1575,20 +1560,17 @@ export default function GiftCards({user}) {
         )}
 
         {/* Count row */}
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold" style={{color:C.g500}}>
-            <span className="font-black text-sm" style={{color:C.g800}}>{filtered.length}</span>{' '}
-            offers
-            {selBrand!=='All Brands'&&` · ${selBrand}`}
-            {amountInput&&` · $${amountInput}`}
-            {selCountry.code!=='ALL'&&` · ${selCountry.flag} ${selCountry.name}`}
-            {traderSearch.trim()&&` · "${traderSearch.trim()}"`}
-          </p>
-          <button onClick={()=>navigate('/create-offer')}
-            className="flex items-center gap-1 text-xs font-black px-3 py-1.5 rounded-lg transition hover:opacity-80"
-            style={{backgroundColor:`${C.forest}12`,color:C.forest}}>
-            <PlusCircle size={12}/> Post Offer
-          </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full animate-pulse flex-shrink-0"
+              style={{backgroundColor:C.online, boxShadow:`0 0 0 3px ${C.online}30`}}/>
+            <span className="text-xs font-black" style={{color:C.online}}>{onlineCnt} online</span>
+          </div>
+          <span style={{color:C.g300, fontSize:10}}>·</span>
+          <span className="text-xs font-semibold" style={{color:C.g500}}>
+            <span className="font-black" style={{color:C.g800}}>{filtered.length}</span> active offer{filtered.length!==1?'s':''}
+            {selCountry.code!=='ALL'?` in ${selCountry.flag} ${selCountry.name}`:''}
+          </span>
         </div>
 
         {(loading && !listings.length) || retrying ? (

@@ -203,6 +203,8 @@ class HDWalletService {
   // ── Check balance at any address ─────────────────────────────────────────
   async checkBalance(address) {
     this.initialize();
+
+    // Primary: mempool.space / blockstream / emzy — all use same /address/:addr schema
     try {
       const d = await this.apiGet(`/address/${address}`);
       const confirmedSats   = d.chain_stats.funded_txo_sum - d.chain_stats.spent_txo_sum;
@@ -214,10 +216,54 @@ class HDWalletService {
         total_btc:       (confirmedSats + unconfirmedSats) / 1e8,
         confirmed_sats:  confirmedSats,
         tx_count:        d.chain_stats.tx_count,
+        source:          'mempool',
       };
-    } catch (error) {
-      console.error(`[checkBalance] Error for ${address}:`, error.message);
-      return { address, confirmed_btc: 0, unconfirmed_btc: 0, total_btc: 0, confirmed_sats: 0, error: error.message };
+    } catch (primaryError) {
+      console.warn(`[checkBalance] Primary APIs failed for ${address}: ${primaryError.message}`);
+    }
+
+    // Secondary: BlockCypher (different API schema)
+    try {
+      const r = await axios.get(
+        `https://api.blockcypher.com/v1/btc/main/addrs/${address}/balance`,
+        { timeout: 10000 }
+      );
+      const d = r.data;
+      const confirmedSats   = d.balance   || 0;
+      const unconfirmedSats = d.unconfirmed_balance || 0;
+      return {
+        address,
+        confirmed_btc:   confirmedSats   / 1e8,
+        unconfirmed_btc: unconfirmedSats / 1e8,
+        total_btc:       (confirmedSats + unconfirmedSats) / 1e8,
+        confirmed_sats:  confirmedSats,
+        tx_count:        d.n_tx || 0,
+        source:          'blockcypher',
+      };
+    } catch (e2) {
+      console.warn(`[checkBalance] BlockCypher failed for ${address}: ${e2.message}`);
+    }
+
+    // Tertiary: blockchain.info
+    try {
+      const r = await axios.get(
+        `https://blockchain.info/rawaddr/${address}?limit=0`,
+        { timeout: 10000 }
+      );
+      const d = r.data;
+      const confirmedSats = d.final_balance || 0;
+      return {
+        address,
+        confirmed_btc:   confirmedSats / 1e8,
+        unconfirmed_btc: 0,
+        total_btc:       confirmedSats / 1e8,
+        confirmed_sats:  confirmedSats,
+        tx_count:        d.n_tx || 0,
+        source:          'blockchain.info',
+      };
+    } catch (e3) {
+      console.error(`[checkBalance] All APIs failed for ${address}: ${e3.message}`);
+      return { address, confirmed_btc: 0, unconfirmed_btc: 0, total_btc: 0, confirmed_sats: 0, error: 'All blockchain APIs unreachable' };
     }
   }
 

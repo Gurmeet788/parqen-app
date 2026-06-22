@@ -1037,6 +1037,41 @@ export default function BuyBitcoin({user}) {
     if (contextBtcUsd > 0) setBtcPrice(contextBtcUsd);
   }, [contextBtcUsd]);
 
+  // Auto-detect country + currency on first load
+  useEffect(() => {
+    const applyCountry = (cc) => {
+      const code = (cc || '').toUpperCase().slice(0, 2);
+      const matched = COUNTRIES.find(c => c.code === code);
+      if (!matched || matched.code === 'ALL') return false;
+      setSelCountry(matched);
+      const cur = CURRENCIES.find(c => c.code === matched.currency);
+      if (cur) setSelCurrency(cur);
+      return true;
+    };
+
+    // 1. Use logged-in user's profile country
+    if (user) {
+      const cc = user.country_code || (user.country?.length <= 3 ? user.country : null) || '';
+      if (applyCountry(cc)) return;
+    }
+
+    // 2. Fallback: IP-based detection for guests
+    fetch('https://ipapi.co/json/')
+      .then(r => r.json())
+      .then(data => {
+        if (data?.country_code) {
+          const cc = data.country_code.toUpperCase();
+          const matched = COUNTRIES.find(c => c.code === cc);
+          if (matched && matched.code !== 'ALL') {
+            setSelCountry(matched);
+            const cur = CURRENCIES.find(c => c.code === (data.currency || matched.currency));
+            if (cur) setSelCurrency(cur);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const loadListings = async (attempt = 1, force = false) => {
     // Skip fetch if cache is fresh (< 5 minutes) and this is not a forced refresh
     if (attempt === 1 && !force) {
@@ -1276,7 +1311,7 @@ export default function BuyBitcoin({user}) {
 
       {/* ══ 1. RATE BAR ════════════════════════════════════════ */}
       <div style={{backgroundColor:C.forest}} className="w-full flex-shrink-0">
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 py-3 sm:py-3.5">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-2.5">
           <div className="flex items-center justify-between gap-3">
 
             <div className="flex-1 min-w-0">
@@ -1313,7 +1348,7 @@ export default function BuyBitcoin({user}) {
         <div className="flex w-full">
           {[
             {label:'Buy BTC',    path:'/buy-bitcoin',  active:true,  color:'#1B4332'},
-            {label:'Sell BTC',   path:'/sell-bitcoin', active:false, color:'#D97706'},
+            {label:'Sell',       path:'/sell-bitcoin', active:false, color:'#D97706'},
             {label:'Gift Cards', path:'/gift-cards',   active:false, color:'#0D9488'},
           ].map(tab=>(
             <Link key={tab.path} to={tab.path}
@@ -1326,32 +1361,6 @@ export default function BuyBitcoin({user}) {
               {tab.label}
             </Link>
           ))}
-        </div>
-        <div className="flex items-center justify-between px-3 py-2 border-t" style={{borderColor:C.g100, backgroundColor:C.g50}}>
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="w-2 h-2 rounded-full flex-shrink-0 animate-pulse"
-              style={{backgroundColor:C.online, boxShadow:`0 0 0 3px ${C.online}30`}}/>
-            <span className="text-xs font-black" style={{color:C.online}}>Active &amp; Online</span>
-            {lastSynced && (
-              <>
-                <span style={{color:C.g300, fontSize:10}}>·</span>
-                <span className="text-xs font-medium hidden sm:inline" style={{color:C.g400}}>
-                  Last synced {lastSynced.toLocaleTimeString()}
-                </span>
-                <span className="text-xs font-medium sm:hidden" style={{color:C.g400}}>
-                  {lastSynced.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}
-                </span>
-              </>
-            )}
-          </div>
-          <button
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition disabled:opacity-60"
-            style={{backgroundColor:`${C.green}15`, color:C.green, border:`1.5px solid ${C.green}30`}}>
-            <RefreshCw size={11} className={isRefreshing ? 'animate-spin' : ''}/>
-            {isRefreshing ? 'Syncing…' : 'Refresh'}
-          </button>
         </div>
       </div>
 
@@ -1621,18 +1630,30 @@ export default function BuyBitcoin({user}) {
 
 
       {/* ══ 4. OFFER GRID ══════════════════════════════════════ */}
-      <div className="max-w-7xl mx-auto w-full px-3 py-3 space-y-3">
+      <div className="max-w-7xl mx-auto w-full px-3 pt-2 pb-3 space-y-3">
 
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <p className="text-xs font-semibold" style={{color:C.g500}}>
-            <span className="font-black text-sm" style={{color:C.g800}}>{filtered.length}</span>{' '}
-            offers{selCountry.code!=='ALL' ? ` · ${selCountry.flag} ${selCountry.name}` : ''}
-          </p>
-          <button onClick={()=>handleCreateOffer()}
-            className="flex items-center gap-1 text-xs font-black px-3 py-1.5 rounded-lg transition hover:opacity-80"
-            style={{backgroundColor:`${C.forest}12`, color:C.forest}}>
-            <PlusCircle size={12}/> Sell BTC
-          </button>
+          {(() => {
+            const onlineCount = filtered.filter(l => {
+              const seen = liveStatus[l.users?.id] || l.users?.last_seen_at;
+              return seen && (Date.now() - new Date(seen)) < 5 * 60 * 1000;
+            }).length;
+            return (
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full animate-pulse flex-shrink-0"
+                    style={{backgroundColor:C.online, boxShadow:`0 0 0 3px ${C.online}30`}}/>
+                  <span className="text-xs font-black" style={{color:C.online}}>{onlineCount} online</span>
+                </div>
+                <span style={{color:C.g300, fontSize:10}}>·</span>
+                <span className="text-xs font-semibold" style={{color:C.g500}}>
+                  <span className="font-black" style={{color:C.g800}}>{filtered.length}</span> active offer{filtered.length!==1?'s':''}
+                  {selCountry.code!=='ALL' ? ` in ${selCountry.flag} ${selCountry.name}` : ''}
+                </span>
+              </div>
+            );
+          })()}
+
         </div>
 
         {(loading && !listings.length) || retrying ? (

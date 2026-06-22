@@ -971,6 +971,41 @@ export default function SellBitcoin({user}) {
   const paymentRef  = useRef(null);
 
   useEffect(()=>{ if(contextBtcUsd>0) setBtcPrice(contextBtcUsd); },[contextBtcUsd]);
+
+  // Auto-detect country + currency on first load
+  useEffect(() => {
+    const applyCountry = (cc) => {
+      const code = (cc || '').toUpperCase().slice(0, 2);
+      const matched = COUNTRIES.find(c => c.code === code);
+      if (!matched || matched.code === 'ALL') return false;
+      setSelCountry(matched);
+      const cur = CURRENCIES.find(c => c.code === matched.currency);
+      if (cur) setSelCurrency(cur);
+      return true;
+    };
+
+    // 1. Use logged-in user's profile country
+    if (user) {
+      const cc = user.country_code || (user.country?.length <= 3 ? user.country : null) || '';
+      if (applyCountry(cc)) return;
+    }
+
+    // 2. Fallback: IP-based detection for guests
+    fetch('https://ipapi.co/json/')
+      .then(r => r.json())
+      .then(data => {
+        if (data?.country_code) {
+          const cc = data.country_code.toUpperCase();
+          const matched = COUNTRIES.find(c => c.code === cc);
+          if (matched && matched.code !== 'ALL') {
+            setSelCountry(matched);
+            const cur = CURRENCIES.find(c => c.code === (data.currency || matched.currency));
+            if (cur) setSelCurrency(cur);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
   useEffect(()=>{
     loadOffers();
     const interval = setInterval(() => loadOffers(1, true), 60000);
@@ -1184,7 +1219,7 @@ export default function SellBitcoin({user}) {
         <div className="flex w-full">
           {[
             {label:'Buy BTC',    path:'/buy-bitcoin',  active:false, color:'#1B4332'},
-            {label:'Sell BTC',   path:'/sell-bitcoin', active:true,  color:'#D97706'},
+            {label:'Sell',       path:'/sell-bitcoin', active:true,  color:'#D97706'},
             {label:'Gift Cards', path:'/gift-cards',   active:false, color:'#0D9488'},
           ].map(tab=>(
             <Link key={tab.path} to={tab.path}
@@ -1197,21 +1232,6 @@ export default function SellBitcoin({user}) {
               {tab.label}
             </Link>
           ))}
-        </div>
-        {/* Stats row — always visible below tabs */}
-        <div className="flex items-center justify-between px-3 py-1.5 border-t" style={{borderColor:C.g100, backgroundColor:C.g50}}>
-          <span className="text-xs font-semibold" style={{color:C.g400}}>
-            {buyerCount} buyer{buyerCount!==1?'s':''}
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full flex-shrink-0"
-              style={{backgroundColor: onlineCnt>0 ? C.online : C.g300,
-                      boxShadow: onlineCnt>0 ? `0 0 0 3px ${C.online}30` : 'none'}}/>
-            <span className="text-xs font-semibold"
-              style={{color: onlineCnt>0 ? C.online : C.g400}}>
-              {onlineCnt>0 ? `${onlineCnt} online` : 'offline — offers still active'}
-            </span>
-          </span>
         </div>
       </div>
 
@@ -1459,18 +1479,30 @@ export default function SellBitcoin({user}) {
       )}
 
       {/* ══ 4. OFFER GRID ══════════════════════════════════════ */}
-      <div className="max-w-7xl mx-auto w-full px-3 py-3 space-y-3">
+      <div className="max-w-7xl mx-auto w-full px-3 pt-2 pb-3 space-y-3">
 
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <p className="text-xs font-semibold" style={{color:C.g500}}>
-            <span className="font-black text-sm" style={{color:C.g800}}>{filtered.length}</span>{' '}
-            buyers{selCountry.code!=='ALL' ? ` · ${selCountry.flag} ${selCountry.name}` : ''}
-          </p>
-          <button onClick={()=>navigate('/create-offer')}
-            className="flex items-center gap-1 text-xs font-black px-3 py-1.5 rounded-lg transition hover:opacity-80"
-            style={{backgroundColor:`${C.sell}12`, color:C.sell}}>
-            <PlusCircle size={12}/> Post Offer
-          </button>
+          {(() => {
+            const onlineCount = filtered.filter(l => {
+              const seen = liveStatus[l.users?.id] || l.users?.last_seen_at;
+              return seen && (Date.now() - new Date(seen)) < 5 * 60 * 1000;
+            }).length;
+            return (
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full animate-pulse flex-shrink-0"
+                    style={{backgroundColor:C.online, boxShadow:`0 0 0 3px ${C.online}30`}}/>
+                  <span className="text-xs font-black" style={{color:C.online}}>{onlineCount} online</span>
+                </div>
+                <span style={{color:C.g300, fontSize:10}}>·</span>
+                <span className="text-xs font-semibold" style={{color:C.g500}}>
+                  <span className="font-black" style={{color:C.g800}}>{filtered.length}</span> active offer{filtered.length!==1?'s':''}
+                  {selCountry.code!=='ALL' ? ` in ${selCountry.flag} ${selCountry.name}` : ''}
+                </span>
+              </div>
+            );
+          })()}
+
         </div>
 
         {(loading && !offers.length) || retrying ? (

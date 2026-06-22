@@ -12,7 +12,7 @@ import {
   BadgeCheck, AlertTriangle, TrendingUp, Lock,
   ChevronRight, Phone, Mail, FileText, ThumbsUp,
   ThumbsDown, Target, Smartphone, Info, ArrowRight,
-  Bitcoin, Flame, Eye, Settings
+  Bitcoin, Flame, Eye
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { BadgeChip } from '../lib/badge';
@@ -130,6 +130,9 @@ export default function Profile({userId:propUserId}){
   const [badges,setBadges]=useState([]);
   const [form,setForm]=useState({username:'',full_name:'',bio:'',location:'',website:''});
   const [visibleCount,setVisibleCount]=useState(5);
+  const [isTrusted,setIsTrusted]=useState(false);
+  const [trustCount,setTrustCount]=useState(0);
+  const [trustLoading,setTrustLoading]=useState(false);
 
   useEffect(()=>{
     if(!userId){
@@ -161,6 +164,7 @@ export default function Profile({userId:propUserId}){
         const u=r.data.user||r.data;
         if(!u||!u.id) throw new Error('profile_empty');
         setUser(u);
+        setTrustCount(u.trusted_by_count||u.trust_count||0);
         try{ localStorage.setItem('user',JSON.stringify(u)); }catch{}
         setForm({username:u.username||'',full_name:u.full_name||'',bio:u.bio||'',location:u.location||'',website:u.website||''});
 
@@ -177,12 +181,15 @@ export default function Profile({userId:propUserId}){
         const u=r.data.user;
         if(!u||!u.id) throw new Error('profile_empty');
         setUser(u);
+        setTrustCount(u.trusted_by_count||u.trust_count||0);
 
-        // Fetch reviews — endpoint is more reliable than the join in the user response
-        const [rvRes] = await Promise.allSettled([
+        const tk2=localStorage.getItem('token');
+        const [rvRes, relRes] = await Promise.allSettled([
           axios.get(`${API_URL}/users/${u.id}/reviews`),
+          tk2 ? axios.get(`${API_URL}/users/${u.id}/relationship`,{headers:{Authorization:`Bearer ${tk2}`}}) : Promise.resolve(null),
         ]);
         setReviews(rvRes.status==='fulfilled' ? rvRes.value.data.reviews||[] : r.data.reviews||[]);
+        if(relRes.status==='fulfilled'&&relRes.value?.data) setIsTrusted(relRes.value.data.is_trusted||false);
       }
     }catch(e){
       console.error('[Profile] load error:', e?.response?.status, e?.response?.data || e?.message);
@@ -226,6 +233,19 @@ export default function Profile({userId:propUserId}){
       if(r.data.success){const u=r.data.user||{...user,...form};setUser(u);const cu=JSON.parse(localStorage.getItem('user')||'{}');Object.assign(cu,form);localStorage.setItem('user',JSON.stringify(cu));window.dispatchEvent(new Event('userUpdated'));toast.success('Profile updated!');setEditing(false);}
     }catch(e){toast.error('Update failed');}
     finally{setSaving(false);}
+  };
+
+  const handleToggleTrust=async()=>{
+    const tk=localStorage.getItem('token');
+    if(!tk){navigate('/login');return;}
+    setTrustLoading(true);
+    try{
+      const r=await axios.post(`${API_URL}/users/${user.id}/trust`,{},{headers:{Authorization:`Bearer ${tk}`}});
+      setIsTrusted(r.data.trusted);
+      setTrustCount(r.data.trusted_by_count??( r.data.trusted ? trustCount+1 : Math.max(0,trustCount-1)));
+      toast.success(r.data.trusted?'User added to your trusted list':'Trust removed');
+    }catch(e){toast.error(e?.response?.data?.error||'Failed to update trust');}
+    finally{setTrustLoading(false);}
   };
 
   if(loading)return(<div className="min-h-screen flex items-center justify-center" style={{backgroundColor:C.mist}}><div className="w-12 h-12 border-4 rounded-full animate-spin" style={{borderColor:C.sage,borderTopColor:'transparent'}}/></div>);
@@ -288,7 +308,6 @@ export default function Profile({userId:propUserId}){
     {id:'verification',  label:`Verification ${verifPct<100?`(${verifPct}%)`:''}`},
     {id:'reputation',    label:`Reputation (${reviews.length})`},
     {id:'badges',        label:`🏅 Badges (${earned.length}/${BADGE_DEFS.length})`},
-    ...(own?[{id:'settings',label:'Settings'}]:[]),
   ];
 
   const displayFlag = userCC ? isoToFlag(userCC) : '';
@@ -388,171 +407,211 @@ export default function Profile({userId:propUserId}){
               </div>
             </div>
 
-            {/* Row 2: Stats section - Full width */}
-            <div className="px-3 py-4 sm:px-5 lg:px-8 lg:py-5" style={{boxSizing:'border-box',width:'100%'}}>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                
-                {/* FEEDBACK Card */}
-                <div className="rounded-2xl overflow-hidden" style={{backgroundColor:'#FEFCE8',border:'2px solid #FDE68A'}}>
-                  <p className="text-xs font-black text-center pt-2 uppercase tracking-wider" style={{color:'#78350F'}}>FEEDBACK</p>
-                  <div className="flex items-center justify-between px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{backgroundColor:'rgba(22,163,74,0.12)'}}>
-                        <ThumbsUp size={18} style={{color:'#166534'}}/>
-                      </div>
-                      <div>
-                        <p className="text-2xl lg:text-3xl font-black leading-none" style={{color:'#16A34A'}}>{fmt(user.positive_feedback||0)}</p>
-                        <p className="text-xs font-bold" style={{color:'#166534'}}>Positive</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{backgroundColor:'rgba(239,68,68,0.1)'}}>
-                        <ThumbsDown size={18} style={{color:'#991B1B'}}/>
-                      </div>
-                      <div>
-                        <p className="text-2xl lg:text-3xl font-black leading-none" style={{color:'#EF4444'}}>{fmt(user.negative_feedback||0)}</p>
-                        <p className="text-xs font-bold" style={{color:'#991B1B'}}>Negative</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+            {/* ── Stats + Trust + Actions ── */}
+            <div className="px-3 pt-3 pb-3 sm:px-5 lg:px-8" style={{boxSizing:'border-box',width:'100%'}}>
 
-                {/* Green Stats Card */}
-                <div className="rounded-2xl overflow-hidden" style={{backgroundColor:'#16A34A'}}>
-                  <div className="grid grid-cols-3 divide-x divide-white/20">
-                    {[
-                      ['Trades', fmt(user.total_trades||0)],
-                      ['Rating', parseFloat(user.average_rating||0).toFixed(1)],
-                      ['Trust Score', String(score)],
-                    ].map(([label,value],i)=>(
-                      <div key={i} className="text-center px-3 py-3">
-                        <p className="text-[10px] font-bold uppercase tracking-wide leading-none mb-1" style={{color:'rgba(255,255,255,0.72)'}}>{label}</p>
-                        <p className="text-xl lg:text-2xl font-black leading-none text-white">{value}</p>
-                      </div>
-                    ))}
+              {/* 4-stat grid — 2×2 on mobile, 4×1 on sm+ */}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>
+                {[
+                  {label:'Positive', value:fmt(user.positive_feedback||0), icon:<ThumbsUp size={12}/>,  color:'#16A34A', bg:'#ECFDF5', border:'#86EFAC', lc:'#065F46'},
+                  {label:'Negative', value:fmt(user.negative_feedback||0), icon:<ThumbsDown size={12}/>, color:'#EF4444', bg:'#FEF2F2', border:'#FCA5A5', lc:'#991B1B'},
+                  {label:'Trades',   value:fmt(user.total_trades||0),      icon:<Target size={12}/>,     color:'#2563EB', bg:'#EFF6FF', border:'#93C5FD', lc:'#1D4ED8'},
+                  {label:'Rating',   value:parseFloat(user.average_rating||0).toFixed(1), icon:<Star size={12} fill="#D97706" color="#D97706"/>, color:'#D97706', bg:'#FFFBEB', border:'#FCD34D', lc:'#92400E'},
+                ].map(({label,value,icon,color,bg,border,lc})=>(
+                  <div key={label} style={{background:bg,border:`1.5px solid ${border}`,borderRadius:14,padding:'10px 12px'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:4}}>
+                      <span style={{color,flexShrink:0}}>{icon}</span>
+                      <p style={{fontSize:9,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.05em',color:lc,margin:0}}>{label}</p>
+                    </div>
+                    <p style={{fontSize:'clamp(16px,4vw,22px)',fontWeight:900,color,lineHeight:1,margin:0,wordBreak:'break-all'}}>{value}</p>
                   </div>
-                  <div className="grid grid-cols-2 divide-x divide-white/20 border-t border-white/20">
-                    {[
-                      ['Trusted By', fmt(user.trusted_by_count||user.trust_count||0)],
-                      ['Blocked By', fmt(user.blocked_by_count||0)],
-                    ].map(([label,value],i)=>(
-                      <div key={i} className="text-center px-3 py-2">
-                        <p className="text-[10px] font-bold uppercase tracking-wide leading-none mb-0.5" style={{color:'rgba(255,255,255,0.72)'}}>{label}</p>
-                        <p className="text-lg font-black leading-none text-white">{value}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
+                ))}
               </div>
 
-              {/* Joined + Edit Profile row */}
-              <div className="flex items-center justify-between flex-wrap gap-y-2 mt-4 pt-3 border-t" style={{borderColor:C.g100}}>
-                <div className="flex items-center flex-wrap gap-y-1" style={{fontSize:12}}>
-                  <div className="flex items-center gap-1 pr-2">
-                    <Clock size={12} style={{color:C.g400}}/>
-                    <span className="font-bold" style={{color:C.g600}}>Joined:</span>
-                    <span style={{color:C.g700}}>{fmtAge(user.created_at)}</span>
+              {/* Trust Score card */}
+              <div style={{borderRadius:14,overflow:'hidden',border:'1.5px solid #D1FAE5',marginBottom:10}}>
+                {/* Dark header */}
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 14px',background:'linear-gradient(135deg,#1B4332,#2D6A4F)'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:6}}>
+                    <Shield size={14} color="white"/>
+                    <span style={{fontWeight:900,fontSize:13,color:'white'}}>Trust Score</span>
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',gap:6}}>
+                    <span style={{fontSize:28,fontWeight:900,color:'white',lineHeight:1}}>{score}</span>
+                    <span style={{fontSize:10,fontWeight:900,padding:'3px 8px',borderRadius:7,backgroundColor:trust.bg,color:trust.color,whiteSpace:'nowrap'}}>{trust.label}</span>
+                  </div>
+                </div>
+                {/* Progress + trust button */}
+                <div style={{backgroundColor:'#F0FDF4',padding:'10px 14px 12px'}}>
+                  <div style={{width:'100%',height:7,borderRadius:99,overflow:'hidden',backgroundColor:'#D1FAE5',marginBottom:10}}>
+                    <div style={{height:'100%',borderRadius:99,width:`${score}%`,background:`linear-gradient(90deg,#40916C,${trust.color})`,transition:'width 0.7s'}}/>
+                  </div>
+                  {/* Trusted by + button — stack on very small screens */}
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:8}}>
+                    <div style={{display:'flex',alignItems:'center',gap:5}}>
+                      <CheckCircle size={13} style={{color:C.success,flexShrink:0}}/>
+                      <span style={{fontSize:12,fontWeight:700,color:C.g600}}>
+                        Trusted by <strong style={{color:C.forest}}>{fmt(trustCount)}</strong> {trustCount===1?'user':'users'}
+                      </span>
+                    </div>
+                    {!own&&(
+                      <button onClick={handleToggleTrust} disabled={trustLoading}
+                        style={{
+                          display:'flex',alignItems:'center',gap:6,
+                          padding:'7px 16px',borderRadius:10,
+                          fontSize:12,fontWeight:900,cursor:'pointer',
+                          backgroundColor:isTrusted?'white':'#1B4332',
+                          color:isTrusted?'#16A34A':'white',
+                          border:`2px solid ${isTrusted?'#86EFAC':'#1B4332'}`,
+                          transition:'all 0.2s',whiteSpace:'nowrap',
+                          opacity:trustLoading?0.7:1,
+                        }}>
+                        {trustLoading?<RefreshCw size={12} style={{animation:'spin 0.7s linear infinite'}}/>:isTrusted?<CheckCircle size={12}/>:<Shield size={12}/>}
+                        {isTrusted?'Trusted ✓':'+ Trust'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer: joined + edit */}
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:8,paddingTop:10,borderTop:`1px solid ${C.g100}`}}>
+                <div style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:'4px 8px',fontSize:11,color:C.g500}}>
+                  <div style={{display:'flex',alignItems:'center',gap:4}}>
+                    <Clock size={11} style={{color:C.g400}}/>
+                    <span style={{fontWeight:700,color:C.g600}}>Joined {fmtAge(user.created_at)}</span>
                   </div>
                   {user.created_at&&(
-                    <>
-                      <span className="px-1.5" style={{color:C.g300}}>|</span>
-                      <span className="pr-2" style={{color:C.g400}}>
-                        {new Date(user.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
-                      </span>
-                    </>
+                    <span style={{color:C.g300}}>
+                      · {new Date(user.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+                    </span>
                   )}
-                  <span className="px-1.5" style={{color:C.g300}}>|</span>
-                  <span className="font-bold" style={{color:C.g500}}>
-                    Has blocked: {fmt(user.blocked_count||user.blocks_count||0)}
-                  </span>
                 </div>
                 {own&&!editing&&(
                   <button onClick={()=>setEditing(true)}
-                    className="flex items-center gap-1 rounded-xl font-black transition hover:opacity-80"
-                    style={{padding:'5px 12px',backgroundColor:`${C.green}12`,color:C.green,border:`1.5px solid ${C.sage}`,fontSize:11,whiteSpace:'nowrap'}}>
+                    style={{
+                      display:'flex',alignItems:'center',gap:5,
+                      padding:'6px 14px',borderRadius:10,
+                      backgroundColor:`${C.green}15`,color:C.green,
+                      border:`1.5px solid ${C.sage}`,
+                      fontSize:11,fontWeight:900,cursor:'pointer',
+                      whiteSpace:'nowrap',
+                    }}>
                     <Edit2 size={11}/>Edit Profile
                   </button>
                 )}
               </div>
             </div>
 
-            {/* ── Edit Form (below stats) ── */}
+            {/* ── Edit Form ── */}
             {own&&editing&&(
-              <div className="px-4 sm:px-6 lg:px-8 py-5 border-t" style={{borderColor:C.g100,backgroundColor:C.g50}}>
-                <p className="text-xs font-black uppercase tracking-wider mb-3" style={{color:C.forest}}>Edit Profile</p>
-                <form onSubmit={saveProfile} className="space-y-3 max-w-2xl">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {/* Username — locked after first change */}
-                    <div>
-                      <label className="text-xs font-bold mb-1 flex items-center gap-1" style={{color:C.g600}}>
-                        Username
-                        {user.username_changed&&<Lock size={10} style={{color:C.g400}}/>}
-                      </label>
-                      <input
-                        value={form.username}
-                        onChange={e=>setForm({...form,username:e.target.value})}
-                        placeholder="Username"
-                        disabled={!!user.username_changed}
-                        className="w-full px-3 py-2 rounded-xl text-sm font-bold border-2 focus:outline-none"
-                        style={{borderColor:user.username_changed?C.g200:C.sage,backgroundColor:user.username_changed?C.g100:'white',color:user.username_changed?C.g400:C.g800,cursor:user.username_changed?'not-allowed':'text'}}
-                      />
-                      {user.username_changed
-                        ? <p className="text-xs mt-1 flex items-center gap-1" style={{color:C.g400}}><Lock size={9}/>Username is permanently locked.</p>
-                        : <p className="text-xs mt-1 flex items-center gap-1" style={{color:'#D97706'}}>⚠ You can only change your username once. Choose carefully.</p>
-                      }
+              <div className="border-t" style={{borderColor:C.g200,backgroundColor:'#F8FAFC'}}>
+                <div className="px-4 sm:px-6 lg:px-8 py-5">
+                  <div className="flex items-center justify-between mb-5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{background:'linear-gradient(135deg,#1B4332,#2D6A4F)'}}>
+                        <Edit2 size={14} color="white"/>
+                      </div>
+                      <div>
+                        <p className="font-black text-sm leading-none" style={{color:C.forest}}>Edit Profile</p>
+                        <p className="text-[11px] mt-0.5" style={{color:C.g400}}>Changes save to your public profile</p>
+                      </div>
                     </div>
-                    {/* Full name — locked after KYC */}
-                    <div>
-                      <label className="text-xs font-bold mb-1 flex items-center gap-1" style={{color:C.g600}}>
-                        Full Name
-                        {kycOk&&<Lock size={10} style={{color:C.g400}}/>}
-                      </label>
-                      <input
-                        value={form.full_name}
-                        onChange={e=>setForm({...form,full_name:e.target.value})}
-                        placeholder="Full Name"
-                        disabled={kycOk}
-                        className="w-full px-3 py-2 rounded-xl text-sm border-2 focus:outline-none"
-                        style={{borderColor:kycOk?C.g200:C.sage,backgroundColor:kycOk?C.g100:'white',color:kycOk?C.g400:C.g800,cursor:kycOk?'not-allowed':'text'}}
-                      />
-                      {kycOk
-                        ? <p className="text-xs mt-1 flex items-center gap-1" style={{color:C.g400}}><Lock size={9}/>Locked after ID verification.</p>
-                        : <p className="text-xs mt-1 flex items-center gap-1" style={{color:C.g500}}>ℹ Full name cannot be changed after ID verification.</p>
-                      }
-                    </div>
-                  </div>
-                  <input value={form.location} onChange={e=>setForm({...form,location:e.target.value})} placeholder="Location"
-                    className="w-full px-3 py-2 rounded-xl text-sm border-2 focus:outline-none" style={{borderColor:C.sage}}/>
-                  <div>
-                    <textarea
-                      value={form.bio}
-                      onChange={e=>{
-                        const val=e.target.value;
-                        const wc=val.trim()===''?0:val.trim().split(/\s+/).length;
-                        if(wc<=100) setForm({...form,bio:val});
-                      }}
-                      placeholder="Bio (max 100 words)"
-                      rows={2}
-                      className="w-full px-3 py-2 rounded-xl text-sm border-2 focus:outline-none resize-none"
-                      style={{borderColor:C.sage}}
-                    />
-                    <p className="text-xs mt-0.5 text-right" style={{color:(form.bio||'').trim()===''?C.g400:(form.bio||'').trim().split(/\s+/).length>=100?C.danger:C.g400}}>
-                      {(form.bio||'').trim()===''?0:(form.bio||'').trim().split(/\s+/).length}/100 words
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button type="submit" disabled={saving}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl font-black text-xs text-white"
-                      style={{backgroundColor:C.green}}>
-                      {saving?<RefreshCw size={11} className="animate-spin"/>:<Save size={11}/>}{saving?'Saving…':'Save'}
-                    </button>
                     <button type="button" onClick={()=>setEditing(false)}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl font-black text-xs border" style={{borderColor:C.g200,color:C.g600}}>
-                      <X size={11}/>Cancel
+                      className="flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-bold transition hover:bg-red-50"
+                      style={{color:C.g500,border:`1.5px solid ${C.g200}`}}>
+                      <X size={11}/>Close
                     </button>
                   </div>
-                </form>
+
+                  <form onSubmit={saveProfile} className="space-y-4 max-w-2xl">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Username */}
+                      <div>
+                        <label className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider mb-1.5" style={{color:C.g600}}>
+                          Username {user.username_changed&&<Lock size={9} style={{color:C.g400}}/>}
+                        </label>
+                        {user.username_changed?(
+                          <div className="flex items-center justify-between px-3 py-2.5 rounded-xl border-2 text-sm font-medium" style={{borderColor:C.g200,backgroundColor:C.g100,color:C.g500}}>
+                            <span>{form.username}</span><Lock size={12} style={{color:C.g400}}/>
+                          </div>
+                        ):(
+                          <input value={form.username} onChange={e=>setForm({...form,username:e.target.value})} placeholder="Username"
+                            className="w-full px-3 py-2.5 rounded-xl text-sm font-bold border-2 focus:outline-none transition"
+                            style={{borderColor:form.username?C.sage:C.g200,color:C.g800}}/>
+                        )}
+                        <p className="text-[11px] mt-1 flex items-center gap-1" style={{color:user.username_changed?C.g400:'#B45309'}}>
+                          {user.username_changed?<><Lock size={8}/>Permanently locked</>:<>⚠ One-time change — choose carefully</>}
+                        </p>
+                      </div>
+                      {/* Full Name */}
+                      <div>
+                        <label className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider mb-1.5" style={{color:C.g600}}>
+                          Full Name {kycOk&&<Lock size={9} style={{color:C.g400}}/>}
+                        </label>
+                        {kycOk?(
+                          <div className="flex items-center justify-between px-3 py-2.5 rounded-xl border-2 text-sm font-medium" style={{borderColor:C.g200,backgroundColor:C.g100,color:C.g500}}>
+                            <span>{form.full_name}</span><Lock size={12} style={{color:C.g400}}/>
+                          </div>
+                        ):(
+                          <input value={form.full_name} onChange={e=>setForm({...form,full_name:e.target.value})} placeholder="Full Name"
+                            className="w-full px-3 py-2.5 rounded-xl text-sm border-2 focus:outline-none transition"
+                            style={{borderColor:form.full_name?C.sage:C.g200,color:C.g800}}/>
+                        )}
+                        <p className="text-[11px] mt-1 flex items-center gap-1" style={{color:kycOk?C.g400:C.g500}}>
+                          {kycOk?<><Lock size={8}/>Locked after ID verification</>:<>ℹ Locks permanently after ID verification</>}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Location */}
+                    <div>
+                      <label className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider mb-1.5" style={{color:C.g600}}>
+                        <MapPin size={9}/> Location {kycOk&&<Lock size={9} style={{color:C.g400}}/>}
+                      </label>
+                      {kycOk?(
+                        <div className="flex items-center justify-between px-3 py-2.5 rounded-xl border-2 text-sm font-medium" style={{borderColor:C.g200,backgroundColor:C.g100,color:C.g500}}>
+                          <span>{form.location||'—'}</span><Lock size={12} style={{color:C.g400}}/>
+                        </div>
+                      ):(
+                        <input value={form.location} onChange={e=>setForm({...form,location:e.target.value})} placeholder="e.g. Accra, Ghana"
+                          className="w-full px-3 py-2.5 rounded-xl text-sm border-2 focus:outline-none transition"
+                          style={{borderColor:form.location?C.sage:C.g200}}/>
+                      )}
+                      {kycOk&&<p className="text-[11px] mt-1 flex items-center gap-1" style={{color:C.g400}}><Lock size={8}/>Locked after ID verification</p>}
+                    </div>
+
+                    {/* Bio */}
+                    <div>
+                      <label className="flex items-center justify-between text-[11px] font-black uppercase tracking-wider mb-1.5" style={{color:C.g600}}>
+                        <span>Bio</span>
+                        <span className="font-normal normal-case" style={{color:(form.bio||'').trim().split(/\s+/).filter(Boolean).length>=100?C.danger:C.g400}}>
+                          {(form.bio||'').trim()===''?0:(form.bio||'').trim().split(/\s+/).filter(Boolean).length}/100 words
+                        </span>
+                      </label>
+                      <textarea
+                        value={form.bio}
+                        onChange={e=>{const v=e.target.value;const wc=v.trim()===''?0:v.trim().split(/\s+/).length;if(wc<=100)setForm({...form,bio:v});}}
+                        placeholder="Tell traders about yourself… (max 100 words)"
+                        rows={3}
+                        className="w-full px-3 py-2.5 rounded-xl text-sm border-2 focus:outline-none resize-none transition"
+                        style={{borderColor:form.bio?C.sage:C.g200}}/>
+                    </div>
+
+                    <div className="flex gap-2 pt-1">
+                      <button type="submit" disabled={saving}
+                        className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl font-black text-sm text-white transition hover:opacity-90 disabled:opacity-50"
+                        style={{backgroundColor:C.green}}>
+                        {saving?<><RefreshCw size={13} className="animate-spin"/>Saving…</>:<><Save size={13}/>Save Changes</>}
+                      </button>
+                      <button type="button" onClick={()=>setEditing(false)}
+                        className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-black text-sm border transition hover:bg-gray-100"
+                        style={{borderColor:C.g200,color:C.g600}}>
+                        <X size={13}/>Cancel
+                      </button>
+                    </div>
+                  </form>
+                </div>
               </div>
             )}
 
@@ -1250,87 +1309,6 @@ export default function Profile({userId:propUserId}){
           </div>
         )}
 
-        {/* ── SETTINGS ────────────────────────────────────────────────── */}
-        {tab==='settings'&&own&&(
-          <div className="max-w-2xl">
-            <div className="bg-white rounded-2xl border shadow-sm p-5" style={{borderColor:C.g200}}>
-              <p className="font-black text-sm mb-4" style={{color:C.forest}}>Edit Profile</p>
-              <form onSubmit={saveProfile} className="space-y-3">
-                {/* Username */}
-                <div>
-                  <label className="text-xs font-bold mb-1 flex items-center gap-1" style={{color:C.g600}}>
-                    Username {user.username_changed&&<Lock size={10} style={{color:C.g400}}/>}
-                  </label>
-                  <input type="text" value={form.username||''} onChange={e=>setForm({...form,username:e.target.value})} placeholder="johndoe"
-                    disabled={!!user.username_changed}
-                    className="w-full px-3 py-2.5 text-sm border-2 rounded-xl focus:outline-none"
-                    style={{borderColor:user.username_changed?C.g200:form.username?C.green:C.g200,backgroundColor:user.username_changed?C.g100:'white',color:user.username_changed?C.g400:C.g800,cursor:user.username_changed?'not-allowed':'text'}}/>
-                  {user.username_changed
-                    ? <p className="text-xs mt-1 flex items-center gap-1" style={{color:C.g400}}><Lock size={9}/>Username is permanently locked.</p>
-                    : <p className="text-xs mt-1 flex items-center gap-1" style={{color:'#D97706'}}>⚠ You can only change your username once. Choose carefully.</p>
-                  }
-                </div>
-                {/* Full Name */}
-                <div>
-                  <label className="text-xs font-bold mb-1 flex items-center gap-1" style={{color:C.g600}}>
-                    Full Name {kycOk&&<Lock size={10} style={{color:C.g400}}/>}
-                  </label>
-                  <input type="text" value={form.full_name||''} onChange={e=>setForm({...form,full_name:e.target.value})} placeholder="John Doe"
-                    disabled={kycOk}
-                    className="w-full px-3 py-2.5 text-sm border-2 rounded-xl focus:outline-none"
-                    style={{borderColor:kycOk?C.g200:form.full_name?C.green:C.g200,backgroundColor:kycOk?C.g100:'white',color:kycOk?C.g400:C.g800,cursor:kycOk?'not-allowed':'text'}}/>
-                  {kycOk
-                    ? <p className="text-xs mt-1 flex items-center gap-1" style={{color:C.g400}}><Lock size={9}/>Locked after ID verification.</p>
-                    : <p className="text-xs mt-1 flex items-center gap-1" style={{color:C.g500}}>ℹ Full name cannot be changed after ID verification.</p>
-                  }
-                </div>
-                {/* Location */}
-                <div>
-                  <label className="text-xs font-bold mb-1 block" style={{color:C.g600}}>Location</label>
-                  <input type="text" value={form.location||''} onChange={e=>setForm({...form,location:e.target.value})} placeholder="Accra, Ghana"
-                    className="w-full px-3 py-2.5 text-sm border-2 rounded-xl focus:outline-none"
-                    style={{borderColor:form.location?C.green:C.g200}}/>
-                </div>
-                {/* Website — disabled */}
-                <div>
-                  <label className="text-xs font-bold mb-1 flex items-center gap-1" style={{color:C.g400}}>
-                    Website <Lock size={10} style={{color:C.g300}}/>
-                  </label>
-                  <input type="url" value={form.website||''} placeholder="Coming soon" disabled
-                    className="w-full px-3 py-2.5 text-sm border-2 rounded-xl focus:outline-none"
-                    style={{borderColor:C.g200,backgroundColor:C.g100,color:C.g400,cursor:'not-allowed'}}/>
-                  <p className="text-xs mt-1" style={{color:C.g400}}>Website link is currently unavailable.</p>
-                </div>
-                {/* Bio */}
-                <div>
-                  <label className="text-xs font-bold mb-1 block" style={{color:C.g600}}>Bio</label>
-                  <textarea
-                    value={form.bio||''}
-                    onChange={e=>{
-                      const val=e.target.value;
-                      const wc=val.trim()===''?0:val.trim().split(/\s+/).length;
-                      if(wc<=100) setForm({...form,bio:val});
-                    }}
-                    placeholder="Tell traders about yourself… (max 100 words)"
-                    rows={3}
-                    className="w-full px-3 py-2.5 text-sm border-2 rounded-xl focus:outline-none resize-none"
-                    style={{borderColor:form.bio?C.green:C.g200}}/>
-                  <p className="text-xs mt-0.5 text-right" style={{color:(form.bio||'').trim()===''?C.g400:(form.bio||'').trim().split(/\s+/).length>=100?C.danger:C.g400}}>
-                    {(form.bio||'').trim()===''?0:(form.bio||'').trim().split(/\s+/).length}/100 words
-                  </p>
-                </div>
-                <button type="submit" disabled={saving}
-                  className="w-full py-3 rounded-xl text-white font-black text-sm hover:opacity-90 transition disabled:opacity-50 flex items-center justify-center gap-2"
-                  style={{backgroundColor:C.green}}>
-                  {saving?<><RefreshCw size={14} className="animate-spin"/>Saving…</>:<><Save size={14}/>Save Changes</>}
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
-        {tab==='settings'&&!own&&(
-          <div className="max-w-2xl"><div className="bg-white rounded-2xl border shadow-sm p-8 text-center" style={{borderColor:C.g200}}><Lock size={32} className="mx-auto mb-3 opacity-20" style={{color:C.g400}}/><p className="text-sm" style={{color:C.g400}}>Settings are only visible to the account owner.</p></div></div>
-        )}
 
       </div>
 

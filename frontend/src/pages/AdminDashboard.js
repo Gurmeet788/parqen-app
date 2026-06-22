@@ -1534,6 +1534,160 @@ UPDATE users SET kyc_status = 'approved' WHERE is_id_verified = true AND kyc_sta
 // ================================================================
 // FINANCE SECTION
 // ================================================================
+// ── Platform Wallets sub-card ─────────────────────────────────────────────────
+function PlatformWalletsCard() {
+  const [wallets, setWallets]   = useState(null);
+  const [checking, setChecking] = useState(false);
+  const [copied, setCopied]     = useState('');
+  const [btcPrice, setBtcPrice] = useState(0);
+
+  const fetchWallets = async () => {
+    setChecking(true);
+    try {
+      const [hwRes, infoRes, ratesRes] = await Promise.all([
+        axios.get(`${API_URL}/hd-wallet/hot-wallet`,  { headers: authH() }),
+        axios.get(`${API_URL}/hd-wallet/info`,         { headers: authH() }),
+        axios.get(`${API_URL}/rates`,                  { headers: authH() }),
+      ]);
+      setWallets({
+        hot:  hwRes.data,
+        fee:  infoRes.data,
+      });
+      if (ratesRes.data?.btcUsd > 0) setBtcPrice(ratesRes.data.btcUsd);
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Failed to load wallet balances');
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  useEffect(() => { fetchWallets(); }, []);
+
+  const copy = (text, key) => {
+    navigator.clipboard.writeText(text);
+    setCopied(key);
+    setTimeout(() => setCopied(''), 2000);
+  };
+
+  const toUsd = (btc) => btcPrice > 0 ? `≈ $${(btc * btcPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
+
+  return (
+    <div className="bg-white rounded-2xl border overflow-hidden" style={{ borderColor: C.g200 }}>
+      <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: C.g100, backgroundColor: '#F0FDF4' }}>
+        <div>
+          <h3 className="font-black text-sm" style={{ color: C.forest }}>🏦 Platform Wallets — Live BTC Balance</h3>
+          <p className="text-xs mt-0.5" style={{ color: C.g500 }}>Hot withdrawal wallet + fee collection wallet</p>
+        </div>
+        <button onClick={fetchWallets} disabled={checking}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition hover:opacity-80 disabled:opacity-50"
+          style={{ backgroundColor: C.forest, color: '#fff' }}>
+          <RefreshCw size={12} className={checking ? 'animate-spin' : ''} />
+          {checking ? 'Checking…' : 'Refresh'}
+        </button>
+      </div>
+
+      {checking && !wallets ? (
+        <div className="flex items-center justify-center py-10 gap-3">
+          <RefreshCw size={18} className="animate-spin" style={{ color: C.g400 }} />
+          <span className="text-sm" style={{ color: C.g500 }}>Checking live blockchain balances…</span>
+        </div>
+      ) : wallets ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x" style={{ borderColor: C.g100 }}>
+
+          {/* Hot Wallet */}
+          <div className="p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: wallets.hot.confirmed_btc > 0 ? '#D1FAE5' : '#FEF2F2' }}>
+                <Bitcoin size={16} color={wallets.hot.confirmed_btc > 0 ? C.forest : '#DC2626'} />
+              </div>
+              <div>
+                <p className="font-black text-xs" style={{ color: C.g700 }}>Hot Withdrawal Wallet</p>
+                <p className="text-[11px]" style={{ color: C.g400 }}>Fund this to enable user withdrawals</p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl" style={{ backgroundColor: wallets.hot.confirmed_btc > 0 ? '#F0FDF4' : '#FEF2F2' }}>
+              <p className="text-2xl font-black" style={{ color: wallets.hot.confirmed_btc > 0 ? C.forest : '#DC2626' }}>
+                ₿{parseFloat(wallets.hot.confirmed_btc || 0).toFixed(8)}
+              </p>
+              {btcPrice > 0 && (
+                <p className="text-xs font-semibold mt-0.5" style={{ color: C.g500 }}>
+                  {toUsd(wallets.hot.confirmed_btc)}
+                </p>
+              )}
+              {wallets.hot.confirmed_btc === 0 && (
+                <p className="text-xs font-bold mt-1" style={{ color: '#DC2626' }}>
+                  ⚠️ Empty — users cannot withdraw until funded
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-[11px] bg-gray-50 border px-2 py-1.5 rounded-lg truncate font-mono"
+                style={{ borderColor: C.g200, color: C.g600 }}>
+                {wallets.hot.hot_wallet_address}
+              </code>
+              <button onClick={() => copy(wallets.hot.hot_wallet_address, 'hot')}
+                className="px-2.5 py-1.5 rounded-lg text-[11px] font-black transition hover:opacity-80 flex-shrink-0"
+                style={{ backgroundColor: copied === 'hot' ? C.forest : C.g100, color: copied === 'hot' ? '#fff' : C.g600 }}>
+                {copied === 'hot' ? '✓ Copied' : 'Copy'}
+              </button>
+            </div>
+            <a href={`https://mempool.space/address/${wallets.hot.hot_wallet_address}`}
+              target="_blank" rel="noreferrer"
+              className="inline-flex items-center gap-1 text-[11px] font-bold hover:underline"
+              style={{ color: '#2563EB' }}>
+              View on mempool.space ↗
+            </a>
+          </div>
+
+          {/* Fee Wallet */}
+          <div className="p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: '#FEF3C7' }}>
+                <DollarSign size={16} color="#D97706" />
+              </div>
+              <div>
+                <p className="font-black text-xs" style={{ color: C.g700 }}>Fee Collection Wallet</p>
+                <p className="text-[11px]" style={{ color: C.g400 }}>0.5% of every completed trade</p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl" style={{ backgroundColor: '#FFFBEB' }}>
+              <p className="text-xs font-semibold" style={{ color: '#D97706' }}>Fee rate: {wallets.fee.praqen_fee_rate}</p>
+              <p className="text-xs mt-0.5" style={{ color: C.g400 }}>Network: {wallets.fee.network}</p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-[11px] bg-gray-50 border px-2 py-1.5 rounded-lg truncate font-mono"
+                style={{ borderColor: C.g200, color: C.g600 }}>
+                {wallets.fee.praqen_fee_wallet}
+              </code>
+              <button onClick={() => copy(wallets.fee.praqen_fee_wallet, 'fee')}
+                className="px-2.5 py-1.5 rounded-lg text-[11px] font-black transition hover:opacity-80 flex-shrink-0"
+                style={{ backgroundColor: copied === 'fee' ? '#D97706' : C.g100, color: copied === 'fee' ? '#fff' : C.g600 }}>
+                {copied === 'fee' ? '✓ Copied' : 'Copy'}
+              </button>
+            </div>
+            <a href={`https://mempool.space/address/${wallets.fee.praqen_fee_wallet}`}
+              target="_blank" rel="noreferrer"
+              className="inline-flex items-center gap-1 text-[11px] font-bold hover:underline"
+              style={{ color: '#2563EB' }}>
+              View on mempool.space ↗
+            </a>
+          </div>
+        </div>
+      ) : (
+        <div className="py-8 text-center">
+          <p className="text-sm font-semibold" style={{ color: C.g400 }}>Click Refresh to check live balances</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FinanceSection() {
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1558,6 +1712,8 @@ function FinanceSection() {
     <div className="space-y-5">
       <SectionHead title="Finance & Revenue" sub="Platform fee collections and affiliate commissions"
         action={<button onClick={load} className="p-2 rounded-xl border hover:bg-gray-50 transition" style={{ borderColor: C.g200 }}><RefreshCw size={14} style={{ color: C.g500 }} /></button>} />
+
+      <PlatformWalletsCard />
 
       <div className="grid grid-cols-3 gap-3">
         <StatCard icon={<Bitcoin size={22} />}     label="Total Revenue (BTC)" value={`${fmtBtc(data.totalRevBtc)} BTC`} color="#F59E0B" bg="#FFFBEB" />
@@ -3062,31 +3218,65 @@ function SupportTicketsSection() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}>
           <div className="bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col w-full" style={{ maxWidth: 560, height: '85vh' }}>
             {/* Modal header */}
-            <div className="flex-shrink-0 flex items-start justify-between p-6 border-b" style={{ borderColor: C.g100 }}>
-              <div className="flex-1 min-w-0 pr-4">
-                <p className="font-black text-base leading-snug" style={{ color: C.g800 }}>{selected.subject}</p>
-                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                  <span className="text-xs font-black px-2 py-0.5 rounded-full"
-                    style={{ backgroundColor: (TICKET_STATUSES[selected.status] || TICKET_STATUSES.open).bg, color: (TICKET_STATUSES[selected.status] || TICKET_STATUSES.open).color }}>
-                    {(TICKET_STATUSES[selected.status] || TICKET_STATUSES.open).dot} {(TICKET_STATUSES[selected.status] || TICKET_STATUSES.open).label}
-                  </span>
-                  <span className="text-xs" style={{ color: C.g400 }}>by {selected.username}</span>
-                  <span className="text-xs capitalize px-2 py-0.5 rounded-full" style={{ backgroundColor: C.g100, color: C.g600 }}>{selected.category}</span>
+            <div className="flex-shrink-0 border-b" style={{ borderColor: C.g100 }}>
+              {/* User account details bar */}
+              <div className="flex items-center gap-3 px-5 py-3 border-b" style={{ borderColor: C.g100, backgroundColor: '#F0FDF4' }}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 font-black text-sm"
+                  style={{ backgroundColor: C.forest, color: '#fff' }}>
+                  {selected.avatar_url
+                    ? <img src={selected.avatar_url} alt="" className="w-full h-full rounded-xl object-cover" />
+                    : (selected.username || 'U')[0].toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-black text-sm leading-none" style={{ color: C.g800 }}>
+                    {selected.full_name || selected.username}
+                    <span className="font-normal text-xs ml-1.5" style={{ color: C.g500 }}>@{selected.username}</span>
+                  </p>
+                  <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                    {selected.user_email && (
+                      <span className="text-[11px]" style={{ color: C.g500 }}>✉ {selected.user_email}</span>
+                    )}
+                    {selected.user_phone && (
+                      <span className="text-[11px]" style={{ color: C.g500 }}>📞 {selected.user_phone}</span>
+                    )}
+                    {selected.user_country && (
+                      <span className="text-[11px]" style={{ color: C.g500 }}>🌍 {selected.user_country}</span>
+                    )}
+                    {selected.user_joined && (
+                      <span className="text-[11px]" style={{ color: C.g400 }}>
+                        Joined {new Date(selected.user_joined).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <select value={selected.status} onChange={e => updateStatus(selected.id, e.target.value)}
-                  className="text-xs border rounded-lg px-2 py-1 outline-none"
-                  style={{ borderColor: C.g200, color: C.g700, backgroundColor: '#fff' }}>
-                  <option value="open">🔵 Open</option>
-                  <option value="active">🟢 Active</option>
-                  <option value="resolved">✅ Resolved</option>
-                  <option value="closed">🔒 Closed</option>
-                </select>
-                <button onClick={() => { setSelected(null); setMessages([]); }}
-                  className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition">
-                  <X size={16} style={{ color: C.g500 }} />
-                </button>
+              {/* Ticket title + controls */}
+              <div className="flex items-start justify-between px-5 py-3">
+                <div className="flex-1 min-w-0 pr-4">
+                  <p className="font-black text-sm leading-snug" style={{ color: C.g800 }}>{selected.subject}</p>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <span className="text-xs font-black px-2 py-0.5 rounded-full"
+                      style={{ backgroundColor: (TICKET_STATUSES[selected.status] || TICKET_STATUSES.open).bg, color: (TICKET_STATUSES[selected.status] || TICKET_STATUSES.open).color }}>
+                      {(TICKET_STATUSES[selected.status] || TICKET_STATUSES.open).dot} {(TICKET_STATUSES[selected.status] || TICKET_STATUSES.open).label}
+                    </span>
+                    <span className="text-xs capitalize px-2 py-0.5 rounded-full" style={{ backgroundColor: C.g100, color: C.g600 }}>{selected.category}</span>
+                    <span className="text-xs" style={{ color: C.g400 }}>{fmtAge(selected.updated_at)}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <select value={selected.status} onChange={e => updateStatus(selected.id, e.target.value)}
+                    className="text-xs border rounded-lg px-2 py-1 outline-none"
+                    style={{ borderColor: C.g200, color: C.g700, backgroundColor: '#fff' }}>
+                    <option value="open">🔵 Open</option>
+                    <option value="active">🟢 Active</option>
+                    <option value="resolved">✅ Resolved</option>
+                    <option value="closed">🔒 Closed</option>
+                  </select>
+                  <button onClick={() => { setSelected(null); setMessages([]); }}
+                    className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition">
+                    <X size={16} style={{ color: C.g500 }} />
+                  </button>
+                </div>
               </div>
             </div>
 

@@ -6,13 +6,13 @@
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 const FALLBACK_RATES = {
-  GHS: 11.21, NGN: 1635,  KES: 129,  ZAR: 18.4,  UGX: 3730,
+  GHS: 16.0,  NGN: 1650,  KES: 129,  ZAR: 18.4,  UGX: 3730,
   TZS: 2690,  USD: 1,     GBP: 0.79, EUR: 0.92,  XAF: 614,
   XOF: 614,   RWF: 1325,  ETB: 58,   AUD: 1.55,  CAD: 1.37,
   SGD: 1.35,  INR: 83.5,  MAD: 10.1, ZMW: 26.5,  MWK: 1730,
 };
 
-const REFRESH_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
+const REFRESH_INTERVAL_MS = 60 * 1000; // 1 minute
 
 class RateService {
   constructor() {

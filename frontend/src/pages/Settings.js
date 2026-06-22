@@ -353,7 +353,7 @@ export default function Settings({ user, setUser }) {
   const [loading, setLoading] = useState(false);
 
   // Account info
-  const [accountForm, setAccountForm] = useState({ username: '', fullName: '', email: '', phone: '', bio: '' });
+  const [accountForm, setAccountForm] = useState({ username: '', fullName: '', email: '', phone: '', bio: '', location: '' });
 
   // Security
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
@@ -484,7 +484,7 @@ export default function Settings({ user, setUser }) {
 
   useEffect(() => {
     if (!user) { navigate('/login'); return; }
-    setAccountForm({ username: user.username || '', fullName: user.full_name || '', email: user.email || '', phone: user.phone || '', bio: user.bio || '' });
+    setAccountForm({ username: user.username || '', fullName: user.full_name || '', email: user.email || '', phone: user.phone || '', bio: user.bio || '', location: user.location || '' });
     // NOTE: prefs are NOT synced here — synced once from DB in the mount effect below
     // so that a subsequent setUser() call never resets a user's unsaved dropdown selection.
     // Seed hideFullName from user object or localStorage
@@ -521,8 +521,9 @@ export default function Settings({ user, setUser }) {
         setPhoneVerified(phoneOk);
         if (emailOk) { localStorage.removeItem('prq_email_resend'); setEmailResendCount(0); }
         if (phoneOk) { localStorage.removeItem('prq_phone_resend'); setPhoneResendCount(0); setPhoneStep('done'); setPhoneOtpCode(''); }
-        // Sync phone number into the form so Account tab and Verification tab show the real number
-        if (fresh.phone) setAccountForm(prev => ({ ...prev, phone: fresh.phone }));
+        // Sync phone and location into the form so Account tab shows current values
+        if (fresh.phone)    setAccountForm(prev => ({ ...prev, phone: fresh.phone }));
+        if (fresh.location) setAccountForm(prev => ({ ...prev, location: fresh.location }));
         // Sync preferences from DB once on mount — update localStorage so they survive refreshes
         setPrefs(p => {
           const currency    = fresh.preferred_currency || p.currency;
@@ -604,10 +605,13 @@ export default function Settings({ user, setUser }) {
     try {
       const payload = { username: accountForm.username, fullName: accountForm.fullName, bio: accountForm.bio };
       if (!phoneIsLocked) payload.phone = accountForm.phone;
+      const locationLocked = kycVerified || !!(user?.is_id_verified || user?.kyc_verified || user?.kyc_status === 'approved');
+      if (!locationLocked) payload.location = accountForm.location;
       const r = await axios.put(`${API_URL}/users/profile`, payload, { headers: authH() });
-      if (setUser) setUser({ ...user, username: accountForm.username, full_name: accountForm.fullName, ...(phoneIsLocked ? {} : { phone: accountForm.phone }) });
+      const locationUpdate = locationLocked ? {} : { location: accountForm.location };
+      if (setUser) setUser({ ...user, username: accountForm.username, full_name: accountForm.fullName, ...locationUpdate, ...(phoneIsLocked ? {} : { phone: accountForm.phone }) });
       const stored = JSON.parse(localStorage.getItem('user') || '{}');
-      localStorage.setItem('user', JSON.stringify({ ...stored, username: accountForm.username, full_name: accountForm.fullName, ...(phoneIsLocked ? {} : { phone: accountForm.phone }) }));
+      localStorage.setItem('user', JSON.stringify({ ...stored, username: accountForm.username, full_name: accountForm.fullName, ...locationUpdate, ...(phoneIsLocked ? {} : { phone: accountForm.phone }) }));
       window.dispatchEvent(new Event('userUpdated'));
       toast.success('Account updated!');
     } catch (e) { toast.error(e?.response?.data?.error || 'Failed to update'); }
@@ -1049,6 +1053,35 @@ export default function Settings({ user, setUser }) {
                           : <p className="text-xs mt-1" style={{ color: C.g400 }}>Go to the Verification tab to verify your phone number instantly.</p>}
                       </div>
                     </div>
+
+                    {/* Location — locked after ID verification */}
+                    {(() => {
+                      const locationLocked = kycVerified
+                        || !!(user?.is_id_verified || user?.kyc_verified || user?.kyc_status === 'approved');
+                      return (
+                        <div>
+                          <label className={labelCls} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                            Location {locationLocked && <Lock size={12} style={{ color: C.g400 }} />}
+                          </label>
+                          {locationLocked ? (
+                            <div className="px-4 py-2.5 border-2 rounded-xl text-sm font-medium flex items-center justify-between"
+                              style={{ borderColor: C.g200, backgroundColor: C.g100, color: C.g500 }}>
+                              <span>{accountForm.location || '—'}</span>
+                              <Lock size={13} style={{ color: C.g400 }} />
+                            </div>
+                          ) : (
+                            <input type="text" value={accountForm.location}
+                              onChange={e => setAccountForm({ ...accountForm, location: e.target.value })}
+                              placeholder="e.g. Accra, Ghana"
+                              className={inputCls} style={inputStyle(accountForm.location)} />
+                          )}
+                          {locationLocked
+                            ? <p className="text-xs mt-1 flex items-center gap-1" style={{ color: C.g400 }}><Lock size={9} />Location locked after ID verification.</p>
+                            : <p className="text-xs mt-1" style={{ color: C.g500 }}>ℹ Location will be locked once your ID is verified.</p>
+                          }
+                        </div>
+                      );
+                    })()}
 
                     {/* Bio with 100-word limit */}
                     <div>

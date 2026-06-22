@@ -581,6 +581,27 @@ async function sendLoginAlertEmail(user) {
   });
 }
 
+async function sendLoginOtpEmail(user, code) {
+  const html = base('Your Login Code', `
+    <h2 style="margin:0 0 8px;font-size:22px;color:#1B4332;font-weight:800;">Your Login Code</h2>
+    <p style="margin:0 0 24px;color:#64748B;font-size:15px;">Hi <strong>${user.username || 'there'}</strong>, use the code below to complete your sign-in. It expires in <strong>10 minutes</strong>.</p>
+    <div style="text-align:center;margin:28px 0;">
+      <div style="display:inline-block;background:linear-gradient(135deg,#1B4332,#2D6A4F);border-radius:16px;padding:20px 40px;">
+        <span style="font-size:38px;font-weight:900;letter-spacing:10px;color:#ffffff;font-family:monospace;">${code}</span>
+      </div>
+    </div>
+    <p style="margin:0 0 8px;color:#94A3B8;font-size:13px;text-align:center;">If you did not request this, please ignore this email or contact support immediately.</p>
+    <p style="margin:0;color:#94A3B8;font-size:12px;text-align:center;">Do not share this code with anyone.</p>
+  `);
+  return sendEmail({
+    userId:  user.id,
+    to:      user.email,
+    subject: `${code} is your PRAQEN login code`,
+    html,
+    type:    'login_otp',
+  });
+}
+
 async function sendKycApprovedEmail(user) {
   return sendEmail({
     userId:  user.id,
@@ -968,6 +989,7 @@ module.exports = {
   sendWelcomeEmail,
   sendVerificationEmail,
   sendLoginAlertEmail,
+  sendLoginOtpEmail,
   sendKycApprovedEmail,
   sendKycRejectedEmail,
   sendDisputeOpenedEmail,
