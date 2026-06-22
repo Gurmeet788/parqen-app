@@ -1540,20 +1540,37 @@ function PlatformWalletsCard() {
   const [checking, setChecking] = useState(false);
   const [copied, setCopied]     = useState('');
   const [btcPrice, setBtcPrice] = useState(0);
+  const [priceSource, setPriceSrc] = useState('');
+
+  // Fetch live BTC price directly — bypasses any backend cache
+  const fetchLiveBtcPrice = async () => {
+    const sources = [
+      { url: 'https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT', parse: d => parseFloat(d.price), name: 'Binance' },
+      { url: 'https://api.coinbase.com/v2/prices/BTC-USD/spot',            parse: d => parseFloat(d.data.amount), name: 'Coinbase' },
+      { url: 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd', parse: d => parseFloat(d.bitcoin.usd), name: 'CoinGecko' },
+    ];
+    for (const src of sources) {
+      try {
+        const r = await fetch(src.url, { signal: AbortSignal.timeout(5000) });
+        const d = await r.json();
+        const p = src.parse(d);
+        if (p > 1000) { setBtcPrice(p); setPriceSrc(src.name); return p; }
+      } catch {}
+    }
+    return 0;
+  };
 
   const fetchWallets = async () => {
     setChecking(true);
     try {
-      const [hwRes, infoRes, ratesRes] = await Promise.all([
-        axios.get(`${API_URL}/hd-wallet/hot-wallet`,  { headers: authH() }),
-        axios.get(`${API_URL}/hd-wallet/info`,         { headers: authH() }),
-        axios.get(`${API_URL}/rates`,                  { headers: authH() }),
+      // Fetch wallet data + live BTC price in parallel
+      const [hwRes, infoRes, livePrice] = await Promise.all([
+        axios.get(`${API_URL}/hd-wallet/hot-wallet`, { headers: authH() }),
+        axios.get(`${API_URL}/hd-wallet/info`,        { headers: authH() }),
+        fetchLiveBtcPrice(),
       ]);
-      setWallets({
-        hot:  hwRes.data,
-        fee:  infoRes.data,
-      });
-      if (ratesRes.data?.btcUsd > 0) setBtcPrice(ratesRes.data.btcUsd);
+      setWallets({ hot: hwRes.data, fee: infoRes.data });
+      if (livePrice > 0) setBtcPrice(livePrice);
     } catch (e) {
       toast.error(e.response?.data?.error || 'Failed to load wallet balances');
     } finally {
@@ -1569,7 +1586,9 @@ function PlatformWalletsCard() {
     setTimeout(() => setCopied(''), 2000);
   };
 
-  const toUsd = (btc) => btcPrice > 0 ? `≈ $${(btc * btcPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
+  const toUsd = (btc) => btcPrice > 0
+    ? `$${(btc * btcPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : '—';
 
   return (
     <div className="bg-white rounded-2xl border overflow-hidden" style={{ borderColor: C.g200 }}>

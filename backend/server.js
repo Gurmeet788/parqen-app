@@ -1661,6 +1661,7 @@ app.post('/api/team/setup-account', async (req, res) => {
     const email = (rawEmail || '').toLowerCase().trim();
     if (!email || !full_name || !password) return res.status(400).json({ error: 'Email, full name and password are all required' });
     if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    if (full_name.trim().length > 200) return res.status(400).json({ error: 'Full name is too long (max 200 characters)' });
     const domain = email.split('@')[1];
     if (!TEAM_ALLOWED_DOMAINS.includes(domain)) return res.status(403).json({ error: 'Not authorised' });
     // Must not already exist
@@ -1689,7 +1690,11 @@ app.post('/api/team/setup-account', async (req, res) => {
       if (error?.code === '23505' || error?.message?.includes('duplicate') || error?.message?.includes('unique')) {
         return res.status(400).json({ error: 'Username or email already taken. Try a different email.' });
       }
-      return res.status(500).json({ error: `Failed to create account: ${error?.message || error?.code || 'unknown DB error'}` });
+      const msg = error?.message || '';
+      if (msg.includes('character varying') || msg.includes('too long') || msg.includes('value too long')) {
+        return res.status(400).json({ error: 'One of the fields is too long. Please shorten your name or use a shorter email address.' });
+      }
+      return res.status(500).json({ error: `Failed to create account: ${msg || error?.code || 'unknown DB error'}` });
     }
     const newUser = inserted[0];
 
