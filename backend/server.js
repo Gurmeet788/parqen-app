@@ -1630,6 +1630,47 @@ app.post('/api/auth/verify-login-otp', authLimiter, async (req, res) => {
   }
 });
 
+// ── Team portal: direct login (no OTP — domain-restricted to team emails) ────
+app.post('/api/team/login', async (req, res) => {
+  try {
+    const { email: rawEmail, password } = req.body;
+    const email = (rawEmail || '').toLowerCase().trim();
+    if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+
+    const domain = email.split('@')[1];
+    if (!TEAM_ALLOWED_DOMAINS.includes(domain)) return res.status(403).json({ error: 'Not authorised for the Team Portal' });
+
+    const { data, error } = await supabaseAdmin.from('users').select('*').eq('email', email).single();
+    if (error || !data) return res.status(401).json({ error: 'Invalid email or password' });
+
+    const valid = await bcrypt.compare(password, data.password_hash);
+    if (!valid) return res.status(401).json({ error: 'Invalid email or password' });
+
+    if (!data.is_moderator && !data.is_admin) return res.status(403).json({ error: 'Access denied. Team privileges required.' });
+
+    const token = jwt.sign({ userId: data.id, email: data.email }, JWT_SECRET, { expiresIn: '7d' });
+    const now = new Date().toISOString();
+    await supabaseAdmin.from('users').update({ last_login: now, last_seen_at: now }).eq('id', data.id).catch(() => {});
+
+    return res.json({
+      success: true,
+      token,
+      user: {
+        id: data.id, email: data.email, username: data.username, full_name: data.full_name,
+        is_moderator: data.is_moderator, is_admin: data.is_admin,
+        avatar_url: data.avatar_url || null,
+        average_rating: data.average_rating || 0, total_trades: data.total_trades || 0,
+        referral_code: data.referral_code || null,
+        total_referrals: data.total_referrals || 0,
+        referral_earnings_btc: data.referral_earnings_btc || 0,
+      },
+    });
+  } catch (err) {
+    console.error('team/login error:', err);
+    res.status(500).json({ error: 'Login failed. Please try again.' });
+  }
+});
+
 // ── Team portal: check email status ─────────────────────────────────────────
 // Returns: has_account | needs_setup | not_allowed
 const TEAM_ALLOWED_DOMAINS = (process.env.TEAM_ALLOWED_DOMAINS || 'praqen.com')

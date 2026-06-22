@@ -88,13 +88,12 @@ function Stars({ rating }) {
 // LOGIN  (multi-step: email → password  OR  first-time setup)
 // ================================================================
 function TeamLogin({ onAuth }) {
-  // step: 'email' | 'login' | 'otp' | 'setup'
+  // step: 'email' | 'login' | 'setup'
   const [step, setStep]         = useState('email');
   const [email, setEmail]       = useState('');
   const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm]   = useState('');
-  const [otpCode, setOtpCode]   = useState('');
   const [loading, setLoading]   = useState(false);
   const [err, setErr]           = useState('');
 
@@ -111,42 +110,18 @@ function TeamLogin({ onAuth }) {
     setLoading(false);
   };
 
-  // Step 2a: existing account — submit password, triggers OTP email
-  const submitLogin = async () => {
-    setErr(''); setLoading(true);
-    try {
-      const r = await axios.post(`${API_URL}/auth/login`, { email, password });
-      if (r.data.requiresOtp) {
-        setOtpCode('');
-        setStep('otp');
-      } else if (r.data.token) {
-        const { token, user } = r.data;
-        if (!user?.is_moderator && !user?.is_admin) throw new Error('Access denied. Team privileges required.');
-        localStorage.setItem('team_token', token);
-        localStorage.setItem('team_user', JSON.stringify(user));
-        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        onAuth(user);
-      } else {
-        throw new Error('Unexpected login response. Try again.');
-      }
-    } catch (ex) { setErr(ex.response?.data?.error || ex.message || 'Login failed'); }
-    setLoading(false);
-  };
-  const doLogin = (e) => { e.preventDefault(); submitLogin(); };
-
-  // Step 2a-otp: verify OTP code sent to email
-  const verifyOtp = async (e) => {
+  // Step 2a: existing account — direct login (no OTP for team portal)
+  const doLogin = async (e) => {
     e.preventDefault(); setErr(''); setLoading(true);
     try {
-      const r = await axios.post(`${API_URL}/auth/verify-login-otp`, { email, code: otpCode.trim() });
+      const r = await axios.post(`${API_URL}/team/login`, { email, password });
       const { token, user } = r.data;
-      if (!token) throw new Error('Verification failed. Try again.');
-      if (!user?.is_moderator && !user?.is_admin) throw new Error('Access denied. Team privileges required.');
+      if (!token) throw new Error('Login failed. Please try again.');
       localStorage.setItem('team_token', token);
       localStorage.setItem('team_user', JSON.stringify(user));
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       onAuth(user);
-    } catch (ex) { setErr(ex.response?.data?.error || ex.message || 'Verification failed'); }
+    } catch (ex) { setErr(ex.response?.data?.error || ex.message || 'Login failed'); }
     setLoading(false);
   };
 
@@ -249,49 +224,6 @@ function TeamLogin({ onAuth }) {
             className="w-full mt-5 py-3.5 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition"
             style={{ backgroundColor: loading ? C.g200 : C.purple, color: loading ? C.g400 : '#fff' }}>
             {loading ? <><RefreshCw size={14} className="animate-spin" /> Signing in…</> : <><Lock size={14} /> Sign In</>}
-          </button>
-        </form>
-        <p className="text-center mt-6 text-white/30 text-xs">Restricted Access • All actions are logged</p>
-      </div>
-    </div>
-  );
-
-  if (step === 'otp') return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: bg }}>
-      <div className="w-full max-w-sm">
-        <Header />
-        <form onSubmit={verifyOtp} className="bg-white rounded-3xl p-8 shadow-2xl">
-          <button type="button" onClick={() => { setStep('login'); setErr(''); }}
-            className="flex items-center gap-1.5 text-xs font-bold mb-5" style={{ color: C.g400 }}>
-            <ChevronLeft size={14} /> Back
-          </button>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: C.purpleLight }}>
-              <Shield size={20} style={{ color: C.purple }} />
-            </div>
-            <div>
-              <h2 className="text-lg font-black" style={{ color: C.g800 }}>Check your email</h2>
-              <p className="text-xs" style={{ color: C.g400 }}>6-digit code sent to {email}</p>
-            </div>
-          </div>
-          <ErrBox />
-          <div>
-            <label className="text-xs font-bold block mb-1.5" style={{ color: C.g600 }}>Verification Code</label>
-            <input value={otpCode} onChange={e => setOtpCode(e.target.value)} type="text" required autoFocus
-              maxLength={6} inputMode="numeric" pattern="[0-9]{6}"
-              className="w-full px-4 py-3 rounded-xl border text-sm font-semibold outline-none tracking-widest text-center"
-              style={{ borderColor: C.g200, color: C.g800, fontSize: '1.25rem', letterSpacing: '0.5em' }}
-              placeholder="000000" />
-          </div>
-          <button type="submit" disabled={loading || otpCode.length < 6}
-            className="w-full mt-5 py-3.5 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition"
-            style={{ backgroundColor: loading ? C.g200 : C.purple, color: loading ? C.g400 : '#fff' }}>
-            {loading ? <><RefreshCw size={14} className="animate-spin" /> Verifying…</> : <><Shield size={14} /> Verify & Sign In</>}
-          </button>
-          <button type="button" onClick={submitLogin} disabled={loading}
-            className="w-full mt-2 py-2.5 rounded-xl text-xs font-semibold transition"
-            style={{ color: C.g400 }}>
-            Didn't receive it? Resend code
           </button>
         </form>
         <p className="text-center mt-6 text-white/30 text-xs">Restricted Access • All actions are logged</p>
