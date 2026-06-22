@@ -1637,20 +1637,28 @@ app.post('/api/team/login', async (req, res) => {
     const email = (rawEmail || '').toLowerCase().trim();
     if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
 
-    const domain = email.split('@')[1];
-    if (!TEAM_ALLOWED_DOMAINS.includes(domain)) return res.status(403).json({ error: 'Not authorised for the Team Portal' });
+    const allowedDomains = (process.env.TEAM_ALLOWED_DOMAINS || 'praqen.com')
+      .split(',').map(d => d.trim().toLowerCase());
+    const domain = (email.split('@')[1] || '').toLowerCase();
+    if (!allowedDomains.includes(domain)) return res.status(403).json({ error: 'Not authorised for the Team Portal' });
 
-    const { data, error } = await supabaseAdmin.from('users').select('*').eq('email', email).single();
-    if (error || !data) return res.status(401).json({ error: 'Invalid email or password' });
+    const { data, error } = await supabaseAdmin.from('users').select('*').eq('email', email).maybeSingle();
+    if (error) {
+      console.error('team/login db error:', error);
+      return res.status(500).json({ error: 'Database error: ' + error.message });
+    }
+    if (!data) return res.status(401).json({ error: 'No account found for this email. Please create your account first.' });
+    if (!data.password_hash) return res.status(401).json({ error: 'Account has no password set. Please create your account again.' });
 
     const valid = await bcrypt.compare(password, data.password_hash);
-    if (!valid) return res.status(401).json({ error: 'Invalid email or password' });
+    if (!valid) return res.status(401).json({ error: 'Incorrect password. Please try again.' });
 
-    if (!data.is_moderator && !data.is_admin) return res.status(403).json({ error: 'Access denied. Team privileges required.' });
+    if (!data.is_moderator && !data.is_admin) return res.status(403).json({ error: 'Access denied. This account does not have team privileges.' });
 
-    const token = jwt.sign({ userId: data.id, email: data.email }, JWT_SECRET, { expiresIn: '7d' });
+    const jwtSecret = process.env.JWT_SECRET || JWT_SECRET;
+    const token = jwt.sign({ userId: data.id, email: data.email }, jwtSecret, { expiresIn: '7d' });
     const now = new Date().toISOString();
-    await supabaseAdmin.from('users').update({ last_login: now, last_seen_at: now }).eq('id', data.id).catch(() => {});
+    try { await supabaseAdmin.from('users').update({ last_login: now, last_seen_at: now }).eq('id', data.id); } catch (_) {}
 
     return res.json({
       success: true,
@@ -1667,7 +1675,7 @@ app.post('/api/team/login', async (req, res) => {
     });
   } catch (err) {
     console.error('team/login error:', err);
-    res.status(500).json({ error: 'Login failed. Please try again.' });
+    res.status(500).json({ error: err.message || 'Login failed. Please try again.' });
   }
 });
 
