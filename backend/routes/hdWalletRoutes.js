@@ -819,12 +819,19 @@ router.post('/escrow-address', verifyToken, async (req, res) => {
 router.get('/hot-wallet', verifyToken, async (req, res) => {
   try {
     const info = await hdWallet.getHotWalletBalance();
+    const total = info.total_btc ?? info.confirmed_btc;
     res.json({
-      success: true,
+      success:            true,
       hot_wallet_address: info.address,
-      confirmed_btc: info.confirmed_btc,
-      message: info.confirmed_btc > 0
-        ? `Hot wallet has ${info.confirmed_btc.toFixed(8)} BTC available for withdrawals`
+      confirmed_btc:      info.confirmed_btc,
+      unconfirmed_btc:    info.unconfirmed_btc,
+      total_btc:          total,
+      tx_count:           info.tx_count,
+      source:             info.source,
+      balance_error:      info.error || null,
+      message: total > 0
+        ? `Hot wallet: ${info.confirmed_btc.toFixed(8)} BTC confirmed` +
+          (info.unconfirmed_btc > 0 ? ` + ${info.unconfirmed_btc.toFixed(8)} BTC pending` : '')
         : 'Hot wallet is empty — send BTC to the address above to enable user withdrawals',
     });
   } catch (error) {

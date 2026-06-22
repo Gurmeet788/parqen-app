@@ -137,11 +137,19 @@ class HDWalletService {
     return this.generateAddress(PRAQEN_HOT_WALLET_IDENTIFIER).address;
   }
 
-  // Returns total confirmed BTC at the hot wallet
+  // Returns full balance at the hot wallet (confirmed + unconfirmed)
   async getHotWalletBalance() {
     const address = this.getHotWalletAddress();
     const bal = await this.checkBalance(address);
-    return { address, confirmed_btc: bal.confirmed_btc };
+    return {
+      address,
+      confirmed_btc:   bal.confirmed_btc,
+      unconfirmed_btc: bal.unconfirmed_btc,
+      total_btc:       bal.total_btc,       // confirmed + unconfirmed
+      tx_count:        bal.tx_count,
+      source:          bal.source,
+      error:           bal.error,
+    };
   }
 
   // Send withdrawal from user's own address if it has UTXOs, otherwise fall back to hot wallet

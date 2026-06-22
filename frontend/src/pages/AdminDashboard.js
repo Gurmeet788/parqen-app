@@ -1595,52 +1595,92 @@ function PlatformWalletsCard() {
         <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x" style={{ borderColor: C.g100 }}>
 
           {/* Hot Wallet */}
-          <div className="p-5 space-y-3">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: wallets.hot.confirmed_btc > 0 ? '#D1FAE5' : '#FEF2F2' }}>
-                <Bitcoin size={16} color={wallets.hot.confirmed_btc > 0 ? C.forest : '#DC2626'} />
-              </div>
-              <div>
-                <p className="font-black text-xs" style={{ color: C.g700 }}>Hot Withdrawal Wallet</p>
-                <p className="text-[11px]" style={{ color: C.g400 }}>Fund this to enable user withdrawals</p>
-              </div>
-            </div>
+          {(() => {
+            const hw      = wallets.hot;
+            const total   = parseFloat(hw.total_btc   ?? hw.confirmed_btc ?? 0);
+            const conf    = parseFloat(hw.confirmed_btc   ?? 0);
+            const unconf  = parseFloat(hw.unconfirmed_btc ?? 0);
+            const hasUnconf = unconf > 0;
+            const isEmpty  = total === 0;
+            return (
+              <div className="p-5 space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: !isEmpty ? '#D1FAE5' : '#FEF2F2' }}>
+                    <Bitcoin size={16} color={!isEmpty ? C.forest : '#DC2626'} />
+                  </div>
+                  <div>
+                    <p className="font-black text-xs" style={{ color: C.g700 }}>Hot Withdrawal Wallet</p>
+                    <p className="text-[11px]" style={{ color: C.g400 }}>
+                      Fund this to enable user withdrawals
+                      {hw.source && <span className="ml-1 opacity-60">· via {hw.source}</span>}
+                    </p>
+                  </div>
+                </div>
 
-            <div className="p-3 rounded-xl" style={{ backgroundColor: wallets.hot.confirmed_btc > 0 ? '#F0FDF4' : '#FEF2F2' }}>
-              <p className="text-2xl font-black" style={{ color: wallets.hot.confirmed_btc > 0 ? C.forest : '#DC2626' }}>
-                ₿{parseFloat(wallets.hot.confirmed_btc || 0).toFixed(8)}
-              </p>
-              {btcPrice > 0 && (
-                <p className="text-xs font-semibold mt-0.5" style={{ color: C.g500 }}>
-                  {toUsd(wallets.hot.confirmed_btc)}
-                </p>
-              )}
-              {wallets.hot.confirmed_btc === 0 && (
-                <p className="text-xs font-bold mt-1" style={{ color: '#DC2626' }}>
-                  ⚠️ Empty — users cannot withdraw until funded
-                </p>
-              )}
-            </div>
+                {/* Main balance — shows TOTAL (confirmed + unconfirmed) */}
+                <div className="p-3 rounded-xl" style={{ backgroundColor: !isEmpty ? '#F0FDF4' : '#FEF2F2' }}>
+                  <p className="text-[11px] font-black uppercase tracking-wide mb-1"
+                    style={{ color: !isEmpty ? C.forest : '#DC2626' }}>
+                    Total Balance
+                  </p>
+                  <p className="text-2xl font-black" style={{ color: !isEmpty ? C.forest : '#DC2626' }}>
+                    ₿{total.toFixed(8)}
+                  </p>
+                  {btcPrice > 0 && (
+                    <p className="text-sm font-bold mt-0.5" style={{ color: !isEmpty ? C.forest : '#DC2626' }}>
+                      {toUsd(total)}
+                    </p>
+                  )}
 
-            <div className="flex items-center gap-2">
-              <code className="flex-1 text-[11px] bg-gray-50 border px-2 py-1.5 rounded-lg truncate font-mono"
-                style={{ borderColor: C.g200, color: C.g600 }}>
-                {wallets.hot.hot_wallet_address}
-              </code>
-              <button onClick={() => copy(wallets.hot.hot_wallet_address, 'hot')}
-                className="px-2.5 py-1.5 rounded-lg text-[11px] font-black transition hover:opacity-80 flex-shrink-0"
-                style={{ backgroundColor: copied === 'hot' ? C.forest : C.g100, color: copied === 'hot' ? '#fff' : C.g600 }}>
-                {copied === 'hot' ? '✓ Copied' : 'Copy'}
-              </button>
-            </div>
-            <a href={`https://mempool.space/address/${wallets.hot.hot_wallet_address}`}
-              target="_blank" rel="noreferrer"
-              className="inline-flex items-center gap-1 text-[11px] font-bold hover:underline"
-              style={{ color: '#2563EB' }}>
-              View on mempool.space ↗
-            </a>
-          </div>
+                  {/* Breakdown row */}
+                  <div className="flex gap-4 mt-2 pt-2 border-t" style={{ borderColor: !isEmpty ? '#BBF7D0' : '#FECACA' }}>
+                    <div>
+                      <p className="text-[10px] font-black uppercase" style={{ color: C.g500 }}>Confirmed</p>
+                      <p className="text-xs font-black" style={{ color: C.g700 }}>₿{conf.toFixed(8)}</p>
+                      {btcPrice > 0 && <p className="text-[10px]" style={{ color: C.g400 }}>{toUsd(conf)}</p>}
+                    </div>
+                    {hasUnconf && (
+                      <div>
+                        <p className="text-[10px] font-black uppercase" style={{ color: '#D97706' }}>Pending (unconf.)</p>
+                        <p className="text-xs font-black" style={{ color: '#D97706' }}>₿{unconf.toFixed(8)}</p>
+                        {btcPrice > 0 && <p className="text-[10px]" style={{ color: '#D97706' }}>{toUsd(unconf)}</p>}
+                      </div>
+                    )}
+                  </div>
+
+                  {isEmpty && (
+                    <p className="text-xs font-bold mt-2" style={{ color: '#DC2626' }}>
+                      ⚠️ Empty — users cannot withdraw until funded
+                    </p>
+                  )}
+                  {hw.balance_error && (
+                    <p className="text-[10px] mt-1" style={{ color: '#DC2626' }}>
+                      ⚠️ API error: {hw.balance_error}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-[11px] bg-gray-50 border px-2 py-1.5 rounded-lg truncate font-mono"
+                    style={{ borderColor: C.g200, color: C.g600 }}>
+                    {hw.hot_wallet_address}
+                  </code>
+                  <button onClick={() => copy(hw.hot_wallet_address, 'hot')}
+                    className="px-2.5 py-1.5 rounded-lg text-[11px] font-black transition hover:opacity-80 flex-shrink-0"
+                    style={{ backgroundColor: copied === 'hot' ? C.forest : C.g100, color: copied === 'hot' ? '#fff' : C.g600 }}>
+                    {copied === 'hot' ? '✓ Copied' : 'Copy'}
+                  </button>
+                </div>
+                <a href={`https://mempool.space/address/${hw.hot_wallet_address}`}
+                  target="_blank" rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] font-bold hover:underline"
+                  style={{ color: '#2563EB' }}>
+                  View on mempool.space ↗
+                </a>
+              </div>
+            );
+          })()}
 
           {/* Fee Wallet */}
           <div className="p-5 space-y-3">
