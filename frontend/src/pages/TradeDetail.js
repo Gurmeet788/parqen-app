@@ -1465,7 +1465,7 @@ export default function TradeDetail({user}) {
                             if(!reason?.trim())return;
                             const sub=encodeURIComponent(`Trade Report: #${shortId}`);
                             const body=encodeURIComponent(`Trade ID: ${trade.id}\nOffer: ${trade.listing_id||'—'}\nProblem: ${reason}\nUser: ${user?.username||'—'}`);
-                            window.open(`mailto:support@praqen.com?subject=${sub}&body=${body}`,'_blank');
+                            window.open(`mailto:hello@praqen.com?subject=${sub}&body=${body}`,'_blank');
                             toast.info('Email opened to report trade');
                           }}
                           className="w-full flex items-center gap-2 p-2.5 rounded-xl hover:bg-red-50 transition text-left border"
@@ -2038,7 +2038,7 @@ export default function TradeDetail({user}) {
       {/* ── MOBILE STICKY ACTION BAR ─────────────────────────────────────── */}
       {(showMarkPaid||showRelease)&&(
         <div className="lg:hidden fixed left-0 right-0 z-40 px-3 py-2.5"
-          style={{bottom:0,backgroundColor:'rgba(255,255,255,0.97)',borderTop:`1px solid ${C.g200}`,backdropFilter:'blur(8px)',paddingBottom:'env(safe-area-inset-bottom, 10px)'}}>
+          style={{bottom:'calc(60px + env(safe-area-inset-bottom, 0px))',backgroundColor:'rgba(255,255,255,0.97)',borderTop:`1px solid ${C.g200}`,backdropFilter:'blur(8px)'}}>
           {showMarkPaid&&(
             <button onClick={()=>setShowPayConfirm(true)} disabled={submitting}
               className="w-full py-4 rounded-2xl font-black text-base shadow-lg active:opacity-80 disabled:opacity-50 flex items-center justify-center gap-2"

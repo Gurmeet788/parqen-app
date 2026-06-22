@@ -799,7 +799,7 @@ export default function MyTrades({user}) {
                   ['X (Twitter)',        'https://x.com/praqenapp?s=21'],
                   ['Instagram',          'https://www.instagram.com/praqen?igsh=MTRkZWg2amp5YnJlYQ%3D%3D&utm_source=qr'],
                   ['LinkedIn',           'https://www.linkedin.com/in/pra-qen-045373402/'],
-                  ['support@praqen.com', 'mailto:support@praqen.com'],
+                  ['hello@praqen.com', 'mailto:hello@praqen.com'],
                 ].map(([l,h])=>(
                   <a key={l} href={h} target={h.startsWith('mailto')?'_self':'_blank'} rel="noopener noreferrer" className="block text-xs hover:text-white transition" style={{color:'rgba(255,255,255,0.4)'}}>{l}</a>
                 ))}

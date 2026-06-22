@@ -124,7 +124,7 @@ function WithdrawModal({ balance, btcPrice, onClose, onSend, kycStatus }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}>
-      <div className="bg-white w-full md:max-w-md rounded-t-2xl md:rounded-2xl overflow-hidden shadow-2xl mb-16 sm:mb-0">
+      <div className="bg-white w-full md:max-w-md rounded-t-2xl md:rounded-2xl overflow-hidden shadow-2xl sm:mb-0" style={{marginBottom:'calc(60px + env(safe-area-inset-bottom, 0px))'}}>
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: C.g100 }}>
@@ -780,7 +780,7 @@ function InternalTransferModal({ balance, btcPrice, displayCurrency, fxRate, cur
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}>
-      <div className="bg-white w-full md:max-w-md rounded-t-2xl md:rounded-2xl overflow-hidden shadow-2xl mb-16 sm:mb-0">
+      <div className="bg-white w-full md:max-w-md rounded-t-2xl md:rounded-2xl overflow-hidden shadow-2xl sm:mb-0" style={{marginBottom:'calc(60px + env(safe-area-inset-bottom, 0px))'}}>
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: C.g100 }}>
@@ -1478,7 +1478,7 @@ export default function WalletPage({ user }) {
                   ['Sell Bitcoin', '/sell-bitcoin'],
                   ['My Trades',   '/my-trades'],
                   ['Settings',    '/settings'],
-                  ['📧 support@praqen.com', 'mailto:support@praqen.com'],
+                  ['📧 hello@praqen.com', 'mailto:hello@praqen.com'],
                 ].map(([l, h]) => (
                   <a key={l} href={h} className="block text-xs hover:text-white transition"
                     style={{ color: 'rgba(255,255,255,0.4)' }}>{l}</a>

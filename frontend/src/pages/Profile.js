@@ -628,7 +628,7 @@ export default function Profile({userId:propUserId}){
       )}
 
       {/* ── TAB NAV ──────────────────────────────────────────────────────── */}
-      <div className="sticky top-0 z-20 bg-white border-b shadow-sm mt-3" style={{borderColor:C.g200,width:'100%',overflowX:'hidden'}}>
+      <div className="sticky z-20 bg-white border-b shadow-sm mt-3" style={{top:'var(--navbar-h)',borderColor:C.g200,width:'100%',overflowX:'hidden'}}>
         <div className="max-w-5xl mx-auto px-3 sm:px-5 lg:px-8 flex gap-0" style={{overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
           {TABS.map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)}
@@ -1377,7 +1377,7 @@ export default function Profile({userId:propUserId}){
                   ['X (Twitter)',        'https://x.com/praqenapp?s=21'],
                   ['Instagram',          'https://www.instagram.com/praqen?igsh=MTRkZWg2amp5YnJlYQ%3D%3D&utm_source=qr'],
                   ['LinkedIn',           'https://www.linkedin.com/in/pra-qen-045373402/'],
-                  ['support@praqen.com', 'mailto:support@praqen.com'],
+                  ['hello@praqen.com', 'mailto:hello@praqen.com'],
                 ].map(([l,h])=>(
                   <a key={l} href={h} target={h.startsWith('mailto')?'_self':'_blank'} rel="noopener noreferrer" className="block text-xs hover:text-white transition" style={{color:'rgba(255,255,255,0.45)'}}>{l}</a>
                 ))}
@@ -1386,7 +1386,7 @@ export default function Profile({userId:propUserId}){
             <div>
               <p className="text-white font-black text-sm mb-3">Legal</p>
               <div className="space-y-2">
-                {[['Terms of Service','/terms'],['Privacy Policy','/privacy'],['Cookie Policy','/cookies'],['Contact','mailto:support@praqen.com']].map(([l,h])=>(
+                {[['Terms of Service','/terms'],['Privacy Policy','/privacy'],['Cookie Policy','/cookies'],['Contact','mailto:hello@praqen.com']].map(([l,h])=>(
                   <a key={l} href={h} className="block text-xs hover:text-white transition" style={{color:'rgba(255,255,255,0.45)'}}>{l}</a>
                 ))}
               </div>

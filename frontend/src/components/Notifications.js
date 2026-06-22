@@ -4,7 +4,7 @@ import axios from 'axios';
 import {
   Bell, X, CheckCheck, ArrowRight, Bitcoin,
   Shield, AlertTriangle, Megaphone, Gift, Zap,
-  Clock, CheckCircle, XCircle, ShoppingBag,
+  Clock, CheckCircle, XCircle, ShoppingBag, Eye,
 } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
@@ -271,14 +271,15 @@ function BasicCard({ n, onNavigate }) {
   const title = (n.title || '').toLowerCase();
   const msg   = n.message || '';
 
-  const isCancelled = /cancel/i.test(title);
-  const isExpired   = /expir/i.test(title);
-  const isNewTrade  = /new trade|trade request/i.test(title);
-  const isDispute   = /disput/i.test(title);
-  const isPayment   = /payment|paid/i.test(title);
-  const isRefund    = /refund/i.test(msg);
-  const isBroadcast = n.type === 'update' || n.type === 'broadcast' ||
-    (!isCancelled && !isExpired && !isNewTrade && !isDispute && !isPayment);
+  const isCancelled  = /cancel/i.test(title);
+  const isExpired    = /expir/i.test(title);
+  const isNewTrade   = /new trade|trade request/i.test(title);
+  const isDispute    = /disput/i.test(title);
+  const isPayment    = /payment|paid/i.test(title);
+  const isOfferView  = n.type === 'offer_view' || /viewed your offer/i.test(title + msg);
+  const isRefund     = /refund/i.test(msg);
+  const isBroadcast  = n.type === 'update' || n.type === 'broadcast' ||
+    (!isCancelled && !isExpired && !isNewTrade && !isDispute && !isPayment && !isOfferView);
 
   // ── Parse trade ID ──────────────────────────────────────────────────────────
   const tradeIdMatch = msg.match(/trade\s*#?([A-F0-9]{6,10})/i);
@@ -340,6 +341,10 @@ function BasicCard({ n, onNavigate }) {
     Icon = CheckCircle;  accent = C.success;
     headerBg = `linear-gradient(90deg,${C.forest},${C.green})`;
     cardBg = C.mist;     badgeLabel = 'Payment';
+  } else if (isOfferView) {
+    Icon = Eye;          accent = C.purple;
+    headerBg = `linear-gradient(90deg,#6D28D9,${C.purple})`;
+    cardBg = '#F5F3FF';  badgeLabel = 'Offer Viewed';
   } else {
     Icon = Megaphone;    accent = C.green;
     headerBg = `linear-gradient(90deg,${C.forest},${C.mint})`;
@@ -608,7 +613,7 @@ function BasicCard({ n, onNavigate }) {
           </div>
         )}
 
-        {/* ── PAYMENT / BROADCAST / GENERIC ───────────────────────────────── */}
+        {/* ── PAYMENT / BROADCAST / OFFER VIEW / GENERIC ──────────────────── */}
         {!isCancelled && !isExpired && !isNewTrade && !isDispute && (
           <div>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -628,7 +633,7 @@ function BasicCard({ n, onNavigate }) {
                   <span style={{ fontSize: 10, color: C.g400, fontWeight: 600 }}>{absTime(n.created_at)}</span>
                   {n.action && (
                     <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 900, color: accent }}>
-                      {isBroadcast ? 'Read more' : 'View details'} <ArrowRight size={10} />
+                      {isOfferView ? 'View offer' : isBroadcast ? 'Read more' : 'View details'} <ArrowRight size={10} />
                     </span>
                   )}
                 </div>

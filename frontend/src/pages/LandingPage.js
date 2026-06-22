@@ -1031,10 +1031,10 @@ export default function LandingPage({ user }) {
           </div>
           <div className="text-center mt-8">
             <p className="text-sm mb-3" style={{color:C.g500}}>Still have questions?</p>
-            <a href="mailto:support@praqen.com"
+            <a href="mailto:hello@praqen.com"
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm border hover:bg-gray-50 transition"
               style={{borderColor:C.g200,color:C.forest}}>
-              <Mail size={14}/> support@praqen.com
+              <Mail size={14}/> hello@praqen.com
             </a>
           </div>
         </div>
@@ -1095,10 +1095,10 @@ export default function LandingPage({ user }) {
 
           {/* support + copyright */}
           <div className="border-t pt-5" style={{borderColor:'rgba(255,255,255,.08)'}}>
-            <a href="mailto:support@praqen.com"
+            <a href="mailto:hello@praqen.com"
               className="inline-flex items-center gap-1.5 text-xs font-bold hover:text-white transition mb-3"
               style={{color:C.gold}}>
-              <Mail size={12}/> support@praqen.com · 24/7 support
+              <Mail size={12}/> hello@praqen.com · 24/7 support
             </a>
             <p className="text-xs" style={{color:'rgba(255,255,255,.25)'}}>
               © {new Date().getFullYear()} PRAQEN · All rights reserved · Not financial advice

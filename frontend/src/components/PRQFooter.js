@@ -112,7 +112,7 @@ export default function PRQFooter() {
         ))}
 
         <span style={{ color: 'rgba(255,255,255,0.08)', fontSize: 10 }}>·</span>
-        <a href="mailto:support@praqen.com" style={{ fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textDecoration: 'none', whiteSpace: 'nowrap' }}>support@praqen.com</a>
+        <a href="mailto:hello@praqen.com" style={{ fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textDecoration: 'none', whiteSpace: 'nowrap' }}>hello@praqen.com</a>
         <span style={{ fontSize: 8, fontWeight: 800, background: 'rgba(64,145,108,0.2)', border: '1px solid rgba(64,145,108,0.3)', color: '#6EE7B7', padding: '1px 5px', borderRadius: 4, whiteSpace: 'nowrap' }}>24/7</span>
         <span style={{ color: 'rgba(255,255,255,0.08)', fontSize: 10 }}>·</span>
         <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.2)', fontWeight: 500 }}>© {new Date().getFullYear()} PRAQEN</span>

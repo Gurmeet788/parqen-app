@@ -1098,7 +1098,7 @@ export default function Dashboard({ user }) {
     <div className="min-h-screen pb-10" style={{backgroundColor:C.mist, fontFamily:"'DM Sans',sans-serif"}}>
 
       {/* Top bar */}
-      <div className="border-b bg-white sticky top-0 z-30" style={{borderColor:C.g200}}>
+      <div className="border-b bg-white sticky z-30" style={{top:'var(--navbar-h)',borderColor:C.g200}}>
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <div>
             <h1 className="font-black text-base" style={{color:C.forest, fontFamily:"'Syne',sans-serif"}}>
@@ -1671,7 +1671,7 @@ export default function Dashboard({ user }) {
                   {label:'X (Twitter)',        href:'https://x.com/praqenapp?s=21'},
                   {label:'Instagram',          href:'https://www.instagram.com/praqen?igsh=MTRkZWg2amp5YnJlYQ%3D%3D&utm_source=qr'},
                   {label:'LinkedIn',           href:'https://www.linkedin.com/in/pra-qen-045373402/'},
-                  {label:'support@praqen.com', href:'mailto:support@praqen.com'},
+                  {label:'hello@praqen.com', href:'mailto:hello@praqen.com'},
                 ].map(({label,href})=>(
                   <a key={label} href={href} target={href.startsWith('mailto')?'_self':'_blank'} rel="noopener noreferrer"
                     className="block text-xs hover:text-white transition"

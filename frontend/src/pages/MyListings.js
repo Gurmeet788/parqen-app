@@ -91,26 +91,59 @@ function EditModal({ listing, onClose, onSave, saving, walletBtc, btcPrice }) {
         {/* Scrollable fields — flex-1 + min-h-0 makes it shrink so footer stays visible */}
         <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-5">
           <div>
-            <label className="text-sm font-black mb-2 block" style={{color:C.g700}}>Margin — your profit above market rate</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-black" style={{color:C.g700}}>Margin</label>
+              {(() => {
+                const m = parseFloat(form.margin);
+                const isNeg = !isNaN(m) && m < 0;
+                const isPos = !isNaN(m) && m > 0;
+                return (
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-lg"
+                    style={{
+                      backgroundColor: isPos ? `${C.success}15` : isNeg ? `${C.danger}15` : `${C.g400}15`,
+                      color: isPos ? C.success : isNeg ? C.danger : C.g500,
+                    }}>
+                    {isPos ? `+${m}% above market` : isNeg ? `${m}% below market` : 'At market rate'}
+                  </span>
+                );
+              })()}
+            </div>
             <div className="flex items-center gap-3">
-              <button onClick={()=>set('margin',Math.max(0,parseFloat((form.margin-0.5).toFixed(1))))}
+              <button onClick={()=>set('margin',parseFloat(Math.max(-10,parseFloat((form.margin-0.5).toFixed(1)))))}
                 className="w-11 h-11 rounded-xl border-2 flex items-center justify-center flex-shrink-0"
                 style={{borderColor:C.danger,backgroundColor:`${C.danger}10`}}>
                 <Minus size={16} style={{color:C.danger}}/>
               </button>
               <div className="flex-1 relative">
-                <input type="number" step="0.5" min="0" max="100"
-                  value={form.margin} onChange={e=>set('margin',parseFloat(e.target.value)||0)}
+                <input type="number" step="0.5" min="-10" max="100"
+                  value={form.margin}
+                  onChange={e => {
+                    const raw = e.target.value;
+                    if (raw === '' || raw === '-') { set('margin', raw); return; }
+                    const n = parseFloat(raw);
+                    if (!isNaN(n)) set('margin', Math.max(-10, Math.min(100, n)));
+                  }}
+                  onBlur={() => {
+                    const n = parseFloat(form.margin);
+                    if (isNaN(n)) set('margin', 0);
+                    else set('margin', Math.max(-10, Math.min(100, parseFloat(n.toFixed(1)))));
+                  }}
                   className="w-full px-4 pr-10 py-3.5 text-xl font-black border-2 rounded-xl focus:outline-none text-center"
-                  style={{borderColor:C.green,color:C.success}}/>
+                  style={{
+                    borderColor: form.margin < 0 ? C.danger : C.green,
+                    color: form.margin < 0 ? C.danger : form.margin > 0 ? C.success : C.g500,
+                  }}/>
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 font-black text-base" style={{color:C.g400}}>%</span>
               </div>
-              <button onClick={()=>set('margin',Math.min(100,parseFloat((form.margin+0.5).toFixed(1))))}
+              <button onClick={()=>set('margin',parseFloat(Math.min(100,parseFloat((form.margin+0.5).toFixed(1)))))}
                 className="w-11 h-11 rounded-xl border-2 flex items-center justify-center flex-shrink-0"
                 style={{borderColor:C.success,backgroundColor:`${C.success}10`}}>
                 <Plus size={16} style={{color:C.success}}/>
               </button>
             </div>
+            <p className="text-xs mt-1.5 font-semibold" style={{color:C.g400}}>
+              Negative = below market rate (attracts more buyers) · Positive = your profit above market
+            </p>
           </div>
 
           <div>
@@ -901,7 +934,7 @@ export default function MyListings({ user }) {
               <p className="text-white font-black text-sm mb-3">Support</p>
               <div className="space-y-2">
                 {[['Discord','https://discord.gg/V6zCZxfdy'],
-                  ['support@praqen.com','mailto:support@praqen.com']].map(([l,h])=>(
+                  ['hello@praqen.com','mailto:hello@praqen.com']].map(([l,h])=>(
                   <a key={l} href={h} target="_blank" rel="noopener noreferrer"
                     className="block text-xs hover:text-white transition" style={{color:'rgba(255,255,255,0.4)'}}>{l}</a>
                 ))}

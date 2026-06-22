@@ -16,9 +16,9 @@ function NavItem({ label, icon: Icon, to, active }) {
       to={to}
       style={{ color: active ? '#F4A422' : '#64748B', textDecoration: 'none', flex: 1 }}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
-        <Icon size={22} strokeWidth={active ? 2.2 : 1.8} />
-        <span style={{ fontSize: '10px', fontWeight: active ? '600' : '400', lineHeight: 1 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', padding: '0 4px' }}>
+        <Icon size={21} strokeWidth={active ? 2.2 : 1.8} />
+        <span style={{ fontSize: '10px', fontWeight: active ? '700' : '400', lineHeight: 1 }}>
           {label}
         </span>
       </div>
@@ -44,13 +44,15 @@ export default function BottomNav({ user }) {
         bottom: 0,
         left: 0,
         right: 0,
-        height: '60px',
+        height: 'calc(60px + env(safe-area-inset-bottom, 0px))',
         backgroundColor: '#ffffff',
         borderTop: '1px solid #e2e8f0',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         justifyContent: 'space-around',
         zIndex: 1000,
-        paddingBottom: 'env(safe-area-inset-bottom)',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        paddingTop: '8px',
+        boxShadow: '0 -1px 0 rgba(0,0,0,0.06)',
       }}
     >
       {NAV_ITEMS.map((item) => (

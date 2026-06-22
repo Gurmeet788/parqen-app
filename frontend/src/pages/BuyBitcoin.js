@@ -572,9 +572,10 @@ function ProfileModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
       style={{backgroundColor:'rgba(0,0,0,0.6)', backdropFilter:'blur(6px)'}}
       onClick={e => e.target === e.currentTarget && onClose()}>
 
-      <div className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl shadow-2xl flex flex-col mb-16 sm:mb-0"
+      <div className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl shadow-2xl flex flex-col sm:mb-0"
         style={{
           maxHeight:'92dvh',
+          marginBottom:'calc(60px + env(safe-area-inset-bottom, 0px))',
           border:`1px solid ${C.g200}`,
           animation:'slideUp .28s cubic-bezier(0.34,1.56,0.64,1)',
         }}>
@@ -604,7 +605,7 @@ function ProfileModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
                 <a href={u?.id ? `/profile/${u.id}` : '#'}
-                  onClick={() => u?.id && axios.post(`${API_URL}/users/${u.id}/view-profile`).catch(()=>{})}
+                  onClick={() => { if (!u?.id) return; const tk = localStorage.getItem('token'); axios.post(`${API_URL}/users/${u.id}/view-profile`, {}, tk ? { headers: { Authorization: `Bearer ${tk}` } } : {}).catch(()=>{}); }}
                   className="font-black text-white text-base leading-tight truncate"
                   style={{textDecoration:'none', borderBottom:'1.5px solid rgba(255,255,255,0.4)', paddingBottom:'1px'}}>
                   {getDisplayName(u) || 'User'}
@@ -673,7 +674,7 @@ function ProfileModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
           {/* ── VIEW FULL PROFILE LINK ── */}
           {u?.id && (
             <a href={`/profile/${u.id}`}
-              onClick={() => axios.post(`${API_URL}/users/${u.id}/view-profile`).catch(()=>{})}
+              onClick={() => { const tk = localStorage.getItem('token'); axios.post(`${API_URL}/users/${u.id}/view-profile`, {}, tk ? { headers: { Authorization: `Bearer ${tk}` } } : {}).catch(()=>{}); }}
               className="mt-3 flex items-center justify-center gap-1.5 w-full py-2 rounded-xl text-xs font-bold transition hover:bg-white/20 active:scale-95"
               style={{
                 color:'rgba(255,255,255,0.9)',
@@ -1308,7 +1309,7 @@ export default function BuyBitcoin({user}) {
       </div>
 
       {/* ══ 2. TAB NAVIGATION ══════════════════════════════════ */}
-      <div className="bg-white border-b sticky top-16 z-30 flex-shrink-0" style={{borderColor:C.g200}}>
+      <div className="bg-white border-b sticky z-30 flex-shrink-0" style={{top:'var(--navbar-h)',borderColor:C.g200}}>
         <div className="flex w-full">
           {[
             {label:'Buy BTC',    path:'/buy-bitcoin',  active:true,  color:'#1B4332'},
@@ -1680,7 +1681,8 @@ export default function BuyBitcoin({user}) {
                   liveSeenAt={liveStatus[l.users?.id] || null}
                   onViewSeller={()=>{
                     setModal({seller:l.users||{}, listing:l});
-                    axios.post(`${API_URL}/offers/${l.id}/view`).catch(()=>{});
+                    const tk = localStorage.getItem('token');
+                    axios.post(`${API_URL}/offers/${l.id}/view`, {}, tk ? { headers: { Authorization: `Bearer ${tk}` } } : {}).catch(()=>{});
                   }}
                   onBuy={()=>handleBuy(l.id)}
                   liked={liked.has(l.id)}

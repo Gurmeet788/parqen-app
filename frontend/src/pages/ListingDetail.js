@@ -105,7 +105,8 @@ const loadAll = useCallback(async () => {
         setSeller(prev => ({ ...(prev || {}), ...full }));
       } catch {}
     }
-    axios.post(`${API_URL}/listings/${id}/view`).catch(() => {});
+    const viewToken = localStorage.getItem('token');
+    axios.post(`${API_URL}/listings/${id}/view`, {}, viewToken ? { headers: { Authorization: `Bearer ${viewToken}` } } : {}).catch(() => {});
   } catch {
     setLoadError(true);
     toast.error('Could not load listing — check your connection and try again.');

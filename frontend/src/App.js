@@ -36,6 +36,7 @@ const TradeDetail           = lazy(() => import('./pages/TradeDetail'));
 const Profile               = lazy(() => import('./pages/Profile'));
 const AdminDashboard        = lazy(() => import('./pages/AdminDashboard'));
 const ModeratorDashboard    = lazy(() => import('./pages/ModeratorDashboard'));
+const TeamDashboard         = lazy(() => import('./pages/TeamDashboard'));
 const EscrowVerification    = lazy(() => import('./pages/EscrowVerification'));
 const WalletPage            = lazy(() => import('./pages/Wallet'));
 const Dashboard             = lazy(() => import('./pages/Dashboard'));
@@ -100,10 +101,9 @@ function RefRedirect() {
 }
 
 function AppShell({ children }) {
-  const location = useLocation();
-  const isTradeRoute = location.pathname.startsWith('/trade/');
   return (
-    <div className={`min-h-screen${isTradeRoute ? '' : ' pb-nav-mobile'}`}>
+    <div className="min-h-screen pb-nav-mobile"
+      style={{ overflowX: 'hidden', maxWidth: '100vw' }}>
       {children}
     </div>
   );
@@ -346,9 +346,10 @@ function App() {
           <Route path="/trade-chat/:id" element={user ? <TradeChat user={user} /> : <Navigate to="/login" />} />
           <Route path="/feedback/:tradeId/:userId" element={user ? <Feedback user={user} /> : <Navigate to="/login" />} />
 
-          {/* Admin/Moderator Routes */}
+          {/* Admin/Moderator/Team Routes */}
           <Route path="/admin" element={<AdminDashboard user={user} onLogin={login} />} />
           <Route path="/moderator" element={<ModeratorDashboard user={user} />} />
+          <Route path="/team" element={<TeamDashboard user={user} />} />
           <Route path="/escrow/:id" element={user ? <EscrowVerification user={user} /> : <Navigate to="/login" />} />
 
           {/* Referral short-links — /ref/username → /signup?ref=CODE */}

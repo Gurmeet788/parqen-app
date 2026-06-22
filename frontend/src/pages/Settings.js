@@ -1214,10 +1214,10 @@ export default function Settings({ user, setUser }) {
                                       Our team will manually verify your email and notify you within <strong>24 hours</strong>.
                                     </p>
                                     <p className="text-xs" style={{color:'#92400E'}}>You'll receive an update once your email is approved or rejected.</p>
-                                    <a href="mailto:hello@hellopraqen.com"
+                                    <a href="mailto:hello@praqen.com"
                                       className="inline-flex items-center gap-1.5 text-xs font-black mt-1"
                                       style={{color:'#D97706'}}>
-                                      <Mail size={11}/> hello@hellopraqen.com
+                                      <Mail size={11}/> hello@praqen.com
                                     </a>
                                   </div>
                                 </div>
@@ -2035,7 +2035,7 @@ export default function Settings({ user, setUser }) {
               <div className="space-y-2">
                 {[
                   ['Discord', 'https://discord.gg/V6zCZxfdy'],
-                  ['support@praqen.com', 'mailto:support@praqen.com'],
+                  ['hello@praqen.com', 'mailto:hello@praqen.com'],
                 ].map(([l, h]) => (
                   <a key={l} href={h} target="_blank" rel="noopener noreferrer" className="block text-xs hover:text-white transition" style={{ color: 'rgba(255,255,255,0.4)' }}>{l}</a>
                 ))}

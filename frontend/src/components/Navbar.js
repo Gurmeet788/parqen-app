@@ -239,6 +239,9 @@ export default function Navbar({ user, onLogout }) {
       borderBottom: `1px solid ${C.g200}`,
       boxShadow: '0 2px 16px rgba(0,0,0,0.07)',
       fontFamily: "'DM Sans', sans-serif",
+      paddingTop: 'env(safe-area-inset-top, 0px)',
+      paddingLeft: 'env(safe-area-inset-left, 0px)',
+      paddingRight: 'env(safe-area-inset-right, 0px)',
     }}>      <div className="max-w-[1280px] mx-auto px-4 md:px-8">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 64, gap: 12 }}>
           <Link to="/" style={{ textDecoration: 'none', flexShrink: 0 }}>
@@ -273,6 +276,9 @@ export default function Navbar({ user, onLogout }) {
       borderBottom: `1px solid ${C.g200}`,
       boxShadow: '0 2px 16px rgba(0,0,0,0.07)',
       fontFamily: "'DM Sans', sans-serif",
+      paddingTop: 'env(safe-area-inset-top, 0px)',
+      paddingLeft: 'env(safe-area-inset-left, 0px)',
+      paddingRight: 'env(safe-area-inset-right, 0px)',
     }}>      <div className="max-w-[1400px] mx-auto px-4 md:px-10">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 64, gap: 12 }}>
 

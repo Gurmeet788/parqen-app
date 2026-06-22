@@ -80,7 +80,7 @@ const STEPS = [
     bg: `linear-gradient(135deg, #134E4A 0%, #0F766E 100%)`,
     iconBg: 'rgba(255,255,255,0.15)',
     title: () => "We're Always Here for You",
-    body: "Any questions or issues? Reach our friendly support team at hello@hellopraqen.com or through our social handles. Remember — always trade within PRAQEN to stay protected. Your safety is our top priority. Happy trading! 🚀",
+    body: "Any questions or issues? Reach our friendly support team at hello@praqen.com or through our social handles. Remember — always trade within PRAQEN to stay protected. Your safety is our top priority. Happy trading! 🚀",
     cta: '🚀 Start Trading Now!',
     ctaPath: '/buy-bitcoin',
     isLast: true,

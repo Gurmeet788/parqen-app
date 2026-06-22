@@ -626,8 +626,8 @@ function SellerModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
       style={{backgroundColor:'rgba(0,0,0,0.6)', backdropFilter:'blur(6px)'}}
       onClick={e => e.target === e.currentTarget && onClose()}>
 
-      <div className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl shadow-2xl flex flex-col mb-16 sm:mb-0"
-        style={{maxHeight:'92dvh', border:`1px solid ${C.g200}`, animation:'slideUp .28s cubic-bezier(0.34,1.56,0.64,1)'}}>
+      <div className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl shadow-2xl flex flex-col sm:mb-0"
+        style={{maxHeight:'92dvh', marginBottom:'calc(60px + env(safe-area-inset-bottom, 0px))', border:`1px solid ${C.g200}`, animation:'slideUp .28s cubic-bezier(0.34,1.56,0.64,1)'}}>
         <style>{`@keyframes slideUp{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}`}</style>
 
         {/* Drag handle */}
@@ -1240,7 +1240,7 @@ export default function GiftCards({user}) {
       {/* ══════════════════════════════════════════════════
           2. TAB NAVIGATION
       ══════════════════════════════════════════════════ */}
-      <div className="bg-white border-b sticky top-16 z-30 flex-shrink-0" style={{borderColor:C.g200}}>
+      <div className="bg-white border-b sticky z-30 flex-shrink-0" style={{top:'var(--navbar-h)',borderColor:C.g200}}>
         {/* 3 equal tabs — always fits any phone */}
         <div className="flex w-full">
           {[

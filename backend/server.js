@@ -569,7 +569,7 @@ function buildVerificationEmailHtml(code) {
         </td></tr>
         <!-- Footer -->
         <tr><td style="background:#F8FAFC;padding:20px 40px;text-align:center;border-top:1px solid #E2E8F0;">
-          <p style="margin:0 0 4px;font-size:12px;color:#94A3B8;">Need help? Contact us at <a href="mailto:hello@hellopraqen.com" style="color:#2D6A4F;font-weight:700;">hello@hellopraqen.com</a></p>
+          <p style="margin:0 0 4px;font-size:12px;color:#94A3B8;">Need help? Contact us at <a href="mailto:hello@praqen.com" style="color:#2D6A4F;font-weight:700;">hello@praqen.com</a></p>
           <p style="margin:0;font-size:11px;color:#CBD5E1;">© 2025 PRAQEN · Africa's Safest P2P Bitcoin Marketplace</p>
         </td></tr>
       </table>
@@ -654,7 +654,7 @@ function buildWelcomeEmailHtml(username) {
         </td></tr>
         <!-- Footer -->
         <tr><td style="background:#F8FAFC;padding:20px 40px;text-align:center;border-top:1px solid #E2E8F0;">
-          <p style="margin:0 0 4px;font-size:12px;color:#94A3B8;">Questions? Reach us at <a href="mailto:hello@hellopraqen.com" style="color:#2D6A4F;font-weight:700;">hello@hellopraqen.com</a></p>
+          <p style="margin:0 0 4px;font-size:12px;color:#94A3B8;">Questions? Reach us at <a href="mailto:hello@praqen.com" style="color:#2D6A4F;font-weight:700;">hello@praqen.com</a></p>
           <p style="margin:0;font-size:11px;color:#CBD5E1;">© 2025 PRAQEN · Africa's Safest P2P Bitcoin Marketplace</p>
         </td></tr>
       </table>
@@ -664,9 +664,9 @@ function buildWelcomeEmailHtml(username) {
 </html>`;
 }
 
-// NOTE: For Resend to deliver to real inboxes, verify hellopraqen.com in your Resend dashboard
-// then set RESEND_FROM=hello@hellopraqen.com in .env
-const RESEND_FROM_ADDR = process.env.RESEND_FROM || 'PRAQEN <hello@hellopraqen.com>';
+// NOTE: For Resend to deliver to real inboxes, verify praqen.com in your Resend dashboard
+// then set RESEND_FROM=hello@praqen.com in .env
+const RESEND_FROM_ADDR = process.env.RESEND_FROM || 'PRAQEN <hello@praqen.com>';
 
 async function sendVerificationEmail(email, code, subject = 'Your PRAQEN Verification Code') {
   console.log(`📧 Sending verification to ${email}`);
@@ -922,12 +922,13 @@ async function notifyModerators(tradeId, trade, reason) {
 
 async function createNotification(userId, type, title, message, action) {
   try {
-    const { data } = await supabaseAdmin.from('notifications').insert({
+    const { data, error } = await supabaseAdmin.from('notifications').insert({
       user_id: userId, type, title, message, action, created_at: new Date(), is_read: false,
     }).select();
+    if (error) console.error('[createNotification] Supabase error:', error.message, '| code:', error.code, '| details:', error.details);
     return data?.[0] || null;
   } catch (error) {
-    console.error('Create notification error:', error);
+    console.error('[createNotification] thrown error:', error);
     return null;
   }
 }
@@ -1484,6 +1485,64 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Login failed. Please try again.' });
+  }
+});
+
+// ── Team portal: check email status ─────────────────────────────────────────
+// Returns: has_account | needs_setup | not_allowed
+const TEAM_ALLOWED_DOMAINS = (process.env.TEAM_ALLOWED_DOMAINS || 'praqen.com')
+  .split(',').map(d => d.trim().toLowerCase());
+
+app.post('/api/team/check-email', async (req, res) => {
+  try {
+    const email = (req.body.email || '').toLowerCase().trim();
+    if (!email) return res.status(400).json({ error: 'Email required' });
+    const domain = email.split('@')[1];
+    const { data: user } = await supabaseAdmin.from('users').select('id,is_moderator,is_admin').eq('email', email).single();
+    if (user) {
+      if (user.is_moderator || user.is_admin) return res.json({ status: 'has_account' });
+      return res.json({ status: 'not_allowed', error: 'This account does not have team access. Ask an admin to grant you access.' });
+    }
+    // No account yet — allow self-setup if domain is approved
+    if (TEAM_ALLOWED_DOMAINS.includes(domain)) return res.json({ status: 'needs_setup' });
+    return res.json({ status: 'not_allowed', error: 'This email is not authorised for the Team Portal.' });
+  } catch (err) {
+    console.error('team/check-email error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── Team portal: first-time account setup ────────────────────────────────────
+app.post('/api/team/setup-account', async (req, res) => {
+  try {
+    const { email: rawEmail, full_name, password } = req.body;
+    const email = (rawEmail || '').toLowerCase().trim();
+    if (!email || !full_name || !password) return res.status(400).json({ error: 'Email, full name and password are all required' });
+    if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    const domain = email.split('@')[1];
+    if (!TEAM_ALLOWED_DOMAINS.includes(domain)) return res.status(403).json({ error: 'Not authorised' });
+    // Must not already exist
+    const { data: existing } = await supabaseAdmin.from('users').select('id').eq('email', email).single();
+    if (existing) return res.status(400).json({ error: 'An account with this email already exists. Please log in.' });
+    const hash = await bcrypt.hash(password, 12);
+    const username = email.split('@')[0].replace(/[^a-z0-9_]/gi, '_').toLowerCase();
+    const { data: newUser, error } = await supabaseAdmin.from('users').insert({
+      email, username, full_name: full_name.trim(), password_hash: hash,
+      is_moderator: true, is_admin: false, is_email_verified: true,
+      created_at: new Date().toISOString(),
+    }).select().single();
+    if (error || !newUser) { console.error('team/setup-account insert error:', error); return res.status(500).json({ error: 'Failed to create account. Try again.' }); }
+    await supabaseAdmin.from('user_balances').insert({ user_id: newUser.id, balance_btc: 0, balance_usd: 0 }).catch(() => {});
+    const token = jwt.sign({ userId: newUser.id, email }, JWT_SECRET, { expiresIn: '7d' });
+    return res.json({
+      success: true, token,
+      user: { id: newUser.id, email, username: newUser.username, full_name: newUser.full_name,
+        is_moderator: true, is_admin: false, avatar_url: null,
+        average_rating: 0, total_trades: 0, referral_code: null, total_referrals: 0, referral_earnings_btc: 0 },
+    });
+  } catch (err) {
+    console.error('team/setup-account error:', err);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
@@ -3451,17 +3510,41 @@ app.delete('/api/listings/:id', verifyToken, async (req, res) => {
   }
 });
 
-// Increment view count — fires whenever a marketplace card is clicked
-app.post('/api/listings/:id/view', async (req, res) => {
+// Increment view count — fires whenever a listing detail page loads
+app.post('/api/listings/:id/view', optionalAuth, async (req, res) => {
   try {
+    const listingId = req.params.id;
+    const viewerId = req.userId || null;
+
     const { data: row } = await supabaseAdmin
-      .from('listings').select('view_count').eq('id', req.params.id).single();
+      .from('listings').select('view_count, seller_id').eq('id', listingId).maybeSingle();
+
     const next = (parseInt(row?.view_count) || 0) + 1;
-    const { error } = await supabaseAdmin
-      .from('listings').update({ view_count: next }).eq('id', req.params.id);
-    if (error) return res.json({ success: false, error: error.message });
+    await supabaseAdmin.from('listings').update({ view_count: next }).eq('id', listingId);
+
+    const sellerId = row?.seller_id;
+
+    // Notify seller — skip self-views only
+    if (sellerId && String(viewerId) !== String(sellerId)) {
+      let viewerLabel = 'Someone';
+      if (viewerId) {
+        const { data: vUser } = await supabaseAdmin
+          .from('users').select('username').eq('id', viewerId).maybeSingle();
+        if (vUser?.username) viewerLabel = vUser.username;
+      }
+      await createNotification(
+        sellerId, 'offer_view',
+        '👀 Someone Viewed Your Offer',
+        `${viewerLabel} just viewed your offer`,
+        `/listing/${listingId}`
+      );
+    }
+
     res.json({ success: true, views: next });
-  } catch (e) { res.json({ success: false, error: e.message }); }
+  } catch (e) {
+    console.error('[listings/view] error:', e.message);
+    res.json({ success: false, error: e.message });
+  }
 });
 
 app.patch('/api/listings/:id/status', verifyToken, async (req, res) => {
@@ -3604,14 +3687,41 @@ app.get('/api/offers/:id', async (req, res) => {
   }
 });
 
-// Track offer views — proxies to listings view_count
-app.post('/api/offers/:id/view', async (req, res) => {
+// Track offer views — fires when ProfileModal opens in BuyBitcoin/SellBitcoin
+app.post('/api/offers/:id/view', optionalAuth, async (req, res) => {
   try {
-    const { data: row } = await supabaseAdmin.from('listings').select('view_count').eq('id', req.params.id).single();
+    const listingId = req.params.id;
+    const viewerId = req.userId || null;
+
+    const { data: row } = await supabaseAdmin
+      .from('listings').select('view_count, seller_id').eq('id', listingId).maybeSingle();
+
     const next = (parseInt(row?.view_count) || 0) + 1;
-    await supabaseAdmin.from('listings').update({ view_count: next }).eq('id', req.params.id);
+    await supabaseAdmin.from('listings').update({ view_count: next }).eq('id', listingId);
+
+    const sellerId = row?.seller_id;
+
+    // Notify seller — skip self-views only
+    if (sellerId && String(viewerId) !== String(sellerId)) {
+      let viewerLabel = 'Someone';
+      if (viewerId) {
+        const { data: vUser } = await supabaseAdmin
+          .from('users').select('username').eq('id', viewerId).maybeSingle();
+        if (vUser?.username) viewerLabel = vUser.username;
+      }
+      await createNotification(
+        sellerId, 'offer_view',
+        '👀 Someone Viewed Your Offer',
+        `${viewerLabel} just viewed your offer`,
+        `/listing/${listingId}`
+      );
+    }
+
     res.json({ success: true, views: next });
-  } catch (e) { res.json({ success: false }); }
+  } catch (e) {
+    console.error('[offers/view] error:', e.message);
+    res.json({ success: false });
+  }
 });
 
 // POST create new offer
@@ -5155,7 +5265,7 @@ app.post('/api/admin/send-welcome-emails', verifyToken, async (req, res) => {
             </table>
 
             <p style="color:#94A3B8;font-size:11px;margin:0;text-align:center;">
-              Questions? Email <a href="mailto:support@praqen.com" style="color:#2D6A4F;">support@praqen.com</a>
+              Questions? Email <a href="mailto:hello@praqen.com" style="color:#2D6A4F;">hello@praqen.com</a>
             </p>
           </td>
         </tr>
@@ -6046,6 +6156,37 @@ app.get('/api/admin/reports', verifyToken, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/admin/reviews — all platform reviews/feedback
+app.get('/api/admin/reviews', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { page = 1, limit = 30, rating = '' } = req.query;
+    let query = supabaseAdmin.from('reviews')
+      .select('*, reviewer:reviewer_id(id, username, average_rating), reviewee:reviewee_id(id, username, total_trades)', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range((page - 1) * limit, page * limit - 1);
+    if (rating) query = query.eq('rating', parseInt(rating));
+    const { data, error, count } = await query;
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ reviews: data || [], total: count || 0 });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/admin/top-traders — users sorted by volume/trades
+app.get('/api/admin/top-traders', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const { sort = 'trades', limit = 20 } = req.query;
+    const orderCol = sort === 'volume' ? 'total_volume_usd' : 'total_trades';
+    const { data, error } = await supabaseAdmin.from('users')
+      .select('id, username, email, total_trades, average_rating, total_feedback_count, positive_feedback, badge, country, created_at, account_status, total_volume_usd, last_seen_at')
+      .order(orderCol, { ascending: false, nullsFirst: false })
+      .limit(parseInt(limit));
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ traders: data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // GET /api/admin/activity — recent user activity logs
 app.get('/api/admin/activity', verifyToken, async (req, res) => {
   try {
@@ -6488,7 +6629,7 @@ app.post('/api/wallet/withdraw', verifyToken, async (req, res) => {
     const newBal = current - amount;
     await supabaseAdmin.from('user_balances').update({ balance_btc: newBal, updated_at: new Date() }).eq('user_id', req.userId);
     await supabaseAdmin.from('wallet_transactions').insert({ user_id: req.userId, type: 'WITHDRAWAL', amount_btc: amount, status: 'PENDING', destination_address: address, created_at: new Date() }).maybeSingle();
-    res.json({ success: true, message: `Withdrawal of ${amount} BTC to ${address} is pending processing.`, new_balance: newBal, note: 'Withdrawals are processed manually within 24 hours. Contact support@praqen.com for urgent requests.' });
+    res.json({ success: true, message: `Withdrawal of ${amount} BTC to ${address} is pending processing.`, new_balance: newBal, note: 'Withdrawals are processed manually within 24 hours. Contact hello@praqen.com for urgent requests.' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

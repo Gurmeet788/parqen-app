@@ -105,7 +105,7 @@ function depositEmailHtml(username, depositBTC, newBalance, address) {
 
             <p style="margin:24px 0 0;font-size:12px;color:#9CA3AF;line-height:1.6;text-align:center;">
               You received this because a deposit was made to your PRAQEN wallet address.<br>
-              Need help? <a href="mailto:support@praqen.com" style="color:#2D6A4F;">support@praqen.com</a>
+              Need help? <a href="mailto:hello@praqen.com" style="color:#2D6A4F;">hello@praqen.com</a>
             </p>
           </td>
         </tr>

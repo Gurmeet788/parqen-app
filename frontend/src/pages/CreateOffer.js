@@ -328,17 +328,15 @@ export default function CreateOffer() {
 
   // Wallet capacity in local currency
   // SELL/gc_buy: user locks BTC → capacity = BTC balance × local BTC price
-  // BUY: user pays cash → capacity = USD balance converted to local
+  // BUY: no wallet restriction — buyer pays fiat out-of-platform, any limit is valid
+  const isSellSide = offerType === 'sell' || offerType === 'gc_buy';
   const walletCapacityLocal = (() => {
-    if (offerType === 'sell' || offerType === 'gc_buy') {
-      return walletBal.btc * effectiveRate;
-    }
-    return walletBal.usd * localRate;
+    if (isSellSide) return walletBal.btc * effectiveRate;
+    return 0; // buy offers: no platform-wallet cap
   })();
-  const walletCapacityUSD = offerType === 'sell' || offerType === 'gc_buy'
-    ? walletBal.btc * btcPrice
-    : walletBal.usd;
-  const maxExceedsWallet = parseFloat(maxLimit) > 0 && walletCapacityLocal > 0 && parseFloat(maxLimit) > walletCapacityLocal;
+  const walletCapacityUSD = isSellSide ? walletBal.btc * btcPrice : 0;
+  // Only warn sell-side offers when max exceeds actual BTC balance
+  const maxExceedsWallet = isSellSide && parseFloat(maxLimit) > 0 && walletCapacityLocal > 0 && parseFloat(maxLimit) > walletCapacityLocal;
 
   // Sync BTC price from RatesContext (already auto-refreshed by rateService)
   useEffect(() => { if (contextBtcUsd > 0) { setBtcPrice(contextBtcUsd); setLoadingPrice(false); } }, [contextBtcUsd]);
@@ -514,7 +512,7 @@ export default function CreateOffer() {
             </div>
           </div>
           {/* Scrollable list */}
-          <div className="overflow-y-auto flex-1" style={{ WebkitOverflowScrolling: 'touch' }}>
+          <div className="overflow-y-auto flex-1" style={{ WebkitOverflowScrolling: 'touch', paddingBottom: 'calc(60px + env(safe-area-inset-bottom, 0px))' }}>
             {localMethods.length > 0 && (
               <div>
                 <p className="px-3 pt-2 pb-1 text-xs font-black uppercase tracking-widest"
@@ -1543,49 +1541,50 @@ export default function CreateOffer() {
               </div>
 
               {/* Wallet balance banner */}
-              <div className="rounded-xl border overflow-hidden"
-                style={{ backgroundColor: walletCapacityLocal > 0 ? '#F0FDF4' : '#FFFBEB',
-                         borderColor: walletCapacityLocal > 0 ? '#A7F3D0' : '#FDE68A' }}>
-                <div className="p-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">💼</span>
-                    <div>
-                      <p className="text-xs font-black uppercase tracking-wide"
-                        style={{ color: walletCapacityLocal > 0 ? C.forest : '#92400E' }}>
-                        {offerType === 'sell' || offerType === 'gc_buy' ? 'BTC Wallet' : 'USD Wallet'}
-                      </p>
-                      {offerType === 'sell' || offerType === 'gc_buy' ? (
-                        <>
-                          <p className="text-xs font-black"
-                            style={{ color: walletCapacityLocal > 0 ? C.forest : '#B45309' }}>
-                            ₿{walletBal.btc.toFixed(6)} ≈ ${fmt(walletBal.btc * btcPrice, 0)} USD
-                          </p>
-                          {cur !== 'USD' && (
-                            <p className="text-xs font-semibold" style={{ color: C.g500 }}>
-                              Max offer: {sym}{fmt(walletCapacityLocal, 0)} {cur}
-                            </p>
-                          )}
-                        </>
-                      ) : (
+              {isSellSide ? (
+                <div className="rounded-xl border overflow-hidden"
+                  style={{ backgroundColor: walletCapacityLocal > 0 ? '#F0FDF4' : '#FFFBEB',
+                           borderColor: walletCapacityLocal > 0 ? '#A7F3D0' : '#FDE68A' }}>
+                  <div className="p-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">💼</span>
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-wide"
+                          style={{ color: walletCapacityLocal > 0 ? C.forest : '#92400E' }}>
+                          BTC Wallet
+                        </p>
                         <p className="text-xs font-black"
                           style={{ color: walletCapacityLocal > 0 ? C.forest : '#B45309' }}>
-                          ${fmt(walletBal.usd, 2)} USD ≈ {sym}{fmt(walletCapacityLocal, 0)} {cur}
+                          ₿{walletBal.btc.toFixed(6)} ≈ ${fmt(walletBal.btc * btcPrice, 0)} USD
                         </p>
-                      )}
+                        {cur !== 'USD' && walletCapacityLocal > 0 && (
+                          <p className="text-xs font-semibold" style={{ color: C.g500 }}>
+                            Max offer: {sym}{fmt(walletCapacityLocal, 0)} {cur}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  <p className="text-xs font-black text-right flex-shrink-0 ml-2" style={{ color: C.g500 }}>
-                    Max you<br/>can offer
-                  </p>
-                </div>
-                {walletCapacityLocal === 0 && (
-                  <div className="px-3 pb-2">
-                    <p className="text-xs font-semibold" style={{ color: '#92400E' }}>
-                      💡 No balance yet — you can still create this offer. BTC is only locked when a buyer opens a trade.
+                    <p className="text-xs font-black text-right flex-shrink-0 ml-2" style={{ color: C.g500 }}>
+                      Max you<br/>can offer
                     </p>
                   </div>
-                )}
-              </div>
+                  {walletCapacityLocal === 0 && (
+                    <div className="px-3 pb-2">
+                      <p className="text-xs font-semibold" style={{ color: '#92400E' }}>
+                        💡 No balance yet — you can still create this offer. BTC is only locked when a buyer opens a trade.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-xl border p-3 flex items-start gap-2.5"
+                  style={{ backgroundColor: '#F0FDF4', borderColor: '#A7F3D0' }}>
+                  <span className="text-sm flex-shrink-0">💡</span>
+                  <p className="text-xs font-semibold" style={{ color: C.forest }}>
+                    No wallet balance needed. You're setting how much BTC you want to buy — sellers will fill your order. Set any limits you like.
+                  </p>
+                </div>
+              )}
 
               {/* Min / Max in local currency */}
               <div className="p-3 rounded-2xl border-2 space-y-3" style={{ borderColor: C.g200, width:'100%', boxSizing:'border-box' }}>
@@ -1595,18 +1594,18 @@ export default function CreateOffer() {
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     { key:'min', label:'Minimum', val:minLimit, set:setMinLimit, ph:`Min ${sym}${Math.ceil(10*localRate)}` },
-                    { key:'max', label:'Maximum', val:maxLimit, set:setMaxLimit, ph:`Max ${sym}${walletCapacityLocal > 0 ? fmt(Math.floor(walletCapacityLocal), 0) : '5000'}` },
+                    { key:'max', label:'Maximum', val:maxLimit, set:setMaxLimit, ph:`Max ${sym}${isSellSide && walletCapacityLocal > 0 ? fmt(Math.floor(walletCapacityLocal), 0) : '5000'}` },
                   ].map(({ key, label, val, set, ph }) => {
                     const isMin = key === 'min';
                     const isMax = key === 'max';
                     const belowMin = isMin && val && parseFloat(val) / localRate < 10;
-                    const aboveCap = isMax && offerType === 'sell' && walletCapacityLocal > 0 && parseFloat(val) > walletCapacityLocal;
+                    const aboveCap = isMax && isSellSide && walletCapacityLocal > 0 && parseFloat(val) > walletCapacityLocal;
                     const hasError = belowMin || aboveCap;
                     return (
                     <div key={key}>
                       <label className="block text-xs font-bold mb-1.5" style={{ color: C.g600 }}>
                         {label} per Trade <span style={{ color: C.danger }}>*</span>
-                        {isMax && walletCapacityLocal > 0 && (
+                        {isMax && isSellSide && walletCapacityLocal > 0 && (
                           <span className="ml-1 font-semibold" style={{ color: C.g400 }}>
                             (cap: {sym}{fmt(Math.floor(walletCapacityLocal), 0)})
                           </span>
@@ -1618,7 +1617,7 @@ export default function CreateOffer() {
                         <input type="number" value={val}
                           onChange={e => set(e.target.value)}
                           onBlur={() => {
-                            if (isMax && walletCapacityLocal > 0 && parseFloat(val) > walletCapacityLocal) {
+                            if (isMax && isSellSide && walletCapacityLocal > 0 && parseFloat(val) > walletCapacityLocal) {
                               set(String(Math.floor(walletCapacityLocal)));
                             }
                             if (isMin && parseFloat(val) < Math.ceil(10 * localRate)) {
@@ -1627,7 +1626,7 @@ export default function CreateOffer() {
                           }}
                           placeholder={ph}
                           min={isMin ? Math.ceil(10 * localRate) : 1}
-                          max={isMax && walletCapacityLocal > 0 ? Math.floor(walletCapacityLocal) : undefined}
+                          max={isMax && isSellSide && walletCapacityLocal > 0 ? Math.floor(walletCapacityLocal) : undefined}
                           className="w-full pl-8 pr-3 py-3 border-2 rounded-xl text-sm font-bold focus:outline-none"
                           style={{ borderColor: hasError ? C.danger : val ? C.green : C.g200, color: C.forest }} />
                       </div>

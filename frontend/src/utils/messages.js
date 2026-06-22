@@ -14,7 +14,7 @@ export const MSG = {
     emailInvalid:         'Please enter a valid email address (e.g. name@example.com).',
     phoneInvalid:         (name, min, max) => `Please enter a valid ${name} number (${min}–${max} digits after the country code).`,
     sessionExpired:       'Your session has expired. Please log in again to continue.',
-    accountLocked:        'Your account has been temporarily locked. Please contact support@praqen.com.',
+    accountLocked:        'Your account has been temporarily locked. Please contact hello@praqen.com.',
     unauthorized:         'You need to be logged in to do that. Please sign in and try again.',
   },
 
@@ -70,7 +70,7 @@ export const MSG = {
     imageTooLarge:        'That image is too large. Please use a file under 5MB.',
     imageRequired:        'Please select a valid image file (JPG or PNG).',
     cancelFailed:         'We couldn\'t cancel this trade right now. Please try again or contact support.',
-    disputeFailed:        'We couldn\'t open a dispute. Please try again or contact support@praqen.com.',
+    disputeFailed:        'We couldn\'t open a dispute. Please try again or contact hello@praqen.com.',
     reasonRequired:       'Please provide a reason for opening a dispute.',
     releaseFailed:        (msg) => msg || 'We couldn\'t release the Bitcoin right now. Please try again.',
   },
@@ -118,7 +118,7 @@ export const MSG = {
   // ── General ─────────────────────────────────────────────────────────────────
   general: {
     networkError:         'Connection problem. Please check your internet and try again.',
-    serverError:          'Something went wrong on our end. Please try again in a moment. If the problem persists, contact support@praqen.com.',
+    serverError:          'Something went wrong on our end. Please try again in a moment. If the problem persists, contact hello@praqen.com.',
     tryAgain:             'Something went wrong. Please try again.',
     copied:               '📋 Copied!',
     loading:              'Loading…',

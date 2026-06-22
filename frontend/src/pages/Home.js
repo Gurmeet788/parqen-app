@@ -196,7 +196,7 @@ export default function Home({ user }) {
             style={{ backgroundColor: '#EF4444', color: '#fff' }}>BETA</span>
         </p>
         <p className="text-xs" style={{ color: C.g400 }}>
-          <a href="mailto:support@praqen.com" style={{ color: C.green }}>support@praqen.com</a>
+          <a href="mailto:hello@praqen.com" style={{ color: C.green }}>hello@praqen.com</a>
           {' '}· © {new Date().getFullYear()} PRAQEN
         </p>
       </div>
