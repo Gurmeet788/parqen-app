@@ -98,11 +98,12 @@ const loadAll = useCallback(async () => {
     // Seller data is already joined in the listings response
     const sellerData = Array.isArray(offer?.users) ? offer.users[0] : (offer?.users || offer?.seller || null);
     if (sellerData) setSeller(sellerData);
-    if (!sellerData?.username && offer?.seller_id) {
+    // Always fetch full profile to get real trade count, feedback & rating
+    if (offer?.seller_id) {
       try {
         const sr = await axios.get(`${API_URL}/users/${offer.seller_id}`, { timeout: 8000 });
         const full = sr.data.user;
-        setSeller(prev => ({ ...(prev || {}), ...full }));
+        if (full?.id) setSeller(full);
       } catch {}
     }
     const viewToken = localStorage.getItem('token');
@@ -251,7 +252,7 @@ const loadAll = useCallback(async () => {
   const hasEmail       = !!(seller?.is_email_verified);
   const hasKyc         = !!(seller?.is_id_verified || seller?.kyc_verified);
   const accountAge     = seller?.created_at ? Math.floor((Date.now() - new Date(seller.created_at)) / 86400000) : 0;
-  const blocksRcvd     = parseInt(seller?.blocks_received || 0);
+  const blocksRcvd     = parseInt(seller?.blocked_by_count || 0);
   const dbTrustScore   = parseInt(seller?.trust_score || 0);
   const trustScore     = dbTrustScore > 0 ? dbTrustScore
     : Math.min(100, (hasEmail?25:0) + (hasPhone?25:0) + (hasKyc?25:0) + Math.min(25, Math.floor(trades/20)*5));

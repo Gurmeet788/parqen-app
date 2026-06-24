@@ -668,7 +668,7 @@ function AffiliateSection({ user, profile, earnings, referralData, btcPrice, onW
                     </span>
                   </div>
                   <p className="text-xs mt-0.5" style={{color:C.g400}}>
-                    {entry.referrals} referrals · {entry.affiliate_trades > 0 ? `${entry.affiliate_trades} affiliate trades` : `${entry.total_trades} trades`}
+                    {entry.referrals} referral{entry.referrals !== 1 ? 's' : ''} · {entry.affiliate_trades} ref trade{entry.affiliate_trades !== 1 ? 's' : ''}
                   </p>
                 </div>
                 {/* Earnings */}

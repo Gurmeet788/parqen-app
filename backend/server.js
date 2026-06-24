@@ -919,17 +919,43 @@ Key facts about PRAQEN:
 
 Keep responses concise (2-4 sentences), friendly, and practical. If you don't know something specific about the user's account, tell them to visit the relevant page or contact support. Never make up account-specific details.`;
 
+const PRAQEN_SUPPORT_AGENT_CONTEXT = `You are Alex, a friendly and experienced human support agent at PRAQEN — a peer-to-peer (P2P) Bitcoin trading platform. You are chatting with a user who has an open support ticket.
+
+Your personality and rules:
+- You are human. Never say "As an AI" or reveal you are a bot. Speak naturally.
+- Be warm, empathetic, and reassuring. The user may be stressed about their issue.
+- NEVER repeat a response you or the user already said in this conversation. Read the full history before replying.
+- Acknowledge what the user said specifically before giving advice.
+- Keep replies short — 2 to 3 sentences max. Do not write long paragraphs.
+- When the user describes a problem, say something like "I've noted this on your ticket" or "Our team is reviewing this right now."
+- After giving a brief response, ask one follow-up question to gather more details or check if they need anything else.
+- Use variety: rotate between phrases like "Got it", "Thanks for that update", "I hear you", "Noted", "On it", "I've flagged this to the team" — never use the same opener twice in a row.
+- If you already gave advice on a topic earlier in the conversation, do NOT repeat it. Instead acknowledge and ask if it helped.
+- If the user says something is resolved, congratulate them warmly and close out positively.
+
+PRAQEN platform facts (use when relevant, but do not dump all facts at once):
+- Trades are escrow-protected — sellers lock BTC before buyer pays
+- Disputes can be raised from My Trades if there is a problem
+- Payments go directly between users via MoMo, bank transfer, gift cards
+- KYC unlocks higher limits — upload ID at Profile → Verification
+- Fees are 0.5% on completed trades only
+- Support response time is within 24 hours for human agents`;
+
 app.post('/api/ai-chat', async (req, res) => {
   try {
-    const { message, section, history = [], user: chatUser } = req.body;
+    const { message, section, history = [], user: chatUser, mode } = req.body;
     if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
+    const isSupportChat = mode === 'support';
+    const systemPrompt = isSupportChat
+      ? PRAQEN_SUPPORT_AGENT_CONTEXT + (chatUser ? `\n\nYou are speaking with: ${chatUser.username}` : '')
+      : PRAQEN_CONTEXT + (section ? `\n\nThe user selected topic: "${section}". Focus your answer on this area.` : '') +
+        (chatUser ? `\n\nUser: ${chatUser.username}` : '');
 
     if (apiKey) {
-      // Use Claude API
       const messages = [
-        ...history.slice(-6).map(m => ({
+        ...history.slice(-10).map(m => ({
           role: m.role === 'user' ? 'user' : 'assistant',
           content: m.text,
         })),
@@ -945,20 +971,77 @@ app.post('/api/ai-chat', async (req, res) => {
         },
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001',
-          max_tokens: 400,
-          system: PRAQEN_CONTEXT + (section ? `\n\nThe user selected topic: "${section}". Focus your answer on this area.` : '') +
-                  (chatUser ? `\n\nUser: ${chatUser.username}` : ''),
+          max_tokens: 250,
+          system: systemPrompt,
           messages,
         }),
       });
 
       if (response.ok) {
         const data = await response.json();
-        return res.json({ reply: data.content?.[0]?.text || 'Sorry, I couldn\'t generate a response.' });
+        return res.json({ reply: data.content?.[0]?.text || 'Got it — I\'m looking into that for you right now.' });
       }
     }
 
-    // Fallback: smart keyword-based responses
+    // ── Support-mode fallback (no API key / API down) ──────────────────────
+    if (isSupportChat) {
+      const turn = history.length;
+      const q = message.toLowerCase().trim();
+      const name = chatUser?.username ? `, ${chatUser.username}` : '';
+      let reply = '';
+
+      // Greeting — always a warm welcome, never topic info
+      if (/^(hey|hi|hello|good\s*(morning|afternoon|evening)|howdy|yo|hiya|sup)\b/.test(q)) {
+        const greetings = [
+          `Hi${name}! 👋 I'm Alex from PRAQEN support. I have your ticket open right now — how can I help you?`,
+          `Hey${name}! I'm looking at your ticket. What's going on — can I help with something?`,
+          `Hello${name}! Your ticket is open and the team is on it. What would you like to chat about?`,
+        ];
+        reply = greetings[turn % 3];
+      } else if (/thank|thanks|okay|ok\b|great|perfect|got it|cool|nice/.test(q)) {
+        const pool = [
+          'Happy to help! Let me know if anything else comes up.',
+          'Great! I\'ve noted that on your ticket. Anything else?',
+          'Awesome — the team will follow up too. Is there anything else you need?',
+        ];
+        reply = pool[turn % 3];
+      } else if (/how long|wait|still|not yet|any news|update/.test(q)) {
+        const pool = [
+          'I understand — the team is actively on your case. We aim to resolve tickets within 24 hours. Any updates from your side?',
+          'Still on it! I\'ve flagged your ticket for priority review. Anything new to report?',
+          'We haven\'t forgotten about you. Can you share any new details that might help us move faster?',
+        ];
+        reply = pool[turn % 3];
+      } else if (/paid|sent|payment|transferred|momo|bank|deposit/.test(q)) {
+        const pool = [
+          'Thanks for the update — I\'ve noted the payment on your ticket. Has the other party confirmed receipt?',
+          'Got it, payment noted. Keep your receipt handy. Has anything changed since you sent it?',
+          'Noted on the payment. Can you share the exact amount and method so I can add it to the case?',
+        ];
+        reply = pool[turn % 3];
+      } else if (/dispute|scam|fraud|problem|stuck|error|wrong|fail/.test(q)) {
+        const pool = [
+          'I\'ve flagged this as urgent. If you haven\'t already, go to **My Trades → Raise Dispute** to lock the escrow. What happened exactly?',
+          'On it — I\'ve escalated this to the team. Can you share a trade ID or any screenshots?',
+          'Understood, this is marked urgent. Our team is reviewing. Any extra info will help us move quickly.',
+        ];
+        reply = pool[turn % 3];
+      } else if (turn === 0) {
+        reply = `Thanks for reaching out${name}! I\'ve received your ticket and I\'m reviewing it now. Can you give me a quick summary of what\'s happening?`;
+      } else if (turn <= 2) {
+        reply = 'Noted — I\'ve updated your ticket with that. The team is on it. Anything else to add?';
+      } else {
+        const generic = [
+          'Got that — I\'ve passed it to the team. Anything urgent right now?',
+          'I hear you. I\'ve noted this on your ticket. Do you have any new updates?',
+          'Thanks for the info. Our team is working on a resolution. Is there anything else I can help with?',
+        ];
+        reply = generic[turn % 3];
+      }
+      return res.json({ reply });
+    }
+
+    // General info fallback (non-support mode)
     const q = message.toLowerCase();
     let reply = '';
     if (section === 'buy' || q.includes('buy') || q.includes('purchase')) {
@@ -986,7 +1069,7 @@ app.post('/api/ai-chat', async (req, res) => {
     res.json({ reply });
   } catch (err) {
     console.error('[ai-chat]', err.message);
-    res.status(500).json({ reply: 'I\'m having trouble right now. Please try again in a moment.' });
+    res.status(500).json({ reply: 'I\'m looking into that for you — please give me a moment.' });
   }
 });
 
@@ -1070,6 +1153,7 @@ async function createAffiliateEarning(tradeId, buyerId, tradeAmountBtc, tradeAmo
     else if (referralCount >= 25) commissionRate = 0.35;
     else if (referralCount >= 10) commissionRate = 0.25;
     const commissionBtc = parseFloat(tradeAmountBtc || 0) * (commissionRate / 100);
+    const { data: buyerInfo } = await supabaseAdmin.from('users').select('username').eq('id', buyerId).maybeSingle();
     const { error } = await supabaseAdmin.from('affiliate_earnings').insert({
       referrer_id: buyer.referred_by, referred_user_id: buyerId, trade_id: tradeId,
       commission_btc: commissionBtc, trade_amount_btc: tradeAmountBtc, trade_amount_usd: tradeAmountUsd,
@@ -1081,6 +1165,16 @@ async function createAffiliateEarning(tradeId, buyerId, tradeAmountBtc, tradeAmo
     const newTotal = (allE || []).reduce((s, e) => s + parseFloat(e.commission_btc || 0), 0);
     await supabaseAdmin.from('users').update({ referral_earnings_btc: parseFloat(newTotal.toFixed(8)) }).eq('id', buyer.referred_by);
     console.log(`✅ Affiliate commission: ${commissionBtc} BTC for referrer ${buyer.referred_by}`);
+    // Notify referrer of the commission earned
+    const btcDisplay = commissionBtc < 0.0001 ? commissionBtc.toFixed(8) : commissionBtc.toFixed(6);
+    const referralUsername = buyerInfo?.username || 'Your referral';
+    await createNotification(
+      buyer.referred_by,
+      'referral',
+      '💰 Commission Earned!',
+      `${referralUsername} completed a trade — you earned ₿${btcDisplay} (${commissionRate}% commission). Total: ₿${newTotal.toFixed(6)}`,
+      '/dashboard?tab=affiliate'
+    ).catch(() => {});
   } catch (error) {
     console.error('Create affiliate earning error:', error);
   }
@@ -1449,7 +1543,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
       }
     });
 
-    // 3. Increment referrer's total_referrals count (non-critical, direct update)
+    // 3. Increment referrer's total_referrals count + fire instant notification
     if (referrerId) {
       (async () => {
         try {
@@ -1457,6 +1551,13 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
           const newCount = (ref?.total_referrals || 0) + 1;
           await supabaseAdmin.from('users').update({ total_referrals: newCount }).eq('id', referrerId);
           console.log(`[Register] Referral count updated for ${referrerId}: ${newCount}`);
+          await createNotification(
+            referrerId,
+            'referral',
+            '🎉 New Referral!',
+            `${username} just joined PRAQEN via your referral link — you now have ${newCount} referral${newCount !== 1 ? 's' : ''}!`,
+            '/dashboard?tab=affiliate'
+          );
         } catch (e) {
           console.error('[Register] Referral count update failed:', e.message);
         }
@@ -2989,33 +3090,31 @@ app.get('/api/users/:userId', async (req, res) => {
   try {
     const param  = req.params.userId?.trim();
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(param);
-    // Core fields — referral fields included directly to avoid silent failure in secondary query
-    const coreFields = 'id, username, full_name, bio, location, website, avatar_url, average_rating, total_trades, completion_rate, created_at, is_admin, is_moderator, is_id_verified, is_email_verified, is_phone_verified, total_feedback_count, positive_feedback, negative_feedback, last_login, last_seen_at, badge, country, referral_code, total_referrals, referral_earnings_btc, trusted_by_count, blocked_by_count, blocked_count';
+    // Use select('*') so adding/missing migration columns never breaks this query
+    const SENSITIVE = new Set(['password_hash', 'email', 'phone_number', 'bitcoin_wallet_address']);
+    const stripSensitive = row => {
+      if (!row) return null;
+      return Object.fromEntries(Object.entries(row).filter(([k]) => !SENSITIVE.has(k)));
+    };
 
     let data = null;
 
     // Try UUID lookup first
     if (isUUID) {
-      const { data: byId } = await supabaseAdmin.from('users').select(coreFields).eq('id', param).single();
-      data = byId;
+      const { data: byId } = await supabaseAdmin.from('users').select('*').eq('id', param).single();
+      data = stripSensitive(byId);
     }
 
     // Fall back to username lookup (handles /profile/username URLs)
     if (!data) {
-      const { data: byUsername } = await supabaseAdmin.from('users').select(coreFields).eq('username', param).single();
-      data = byUsername;
+      const { data: byUsername } = await supabaseAdmin.from('users').select('*').eq('username', param).single();
+      data = stripSensitive(byUsername);
     }
 
     if (!data) return res.status(404).json({ error: 'User not found. They may have changed their username or the profile may no longer exist.' });
 
     // Optional extra fields — silently ignored if columns don't exist
-    let extraFields = {};
-    try {
-      const { data: extra } = await supabaseAdmin.from('users')
-        .select('referral_code, total_referrals, referral_earnings_btc')
-        .eq('id', data.id).single();
-      if (extra) extraFields = extra;
-    } catch {}
+    const extraFields = {}; // select('*') already covers all columns
 
     // Affiliate trade count — how many commission-generating trades their referrals made
     let referral_trade_count = 0;
@@ -3027,16 +3126,62 @@ app.get('/api/users/:userId', async (req, res) => {
       if (count != null) referral_trade_count = count;
     } catch {}
 
-    // Reviews — silently ignored if table doesn't exist
-    let reviews = [];
+    // Real trade count from trades table (buyer or seller, completed)
+    let real_total_trades = data.total_trades || 0;
     try {
-      const { data: rv } = await supabaseAdmin.from('reviews')
-        .select('*, reviewer:reviewer_id(id, username)').eq('reviewee_id', data.id)
-        .order('created_at', { ascending: false }).limit(20);
-      reviews = rv || [];
+      const [buyerRes, sellerRes] = await Promise.all([
+        supabaseAdmin.from('trades').select('*', { count: 'exact', head: true }).eq('buyer_id', data.id).eq('status', 'COMPLETED'),
+        supabaseAdmin.from('trades').select('*', { count: 'exact', head: true }).eq('seller_id', data.id).eq('status', 'COMPLETED'),
+      ]);
+      const realCount = (buyerRes.count || 0) + (sellerRes.count || 0);
+      if (realCount > real_total_trades) {
+        real_total_trades = realCount;
+        supabaseAdmin.from('users').update({ total_trades: realCount }).eq('id', data.id).then(() => {}).catch(() => {});
+      }
     } catch {}
 
-    res.json({ user: { ...data, ...extraFields, referral_trade_count }, reviews });
+    // Real review counts from reviews table
+    let real_positive = data.positive_feedback || 0;
+    let real_negative = data.negative_feedback || 0;
+    let real_rating   = data.average_rating || 0;
+    let reviews = [];
+    try {
+      // No .limit() — fetch all reviews so counts are never cut short
+      const { data: rv } = await supabaseAdmin.from('reviews')
+        .select('*, reviewer:reviewer_id(id, username)').eq('reviewee_id', data.id)
+        .order('created_at', { ascending: false });
+      reviews = rv || [];
+      if (reviews.length > 0) {
+        const computedPos = reviews.filter(r => r.rating >= 4 || r.is_positive === true).length;
+        const computedNeg = reviews.filter(r => r.rating <= 2 || r.is_positive === false).length;
+        // Always take the higher of computed vs stored — never silently drop feedback
+        real_positive = Math.max(computedPos, data.positive_feedback || 0);
+        real_negative = Math.max(computedNeg, data.negative_feedback || 0);
+        const rated = reviews.filter(r => r.rating != null);
+        if (rated.length > 0) {
+          real_rating = rated.reduce((sum, r) => sum + parseFloat(r.rating || 0), 0) / rated.length;
+        }
+        // Sync denormalized counters quietly
+        supabaseAdmin.from('users').update({
+          positive_feedback: real_positive,
+          negative_feedback: real_negative,
+          total_feedback_count: reviews.length,
+          average_rating: parseFloat(real_rating.toFixed(2)),
+        }).eq('id', data.id).then(() => {}).catch(() => {});
+      }
+    } catch {}
+
+    res.json({
+      user: {
+        ...data, ...extraFields, referral_trade_count,
+        total_trades: real_total_trades,
+        positive_feedback: real_positive,
+        negative_feedback: real_negative,
+        total_feedback_count: real_positive + real_negative,
+        average_rating: parseFloat(real_rating.toFixed(2)),
+      },
+      reviews: reviews.slice(0, 20), // cap list sent to frontend to avoid large payloads
+    });
   } catch (error) {
     console.error('[GET /api/users/:userId]', error.message);
     res.status(500).json({ error: 'We couldn\'t load this profile right now. Please try again.' });
@@ -3242,24 +3387,29 @@ app.post('/api/users/:userId/view-profile', async (req, res) => {
     const alreadyNotified = viewerId
       ? (await supabaseAdmin.from('notifications')
           .select('id').eq('user_id', profileOwnerId).eq('type', 'profile_view')
+          .eq('action', `/profile/${viewerId}`)
           .gte('created_at', new Date(Date.now() - 24*60*60*1000).toISOString())
           .maybeSingle()).data
       : null;
 
     if (!alreadyNotified) {
-      // Resolve viewer's display name if logged in
+      // Resolve viewer's display name and ID if logged in
       let viewerLabel = 'Someone';
+      let viewerProfilePath = null;
       if (viewerId) {
         const { data: vUser } = await supabaseAdmin
           .from('users').select('username').eq('id', viewerId).maybeSingle();
-        if (vUser?.username) viewerLabel = vUser.username;
+        if (vUser?.username) {
+          viewerLabel = vUser.username;
+          viewerProfilePath = `/profile/${viewerId}`;
+        }
       }
       await createNotification(
         profileOwnerId,
         'profile_view',
         '👀 Profile View',
         `${viewerLabel} just viewed your profile`,
-        '/profile'
+        viewerProfilePath || '/notifications'
       );
     }
 
@@ -3688,12 +3838,40 @@ app.get('/api/listings/:id', async (req, res) => {
     }
 
     // Fetch seller info and live balance in parallel — never use cached balance for the detail view
-    const [{ data: seller }, { data: walletRow }] = await Promise.all([
-      supabaseAdmin.from('users')
-        .select('id, username, badge, country, average_rating, total_trades, completion_rate, avatar_url, created_at, total_feedback_count, positive_feedback, negative_feedback, last_login, last_seen_at, is_id_verified, is_email_verified, is_phone_verified, bio, trust_score, blocks_received, avg_response_time')
-        .eq('id', listing.seller_id).single(),
+    // Use select('*') so missing migration columns never break the query; strip sensitive fields below
+    const [sellerResult, { data: walletRow }] = await Promise.all([
+      supabaseAdmin.from('users').select('*').eq('id', listing.seller_id).single(),
       supabaseAdmin.from('wallets').select('balance_btc').eq('user_id', listing.seller_id).maybeSingle(),
     ]);
+    // Strip sensitive fields before using seller data
+    const { password_hash: _ph, email: _em, phone_number: _pn, bitcoin_wallet_address: _bwa, ...sellerSafe } = sellerResult.data || {};
+    const seller = sellerResult.data?.id ? sellerSafe : null;
+
+    // Compute real trade count and feedback from actual tables
+    let enrichedSeller = seller || {};
+    if (seller?.id) {
+      try {
+        const [buyRes, sellRes, reviewRes] = await Promise.all([
+          supabaseAdmin.from('trades').select('*', { count: 'exact', head: true }).eq('buyer_id', seller.id).eq('status', 'COMPLETED'),
+          supabaseAdmin.from('trades').select('*', { count: 'exact', head: true }).eq('seller_id', seller.id).eq('status', 'COMPLETED'),
+          supabaseAdmin.from('reviews').select('rating').eq('reviewee_id', seller.id),
+        ]);
+        const realTrades  = (buyRes.count || 0) + (sellRes.count || 0);
+        const reviews     = reviewRes.data || [];
+        const posCount    = reviews.filter(r => r.rating >= 4 || r.is_positive === true).length;
+        const negCount    = reviews.filter(r => r.rating <= 2 || r.is_positive === false).length;
+        const avgRating   = reviews.length > 0
+          ? reviews.reduce((s, r) => s + parseFloat(r.rating || 0), 0) / reviews.length : 0;
+        enrichedSeller = {
+          ...seller,
+          total_trades:        realTrades > seller.total_trades ? realTrades : seller.total_trades,
+          positive_feedback:   posCount   > seller.positive_feedback ? posCount : seller.positive_feedback,
+          negative_feedback:   negCount   > seller.negative_feedback ? negCount : seller.negative_feedback,
+          total_feedback_count: reviews.length > seller.total_feedback_count ? reviews.length : seller.total_feedback_count,
+          average_rating:      avgRating  > 0 ? parseFloat(avgRating.toFixed(2)) : seller.average_rating,
+        };
+      } catch {}
+    }
 
     const sellerBalanceBtc = parseFloat(walletRow?.balance_btc || 0);
     const btcPriceVal = parseFloat(listing.bitcoin_price) || 88000;
@@ -3701,7 +3879,7 @@ app.get('/api/listings/:id', async (req, res) => {
       ? Math.min(sellerBalanceBtc * btcPriceVal, parseFloat(listing.max_limit_usd || 0) || sellerBalanceBtc * btcPriceVal)
       : parseFloat(listing.max_limit_usd || 0);
 
-    res.json({ listing: { ...listing, users: seller ? [seller] : [], seller_balance_btc: sellerBalanceBtc, effective_max_usd: effectiveMaxUsd } });
+    res.json({ listing: { ...listing, users: enrichedSeller.id ? [enrichedSeller] : [], seller_balance_btc: sellerBalanceBtc, effective_max_usd: effectiveMaxUsd } });
   } catch (error) {
     console.error('Listing error:', error);
     res.status(500).json({ error: error.message });
@@ -3795,16 +3973,20 @@ app.post('/api/listings/:id/view', optionalAuth, async (req, res) => {
     // Notify seller — skip self-views only
     if (sellerId && String(viewerId) !== String(sellerId)) {
       let viewerLabel = 'Someone';
+      let viewerProfilePath = null;
       if (viewerId) {
         const { data: vUser } = await supabaseAdmin
           .from('users').select('username').eq('id', viewerId).maybeSingle();
-        if (vUser?.username) viewerLabel = vUser.username;
+        if (vUser?.username) {
+          viewerLabel = vUser.username;
+          viewerProfilePath = `/profile/${viewerId}`;
+        }
       }
       await createNotification(
         sellerId, 'offer_view',
         '👀 Someone Viewed Your Offer',
         `${viewerLabel} just viewed your offer`,
-        `/listing/${listingId}`
+        viewerProfilePath || `/listing/${listingId}`
       );
     }
 
@@ -3972,16 +4154,20 @@ app.post('/api/offers/:id/view', optionalAuth, async (req, res) => {
     // Notify seller — skip self-views only
     if (sellerId && String(viewerId) !== String(sellerId)) {
       let viewerLabel = 'Someone';
+      let viewerProfilePath = null;
       if (viewerId) {
         const { data: vUser } = await supabaseAdmin
           .from('users').select('username').eq('id', viewerId).maybeSingle();
-        if (vUser?.username) viewerLabel = vUser.username;
+        if (vUser?.username) {
+          viewerLabel = vUser.username;
+          viewerProfilePath = `/profile/${viewerId}`;
+        }
       }
       await createNotification(
         sellerId, 'offer_view',
         '👀 Someone Viewed Your Offer',
         `${viewerLabel} just viewed your offer`,
-        `/listing/${listingId}`
+        viewerProfilePath || `/listing/${listingId}`
       );
     }
 
@@ -4528,6 +4714,11 @@ app.post('/api/trades', verifyToken, async (req, res) => {
           emailService.sendTradeOpenedEmail(buyerEmailUser,  trade[0], 'buyer').catch(e => console.error('[TradeOpen] buyer email:', e.message));
         if (sellerEmailUser?.email)
           emailService.sendTradeOpenedEmail(sellerEmailUser, trade[0], 'seller').catch(e => console.error('[TradeOpen] seller email:', e.message));
+        // Notify the BUYER too — they need to see the trade in their notifications
+        const sellerName = sellerEmailUser?.username || 'the seller';
+        await createNotification(buyerId, 'trade', '🔒 Trade Started',
+          `Your trade with ${sellerName} is now open · ${btcDisp} · ${localDisp} via ${pmDisp}`,
+          `/trade/${trade[0].id}`);
       } catch (notifyErr) {
         console.error('[Trade Open] Background notification failed:', notifyErr.message);
       }
@@ -5230,57 +5421,71 @@ app.get('/api/referral/earnings', verifyToken, async (req, res) => {
   }
 });
 
-// Public leaderboard — top 10 referrers by referrals + earnings (real data)
+// Public leaderboard — top 10 referrers using the most accurate data source for each metric
 app.get('/api/referral/leaderboard', async (req, res) => {
   try {
-    // Step 1: compute real earnings + trade counts from affiliate_earnings table
+    // Step 1: earnings from affiliate_earnings (authoritative for BTC earned)
     const { data: earningsRows } = await supabaseAdmin
       .from('affiliate_earnings')
       .select('referrer_id, commission_btc');
 
     const earningsMap    = {};
-    const tradeCountMap  = {};
+    const allReferrerIds = new Set();
     (earningsRows || []).forEach(e => {
       const rid = e.referrer_id;
-      earningsMap[rid]   = (earningsMap[rid]   || 0) + parseFloat(e.commission_btc || 0);
-      tradeCountMap[rid] = (tradeCountMap[rid] || 0) + 1;
+      earningsMap[rid] = (earningsMap[rid] || 0) + parseFloat(e.commission_btc || 0);
+      allReferrerIds.add(rid);
     });
 
-    // Step 2: get users who have referrals (total_referrals > 0)
-    const { data: referralUsers, error } = await supabaseAdmin
+    // Step 2: fetch ALL referred users with their referrer + trade count
+    // This lets us count BOTH signups AND actual trades in one pass
+    const { data: signupRows } = await supabaseAdmin
       .from('users')
-      .select('id, username, badge, total_referrals, total_trades')
-      .gt('total_referrals', 0)
-      .order('total_referrals', { ascending: false })
-      .limit(50);
+      .select('id, referred_by, total_trades')
+      .not('referred_by', 'is', null);
 
-    if (error) throw error;
+    const signupCountMap = {}; // referrerId -> signup count (from referred_by)
+    const tradeCountMap  = {}; // referrerId -> sum of all trades by their referrals
+    const referredIdSet  = new Set();
 
-    // Step 3: add any earners not in the referralUsers list
-    const knownIds  = new Set((referralUsers || []).map(u => u.id));
-    const extraIds  = Object.keys(earningsMap).filter(id => !knownIds.has(id));
-    let extraUsers  = [];
-    if (extraIds.length > 0) {
-      const { data: extra } = await supabaseAdmin
-        .from('users')
-        .select('id, username, badge, total_referrals, total_trades')
-        .in('id', extraIds);
-      extraUsers = extra || [];
-    }
+    (signupRows || []).forEach(u => {
+      if (!u.referred_by) return;
+      signupCountMap[u.referred_by] = (signupCountMap[u.referred_by] || 0) + 1;
+      tradeCountMap[u.referred_by]  = (tradeCountMap[u.referred_by]  || 0) + (u.total_trades || 0);
+      allReferrerIds.add(u.referred_by);
+      referredIdSet.add(u.id);
+    });
 
-    // Step 4: merge, sort by earnings desc then referrals desc, take top 10
-    const allUsers = [...(referralUsers || []), ...extraUsers];
-    const leaderboard = allUsers
-      .filter(u => (u.total_referrals || 0) > 0 || earningsMap[u.id] > 0)
-      .map(u => ({
-        id:              u.id,
-        username:        u.username  || 'Trader',
-        badge:           u.badge     || 'BEGINNER',
-        earned_btc:      parseFloat((earningsMap[u.id] || 0).toFixed(8)),
-        referrals:       u.total_referrals  || 0,
-        total_trades:    u.total_trades     || 0,
-        affiliate_trades: tradeCountMap[u.id] || 0,
-      }))
+    if (allReferrerIds.size === 0) return res.json({ success: true, leaderboard: [] });
+
+    // Step 3: fetch referrer profiles + their cached total_referrals counter
+    const { data: referrerUsers } = await supabaseAdmin
+      .from('users')
+      .select('id, username, badge, total_referrals')
+      .in('id', [...allReferrerIds]);
+
+    const userMap = {};
+    (referrerUsers || []).forEach(u => { userMap[u.id] = u; });
+
+    // Step 4: build leaderboard — use MAX of DB count vs cached counter for referrals
+    // so old signups that missed the referred_by field still count
+    const leaderboard = [...allReferrerIds]
+      .filter(rid => (signupCountMap[rid] || 0) > 0 || (earningsMap[rid] || 0) > 0)
+      .map(rid => {
+        const cachedRefs  = userMap[rid]?.total_referrals || 0;
+        const actualRefs  = signupCountMap[rid] || 0;
+        return {
+          id:               rid,
+          username:         userMap[rid]?.username || 'Trader',
+          badge:            userMap[rid]?.badge    || 'BEGINNER',
+          earned_btc:       parseFloat((earningsMap[rid] || 0).toFixed(8)),
+          // Take the larger value — cached counter may include old signups
+          // that predate the referred_by field being saved reliably
+          referrals:        Math.max(actualRefs, cachedRefs),
+          // Sum of total_trades across all referred users = real activity count
+          affiliate_trades: tradeCountMap[rid] || 0,
+        };
+      })
       .sort((a, b) => b.earned_btc - a.earned_btc || b.referrals - a.referrals)
       .slice(0, 10)
       .map((u, i) => ({ ...u, rank: i + 1 }));
@@ -6721,7 +6926,7 @@ app.get('/api/admin/support/tickets', verifyToken, async (req, res) => {
     const { status = '', page = 1, limit = 100 } = req.query;
     const offset = (page - 1) * limit;
     let query = supabaseAdmin.from('support_tickets')
-      .select('*, users!support_tickets_user_id_fkey(id, username, full_name, email, avatar_url, phone, country, created_at)', { count: 'exact' })
+      .select('*, users!support_tickets_user_id_fkey(id, username, full_name, email, avatar_url, phone_number, country, created_at)', { count: 'exact' })
       .order('updated_at', { ascending: false })
       .range(offset, offset + parseInt(limit) - 1);
     if (status) query = query.eq('status', status);
@@ -6734,7 +6939,7 @@ app.get('/api/admin/support/tickets', verifyToken, async (req, res) => {
         full_name:  t.users?.full_name,
         user_email: t.users?.email,
         avatar_url: t.users?.avatar_url,
-        user_phone: t.users?.phone,
+        user_phone: t.users?.phone_number,
         user_country: t.users?.country,
         user_joined: t.users?.created_at,
       })),
@@ -6748,7 +6953,7 @@ app.get('/api/admin/support/tickets/:id/messages', verifyToken, async (req, res)
   try {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { data: ticket } = await supabaseAdmin.from('support_tickets')
-      .select('*, users!support_tickets_user_id_fkey(id, username, full_name, email, avatar_url, phone, country, created_at)')
+      .select('*, users!support_tickets_user_id_fkey(id, username, full_name, email, avatar_url, phone_number, country, created_at)')
       .eq('id', req.params.id).single();
     if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
     const { data: messages } = await supabaseAdmin.from('support_messages').select('*').eq('ticket_id', req.params.id).order('created_at', { ascending: true });
@@ -6759,7 +6964,7 @@ app.get('/api/admin/support/tickets/:id/messages', verifyToken, async (req, res)
         full_name:   ticket.users?.full_name,
         user_email:  ticket.users?.email,
         avatar_url:  ticket.users?.avatar_url,
-        user_phone:  ticket.users?.phone,
+        user_phone:  ticket.users?.phone_number,
         user_country: ticket.users?.country,
         user_joined: ticket.users?.created_at,
       },

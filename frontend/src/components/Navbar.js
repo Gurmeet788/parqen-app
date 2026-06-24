@@ -30,6 +30,7 @@ export default function Navbar({ user, onLogout }) {
   const [marketDrop,      setMarketDrop]      = useState(false);
   const [hdBalance,       setHdBalance]       = useState(() => parseFloat(localStorage.getItem('praqen_btc_balance') || 0));
   const [balanceUsd,      setBalanceUsd]      = useState(() => parseFloat(localStorage.getItem('praqen_usd_balance') || 0));
+  const [lockedBtc,       setLockedBtc]       = useState(() => parseFloat(localStorage.getItem('praqen_locked_btc') || 0));
   const [localUser,       setLocalUser]       = useState(user);
   const [showBal,         setShowBal]         = useState(true);
   const [displayCurrency, setDisplayCurrency] = useState(localStorage.getItem('praqen_currency') || 'USD');
@@ -77,12 +78,16 @@ export default function Navbar({ user, onLogout }) {
       const tk = localStorage.getItem('token');
       if (!tk) return;
       const r = await axios.get(`${API_URL}/hd-wallet/wallet`, { headers: { Authorization: `Bearer ${tk}` } });
-      const bal    = parseFloat(r.data?.balance_btc || 0);
-      const usdBal = parseFloat(r.data?.balance_usd || 0);
-      setHdBalance(bal);
-      setBalanceUsd(usdBal);
-      localStorage.setItem('praqen_btc_balance', bal.toString());
-      localStorage.setItem('praqen_usd_balance', usdBal.toString());
+      const avail    = parseFloat(r.data?.available_btc ?? r.data?.balance_btc ?? 0);
+      const locked   = parseFloat(r.data?.locked_btc || 0);
+      const btcPrice = parseFloat(r.data?.btc_price || 0);
+      const availUsd = btcPrice > 0 ? avail * btcPrice : parseFloat(r.data?.balance_usd || 0);
+      setHdBalance(avail);
+      setBalanceUsd(availUsd);
+      setLockedBtc(locked);
+      localStorage.setItem('praqen_btc_balance', avail.toString());
+      localStorage.setItem('praqen_usd_balance', availUsd.toString());
+      localStorage.setItem('praqen_locked_btc', locked.toString());
     } catch {}
   };
 
@@ -304,6 +309,12 @@ export default function Navbar({ user, onLogout }) {
                 <span style={{ fontSize: 11, fontWeight: 900, color: C.forest, whiteSpace: 'nowrap', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {showBal ? `${localCode} ${sym}${fmt(totalLocal, 2)}` : '•••'}
                 </span>
+                {showBal && lockedBtc > 0 && (
+                  <span title={`₿${fmtBtc(lockedBtc)} in escrow`}
+                    style={{ fontSize: 9, fontWeight: 800, color: '#b45309', background: '#fef3c7', borderRadius: 4, padding: '1px 4px', whiteSpace: 'nowrap' }}>
+                    🔒{fmtBtc(lockedBtc)}
+                  </span>
+                )}
               </Link>
               <button
                 onClick={() => setShowBal(!showBal)}
@@ -327,6 +338,12 @@ export default function Navbar({ user, onLogout }) {
                 <span style={{ fontSize: 13, fontWeight: 900, color: C.forest }}>
                   {showBal ? `${localCode} ${sym}${fmt(totalLocal, 2)}` : '••••••'}
                 </span>
+                {showBal && lockedBtc > 0 && (
+                  <span title={`₿${fmtBtc(lockedBtc)} locked in escrow`}
+                    style={{ fontSize: 10, fontWeight: 800, color: '#b45309', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 5, padding: '2px 5px', whiteSpace: 'nowrap' }}>
+                    🔒 ₿{fmtBtc(lockedBtc)}
+                  </span>
+                )}
               </Link>
             </div>
 
