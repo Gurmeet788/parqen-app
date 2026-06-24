@@ -822,7 +822,7 @@ function encryptCode(code, key = 'mock-encryption-key') {
 }
 
 function calculateFee(btcAmount) {
-  return (parseFloat(btcAmount) * 0.005).toFixed(8);
+  return (parseFloat(btcAmount) * 0.01).toFixed(8);
 }
 
 async function getCurrentBTCPrice() {
@@ -3709,11 +3709,16 @@ app.get('/api/listings', async (req, res) => {
     if (minPrice) listingsQ = listingsQ.gte('bitcoin_price', parseFloat(minPrice));
     if (maxPrice) listingsQ = listingsQ.lte('bitcoin_price', parseFloat(maxPrice));
 
+    let _listingsTimedOut = false;
     const { data: rawListings, error: listErr } = await Promise.race([
       listingsQ,
-      new Promise(resolve => setTimeout(() => resolve({ data: [], error: null }), 5000)),
+      new Promise(resolve => setTimeout(() => { _listingsTimedOut = true; resolve({ data: null, error: null }); }, 8000)),
     ]);
     if (listErr) return res.status(400).json({ error: listErr.message });
+    if (_listingsTimedOut || rawListings === null) {
+      console.warn('[/api/listings] DB query timed out — returning 503 so client retries');
+      return res.status(503).json({ error: 'Marketplace is temporarily unavailable. Please try again in a moment.' });
+    }
 
     // Step 2+3: fetch user profiles AND wallet balances in parallel (not sequential)
     const sellerIdSet = [...new Set((rawListings || []).map(l => l.seller_id).filter(Boolean))];
@@ -3799,14 +3804,10 @@ app.get('/api/listings', async (req, res) => {
         return true;
       });
 
-      // Auto-pause in DB any offer that shouldn't be showing (fire-and-forget)
-      if (toPauseIds.length > 0) {
-        supabaseAdmin.from('listings')
-          .update({ status: 'PAUSED', updated_at: new Date().toISOString() })
-          .in('id', toPauseIds)
-          .then(() => {})
-          .catch(e => console.error('[listings] auto-pause low-balance:', e.message));
-      }
+      // NOTE: We intentionally do NOT auto-pause to DB here — that would permanently
+      // hide the offer even after the seller tops up. Low-balance offers are just
+      // excluded from this API response; the seller's listing stays ACTIVE in the DB
+      // so it reappears automatically once their balance is sufficient again.
     }
 
     // Attach display_name and resolve best country for each listing's embedded user
@@ -3817,7 +3818,9 @@ app.get('/api/listings', async (req, res) => {
       return { ...l, users: { ...u, display_name: computeDisplayName(u), country: resolvedCountry } };
     });
 
-    setCached(cacheKey, listings);
+    // Only cache when we actually got real data — never cache an empty result
+    // (empty could mean DB timeout/failure, not a genuinely empty marketplace)
+    if (listings.length > 0) setCached(cacheKey, listings);
     res.json({ listings });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -4635,7 +4638,7 @@ app.post('/api/trades', verifyToken, async (req, res) => {
       local_currency:  tradeCur || null,
       currency_symbol: tradeSym || null,
       platform_fee_btc: verifiedFee,
-      platform_fee_usd: (tradeAmountUsd * 0.005).toFixed(2), fee_status: 'PENDING',
+      platform_fee_usd: (tradeAmountUsd * 0.01).toFixed(2), fee_status: 'PENDING',
       payment_method: paymentMethod || listing.payment_method,
       gift_card_brand: listingTypeUpper.includes('GIFT_CARD') ? (listing.gift_card_brand || null) : null,
       trade_ref: tradeRef,
@@ -4997,7 +5000,7 @@ app.post('/api/messages', verifyToken, async (req, res) => {
     if (tradeError || !trade) return res.status(404).json({ error: 'Trade not found' });
     const isParticipant = trade.buyer_id === req.userId || trade.seller_id === req.userId;
     const recipientId = trade.buyer_id === req.userId ? trade.seller_id : trade.buyer_id;
-    const { data: userData } = await supabaseAdmin.from('users').select('is_moderator, is_admin').eq('id', req.userId).single();
+    const { data: userData } = await supabaseAdmin.from('users').select('is_moderator, is_admin, username').eq('id', req.userId).single();
     const senderRole = (userData?.is_moderator || userData?.is_admin) ? 'moderator' : 'user';
     // isSystem: only trusted if the sender is a participant in this trade
     const useSystem = isSystem && isParticipant;
@@ -5012,6 +5015,37 @@ app.post('/api/messages', verifyToken, async (req, res) => {
     }]).select();
     if (error) return res.status(400).json({ error: error.message });
     res.json({ success: true, message: data[0] });
+
+    // Notify recipient — throttled to 1 per 5 min per trade to avoid spam
+    if (!useSystem && isParticipant && recipientId) {
+      setImmediate(async () => {
+        try {
+          const senderName = userData?.username || 'Trader';
+          const tradeRef   = tradeId.slice(0, 8).toUpperCase();
+          const preview    = message.length > 60 ? message.slice(0, 60) + '…' : message;
+          const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+          const { data: recent } = await supabaseAdmin
+            .from('notifications')
+            .select('id')
+            .eq('user_id', recipientId)
+            .eq('type', 'message')
+            .eq('action', `/trade/${tradeId}`)
+            .gte('created_at', fiveMinAgo)
+            .maybeSingle();
+          if (!recent) {
+            await createNotification(
+              recipientId,
+              'message',
+              `💬 New Message in Trade #${tradeRef}`,
+              `${senderName}: ${preview}`,
+              `/trade/${tradeId}`
+            );
+          }
+        } catch (e) {
+          console.error('[Message notification] Failed:', e.message);
+        }
+      });
+    }
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -6302,6 +6336,72 @@ app.get('/api/admin/revenue', verifyToken, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/admin/transfers — internal + external transfer activity + escrow wallet balance
+app.get('/api/admin/transfers', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+    const COMPANY_WALLET_ID = '14762cd0-d3b2-474f-acab-fe0071961e9a';
+
+    const [
+      { data: internalRaw },
+      { data: withdrawals },
+      { data: escrowBal },
+    ] = await Promise.all([
+      supabaseAdmin.from('wallet_transactions')
+        .select('id, user_id, amount_btc, notes, created_at, tx_hash')
+        .eq('type', 'TRANSFER_OUT')
+        .order('created_at', { ascending: false })
+        .limit(200),
+      supabaseAdmin.from('wallet_transactions')
+        .select('id, user_id, amount_btc, status, notes, created_at')
+        .eq('type', 'WITHDRAWAL')
+        .order('created_at', { ascending: false })
+        .limit(200),
+      supabaseAdmin.from('user_balances')
+        .select('balance_btc, available_btc')
+        .eq('user_id', COMPANY_WALLET_ID)
+        .single(),
+    ]);
+
+    // Pull sender usernames for internal transfers
+    const senderIds = [...new Set((internalRaw || []).map(t => t.user_id))];
+    const withdrawalUserIds = [...new Set((withdrawals || []).map(t => t.user_id))];
+    const allUserIds = [...new Set([...senderIds, ...withdrawalUserIds])];
+    const { data: usersRaw } = await supabaseAdmin.from('users')
+      .select('id, username, full_name').in('id', allUserIds);
+    const userMap = Object.fromEntries((usersRaw || []).map(u => [u.id, u.username || u.full_name || u.id.slice(0,8)]));
+
+    // Parse recipient from notes: "Internal transfer → @alice · No fee"
+    const internal = (internalRaw || []).map(t => {
+      const m = t.notes?.match(/→ @(\S+)/);
+      return {
+        ...t,
+        sender: userMap[t.user_id] || t.user_id.slice(0, 8),
+        recipient: m ? m[1].replace(/·.*$/, '').trim() : '—',
+      };
+    });
+
+    const externalWithNames = (withdrawals || []).map(t => ({
+      ...t,
+      username: userMap[t.user_id] || t.user_id.slice(0, 8),
+    }));
+
+    const totalInternalBtc = internal.reduce((s, t) => s + parseFloat(t.amount_btc || 0), 0);
+    const totalExternalBtc = (withdrawals || []).reduce((s, t) => s + parseFloat(t.amount_btc || 0), 0);
+
+    res.json({
+      internal,
+      withdrawals: externalWithNames,
+      escrowBalanceBtc: escrowBal?.balance_btc ?? null,
+      escrowAvailableBtc: escrowBal?.available_btc ?? null,
+      totalInternalBtc: totalInternalBtc.toFixed(8),
+      totalExternalBtc: totalExternalBtc.toFixed(8),
+      internalCount: internal.length,
+      withdrawalCount: (withdrawals || []).length,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // PUT /api/admin/users/:id/verify-email — manually verify email
 app.put('/api/admin/users/:id/verify-email', verifyToken, async (req, res) => {
   try {
@@ -7137,7 +7237,7 @@ app.post('/api/wallet/withdraw', verifyToken, async (req, res) => {
 // POST /api/wallet/internal-transfer
 // FREE instant balance-to-balance transfer between two PRAQEN users.
 // No on-chain broadcast, no PRAQEN platform fee, no network miner fee.
-// Only trades (Buy/Sell/Gift Card) carry the 0.5% fee.
+// Only trades (Buy/Sell) carry the 1% fee; Gift Card trades carry 2%.
 // ─────────────────────────────────────────────────────────────────────────────
 app.post('/api/wallet/internal-transfer', verifyToken, async (req, res) => {
   try {
@@ -7225,43 +7325,56 @@ app.post('/api/wallet/internal-transfer', verifyToken, async (req, res) => {
       .update(`${req.userId}:${recipientId}:${amount}:${Date.now()}`)
       .digest('hex').slice(0, 20).toUpperCase();
 
+    // ── Fetch sender info before logging ──────────────────────────────────
+    const { data: senderUser } = await supabaseAdmin.from('users').select('username, email').eq('id', req.userId).single();
+    const senderName = senderUser?.username || 'a PRAQEN user';
+    const txTs       = new Date().toISOString();
+
     // ── Log for sender (TRANSFER_OUT) ──────────────────────────────────────
-    await supabaseAdmin.from('wallet_transactions').insert({
+    // Each leg gets its own unique hash so the UNIQUE constraint on tx_hash is never violated
+    const { error: txOutErr } = await supabaseAdmin.from('wallet_transactions').insert({
       user_id:    req.userId,
       type:       'TRANSFER_OUT',
       amount_btc: amount,
       status:     'CONFIRMED',
-      tx_hash:    txRef,
+      tx_hash:    `${txRef}_OUT`,
       notes:      `Internal transfer → @${recipientUsername} · No fee`,
-      created_at: new Date().toISOString(),
+      created_at: txTs,
     });
+    if (txOutErr) console.error('[InternalTransfer] CRITICAL: TRANSFER_OUT insert failed', txOutErr);
 
     // ── Log for recipient (TRANSFER_IN) ───────────────────────────────────
-    await supabaseAdmin.from('wallet_transactions').insert({
+    const { error: txInErr } = await supabaseAdmin.from('wallet_transactions').insert({
       user_id:    recipientId,
       type:       'TRANSFER_IN',
       amount_btc: amount,
       status:     'CONFIRMED',
-      tx_hash:    txRef,
-      notes:      `Internal transfer received · No fee`,
-      created_at: new Date().toISOString(),
+      tx_hash:    `${txRef}_IN`,
+      notes:      `Internal transfer received from @${senderName} · No fee`,
+      created_at: txTs,
     });
+    if (txInErr) console.error('[InternalTransfer] CRITICAL: TRANSFER_IN insert failed', txInErr);
 
     // ── Notify recipient (in-app) ──────────────────────────────────────────
-    const { data: senderUser } = await supabaseAdmin.from('users').select('username, email').eq('id', req.userId).single();
-    await supabaseAdmin.from('notifications').insert({
-      user_id:    recipientId,
-      type:       'wallet',
-      title:      '₿ Bitcoin Received!',
-      message:    `₿${amount.toFixed(8)} sent to your wallet by @${senderUser?.username || 'a PRAQEN user'} — instant & free`,
-      action:     '/wallet',
-      is_read:    false,
-      created_at: new Date().toISOString(),
-    });
+    await createNotification(
+      recipientId,
+      'system',
+      '₿ Bitcoin Received!',
+      `@${senderName} sent you ₿${amount.toFixed(8)} — arrived instantly, zero fees.`,
+      '/wallet'
+    ).catch(() => {});
+
+    // ── Notify sender (in-app receipt) ────────────────────────────────────
+    await createNotification(
+      req.userId,
+      'system',
+      '✅ Transfer Sent',
+      `₿${amount.toFixed(8)} sent to @${recipientUsername} — instant & free. Ref: ${txRef.slice(0, 16)}`,
+      '/wallet'
+    ).catch(() => {});
 
     // ── Email notifications (fire-and-forget) ──────────────────────────────
-    const senderName = senderUser?.username || 'A PRAQEN user';
-    const txDate     = new Date().toUTCString();
+    const txDate = new Date().toUTCString();
 
     const recipientHtml = `
 <div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:520px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #E2E8F0">

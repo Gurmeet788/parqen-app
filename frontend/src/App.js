@@ -362,7 +362,18 @@ function App() {
 
         <BottomNav user={user} />
         <SuggestionsPanel user={user} />
-        <ToastContainer position="bottom-right" autoClose={3000} />
+        <ToastContainer
+          position="top-right"
+          autoClose={4500}
+          hideProgressBar={false}
+          newestOnTop
+          closeOnClick
+          pauseOnFocusLoss
+          draggable={false}
+          pauseOnHover
+          theme="light"
+          limit={4}
+        />
       </AppShell>
     </Router>
     </RatesProvider>

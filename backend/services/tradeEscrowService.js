@@ -16,7 +16,7 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
 );
 
-const FEE_RATE            = 0.005;
+const FEE_RATE            = 0.01;
 const COMPANY_WALLET_ID   = '14762cd0-d3b2-474f-acab-fe0071961e9a';
 const COMPANY_BTC_ADDRESS = 'bc1qd8z3zdn2e3eul6y8nmcyjvgle3yzv8ttvsjp49';
 
@@ -189,7 +189,7 @@ class TradeEscrowService {
     const feeBtc        = parseFloat((amount * this.feeRate).toFixed(8));
 
     console.log(`   Escrow address: ${escrowAddress}`);
-    console.log(`   Fee (0.5%):     ${feeBtc} BTC`);
+    console.log(`   Fee (1%):       ${feeBtc} BTC`);
 
     // ── 3. Deduct trade amount from available balance, add to locked ─────────
     const newAvailable = parseFloat((currentBalance - amount).toFixed(8));
@@ -359,7 +359,7 @@ class TradeEscrowService {
   // ============================================================
   // RELEASE BITCOIN TO BUYER
   // Called when seller clicks "Release Bitcoin"
-  // Splits: 99.5% to buyer's PRAQEN wallet + 0.5% to PRAQEN fee wallet
+  // Splits: (100 - feeRate)% to buyer's PRAQEN wallet + feeRate% to PRAQEN fee wallet
   // This is INTERNAL transfer (balance to balance) — no on-chain TX needed
   // ============================================================
   async releaseBitcoinToBuyer(tradeId, releaserId) {
@@ -425,7 +425,7 @@ class TradeEscrowService {
     ]);
 
     const amount      = parseFloat(tradeData.amount_btc);
-    const feeRate     = isGiftCardTrade ? 0.01 : 0.005;
+    const feeRate     = isGiftCardTrade ? 0.02 : 0.01;
     const buyerGets   = parseFloat((amount * (1 - feeRate)).toFixed(8));
     const platformFee = parseFloat((amount * feeRate).toFixed(8));
 
@@ -470,10 +470,13 @@ class TradeEscrowService {
         if (resetErr) throw new Error(`Failed to reset stuck escrow lock: ${resetErr.message}`);
     }
 
-    // ── Snapshot buyer's balance BEFORE RPC so we can detect if RPC credited them ──
-    const { data: receiverBefore } = await supabaseAdmin
-        .from('wallets').select('balance_btc').eq('user_id', btcReceiverId).maybeSingle();
+    // ── Snapshot BOTH buyer AND company wallet BEFORE RPC ─────────────────────
+    const [{ data: receiverBefore }, { data: companyBefore }] = await Promise.all([
+        supabaseAdmin.from('wallets').select('balance_btc').eq('user_id', btcReceiverId).maybeSingle(),
+        supabaseAdmin.from('wallets').select('balance_btc').eq('user_id', COMPANY_WALLET_ID).maybeSingle(),
+    ]);
     const receiverBalanceBefore = parseFloat(receiverBefore?.balance_btc || 0);
+    const companyBalanceBefore  = parseFloat(companyBefore?.balance_btc  || 0);
 
     // ── ONE atomic DB call: credit receiver + fee + mark escrow released + complete trade ──
     // praqen_release_escrow() runs as a single PostgreSQL transaction.
@@ -544,50 +547,65 @@ class TradeEscrowService {
         console.warn('⚠️  Trade status update failed (DB trigger issue):', tradeUpdateError.message);
     }
 
-    // ── Collect 0.5% platform fee — NEVER breaks the trade ──────────────────
+    // ── Collect platform fee — exactly once, verified against pre-RPC snapshot ──
     try {
-        console.log(`💸 Collecting fee: ${platformFee.toFixed(8)} BTC → company wallet`);
+        console.log(`💸 Collecting ${(feeRate * 100)}% fee: ₿${platformFee.toFixed(8)} → company wallet`);
 
-        // Increment company wallet balance directly (safe UPDATE, no upsert with bogus fields)
-        const { data: companyWallet, error: cwErr } = await supabaseAdmin
-            .from('wallets')
-            .select('balance_btc')
-            .eq('user_id', COMPANY_WALLET_ID)
-            .maybeSingle();
+        // Check if the RPC already credited the company wallet (it has p_company_id + p_fee_btc)
+        const { data: companyAfterRpc } = await supabaseAdmin
+            .from('wallets').select('balance_btc').eq('user_id', COMPANY_WALLET_ID).maybeSingle();
+        const companyBalanceAfterRpc = parseFloat(companyAfterRpc?.balance_btc || 0);
+        const rpcCreditedCompany = (companyBalanceAfterRpc - companyBalanceBefore) >= platformFee * 0.99;
 
-        if (cwErr) throw new Error(`Company wallet fetch failed: ${cwErr.message}`);
+        if (rpcCreditedCompany) {
+            // RPC already credited — skip JS credit to prevent double-fee
+            console.log(`✅ Fee already credited by RPC: ₿${platformFee.toFixed(8)} (company: ${companyBalanceAfterRpc.toFixed(8)} BTC)`);
+        } else {
+            // RPC did not credit company wallet — apply manually now
+            const newCompanyBalance = parseFloat((companyBalanceAfterRpc + platformFee).toFixed(8));
+            const { error: feeUpdateErr } = await supabaseAdmin
+                .from('wallets')
+                .update({ balance_btc: newCompanyBalance, updated_at: new Date().toISOString() })
+                .eq('user_id', COMPANY_WALLET_ID);
+            if (feeUpdateErr) throw new Error(`Company wallet update failed: ${feeUpdateErr.message}`);
+            console.log(`✅ Fee manually credited: ₿${platformFee.toFixed(8)} → company (new balance: ${newCompanyBalance.toFixed(8)} BTC)`);
+        }
 
-        const newCompanyBalance = parseFloat(
-            (parseFloat(companyWallet?.balance_btc || 0) + platformFee).toFixed(8)
-        );
-
-        const { error: feeUpdateErr } = await supabaseAdmin
-            .from('wallets')
-            .update({ balance_btc: newCompanyBalance, updated_at: new Date().toISOString() })
-            .eq('user_id', COMPANY_WALLET_ID);
-
-        if (feeUpdateErr) throw new Error(`Company wallet update failed: ${feeUpdateErr.message}`);
-
-        // Record fee transaction for audit trail
+        // Audit trail — use _FEE suffix so tx_hash never collides with ESCROW_RELEASE log
         await supabaseAdmin.from('wallet_transactions').insert({
             user_id:    COMPANY_WALLET_ID,
             type:       'FEE',
             amount_btc: platformFee,
             status:     'CONFIRMED',
-            tx_hash:    releaseTxHash,
-            notes:      `Platform fee from trade ${tradeId.slice(0, 8).toUpperCase()} | 0.5% of ₿${amount.toFixed(8)}`,
+            tx_hash:    `${releaseTxHash}_FEE`,
+            notes:      `Platform fee from trade ${tradeId.slice(0, 8).toUpperCase()} — ${(feeRate * 100)}% of ₿${amount.toFixed(8)}`,
             created_at: new Date().toISOString(),
-        });
+        }).then(() => {}).catch(e => console.warn('[Escrow] FEE tx log failed (non-critical):', e.message));
 
-        // Mark fee as collected on the trade
+        // Ensure company_profits record exists (RPC may have inserted it; INSERT ON CONFLICT skips duplicate)
+        await supabaseAdmin.from('company_profits').upsert({
+            trade_id:     tradeId,
+            profit_btc:   platformFee,
+            profit_usd:   parseFloat(((platformFee) * (parseFloat(tradeData.amount_usd || 0) / amount)).toFixed(2)),
+            status:       'COLLECTED',
+            collected_at: new Date().toISOString(),
+        }, { onConflict: 'trade_id', ignoreDuplicates: true }).then(() => {}).catch(() => {});
+
+        // Mark fee as collected on the trade record
         await supabaseAdmin.from('trades')
             .update({ fee_status: 'COLLECTED', fee_collected_at: new Date().toISOString(), platform_fee_btc: platformFee })
             .eq('id', tradeId);
 
-        console.log(`✅ Fee collected: ${platformFee.toFixed(8)} BTC → company wallet (new balance: ${newCompanyBalance.toFixed(8)} BTC)`);
+        console.log(`✅ Fee CONFIRMED: ₿${platformFee.toFixed(8)} (${(feeRate * 100)}%) from trade ${tradeId.slice(0, 8).toUpperCase()}`);
 
     } catch (feeErr) {
-        console.error(`⚠️ [Escrow] Fee collection failed (trade still COMPLETED):`, feeErr.message);
+        // Fee failed — log clearly so admin can see it and manually collect
+        console.error(`🚨 [Escrow] FEE COLLECTION FAILED for trade ${tradeId.slice(0, 8).toUpperCase()} — ₿${platformFee.toFixed(8)} NOT COLLECTED:`, feeErr.message);
+        // Mark on trade so admin can identify and recover
+        await supabaseAdmin.from('trades')
+            .update({ fee_status: 'FAILED', platform_fee_btc: platformFee })
+            .eq('id', tradeId)
+            .catch(() => {});
     }
 
     // ── Re-evaluate offer status for the BTC provider after balance change ──
@@ -621,7 +639,7 @@ class TradeEscrowService {
     );
     await this.notify(
         releaserId, 'trade', '✅ Trade Complete',
-        `Trade #${tradeId.slice(0, 8).toUpperCase()} completed. 0.5% platform fee (₿${platformFee.toFixed(8)}) collected.`,
+        `Trade #${tradeId.slice(0, 8).toUpperCase()} completed successfully. ₿${buyerGets.toFixed(8)} released to buyer.`,
         `/trade/${tradeId}`
     );
     sendTradeAlert(btcReceiverId, tradeData, 'btc_released').catch(() => {});

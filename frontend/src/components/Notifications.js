@@ -401,7 +401,56 @@ function TradeCard({ n, trade, userId, onNavigate }) {
   );
 }
 
-// ─── 5. GENERAL / SYSTEM card ─────────────────────────────────────────────────
+// ─── 5. TRADE MESSAGE card ────────────────────────────────────────────────────
+function MessageCard({ n, onNavigate }) {
+  const pal = TYPE_PALETTE.trade_paid;
+  const msg = n.message || '';
+  // "SenderName: preview text"
+  const colonIdx = msg.indexOf(': ');
+  const senderName = colonIdx > 0 ? msg.slice(0, colonIdx) : null;
+  const preview    = colonIdx > 0 ? msg.slice(colonIdx + 2) : msg;
+  const tradeRef   = (n.title || '').match(/#([A-F0-9]{6,10})/i)?.[1] || null;
+
+  return (
+    <CardWrap isRead={n.is_read} palette={pal} onClick={() => onNavigate(n)}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <TypeBadge label="Trade Chat" color="#2563EB" bg="#EFF6FF" />
+          {tradeRef && (
+            <span style={{ fontSize: 10, fontWeight: 800, color: T.g500, background: T.g100, borderRadius: 5, padding: '2px 6px', fontFamily: 'monospace' }}>
+              #{tradeRef}
+            </span>
+          )}
+        </div>
+        <span style={{ fontSize: 11, color: T.g500, fontWeight: 700 }}>{relTime(n.created_at)}</span>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <div style={{ width: 34, height: 34, borderRadius: 10, background: '#DBEAFE', border: '1.5px solid #BFDBFE', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <span style={{ fontSize: 16 }}>💬</span>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {senderName && (
+            <p style={{ margin: '0 0 2px', fontSize: 12, fontWeight: 900, color: '#1E40AF' }}>
+              {senderName}
+            </p>
+          )}
+          <p style={{ margin: 0, fontSize: 12, color: T.g600, lineHeight: 1.5, wordBreak: 'break-word' }}>
+            {preview}
+          </p>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
+        <span style={{ fontSize: 11, fontWeight: 800, color: '#2563EB', background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 7, padding: '4px 10px', cursor: 'pointer' }}>
+          Open trade chat →
+        </span>
+      </div>
+    </CardWrap>
+  );
+}
+
+// ─── 6. GENERAL / SYSTEM card ─────────────────────────────────────────────────
 function BasicCard({ n, onNavigate }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -557,6 +606,9 @@ function NotifCard({ n, userId, onNavigate }) {
   if (type === 'offer_view' || /viewed your offer/i.test((n.title || '') + (n.message || ''))) {
     return <OfferViewCard n={n} onNavigate={onNavigate} />;
   }
+  if (type === 'message') {
+    return <MessageCard n={n} onNavigate={onNavigate} />;
+  }
   if (trade && trade.status === 'COMPLETED') {
     return <CompletedCard n={n} trade={trade} userId={userId} onNavigate={onNavigate} />;
   }
@@ -580,10 +632,10 @@ function matchFilter(n, filter) {
   const type = n.type || '';
   const title = (n.title || '').toLowerCase();
   const msg = (n.message || '').toLowerCase();
-  if (filter === 'trades')   return !!n.trade || /trade|payment|escrow|dispute/i.test(title + type);
+  if (filter === 'trades')   return !!n.trade || /trade|payment|escrow|dispute|message/i.test(title + type);
   if (filter === 'views')    return /profile_view|offer_view/i.test(type) || /viewed your/i.test(title + msg);
   if (filter === 'referral') return /referral|commission|affiliate/i.test(type + title + msg);
-  if (filter === 'system')   return /update|broadcast|system|welcome|bonus/i.test(type + title);
+  if (filter === 'system')   return /update|broadcast|system|welcome|bonus|received|sent|transfer/i.test(type + title + msg);
   return true;
 }
 

@@ -53,6 +53,20 @@ async function getLiveBtcPrice() {
     return _btcPriceCache.price; // return last known price rather than hard-coded fallback
 }
 
+// ── Tiered withdrawal fee — returns { feeUsd, feeBtc, label } ────────────────
+function calcWithdrawalFee(amountBtc, btcPrice) {
+  // Round to nearest cent before tier comparison to avoid floating-point boundary mismatches
+  const amountUsd = Math.round(amountBtc * btcPrice * 100) / 100;
+  let feeUsd, label;
+  if (amountUsd < 50)       { feeUsd = 5;                  label = '$5 flat fee'; }
+  else if (amountUsd < 100) { feeUsd = 10;                 label = '$10 flat fee'; }
+  else if (amountUsd < 250) { feeUsd = 15;                 label = '$15 flat fee'; }
+  else if (amountUsd < 500) { feeUsd = 25;                 label = '$25 flat fee'; }
+  else                      { feeUsd = amountUsd * 0.05;   label = '5% fee'; }
+  const feeBtc = parseFloat((feeUsd / btcPrice).toFixed(8));
+  return { feeUsd: parseFloat(feeUsd.toFixed(2)), feeBtc, label };
+}
+
 // ============================================================
 // GET /api/hd-wallet/wallet
 // Returns user's BTC address + balance
@@ -545,15 +559,15 @@ router.post('/send', verifyToken, async (req, res) => {
 
     const available = parseFloat(bal?.balance_btc || 0);
 
-    // ── 5% PRAQEN withdrawal fee ─────────────────────────────────────────────
-    const WITHDRAWAL_FEE_RATE  = 0.05;
-    const COMPANY_WALLET_ID    = '14762cd0-d3b2-474f-acab-fe0071961e9a';
-    const platformFee          = parseFloat((amount * WITHDRAWAL_FEE_RATE).toFixed(8));
-    const amountUserReceives   = parseFloat((amount - platformFee).toFixed(8));
+    // ── Tiered PRAQEN withdrawal fee ─────────────────────────────────────────
+    const COMPANY_WALLET_ID  = '14762cd0-d3b2-474f-acab-fe0071961e9a';
+    const liveBtcPrice       = await getLiveBtcPrice();
+    const { feeBtc: platformFee, feeUsd: platformFeeUsd, label: feeLabel } = calcWithdrawalFee(amount, liveBtcPrice);
+    const amountUserReceives = parseFloat((amount - platformFee).toFixed(8));
 
     if (available < amount) {
       return res.status(400).json({
-        error: `Insufficient balance. Available: ${available.toFixed(8)} BTC, Requested: ${amount.toFixed(8)} BTC (includes 5% fee of ${platformFee.toFixed(8)} BTC)`,
+        error: `Insufficient balance. Available: ₿${available.toFixed(8)}, requested ₿${amount.toFixed(8)} (includes ${feeLabel} = ₿${platformFee.toFixed(8)})`,
       });
     }
 
@@ -561,7 +575,7 @@ router.post('/send', verifyToken, async (req, res) => {
       return res.status(400).json({ error: 'Amount too small after fee deduction.' });
     }
 
-    console.log(`[hdWalletRoutes] On-chain send: ₿${amountUserReceives} (+ ₿${platformFee} fee) from ${userId.slice(0,8)} → ${toAddress}`);
+    console.log(`[hdWalletRoutes] On-chain send: ₿${amountUserReceives} (+ ₿${platformFee} ${feeLabel}) from ${userId.slice(0,8)} → ${toAddress}`);
 
     // Attempt broadcast — hot wallet is NEVER touched if it has insufficient funds
     let result;
@@ -577,22 +591,40 @@ router.post('/send', verifyToken, async (req, res) => {
           supabaseAdmin.from('user_balances').update({ balance_btc: newBalance, updated_at: new Date().toISOString() }).eq('user_id', userId),
           supabaseAdmin.from('user_wallets').update({ balance_btc: newBalance, updated_at: new Date().toISOString() }).eq('user_id', userId),
         ]);
-        await supabaseAdmin.from('wallet_transactions').insert({
-          user_id:             userId,
-          type:                'WITHDRAWAL',
-          amount_btc:          amountUserReceives,
-          status:              'PENDING',
-          destination_address: toAddress,
-          notes:               `User confirmed twice before sending. Warned of risky wallet and proceeded. 5% fee (₿${platformFee.toFixed(8)}) held. PRAQEN is not responsible for any loss from this transaction.`,
-          created_at:          new Date().toISOString(),
-        });
+        // Credit fee to PRAQEN immediately — fee is earned regardless of PENDING status
+        const { data: cw1 } = await supabaseAdmin.from('wallets').select('balance_btc').eq('user_id', COMPANY_WALLET_ID).maybeSingle();
+        const ncb1 = parseFloat((parseFloat(cw1?.balance_btc || 0) + platformFee).toFixed(8));
+        const ts1  = new Date().toISOString();
+        await Promise.all([
+          supabaseAdmin.from('wallets').upsert({ user_id: COMPANY_WALLET_ID, balance_btc: ncb1, updated_at: ts1 }, { onConflict: 'user_id' }),
+          supabaseAdmin.from('user_balances').upsert({ user_id: COMPANY_WALLET_ID, balance_btc: ncb1, updated_at: ts1 }, { onConflict: 'user_id' }),
+        ]);
+        await supabaseAdmin.from('wallet_transactions').insert([
+          {
+            user_id:             userId,
+            type:                'WITHDRAWAL',
+            amount_btc:          amountUserReceives,
+            status:              'PENDING',
+            destination_address: toAddress,
+            notes:               `User confirmed twice before sending. Warned of risky wallet and proceeded. ${feeLabel} (₿${platformFee.toFixed(8)} / $${platformFeeUsd}) held. PRAQEN is not responsible for any loss from this transaction.`,
+            created_at:          ts1,
+          },
+          {
+            user_id:    COMPANY_WALLET_ID,
+            type:       'FEE',
+            amount_btc: platformFee,
+            status:     'CONFIRMED',
+            notes:      `Blockchain fee (${feeLabel}) from user ${userId.slice(0, 8)} — PENDING withdrawal of ₿${amount.toFixed(8)}`,
+            created_at: ts1,
+          },
+        ]);
         updateOfferStatus(userId).catch(() => {});
         if (sendUser?.email) {
           emailService.sendTxReceiptEmail(
             { id: userId, email: sendUser.email, username: sendUser.username },
             { type: 'WITHDRAWAL', amount_btc: amountUserReceives, status: 'PENDING',
               destination_address: toAddress, fee_btc: platformFee,
-              notes: `User confirmed twice before sending. Warned of risky wallet and proceeded. 5% fee (₿${platformFee.toFixed(8)}) held. PRAQEN is not responsible for any loss from this transaction.`,
+              notes: `User confirmed twice before sending. Warned of risky wallet and proceeded. ${feeLabel} (₿${platformFee.toFixed(8)} / $${platformFeeUsd}) held. PRAQEN is not responsible for any loss from this transaction.`,
               created_at: new Date().toISOString() }
           ).catch(() => {});
         }
@@ -625,13 +657,23 @@ router.post('/send', verifyToken, async (req, res) => {
         .eq('user_id', userId),
     ]);
 
-    // Credit 5% fee to PRAQEN company wallet
+    // Credit blockchain fee to PRAQEN company wallet — update all balance tables immediately
     const { data: companyWallet } = await supabaseAdmin
       .from('wallets').select('balance_btc').eq('user_id', COMPANY_WALLET_ID).maybeSingle();
     const newCompanyBalance = parseFloat((parseFloat(companyWallet?.balance_btc || 0) + platformFee).toFixed(8));
-    await supabaseAdmin.from('wallets')
-      .update({ balance_btc: newCompanyBalance, updated_at: new Date().toISOString() })
-      .eq('user_id', COMPANY_WALLET_ID);
+    const companyTs = new Date().toISOString();
+    const [feeR1, feeR2] = await Promise.all([
+      supabaseAdmin.from('wallets').upsert(
+        { user_id: COMPANY_WALLET_ID, balance_btc: newCompanyBalance, updated_at: companyTs },
+        { onConflict: 'user_id' }
+      ),
+      supabaseAdmin.from('user_balances').upsert(
+        { user_id: COMPANY_WALLET_ID, balance_btc: newCompanyBalance, updated_at: companyTs },
+        { onConflict: 'user_id' }
+      ),
+    ]);
+    if (feeR1.error) console.error('[hdWalletRoutes] CRITICAL: company wallets fee credit failed', feeR1.error);
+    if (feeR2.error) console.error('[hdWalletRoutes] CRITICAL: company user_balances fee credit failed', feeR2.error);
 
     // Log both transactions for full audit trail
     await supabaseAdmin.from('wallet_transactions').insert([
@@ -642,7 +684,7 @@ router.post('/send', verifyToken, async (req, res) => {
         status:              'CONFIRMED',
         tx_hash:             result.txid,
         destination_address: toAddress,
-        notes:               `Withdrawal — 5% fee (₿${platformFee.toFixed(8)}) deducted`,
+        notes:               `Withdrawal — Blockchain fee: ${feeLabel} (₿${platformFee.toFixed(8)} / $${platformFeeUsd})`,
         created_at:          new Date().toISOString(),
       },
       {
@@ -651,7 +693,7 @@ router.post('/send', verifyToken, async (req, res) => {
         amount_btc: platformFee,
         status:     'CONFIRMED',
         tx_hash:    result.txid,
-        notes:      `5% withdrawal fee from user ${userId.slice(0, 8)} — withdrawal of ₿${amount.toFixed(8)}`,
+        notes:      `Blockchain fee (${feeLabel}) from user ${userId.slice(0, 8)} — withdrawal of ₿${amount.toFixed(8)}`,
         created_at: new Date().toISOString(),
       },
     ]);
@@ -663,7 +705,7 @@ router.post('/send', verifyToken, async (req, res) => {
         { id: userId, email: sendUser.email, username: sendUser.username },
         { type: 'WITHDRAWAL', amount_btc: amountUserReceives, status: 'CONFIRMED',
           destination_address: toAddress, fee_btc: platformFee, tx_hash: result.txid,
-          notes: `Withdrawal — 5% fee (₿${platformFee.toFixed(8)}) deducted`,
+          notes: `Withdrawal — Blockchain fee: ${feeLabel} (₿${platformFee.toFixed(8)} / $${platformFeeUsd})`,
           created_at: new Date().toISOString() }
       ).catch(() => {});
     }
@@ -678,12 +720,12 @@ router.post('/send', verifyToken, async (req, res) => {
       amount_requested:   amount,
       amount_sent:        amountUserReceives,
       platform_fee:       platformFee,
-      fee_label:          `5% PRAQEN withdrawal fee`,
+      fee_label:          `${feeLabel} — PRAQEN withdrawal fee`,
       to:                 toAddress,
       network_fee_sats:   result.fee_sats,
       new_balance:        newBalance,
       explorer:           result.explorer_url,
-      message:            `₿${amountUserReceives.toFixed(8)} sent successfully. 5% fee (₿${platformFee.toFixed(8)}) applied.`,
+      message:            `₿${amountUserReceives.toFixed(8)} sent successfully. Blockchain fee: ${feeLabel} (₿${platformFee.toFixed(8)}) applied.`,
     });
 
   } catch (error) {
@@ -710,22 +752,40 @@ router.post('/send', verifyToken, async (req, res) => {
           supabaseAdmin.from('user_balances').update({ balance_btc: newBalance, updated_at: new Date().toISOString() }).eq('user_id', userId),
           supabaseAdmin.from('user_wallets').update({ balance_btc: newBalance, updated_at: new Date().toISOString() }).eq('user_id', userId),
         ]);
-        await supabaseAdmin.from('wallet_transactions').insert({
-          user_id:             userId,
-          type:                'WITHDRAWAL',
-          amount_btc:          amountUserReceives,
-          status:              'PENDING',
-          destination_address: toAddress,
-          notes:               `User confirmed twice before sending. Warned of risky wallet and proceeded. 5% fee (₿${platformFee.toFixed(8)}) held. PRAQEN is not responsible for any loss from this transaction.`,
-          created_at:          new Date().toISOString(),
-        });
+        // Credit fee to PRAQEN immediately — fee is earned regardless of PENDING status
+        const { data: cw2 } = await supabaseAdmin.from('wallets').select('balance_btc').eq('user_id', COMPANY_WALLET_ID).maybeSingle();
+        const ncb2 = parseFloat((parseFloat(cw2?.balance_btc || 0) + platformFee).toFixed(8));
+        const ts2  = new Date().toISOString();
+        await Promise.all([
+          supabaseAdmin.from('wallets').upsert({ user_id: COMPANY_WALLET_ID, balance_btc: ncb2, updated_at: ts2 }, { onConflict: 'user_id' }),
+          supabaseAdmin.from('user_balances').upsert({ user_id: COMPANY_WALLET_ID, balance_btc: ncb2, updated_at: ts2 }, { onConflict: 'user_id' }),
+        ]);
+        await supabaseAdmin.from('wallet_transactions').insert([
+          {
+            user_id:             userId,
+            type:                'WITHDRAWAL',
+            amount_btc:          amountUserReceives,
+            status:              'PENDING',
+            destination_address: toAddress,
+            notes:               `User confirmed twice before sending. Warned of risky wallet and proceeded. ${feeLabel} (₿${platformFee.toFixed(8)} / $${platformFeeUsd}) held. PRAQEN is not responsible for any loss from this transaction.`,
+            created_at:          ts2,
+          },
+          {
+            user_id:    COMPANY_WALLET_ID,
+            type:       'FEE',
+            amount_btc: platformFee,
+            status:     'CONFIRMED',
+            notes:      `Blockchain fee (${feeLabel}) from user ${userId.slice(0, 8)} — PENDING withdrawal of ₿${amount.toFixed(8)}`,
+            created_at: ts2,
+          },
+        ]);
         updateOfferStatus(userId).catch(() => {});
         if (sendUser?.email) {
           emailService.sendTxReceiptEmail(
             { id: userId, email: sendUser.email, username: sendUser.username },
             { type: 'WITHDRAWAL', amount_btc: amountUserReceives, status: 'PENDING',
               destination_address: toAddress, fee_btc: platformFee,
-              notes: `User confirmed twice before sending. Warned of risky wallet and proceeded. 5% fee (₿${platformFee.toFixed(8)}) held. PRAQEN is not responsible for any loss from this transaction.`,
+              notes: `User confirmed twice before sending. Warned of risky wallet and proceeded. ${feeLabel} (₿${platformFee.toFixed(8)} / $${platformFeeUsd}) held. PRAQEN is not responsible for any loss from this transaction.`,
               created_at: new Date().toISOString() }
           ).catch(() => {});
         }

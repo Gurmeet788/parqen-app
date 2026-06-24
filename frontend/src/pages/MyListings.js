@@ -596,7 +596,8 @@ export default function MyListings({ user }) {
       }
 
       // Auto-reactivate PAUSED SELL and BUY_GIFT_CARD offers when wallet has $10+ worth of BTC
-      if (currentWalletBtc * 88000 >= 10) {
+      const liveBtcPrice = btcPrice || 88000;
+      if (currentWalletBtc * liveBtcPrice >= 10) {
         const pausedBtcRequired = currentListings.filter(l => {
           const lt = (l.listing_type || '').toUpperCase();
           return l.status === 'PAUSED' && (lt === 'SELL' || lt === 'SELL_BITCOIN' || lt === 'BUY_GIFT_CARD');

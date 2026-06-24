@@ -571,12 +571,12 @@ function BuyerModal({buyer, listing, onClose, onTrade, btcPriceUSD}) {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-                <a href={u?.id ? `/profile/${u.id}` : '#'}
+                <Link to={u?.id ? `/profile/${u.id}` : '#'}
                   onClick={() => u?.id && axios.post(`${API_URL}/users/${u.id}/view-profile`).catch(()=>{})}
                   className="font-black text-white text-base leading-tight truncate"
                   style={{textDecoration:'none', borderBottom:'1.5px solid rgba(255,255,255,0.4)', paddingBottom:'1px'}}>
                   {getDisplayName(u) || 'Buyer'}
-                </a>
+                </Link>
                 {kycOk && <BadgeCheck size={15} style={{color:'#93C5FD', flexShrink:0}}/>}
               </div>
               <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
@@ -633,7 +633,7 @@ function BuyerModal({buyer, listing, onClose, onTrade, btcPriceUSD}) {
 
           {/* ── VIEW FULL PROFILE LINK ── */}
           {u?.id && (
-            <a href={`/profile/${u.id}`}
+            <Link to={`/profile/${u.id}`}
               onClick={() => axios.post(`${API_URL}/users/${u.id}/view-profile`).catch(()=>{})}
               className="mt-3 flex items-center justify-center gap-1.5 w-full py-2 rounded-xl text-xs font-bold transition hover:bg-white/20 active:scale-95"
               style={{
@@ -646,7 +646,7 @@ function BuyerModal({buyer, listing, onClose, onTrade, btcPriceUSD}) {
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M7 17L17 7M17 7H7M17 7v10"/>
               </svg>
-            </a>
+            </Link>
           )}
         </div>
 
@@ -1083,18 +1083,19 @@ export default function SellBitcoin({user}) {
       const res = await axios.get(`${API_URL}/listings`, { timeout: 20000 });
       const all = (res.data.listings||[]).map(l=>({...l, users:Array.isArray(l.users)?l.users[0]:l.users}));
       const data = all.filter(l=>l.listing_type==='BUY'||l.listing_type==='BUY_BITCOIN');
-      // Only update if we got real data — never blank out the list on an empty response
       if (data.length > 0) {
         setOffers(data);
         try { localStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() })); } catch {}
       } else if (!offers.length) {
-        setOffers(data);
-        try { localStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() })); } catch {}
+        // Truly empty marketplace — show empty state but don't cache
+        setOffers([]);
       }
-    } catch {
+    } catch (err) {
+      // 503 = DB temporarily down; longer retry delay so we don't spam the server
+      const retryDelay = err?.response?.status === 503 ? 3000 : 1000;
       if (attempt < 3) {
         setRetrying(true);
-        setTimeout(() => loadOffers(attempt + 1, force), 1000);
+        setTimeout(() => loadOffers(attempt + 1, force), retryDelay);
       } else {
         setRetrying(false);
         if (!offers.length) setLoadError(true);

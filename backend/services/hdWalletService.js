@@ -15,7 +15,7 @@ const ECPair = ECPairFactory(ecc);
 // ── PRAQEN company fee wallet identifier ─────────────────────────────────────
 const PRAQEN_FEE_IDENTIFIER        = 'praqen_company_fee_wallet';
 const PRAQEN_HOT_WALLET_IDENTIFIER = 'praqen_hot_withdrawal_wallet'; // funds user external withdrawals
-const PRAQEN_FEE_RATE              = 0.005; // 0.5%
+const PRAQEN_FEE_RATE              = 0.01; // 1%
 
 class HDWalletService {
 

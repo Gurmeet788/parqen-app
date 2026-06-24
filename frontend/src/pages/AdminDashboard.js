@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import {
-  LayoutDashboard, Users, ArrowLeftRight, AlertTriangle,
+  LayoutDashboard, Users, ArrowLeftRight, ArrowUpRight, AlertTriangle,
   ShieldCheck, DollarSign, List, Megaphone, LogOut,
   TrendingUp, CheckCircle, XCircle, Clock, Eye,
   Ban, UserCheck, Trash2, RefreshCw, ChevronLeft,
@@ -1710,7 +1710,7 @@ function PlatformWalletsCard() {
               </div>
               <div>
                 <p className="font-black text-xs" style={{ color: C.g700 }}>Fee Collection Wallet</p>
-                <p className="text-[11px]" style={{ color: C.g400 }}>0.5% of every completed trade</p>
+                <p className="text-[11px]" style={{ color: C.g400 }}>1% on BTC trades · 2% on gift cards</p>
               </div>
             </div>
 
@@ -1748,43 +1748,167 @@ function PlatformWalletsCard() {
 }
 
 function FinanceSection() {
-  const [data, setData]       = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [data,      setData]    = useState(null);
+  const [transfers, setTransfers] = useState(null);
+  const [btcPrice,  setBtcPrice] = useState(0);
+  const [loading,   setLoading] = useState(true);
+  const [txTab,     setTxTab]   = useState('internal'); // 'internal' | 'external'
 
-  const load = useCallback(() => {
+  const toUsd = (btc) => btcPrice > 0
+    ? `≈ $${(parseFloat(btc || 0) * btcPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : '';
+
+  const load = useCallback(async () => {
     setLoading(true);
-    Promise.all([
-      axios.get(`${API_URL}/admin/revenue`,  { headers: authH() }),
-      axios.get(`${API_URL}/admin/profits`,  { headers: authH() }),
-    ]).then(([rev, prof]) => {
-      setData({ ...rev.data, profits: prof.data.profits || [], totalBtc: prof.data.totalBtc, totalUsd: prof.data.totalUsd });
-    }).catch(() => toast.error('Failed to load revenue'))
-      .finally(() => setLoading(false));
+    try {
+      const [rev, tr, priceRes] = await Promise.all([
+        axios.get(`${API_URL}/admin/revenue`,   { headers: authH() }),
+        axios.get(`${API_URL}/admin/transfers`, { headers: authH() }),
+        fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd')
+          .then(r => r.json()).then(d => d?.bitcoin?.usd || 0).catch(() => 0),
+      ]);
+      setData(rev.data);
+      setTransfers(tr.data);
+      if (priceRes > 0) setBtcPrice(priceRes);
+    } catch { toast.error('Failed to load finance data'); }
+    finally { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
   if (loading) return <Spin />;
-  if (!data) return <Empty text="No financial data" />;
+  if (!data)   return <Empty text="No financial data" />;
+
+  const escrowBal    = parseFloat(transfers?.escrowBalanceBtc || 0);
+  const totalFeesBtc = parseFloat(data.totalRevBtc || 0);
+  const totalFeesUsd = parseFloat(data.totalRevUsd || 0);
+  const internalBtc  = parseFloat(transfers?.totalInternalBtc || 0);
+  const externalBtc  = parseFloat(transfers?.totalExternalBtc || 0);
 
   return (
     <div className="space-y-5">
-      <SectionHead title="Finance & Revenue" sub="Platform fee collections and affiliate commissions"
+      <SectionHead title="Finance & Revenue" sub="Real-time platform revenue, transfer activity and escrow wallet"
         action={<button onClick={load} className="p-2 rounded-xl border hover:bg-gray-50 transition" style={{ borderColor: C.g200 }}><RefreshCw size={14} style={{ color: C.g500 }} /></button>} />
 
       <PlatformWalletsCard />
 
-      <div className="grid grid-cols-3 gap-3">
-        <StatCard icon={<Bitcoin size={22} />}     label="Total Revenue (BTC)" value={`${fmtBtc(data.totalRevBtc)} BTC`} color="#F59E0B" bg="#FFFBEB" />
-        <StatCard icon={<DollarSign size={22} />}  label="Total Revenue (USD)" value={`$${fmt(data.totalRevUsd, 2)}`} color={C.success} bg="#F0FDF4" />
-        <StatCard icon={<TrendingUp size={22} />}  label="Affiliate Payouts"   value={`${fmtBtc(data.totalAffBtc)} BTC`} color="#8B5CF6" bg="#F5F3FF" />
+      {/* ── Revenue + Escrow snapshot ──────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-white rounded-2xl border p-4 space-y-1" style={{ borderColor: C.g200 }}>
+          <p className="text-[11px] font-black uppercase tracking-wide" style={{ color: C.g400 }}>Escrow Fee Wallet Balance</p>
+          <p className="text-xl font-black" style={{ color: C.forest }}>₿{fmtBtc(escrowBal)}</p>
+          <p className="text-xs font-semibold" style={{ color: C.g500 }}>{toUsd(escrowBal)}</p>
+          <p className="text-[10px] mt-1" style={{ color: C.g400 }}>Live balance · praqen system account</p>
+        </div>
+        <div className="bg-white rounded-2xl border p-4 space-y-1" style={{ borderColor: C.g200 }}>
+          <p className="text-[11px] font-black uppercase tracking-wide" style={{ color: C.g400 }}>Total Escrow Fees Collected</p>
+          <p className="text-xl font-black" style={{ color: '#F59E0B' }}>₿{fmtBtc(totalFeesBtc)}</p>
+          <p className="text-xs font-semibold" style={{ color: C.g500 }}>${fmt(totalFeesUsd, 2)} USD</p>
+          <p className="text-[10px] mt-1" style={{ color: C.g400 }}>1% BTC / 2% gift card — on completed trades only ({data.profits?.length || 0} trades)</p>
+        </div>
       </div>
 
+      {/* ── Transfer volume stats ─────────────────────────────────────── */}
+      <div className="grid grid-cols-3 gap-3">
+        <StatCard icon={<ArrowLeftRight size={22} />} label="Internal Transfers" value={`₿${fmtBtc(internalBtc)}`}
+          sub={`${transfers?.internalCount || 0} transfers · ${toUsd(internalBtc)}`} color={C.green} bg="#F0FDF4" />
+        <StatCard icon={<ArrowUpRight size={22} />}   label="External Withdrawals" value={`₿${fmtBtc(externalBtc)}`}
+          sub={`${transfers?.withdrawalCount || 0} withdrawals · ${toUsd(externalBtc)}`} color="#EF4444" bg="#FEF2F2" />
+        <StatCard icon={<TrendingUp size={22} />}     label="Affiliate Payouts"   value={`₿${fmtBtc(data.totalAffBtc)}`}
+          sub={`${(data.affiliates || []).filter(a => a.status === 'COMPLETED').length} paid out`} color="#8B5CF6" bg="#F5F3FF" />
+      </div>
+
+      {/* ── Transfer Activity ─────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border overflow-hidden" style={{ borderColor: C.g200 }}>
+        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: C.g100 }}>
+          <h3 className="font-black text-sm" style={{ color: C.g800 }}>Transfer Activity</h3>
+          <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: C.g200 }}>
+            {[['internal', '🔄 Internal'], ['external', '↗ External']].map(([key, label]) => (
+              <button key={key} onClick={() => setTxTab(key)}
+                className="px-3 py-1.5 text-xs font-black transition"
+                style={{ backgroundColor: txTab === key ? C.forest : 'transparent', color: txTab === key ? '#fff' : C.g500 }}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {txTab === 'internal' && (
+          transfers?.internal?.length === 0
+            ? <Empty icon="🔄" text="No internal transfers yet" />
+            : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead style={{ backgroundColor: C.g50 }}>
+                    <tr>
+                      {['Sender', 'Recipient', 'Amount (BTC)', 'Amount (USD)', 'Date'].map(h => (
+                        <th key={h} className="text-left px-4 py-3 text-xs font-black uppercase tracking-wide" style={{ color: C.g500 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(transfers?.internal || []).map(t => (
+                      <tr key={t.id} className="border-t hover:bg-gray-50" style={{ borderColor: C.g100 }}>
+                        <td className="px-4 py-3">
+                          <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#F0FDF4', color: C.forest }}>@{t.sender}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8' }}>@{t.recipient}</span>
+                        </td>
+                        <td className="px-4 py-3 text-xs font-black" style={{ color: C.forest }}>₿{fmtBtc(t.amount_btc)}</td>
+                        <td className="px-4 py-3 text-xs font-semibold" style={{ color: C.g500 }}>{toUsd(t.amount_btc)}</td>
+                        <td className="px-4 py-3 text-xs" style={{ color: C.g400 }}>{fmtDate(t.created_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+        )}
+
+        {txTab === 'external' && (
+          transfers?.withdrawals?.length === 0
+            ? <Empty icon="↗" text="No external withdrawals yet" />
+            : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead style={{ backgroundColor: C.g50 }}>
+                    <tr>
+                      {['User', 'Amount (BTC)', 'Amount (USD)', 'Status', 'Date'].map(h => (
+                        <th key={h} className="text-left px-4 py-3 text-xs font-black uppercase tracking-wide" style={{ color: C.g500 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(transfers?.withdrawals || []).map(t => (
+                      <tr key={t.id} className="border-t hover:bg-gray-50" style={{ borderColor: C.g100 }}>
+                        <td className="px-4 py-3">
+                          <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#F0FDF4', color: C.forest }}>@{t.username}</span>
+                        </td>
+                        <td className="px-4 py-3 text-xs font-black" style={{ color: '#EF4444' }}>₿{fmtBtc(t.amount_btc)}</td>
+                        <td className="px-4 py-3 text-xs font-semibold" style={{ color: C.g500 }}>{toUsd(t.amount_btc)}</td>
+                        <td className="px-4 py-3">
+                          <Pill label={t.status || 'PENDING'}
+                            color={t.status === 'COMPLETED' ? '#166534' : t.status === 'REVERSED' ? '#991B1B' : '#92400E'}
+                            bg={t.status === 'COMPLETED' ? '#F0FDF4' : t.status === 'REVERSED' ? '#FEF2F2' : '#FFFBEB'} />
+                        </td>
+                        <td className="px-4 py-3 text-xs" style={{ color: C.g400 }}>{fmtDate(t.created_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+        )}
+      </div>
+
+      {/* ── Escrow Fee Collections ────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border overflow-hidden" style={{ borderColor: C.g200 }}>
         <div className="px-5 py-4 border-b" style={{ borderColor: C.g100 }}>
-          <h3 className="font-black text-sm" style={{ color: C.g800 }}>Fee Collections</h3>
+          <h3 className="font-black text-sm" style={{ color: C.g800 }}>Escrow Fee Collections</h3>
+          <p className="text-xs mt-0.5" style={{ color: C.g400 }}>1% on BTC trades · 2% on gift card trades — credited to escrow wallet on completion</p>
         </div>
-        {data.profits.length === 0 ? <Empty icon="💰" text="No fee collections yet" /> : (
+        {(data.profits || []).length === 0 ? <Empty icon="💰" text="No fee collections yet" /> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead style={{ backgroundColor: C.g50 }}>
@@ -1795,11 +1919,11 @@ function FinanceSection() {
                 </tr>
               </thead>
               <tbody>
-                {data.profits.slice(0, 50).map(p => (
+                {(data.profits || []).slice(0, 50).map(p => (
                   <tr key={p.id} className="border-t hover:bg-gray-50" style={{ borderColor: C.g100 }}>
                     <td className="px-4 py-3 text-xs font-mono" style={{ color: C.g600 }}>{(p.trade_id || '').slice(0, 8).toUpperCase()}…</td>
-                    <td className="px-4 py-3 text-xs font-bold" style={{ color: C.g800 }}>{fmtBtc(p.profit_btc)} BTC</td>
-                    <td className="px-4 py-3 text-xs font-bold" style={{ color: C.g800 }}>${fmt(p.profit_usd, 2)}</td>
+                    <td className="px-4 py-3 text-xs font-black" style={{ color: '#F59E0B' }}>₿{fmtBtc(p.profit_btc)}</td>
+                    <td className="px-4 py-3 text-xs font-black" style={{ color: C.g800 }}>${fmt(p.profit_usd, 2)}</td>
                     <td className="px-4 py-3"><Pill label={p.status || 'COLLECTED'} color="#166534" bg="#F0FDF4" /></td>
                     <td className="px-4 py-3 text-xs" style={{ color: C.g400 }}>{fmtDate(p.collected_at)}</td>
                   </tr>
@@ -1810,7 +1934,8 @@ function FinanceSection() {
         )}
       </div>
 
-      {data.affiliates?.length > 0 && (
+      {/* ── Affiliate Commissions ─────────────────────────────────────── */}
+      {(data.affiliates || []).length > 0 && (
         <div className="bg-white rounded-2xl border overflow-hidden" style={{ borderColor: C.g200 }}>
           <div className="px-5 py-4 border-b" style={{ borderColor: C.g100 }}>
             <h3 className="font-black text-sm" style={{ color: C.g800 }}>Affiliate Commissions</h3>
@@ -1825,9 +1950,9 @@ function FinanceSection() {
                 </tr>
               </thead>
               <tbody>
-                {data.affiliates.slice(0, 20).map((a, i) => (
+                {(data.affiliates || []).slice(0, 20).map((a, i) => (
                   <tr key={i} className="border-t hover:bg-gray-50" style={{ borderColor: C.g100 }}>
-                    <td className="px-4 py-3 text-xs font-bold" style={{ color: C.g800 }}>{fmtBtc(a.commission_btc)} BTC</td>
+                    <td className="px-4 py-3 text-xs font-bold" style={{ color: C.g800 }}>₿{fmtBtc(a.commission_btc)}</td>
                     <td className="px-4 py-3 text-xs font-bold" style={{ color: C.g800 }}>${fmt(a.commission_usd, 2)}</td>
                     <td className="px-4 py-3"><Pill label={a.status} color={a.status === 'COMPLETED' ? '#166534' : '#92400E'} bg={a.status === 'COMPLETED' ? '#F0FDF4' : '#FFFBEB'} /></td>
                     <td className="px-4 py-3 text-xs" style={{ color: C.g400 }}>{fmtDate(a.created_at)}</td>
