@@ -1866,6 +1866,707 @@ app.post('/api/team/setup-account', async (req, res) => {
   }
 });
 
+// GET /api/team/escrow-fees — escrow fee breakdown for team finance page (moderators + admins)
+app.get('/api/team/escrow-fees', verifyToken, async (req, res) => {
+  try {
+    const { data: u } = await supabaseAdmin.from('users').select('is_admin, is_moderator, email').eq('id', req.userId).single();
+    const ok = u?.is_admin || u?.is_moderator;
+    if (!ok) return res.status(403).json({ error: 'Team access required' });
+
+    const COMPANY_WALLET_ID = '14762cd0-d3b2-474f-acab-fe0071961e9a';
+
+    // Real fee transactions from wallet_transactions (type=FEE for the company account)
+    // Also pull DEPOSIT rows whose notes start with "Platform fee" (legacy records)
+    const { data: feeTxs } = await supabaseAdmin
+      .from('wallet_transactions')
+      .select('id, amount_btc, notes, created_at, status, tx_hash')
+      .eq('user_id', COMPANY_WALLET_ID)
+      .or('type.eq.FEE,and(type.eq.DEPOSIT,notes.ilike.Platform fee%)')
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    // Company wallet balance lives in the `wallets` table (updated by tradeEscrowService)
+    const { data: walletBal } = await supabaseAdmin
+      .from('wallets')
+      .select('balance_btc, locked_balance_btc')
+      .eq('user_id', COMPANY_WALLET_ID)
+      .maybeSingle();
+
+    const txs = feeTxs || [];
+
+    // Parse notes: "Platform fee from trade ABCD1234 — 0.5% of ₿0.00123456"
+    // or with pipe separator "Platform fee from trade ABCD1234 | 0.5% of ₿0.00123456"
+    const records = txs.map(tx => {
+      const notes = tx.notes || '';
+      const tradeIdMatch = notes.match(/trade ([A-F0-9]{8})/i);
+      const rateMatch    = notes.match(/([\d.]+)%/);
+      const tradeAmtMatch = notes.match(/₿([\d.]+)/);
+      const rate = parseFloat(rateMatch?.[1] || '0.5');
+      const isGiftCard = rate >= 2;
+      return {
+        id:          tx.id,
+        trade_ref:   tradeIdMatch?.[1]?.toUpperCase() || '—',
+        amount_btc:  tx.amount_btc,
+        rate,
+        is_gift_card: isGiftCard,
+        trade_btc:   tradeAmtMatch ? parseFloat(tradeAmtMatch[1]) : 0,
+        notes:       notes,
+        collected_at: tx.created_at,
+        status:      tx.status || 'CONFIRMED',
+        tx_hash:     tx.tx_hash || null,
+      };
+    });
+
+    const tradeFees = records.filter(r => !r.is_gift_card);
+    const gcFees    = records.filter(r => r.is_gift_card);
+    const sum = (arr) => arr.reduce((s, r) => s + parseFloat(r.amount_btc || 0), 0);
+
+    // wallets table: balance_btc = total, locked_balance_btc = locked
+    const walletTotal  = parseFloat(walletBal?.balance_btc         || 0);
+    const walletLocked = parseFloat(walletBal?.locked_balance_btc  || 0);
+    const walletAvail  = Math.max(0, walletTotal - walletLocked);
+    const feesTotal    = sum(records);
+
+    res.json({
+      records,
+      availableBtc:  walletAvail.toFixed(8),
+      lockedBtc:     walletLocked.toFixed(8),
+      totalBtc:      walletTotal.toFixed(8),
+      totalFeeBtc:   feesTotal.toFixed(8),
+      totalTradeBtc: sum(tradeFees).toFixed(8),
+      totalGcBtc:    sum(gcFees).toFixed(8),
+      tradeCount:    tradeFees.length,
+      gcCount:       gcFees.length,
+    });
+  } catch (e) {
+    console.error('[team/escrow-fees]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ================================================================
+// COMPANY BOOKS — Loans/Debt + Expenses  (team + admin only)
+// Tables needed (run once in Supabase SQL editor):
+//   CREATE TABLE company_loans (
+//     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+//     title TEXT NOT NULL, lender TEXT NOT NULL,
+//     amount_usd DECIMAL(12,2) NOT NULL DEFAULT 0,
+//     amount_paid_usd DECIMAL(12,2) NOT NULL DEFAULT 0,
+//     due_date DATE, status TEXT DEFAULT 'active',
+//     notes TEXT, created_by TEXT,
+//     created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+//   );
+//   CREATE TABLE company_expenses (
+//     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+//     category TEXT NOT NULL DEFAULT 'other',
+//     title TEXT NOT NULL, amount_usd DECIMAL(12,2) NOT NULL DEFAULT 0,
+//     expense_date DATE NOT NULL DEFAULT CURRENT_DATE,
+//     paid_by TEXT, notes TEXT, created_by TEXT,
+//     created_at TIMESTAMPTZ DEFAULT NOW()
+//   );
+// ================================================================
+
+async function requireTeam(req, res) {
+  const { data: u } = await supabaseAdmin.from('users').select('is_admin, is_moderator').eq('id', req.userId).single();
+  if (!u?.is_admin && !u?.is_moderator) { res.status(403).json({ error: 'Team access required' }); return null; }
+  return u;
+}
+
+// ── LOANS ──────────────────────────────────────────────────────────────────────
+app.get('/api/team/loans', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { data, error } = await supabaseAdmin.from('company_loans').select('*').order('created_at', { ascending: false });
+    if (error) return res.status(400).json({ error: error.message });
+    const totalOwed = (data || []).filter(l => l.status !== 'paid').reduce((s, l) => s + parseFloat(l.amount_usd || 0) - parseFloat(l.amount_paid_usd || 0), 0);
+    res.json({ loans: data || [], totalOwed: totalOwed.toFixed(2) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/team/loans', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { title, lender, amount_usd, due_date, notes } = req.body;
+    if (!title || !lender || !amount_usd) return res.status(400).json({ error: 'title, lender and amount_usd required' });
+    const { data: u } = await supabaseAdmin.from('users').select('username').eq('id', req.userId).single();
+    const { data, error } = await supabaseAdmin.from('company_loans').insert({
+      title, lender, amount_usd: parseFloat(amount_usd), amount_paid_usd: 0,
+      due_date: due_date || null, status: 'active', notes: notes || null,
+      created_by: u?.username || req.userId, created_at: new Date(), updated_at: new Date(),
+    }).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ loan: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/team/loans/:id', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { amount_paid_usd, status, notes, due_date, title, lender, amount_usd } = req.body;
+    const updates = { updated_at: new Date() };
+    if (title             !== undefined) updates.title           = title;
+    if (lender            !== undefined) updates.lender          = lender;
+    if (amount_usd        !== undefined) updates.amount_usd      = parseFloat(amount_usd);
+    if (amount_paid_usd   !== undefined) updates.amount_paid_usd = parseFloat(amount_paid_usd);
+    if (status            !== undefined) updates.status          = status;
+    if (notes             !== undefined) updates.notes           = notes;
+    if (due_date          !== undefined) updates.due_date        = due_date;
+    const { data, error } = await supabaseAdmin.from('company_loans').update(updates).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ loan: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/team/loans/:id', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { error } = await supabaseAdmin.from('company_loans').delete().eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── EXPENSES ───────────────────────────────────────────────────────────────────
+app.get('/api/team/expenses', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { data, error } = await supabaseAdmin.from('company_expenses').select('*').order('expense_date', { ascending: false }).limit(300);
+    if (error) return res.status(400).json({ error: error.message });
+    const expenses = data || [];
+    const totalSpent = expenses.reduce((s, e) => s + parseFloat(e.amount_usd || 0), 0);
+    const byCategory = expenses.reduce((m, e) => {
+      const cat = e.category || 'other';
+      m[cat] = (m[cat] || 0) + parseFloat(e.amount_usd || 0);
+      return m;
+    }, {});
+    res.json({ expenses, totalSpent: totalSpent.toFixed(2), byCategory });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/team/expenses', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { category, title, amount_usd, expense_date, paid_by, notes } = req.body;
+    if (!title || !amount_usd) return res.status(400).json({ error: 'title and amount_usd required' });
+    const { data: u } = await supabaseAdmin.from('users').select('username').eq('id', req.userId).single();
+    const { data, error } = await supabaseAdmin.from('company_expenses').insert({
+      category: category || 'other', title, amount_usd: parseFloat(amount_usd),
+      expense_date: expense_date || new Date().toISOString().slice(0, 10),
+      paid_by: paid_by || null, notes: notes || null,
+      created_by: u?.username || req.userId, created_at: new Date(),
+    }).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ expense: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/team/expenses/:id', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { error } = await supabaseAdmin.from('company_expenses').delete().eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ================================================================
+// STAFF DIRECTORY  (team + admin only)
+// Table: company_staff  — see company_staff_table.sql
+// ================================================================
+app.get('/api/team/staff', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { data, error } = await supabaseAdmin
+      .from('company_staff').select('*').order('start_date', { ascending: false });
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ staff: data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/team/staff', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const {
+      full_name, role, department, official_email, personal_email, phone,
+      salary_usd, salary_period, contract_type, contract_months,
+      start_date, status, bio, address,
+      emergency_contact, emergency_phone, notes, avatar_base64,
+    } = req.body;
+    if (!full_name || !role) return res.status(400).json({ error: 'full_name and role are required' });
+    const { data: me } = await supabaseAdmin.from('users').select('username').eq('id', req.userId).single();
+
+    let avatar_url = null;
+    if (avatar_base64) {
+      const base64Data = avatar_base64.replace(/^data:image\/\w+;base64,/, '');
+      const ext = avatar_base64.match(/^data:image\/(\w+);/)?.[1] || 'jpg';
+      const buf = Buffer.from(base64Data, 'base64');
+      const filename = `staff/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      await supabaseAdmin.storage.createBucket('staff-avatars', { public: true }).catch(() => {});
+      const { error: upErr } = await supabaseAdmin.storage.from('staff-avatars').upload(filename, buf, { contentType: `image/${ext}`, upsert: true });
+      if (!upErr) {
+        const { data: { publicUrl } } = supabaseAdmin.storage.from('staff-avatars').getPublicUrl(filename);
+        avatar_url = publicUrl;
+      }
+    }
+
+    const { data, error } = await supabaseAdmin.from('company_staff').insert({
+      full_name, role,
+      department:        department        || 'General',
+      official_email:    official_email    || null,
+      personal_email:    personal_email    || null,
+      phone:             phone             || null,
+      salary_usd:        parseFloat(salary_usd || 0),
+      salary_period:     salary_period     || 'monthly',
+      contract_type:     contract_type     || 'full-time',
+      contract_months:   contract_months   ? parseInt(contract_months) : null,
+      start_date:        start_date        || new Date().toISOString().slice(0, 10),
+      status:            status            || 'active',
+      bio:               bio               || null,
+      address:           address           || null,
+      emergency_contact: emergency_contact || null,
+      emergency_phone:   emergency_phone   || null,
+      notes:             notes             || null,
+      avatar_url,
+      added_by: me?.username || req.userId,
+      created_at: new Date(), updated_at: new Date(),
+    }).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ member: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/team/staff/:id', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const {
+      full_name, role, department, official_email, personal_email, phone,
+      salary_usd, salary_period, contract_type, contract_months,
+      start_date, status, bio, address,
+      emergency_contact, emergency_phone, notes, avatar_base64,
+    } = req.body;
+
+    const updates = { updated_at: new Date() };
+    if (full_name        !== undefined) updates.full_name        = full_name;
+    if (role             !== undefined) updates.role             = role;
+    if (department       !== undefined) updates.department       = department;
+    if (official_email   !== undefined) updates.official_email   = official_email;
+    if (personal_email   !== undefined) updates.personal_email   = personal_email;
+    if (phone            !== undefined) updates.phone            = phone;
+    if (salary_usd       !== undefined) updates.salary_usd       = parseFloat(salary_usd);
+    if (salary_period    !== undefined) updates.salary_period    = salary_period;
+    if (contract_type    !== undefined) updates.contract_type    = contract_type;
+    if (contract_months  !== undefined) updates.contract_months  = contract_months ? parseInt(contract_months) : null;
+    if (start_date       !== undefined) updates.start_date       = start_date;
+    if (status           !== undefined) updates.status           = status;
+    if (bio              !== undefined) updates.bio              = bio;
+    if (address          !== undefined) updates.address          = address;
+    if (emergency_contact !== undefined) updates.emergency_contact = emergency_contact;
+    if (emergency_phone  !== undefined) updates.emergency_phone  = emergency_phone;
+    if (notes            !== undefined) updates.notes            = notes;
+
+    if (avatar_base64) {
+      const base64Data = avatar_base64.replace(/^data:image\/\w+;base64,/, '');
+      const ext = avatar_base64.match(/^data:image\/(\w+);/)?.[1] || 'jpg';
+      const buf = Buffer.from(base64Data, 'base64');
+      const filename = `staff/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      await supabaseAdmin.storage.createBucket('staff-avatars', { public: true }).catch(() => {});
+      const { error: upErr } = await supabaseAdmin.storage.from('staff-avatars').upload(filename, buf, { contentType: `image/${ext}`, upsert: true });
+      if (!upErr) {
+        const { data: { publicUrl } } = supabaseAdmin.storage.from('staff-avatars').getPublicUrl(filename);
+        updates.avatar_url = publicUrl;
+      }
+    }
+
+    const { data, error } = await supabaseAdmin.from('company_staff').update(updates).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ member: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/team/staff/:id', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { error } = await supabaseAdmin.from('company_staff').delete().eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ================================================================
+// ANNOUNCEMENTS
+// ================================================================
+app.get('/api/team/announcements', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { data, error } = await supabaseAdmin.from('team_announcements').select('*').order('pinned', { ascending: false }).order('created_at', { ascending: false });
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ announcements: data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/team/announcements', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { title, body, priority } = req.body;
+    if (!title || !body) return res.status(400).json({ error: 'title and body required' });
+    const { data: me } = await supabaseAdmin.from('users').select('username').eq('id', req.userId).single();
+    const { data, error } = await supabaseAdmin.from('team_announcements').insert({ title, body, priority: priority || 'normal', pinned: false, created_by: me?.username || req.userId, created_at: new Date(), updated_at: new Date() }).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ announcement: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.patch('/api/team/announcements/:id', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { title, body, priority, pinned } = req.body;
+    const updates = { updated_at: new Date() };
+    if (title    !== undefined) updates.title    = title;
+    if (body     !== undefined) updates.body     = body;
+    if (priority !== undefined) updates.priority = priority;
+    if (pinned   !== undefined) updates.pinned   = pinned;
+    const { data, error } = await supabaseAdmin.from('team_announcements').update(updates).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ announcement: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/team/announcements/:id', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { error } = await supabaseAdmin.from('team_announcements').delete().eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ================================================================
+// TASK MANAGER
+// ================================================================
+app.get('/api/team/tasks', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { data, error } = await supabaseAdmin.from('team_tasks').select('*').order('created_at', { ascending: false });
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ tasks: data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/team/tasks', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { title, description, assigned_to, priority, due_date } = req.body;
+    if (!title) return res.status(400).json({ error: 'title required' });
+    const { data: me } = await supabaseAdmin.from('users').select('username').eq('id', req.userId).single();
+    const { data, error } = await supabaseAdmin.from('team_tasks').insert({ title, description: description || null, assigned_to: assigned_to || null, priority: priority || 'medium', status: 'todo', due_date: due_date || null, created_by: me?.username || req.userId, created_at: new Date(), updated_at: new Date() }).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ task: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.patch('/api/team/tasks/:id', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { title, description, assigned_to, priority, status, due_date } = req.body;
+    const updates = { updated_at: new Date() };
+    if (title       !== undefined) updates.title       = title;
+    if (description !== undefined) updates.description = description;
+    if (assigned_to !== undefined) updates.assigned_to = assigned_to;
+    if (priority    !== undefined) updates.priority    = priority;
+    if (status      !== undefined) updates.status      = status;
+    if (due_date    !== undefined) updates.due_date    = due_date;
+    const { data, error } = await supabaseAdmin.from('team_tasks').update(updates).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ task: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/team/tasks/:id', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { error } = await supabaseAdmin.from('team_tasks').delete().eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ================================================================
+// ACTIVITY LOG
+// ================================================================
+app.get('/api/team/activity-log', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { data, error } = await supabaseAdmin.from('team_activity_log').select('*').order('created_at', { ascending: false }).limit(200);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ logs: data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/team/activity-log', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { action, details, category } = req.body;
+    if (!action) return res.status(400).json({ error: 'action required' });
+    const { data: me } = await supabaseAdmin.from('users').select('username').eq('id', req.userId).single();
+    const { data, error } = await supabaseAdmin.from('team_activity_log').insert({ actor: me?.username || 'Team', action, details: details || null, category: category || 'general', created_at: new Date() }).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ log: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ================================================================
+// PLATFORM STATS
+// ================================================================
+app.get('/api/team/platform-stats', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const todayISO = today.toISOString();
+    const weekAgo  = new Date(Date.now() - 7 * 86400000).toISOString();
+
+    const [
+      { count: totalUsers },
+      { count: newToday },
+      { count: newThisWeek },
+      { data: trades },
+      { count: disputed },
+      { count: kycPending },
+      { count: bannedUsers },
+    ] = await Promise.all([
+      supabaseAdmin.from('users').select('*', { count: 'exact', head: true }).eq('is_admin', false).eq('is_moderator', false),
+      supabaseAdmin.from('users').select('*', { count: 'exact', head: true }).gte('created_at', todayISO).eq('is_admin', false).eq('is_moderator', false),
+      supabaseAdmin.from('users').select('*', { count: 'exact', head: true }).gte('created_at', weekAgo).eq('is_admin', false).eq('is_moderator', false),
+      supabaseAdmin.from('trades').select('status, btc_amount, created_at').order('created_at', { ascending: false }).limit(1000),
+      supabaseAdmin.from('trades').select('*', { count: 'exact', head: true }).eq('status', 'DISPUTED'),
+      supabaseAdmin.from('users').select('*', { count: 'exact', head: true }).eq('kyc_status', 'pending'),
+      supabaseAdmin.from('users').select('*', { count: 'exact', head: true }).eq('account_status', 'banned'),
+    ]);
+
+    const allTrades      = trades || [];
+    const activeTrades   = allTrades.filter(t => !['COMPLETED','CANCELLED'].includes(t.status));
+    const completedToday = allTrades.filter(t => t.status === 'COMPLETED' && t.created_at >= todayISO);
+    const completedAll   = allTrades.filter(t => t.status === 'COMPLETED');
+    const totalVolumeBtc = completedAll.reduce((s, t) => s + parseFloat(t.btc_amount || 0), 0);
+    const volumeTodayBtc = completedToday.reduce((s, t) => s + parseFloat(t.btc_amount || 0), 0);
+
+    res.json({
+      totalUsers:      totalUsers || 0,
+      newToday:        newToday   || 0,
+      newThisWeek:     newThisWeek || 0,
+      activeTrades:    activeTrades.length,
+      completedToday:  completedToday.length,
+      totalTrades:     allTrades.length,
+      disputed:        disputed   || 0,
+      kycPending:      kycPending || 0,
+      bannedUsers:     bannedUsers || 0,
+      totalVolumeBtc:  totalVolumeBtc.toFixed(8),
+      volumeTodayBtc:  volumeTodayBtc.toFixed(8),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ================================================================
+// RISK MONITOR
+// ================================================================
+app.get('/api/team/risk-monitor', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const [
+      { data: banned },
+      { data: kycFail },
+      { data: disputed },
+    ] = await Promise.all([
+      supabaseAdmin.from('users').select('id, username, email, full_name, account_status, created_at, total_trades, country').eq('account_status', 'banned').order('created_at', { ascending: false }).limit(50),
+      supabaseAdmin.from('users').select('id, username, email, full_name, kyc_status, created_at, country').eq('kyc_status', 'rejected').order('created_at', { ascending: false }).limit(50),
+      supabaseAdmin.from('trades').select('id, buyer_id, seller_id, btc_amount, status, created_at').eq('status', 'DISPUTED').order('created_at', { ascending: false }).limit(50),
+    ]);
+    res.json({
+      banned:   banned   || [],
+      kycFail:  kycFail  || [],
+      disputed: disputed || [],
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/team/risk-monitor/unban/:id', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { error } = await supabaseAdmin.from('users').update({ account_status: 'active', updated_at: new Date() }).eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    const { data: me } = await supabaseAdmin.from('users').select('username').eq('id', req.userId).single();
+    await supabaseAdmin.from('team_activity_log').insert({ actor: me?.username || 'Team', action: 'Unbanned user', details: `User ID: ${req.params.id}`, category: 'user', created_at: new Date() });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ================================================================
+// TEAM SHIFTS
+// ================================================================
+app.get('/api/team/shifts', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { data, error } = await supabaseAdmin.from('team_shifts').select('*').order('created_at', { ascending: true });
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ shifts: data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/team/shifts', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { member_name, day_of_week, start_time, end_time, timezone, notes } = req.body;
+    if (!member_name || !day_of_week || !start_time || !end_time) return res.status(400).json({ error: 'member_name, day_of_week, start_time and end_time required' });
+    const { data: me } = await supabaseAdmin.from('users').select('username').eq('id', req.userId).single();
+    const { data, error } = await supabaseAdmin.from('team_shifts').insert({ member_name, day_of_week, start_time, end_time, timezone: timezone || 'WAT', notes: notes || null, created_by: me?.username || req.userId, created_at: new Date() }).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ shift: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/team/shifts/:id', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { error } = await supabaseAdmin.from('team_shifts').delete().eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ================================================================
+// KNOWLEDGE BASE
+// ================================================================
+app.get('/api/team/knowledge-base', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { data, error } = await supabaseAdmin.from('team_knowledge_base').select('*').order('created_at', { ascending: false });
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ articles: data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/team/knowledge-base', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { title, category, content, tags } = req.body;
+    if (!title || !content) return res.status(400).json({ error: 'title and content required' });
+    const { data: me } = await supabaseAdmin.from('users').select('username').eq('id', req.userId).single();
+    const { data, error } = await supabaseAdmin.from('team_knowledge_base').insert({ title, category: category || 'General', content, tags: tags || null, created_by: me?.username || req.userId, created_at: new Date(), updated_at: new Date() }).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ article: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.patch('/api/team/knowledge-base/:id', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { title, category, content, tags } = req.body;
+    const updates = { updated_at: new Date() };
+    if (title    !== undefined) updates.title    = title;
+    if (category !== undefined) updates.category = category;
+    if (content  !== undefined) updates.content  = content;
+    if (tags     !== undefined) updates.tags     = tags;
+    const { data, error } = await supabaseAdmin.from('team_knowledge_base').update(updates).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ article: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/team/knowledge-base/:id', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { error } = await supabaseAdmin.from('team_knowledge_base').delete().eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ================================================================
+// REPORTS & EXPORTS (CSV)
+// ================================================================
+const toCSV = (rows, cols) => {
+  const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  return [cols.join(','), ...rows.map(r => cols.map(c => esc(r[c])).join(','))].join('\n');
+};
+app.get('/api/team/reports/trades', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { from, to } = req.query;
+    let q = supabaseAdmin.from('trades').select('id, status, btc_amount, fiat_amount, currency, created_at, updated_at').order('created_at', { ascending: false }).limit(5000);
+    if (from) q = q.gte('created_at', from);
+    if (to)   q = q.lte('created_at', to);
+    const { data, error } = await q;
+    if (error) return res.status(400).json({ error: error.message });
+    const csv = toCSV(data || [], ['id','status','btc_amount','fiat_amount','currency','created_at','updated_at']);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="trades-report.csv"');
+    res.send(csv);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/team/reports/fees', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const COMPANY_WALLET_ID = '14762cd0-d3b2-474f-acab-fe0071961e9a';
+    const { from, to } = req.query;
+    let q = supabaseAdmin.from('wallet_transactions').select('id, amount_btc, notes, status, created_at').eq('user_id', COMPANY_WALLET_ID).or('type.eq.FEE,and(type.eq.DEPOSIT,notes.ilike.Platform fee%)').order('created_at', { ascending: false }).limit(5000);
+    if (from) q = q.gte('created_at', from);
+    if (to)   q = q.lte('created_at', to);
+    const { data, error } = await q;
+    if (error) return res.status(400).json({ error: error.message });
+    const csv = toCSV(data || [], ['id','amount_btc','notes','status','created_at']);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="fees-report.csv"');
+    res.send(csv);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/team/reports/users', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+    const { from, to } = req.query;
+    let q = supabaseAdmin.from('users').select('id, username, email, full_name, country, kyc_status, account_status, total_trades, created_at').eq('is_admin', false).eq('is_moderator', false).order('created_at', { ascending: false }).limit(5000);
+    if (from) q = q.gte('created_at', from);
+    if (to)   q = q.lte('created_at', to);
+    const { data, error } = await q;
+    if (error) return res.status(400).json({ error: error.message });
+    const csv = toCSV(data || [], ['id','username','email','full_name','country','kyc_status','account_status','total_trades','created_at']);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="users-report.csv"');
+    res.send(csv);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ================================================================
+// ACTIVE OFFERS  (team + admin)
+// ================================================================
+app.get('/api/team/active-offers', verifyToken, async (req, res) => {
+  try {
+    const t = await requireTeam(req, res); if (!t) return;
+
+    const { data: listings, error } = await supabaseAdmin
+      .from('listings')
+      .select('id, seller_id, listing_type, gift_card_brand, card_type, bitcoin_price, margin, pricing_type, currency, currency_symbol, country_name, payment_method, payment_methods, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local, time_limit, created_at, view_count')
+      .eq('status', 'ACTIVE')
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    if (error) return res.status(400).json({ error: error.message });
+
+    const sellerIds = [...new Set((listings || []).map(l => l.seller_id).filter(Boolean))];
+    let usersMap = {};
+    if (sellerIds.length > 0) {
+      const { data: sellers } = await supabaseAdmin
+        .from('users')
+        .select('id, username, full_name, avatar_url, average_rating, total_trades, completion_rate, badge, country, last_seen_at, account_status')
+        .in('id', sellerIds);
+      (sellers || []).forEach(u => { usersMap[u.id] = u; });
+    }
+
+    const offers = (listings || []).map(l => ({
+      ...l,
+      seller: usersMap[l.seller_id] || null,
+    }));
+
+    // Group stats per seller
+    const byUser = sellerIds.map(id => ({
+      user: usersMap[id] || { id, username: 'Unknown' },
+      offers: offers.filter(o => o.seller_id === id),
+    })).sort((a, b) => b.offers.length - a.offers.length);
+
+    res.json({
+      offers,
+      byUser,
+      total: offers.length,
+      totalSellers: sellerIds.length,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/auth/change-password', verifyToken, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -5626,15 +6327,36 @@ app.get('/api/notifications', verifyToken, async (req, res) => {
         .select(`id, trade_type, status, amount_local, local_currency, local_amount, currency,
                  amount_btc, amount_usd, payment_method, buyer_id, seller_id,
                  created_at, completed_at,
-                 buyer:buyer_id(id, username, country),
-                 seller:seller_id(id, username, country)`)
+                 buyer:buyer_id(id, username, avatar_url, country),
+                 seller:seller_id(id, username, avatar_url, country)`)
         .in('id', tradeIds);
       (trades || []).forEach(t => { tradeMap[t.id] = t; });
     }
 
+    // Extract unique actor IDs from /profile/<uuid> action URLs (profile_view, offer_view)
+    const actorIds = [...new Set(
+      (notifs || [])
+        .filter(n => n.type === 'profile_view' || n.type === 'offer_view')
+        .map(n => n.action?.match(/\/profile\/([0-9a-f-]{8,})/i)?.[1])
+        .filter(Boolean)
+    )];
+
+    let actorMap = {};
+    if (actorIds.length > 0) {
+      const { data: actors } = await supabaseAdmin
+        .from('users')
+        .select('id, username, full_name, avatar_url')
+        .in('id', actorIds);
+      (actors || []).forEach(u => { actorMap[u.id] = u; });
+    }
+
     const enhanced = (notifs || []).map(n => {
       const tradeId = n.action?.match(/\/trade\/([0-9a-f-]{8,})/i)?.[1];
-      return (tradeId && tradeMap[tradeId]) ? { ...n, trade: tradeMap[tradeId] } : n;
+      const actorId = n.action?.match(/\/profile\/([0-9a-f-]{8,})/i)?.[1];
+      let result = n;
+      if (tradeId && tradeMap[tradeId]) result = { ...result, trade: tradeMap[tradeId] };
+      if (actorId && actorMap[actorId]) result = { ...result, actor: actorMap[actorId] };
+      return result;
     });
 
     res.json({ notifications: enhanced });
@@ -6749,14 +7471,41 @@ app.get('/api/admin/reviews', verifyToken, async (req, res) => {
 app.get('/api/admin/top-traders', verifyToken, async (req, res) => {
   try {
     const admin = await requireAdmin(req, res); if (!admin) return;
-    const { sort = 'trades', limit = 20 } = req.query;
-    const orderCol = sort === 'volume' ? 'total_volume_usd' : 'total_trades';
-    const { data, error } = await supabaseAdmin.from('users')
-      .select('id, username, email, total_trades, average_rating, total_feedback_count, positive_feedback, badge, country, created_at, account_status, total_volume_usd, last_seen_at')
-      .order(orderCol, { ascending: false, nullsFirst: false })
-      .limit(parseInt(limit));
+    const { sort = 'trades', limit = 30 } = req.query;
+
+    // Fetch users sorted by trade count first
+    const { data: users, error } = await supabaseAdmin.from('users')
+      .select('id, username, email, full_name, total_trades, completion_rate, average_rating, total_feedback_count, positive_feedback, negative_feedback, badge, country, created_at, account_status, last_seen_at, avatar_url')
+      .gt('total_trades', 0)
+      .order('total_trades', { ascending: false, nullsFirst: false })
+      .limit(100);
     if (error) return res.status(400).json({ error: error.message });
-    res.json({ traders: data || [] });
+
+    let traders = users || [];
+
+    if (sort === 'volume') {
+      // Compute real BTC volume from completed trades for each user
+      const ids = traders.map(u => u.id);
+      if (ids.length > 0) {
+        const { data: tradeSums } = await supabaseAdmin
+          .from('trades')
+          .select('buyer_id, seller_id, btc_amount')
+          .eq('status', 'COMPLETED')
+          .or(ids.map(id => `buyer_id.eq.${id},seller_id.eq.${id}`).join(','));
+        const volMap = {};
+        (tradeSums || []).forEach(t => {
+          const amt = parseFloat(t.btc_amount || 0);
+          volMap[t.buyer_id]  = (volMap[t.buyer_id]  || 0) + amt;
+          volMap[t.seller_id] = (volMap[t.seller_id] || 0) + amt;
+        });
+        traders = traders.map(u => ({ ...u, volume_btc: volMap[u.id] || 0 }))
+          .sort((a, b) => b.volume_btc - a.volume_btc);
+      }
+    } else {
+      traders = traders.map(u => ({ ...u, volume_btc: 0 }));
+    }
+
+    res.json({ traders: traders.slice(0, parseInt(limit)) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

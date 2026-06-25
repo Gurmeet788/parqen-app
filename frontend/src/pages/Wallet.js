@@ -533,7 +533,7 @@ const normalizeNotes = (notes) => {
 };
 
 // ─── Transaction Receipt Modal ─────────────────────────────────────────────────
-function TxReceiptModal({ tx, onClose, onRepeat }) {
+function TxReceiptModal({ tx, onClose, onRepeat, btcPrice }) {
   const type       = (tx.type || '').toUpperCase();
   const isSend     = type === 'WITHDRAWAL' || type === 'SEND' || type === 'TRANSFER_OUT';
   const isInternal = type === 'TRANSFER_IN' || type === 'TRANSFER_OUT';
@@ -569,10 +569,14 @@ function TxReceiptModal({ tx, onClose, onRepeat }) {
     : '—';
   const refId = tx.id ? `#${String(tx.id).slice(0, 16).toUpperCase()}` : '—';
 
+  const amountBtc = Math.abs(tx.amount_btc || 0);
+  const price = btcPrice || 88000;
+  const amountUsd = (amountBtc * price).toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   const rows = [
     { label: 'Type',         value: label },
     { label: 'Wallet',       value: walletType },
-    { label: 'Amount',       value: `${isSend ? '−' : '+'}₿${fmt(Math.abs(tx.amount_btc || 0))}`, colored: true },
+    { label: 'Amount',       value: `${isSend ? '−' : '+'}₿${fmt(amountBtc)} (≈ ${amountUsd})`, colored: true },
     tx.fee_btc ? { label: 'Fee',         value: `₿${fmt(tx.fee_btc)}` }       : null,
     { label: 'Status',       value: isPending ? 'Pending' : 'Confirmed',        statusBadge: true },
     { label: 'Date & Time',  value: fullDate },
@@ -615,7 +619,10 @@ function TxReceiptModal({ tx, onClose, onRepeat }) {
             </div>
 
             <p className="text-white font-black text-2xl mt-3">
-              {isSend ? '−' : '+'}₿{fmt(Math.abs(tx.amount_btc || 0))}
+              {isSend ? '−' : '+'}₿{fmt(amountBtc)}
+            </p>
+            <p className="font-bold text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.65)' }}>
+              ≈ {isSend ? '−' : '+'}{amountUsd}
             </p>
             {counterpart && (
               <p className="text-white font-black text-sm mt-1 tracking-wide">
@@ -1738,7 +1745,7 @@ export default function WalletPage({ user }) {
         </div>
       </footer>
 
-      {selectedTx && <TxReceiptModal tx={selectedTx} onClose={() => setSelectedTx(null)}
+      {selectedTx && <TxReceiptModal tx={selectedTx} btcPrice={btcPrice} onClose={() => setSelectedTx(null)}
           onRepeat={(username) => { setSelectedTx(null); setRepeatUsername(username); setShowInternal(true); }} />}
       {showSend && <WithdrawModal balance={availableBal} btcPrice={btcPrice} onClose={() => setShowSend(false)} onSend={sendBitcoin} kycStatus={userVerif} />}
       {showRecv && <ReceiveModal address={walletData?.address} network={network} onClose={() => setShowRecv(false)} />}

@@ -2,9 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
-  Bell, X, CheckCheck, ArrowRight, Zap,
-  Shield, AlertTriangle, Megaphone, Gift, ShoppingBag,
-  Eye, CheckCircle, XCircle, UserCircle, Clock,
+  Bell, X, CheckCheck, ArrowRight,
+  Megaphone, Eye, UserCircle, MessageCircle,
 } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
@@ -75,378 +74,309 @@ function Avatar({ user, name, size = 38, color = T.forest }) {
 }
 
 // ── Icon circle ───────────────────────────────────────────────────────────────
-function IconCircle({ icon: Icon, color, bg, size = 36 }) {
+// ── Shared image-style card container ────────────────────────────────────────
+function NCard({ n, onNavigate, children }) {
+  const shadow  = n.is_read ? '0 1px 4px rgba(0,0,0,0.05)' : '0 2px 8px rgba(0,0,0,0.09)';
+  const shadowH = '0 4px 18px rgba(0,0,0,0.13)';
   return (
-    <div style={{
-      width: size, height: size, borderRadius: size * 0.28,
-      backgroundColor: bg, border: `1.5px solid ${color}30`,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-    }}>
-      <Icon size={size * 0.44} color={color} />
-    </div>
-  );
-}
-
-// ── Unread dot ────────────────────────────────────────────────────────────────
-function UnreadDot({ color }) {
-  return (
-    <span style={{
-      width: 7, height: 7, borderRadius: '50%',
-      backgroundColor: color, display: 'inline-block', flexShrink: 0,
-    }} />
-  );
-}
-
-// ── Type badge ────────────────────────────────────────────────────────────────
-function TypeBadge({ label, color, bg }) {
-  return (
-    <span style={{
-      fontSize: 10, fontWeight: 900, letterSpacing: '0.07em', textTransform: 'uppercase',
-      padding: '3px 9px', borderRadius: 20,
-      backgroundColor: bg, color, border: `1.5px solid ${color}45`,
-    }}>{label}</span>
-  );
-}
-
-// ── Base card wrapper — div so inner buttons are valid HTML ───────────────────
-function CardWrap({ isRead, palette, onClick, children }) {
-  const isMob = window.innerWidth < 640;
-  return (
-    <div onClick={onClick}
+    <div onClick={() => onNavigate(n)}
       style={{
-        display: 'block',
-        padding: isMob ? '16px 18px' : '14px 16px',
-        cursor: 'pointer',
-        borderBottom: `1px solid ${T.g200}`,
-        backgroundColor: isRead ? '#fff' : palette.bg,
-        borderLeft: `3.5px solid ${isRead ? T.g200 : palette.dot}`,
-        transition: 'background 0.12s',
-        WebkitTapHighlightColor: 'transparent',
+        background: '#fff', borderRadius: 16, margin: '0 0 10px',
+        border: `1px solid ${n.is_read ? '#E8EEF4' : '#CBD5E1'}`,
+        boxShadow: shadow, cursor: 'pointer', overflow: 'hidden',
+        transition: 'box-shadow 0.15s, transform 0.12s',
+        opacity: n.is_read ? 0.88 : 1,
       }}
-      onMouseEnter={e => { e.currentTarget.style.backgroundColor = isRead ? T.g50 : `${palette.dot}18`; }}
-      onMouseLeave={e => { e.currentTarget.style.backgroundColor = isRead ? '#fff' : palette.bg; }}>
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = shadowH; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = shadow; e.currentTarget.style.transform = 'translateY(0)'; }}>
       {children}
     </div>
   );
 }
+const NDivider = () => <div style={{ height: 1, background: '#F1F5F9', margin: '0 16px' }} />;
+
+// ── Real trade ref: prefers action URL or trade object over message regex ─────
+function getRealTradeRef(n) {
+  if (n.action) {
+    const m = n.action.match(/\/trade\/([^/?#]+)/i);
+    if (m) {
+      const id = m[1].replace(/-/g, '');
+      return id.slice(0, 8).toUpperCase();
+    }
+  }
+  if (n.trade?.id) return String(n.trade.id).replace(/-/g, '').slice(0, 8).toUpperCase();
+  const combined = (n.title || '') + ' ' + (n.message || '');
+  const m = combined.match(/#([A-Za-z0-9]{4,12})/) || combined.match(/trade[^\w]([A-Za-z0-9]{4,12})/i);
+  return m ? m[1].toUpperCase() : null;
+}
 
 // ─── 1. PROFILE VIEW card ─────────────────────────────────────────────────────
 function ProfileViewCard({ n, onNavigate }) {
-  const pal = TYPE_PALETTE.profile_view;
-  // Extract viewer name from message: "Username just viewed your profile"
+  const actor = n.actor;                                   // enriched by backend
   const msg = n.message || '';
   const nameMatch = msg.match(/^(.+?)\s+just viewed/i);
-  const viewerName = nameMatch ? nameMatch[1] : 'Someone';
-  const isAnon = viewerName === 'Someone';
+  const viewerName = actor?.username || (nameMatch ? nameMatch[1] : null);
+  const isAnon = !viewerName;
+  const PURPLE = '#6D28D9';
+  const displayName = viewerName || 'Anonymous visitor';
 
   return (
-    <CardWrap isRead={n.is_read} palette={pal} onClick={() => onNavigate(n)}>
-      {/* Top row: badge + time + unread */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <TypeBadge label="Profile View" color={pal.accent} bg={pal.bg} />
-          {!n.is_read && <UnreadDot color={pal.dot} />}
+    <NCard n={n} onNavigate={onNavigate}>
+      {/* Header */}
+      <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <span style={{ fontWeight: 900, fontSize: 15, color: '#0F172A' }}>Profile View</span>
+          <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Eye size={11} color="#fff" />
+          </div>
+          <span style={{ fontSize: 12, color: T.g400, fontWeight: 600 }}>{tradeTimeStr(n.created_at)}</span>
+          {!n.is_read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3B82F6', display: 'inline-block', flexShrink: 0 }} />}
         </div>
-        <span style={{ fontSize: 11, color: T.g500, fontWeight: 700 }}>{relTime(n.created_at)}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: PURPLE, background: '#EDE9FE', padding: '4px 12px', borderRadius: 8, flexShrink: 0 }}>
+          {isAnon ? 'Anonymous' : 'Viewed'}
+        </span>
       </div>
 
-      {/* Viewer row */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      {/* Viewer name row */}
+      <div style={{ padding: '0 16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ fontSize: 13, color: '#374151', fontWeight: 500 }}>Someone visited your profile</span>
+        <span style={{ fontSize: 13, color: T.g500, fontWeight: 600 }}>{isAnon ? '—' : displayName}</span>
+      </div>
+
+      <NDivider />
+
+      {/* Body — real photo when available */}
+      <div style={{ padding: '12px 16px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
         {isAnon ? (
-          <div style={{
-            width: 46, height: 46, borderRadius: 14, flexShrink: 0,
-            background: `linear-gradient(135deg,${pal.accent}20,${pal.accent}08)`,
-            border: `2px dashed ${pal.accent}40`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <UserCircle size={24} color={`${pal.accent}70`} />
+          <div style={{ width: 44, height: 44, borderRadius: 13, background: '#EDE9FE', border: '2px dashed #C4B5FD', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <UserCircle size={22} color="#7C3AED" />
           </div>
         ) : (
-          <Avatar name={viewerName} size={46} color={pal.accent} />
+          <Avatar user={actor} name={displayName} size={44} color={PURPLE} />
         )}
-
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-            <span style={{ fontWeight: 900, fontSize: 15, color: '#0F172A' }}>
-              {isAnon ? 'Anonymous visitor' : viewerName}
-            </span>
-            <span style={{ fontSize: 13 }}>👀</span>
-          </div>
-          <p style={{ fontSize: 12, color: T.g600, fontWeight: 600, lineHeight: 1.55, margin: 0 }}>
-            {isAnon
-              ? 'Someone browsed your profile anonymously'
-              : `${viewerName} just visited your profile — tap to view theirs`}
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {displayName}
+          </p>
+          <p style={{ margin: '2px 0 0', fontSize: 12, color: T.g500, fontWeight: 500 }}>
+            {isAnon ? 'Browsed your profile anonymously' : 'Just visited your profile'}
           </p>
         </div>
-      </div>
-
-      {/* Footer */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 11, paddingTop: 9, borderTop: `1px solid ${pal.border}` }}>
-        <span style={{ fontSize: 11, color: T.g500, fontWeight: 600 }}>{absTime(n.created_at)}</span>
-        {!isAnon ? (
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 900, color: pal.accent }}>
-            View their profile <ArrowRight size={12} />
-          </span>
-        ) : (
-          <span style={{ fontSize: 11, color: T.g400, fontWeight: 600, fontStyle: 'italic' }}>
-            Anonymous visit
+        {!isAnon && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 800, color: PURPLE, flexShrink: 0 }}>
+            View <ArrowRight size={12} />
           </span>
         )}
       </div>
-    </CardWrap>
+    </NCard>
   );
 }
 
 // ─── 2. OFFER VIEW card ───────────────────────────────────────────────────────
 function OfferViewCard({ n, onNavigate }) {
-  const pal = TYPE_PALETTE.offer_view;
+  const actor = n.actor;
   const msg = n.message || '';
   const nameMatch = msg.match(/^(.+?)\s+(?:just\s+)?viewed\s+your/i);
-  const viewerName = nameMatch ? nameMatch[1] : 'Someone';
-  const isAnon = viewerName === 'Someone';
+  const viewerName = actor?.username || (nameMatch ? nameMatch[1] : null);
+  const isAnon = !viewerName;
   const hasProfile = n.action?.startsWith('/profile/');
+  const AMBER = '#B45309';
+  const displayName = viewerName || 'Anonymous visitor';
 
   return (
-    <CardWrap isRead={n.is_read} palette={pal} onClick={() => onNavigate(n)}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <TypeBadge label="Offer Viewed" color={pal.accent} bg={pal.bg} />
-          {!n.is_read && <UnreadDot color={pal.dot} />}
+    <NCard n={n} onNavigate={onNavigate}>
+      {/* Header */}
+      <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <span style={{ fontWeight: 900, fontSize: 15, color: '#0F172A' }}>Offer Viewed</span>
+          <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#D97706,#92400E)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Eye size={11} color="#fff" />
+          </div>
+          <span style={{ fontSize: 12, color: T.g400, fontWeight: 600 }}>{tradeTimeStr(n.created_at)}</span>
+          {!n.is_read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3B82F6', display: 'inline-block', flexShrink: 0 }} />}
         </div>
-        <span style={{ fontSize: 11, color: T.g500, fontWeight: 700 }}>{relTime(n.created_at)}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: AMBER, background: '#FFFBEB', padding: '4px 12px', borderRadius: 8, flexShrink: 0 }}>
+          {isAnon ? 'Anonymous' : 'Offer View'}
+        </span>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      {/* Info row */}
+      <div style={{ padding: '0 16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ fontSize: 13, color: '#374151', fontWeight: 500 }}>Someone viewed your offer</span>
+        <span style={{ fontSize: 13, color: T.g500, fontWeight: 600 }}>{isAnon ? '—' : displayName}</span>
+      </div>
+
+      <NDivider />
+
+      {/* Body — real photo when available */}
+      <div style={{ padding: '12px 16px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
         {isAnon ? (
-          <div style={{
-            width: 46, height: 46, borderRadius: 14, flexShrink: 0,
-            background: `linear-gradient(135deg,${pal.accent}20,${pal.accent}08)`,
-            border: `2px dashed ${pal.accent}40`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <UserCircle size={23} color={`${pal.accent}70`} />
+          <div style={{ width: 44, height: 44, borderRadius: 13, background: '#FFFBEB', border: '2px dashed #FDE68A', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <UserCircle size={22} color={AMBER} />
           </div>
         ) : (
-          <Avatar name={viewerName} size={46} color={pal.accent} />
+          <Avatar user={actor} name={displayName} size={44} color={AMBER} />
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <span style={{ fontWeight: 900, fontSize: 15, color: '#0F172A', display: 'block', marginBottom: 3 }}>
-            {isAnon ? 'Anonymous visitor' : viewerName}
-          </span>
-          <p style={{ fontSize: 12, color: T.g600, fontWeight: 600, margin: 0, lineHeight: 1.55 }}>
-            {isAnon
-              ? 'Someone browsed your offer anonymously'
-              : 'Browsed your offer — they might be interested!'}
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {displayName}
+          </p>
+          <p style={{ margin: '2px 0 0', fontSize: 12, color: T.g500, fontWeight: 500 }}>
+            {isAnon ? 'Browsed your offer anonymously' : 'Might be interested in your offer'}
           </p>
         </div>
-        <Eye size={19} color={pal.accent} style={{ flexShrink: 0, opacity: 0.6 }} />
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 11, paddingTop: 9, borderTop: `1px solid ${pal.border}` }}>
-        <span style={{ fontSize: 11, color: T.g500, fontWeight: 600 }}>{absTime(n.created_at)}</span>
-        {!isAnon ? (
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 900, color: pal.accent }}>
-            {hasProfile ? 'View their profile' : 'View offer'} <ArrowRight size={12} />
+        {!isAnon && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 800, color: AMBER, flexShrink: 0 }}>
+            {hasProfile ? 'Profile' : 'Offer'} <ArrowRight size={12} />
           </span>
-        ) : (
-          <span style={{ fontSize: 11, color: T.g400, fontWeight: 600, fontStyle: 'italic' }}>Anonymous visit</span>
         )}
       </div>
-    </CardWrap>
+    </NCard>
   );
 }
 
-// ─── 3. COMPLETED TRADE card ──────────────────────────────────────────────────
-function CompletedCard({ n, trade, userId, onNavigate }) {
-  const pal = TYPE_PALETTE.trade_done;
-  const isBuyer = String(userId) === String(trade.buyer_id);
-  const cp      = isBuyer ? trade.seller : trade.buyer;
-  const local   = trade.amount_local || trade.local_amount || 0;
-  const cur     = trade.local_currency || trade.currency || 'USD';
-  const sym     = CUR_SYM[cur] || '';
-  const btc     = fmtBtc(trade.amount_btc);
-  const pm      = trade.payment_method || '—';
+// ─── 3 & 4. UNIFIED TRADE CARD (image-style) ─────────────────────────────────
+const TRADE_STATUS = {
+  COMPLETED:          { label: 'Completed', color: '#059669', bg: '#ECFDF5' },
+  CANCELLED:          { label: 'Canceled',  color: '#DC2626', bg: '#FEF2F2' },
+  CANCELLED_BY_BUYER: { label: 'Canceled',  color: '#DC2626', bg: '#FEF2F2' },
+  CANCELLED_BY_SELLER:{ label: 'Canceled',  color: '#DC2626', bg: '#FEF2F2' },
+  EXPIRED:            { label: 'Expired',   color: '#DC2626', bg: '#FEF2F2' },
+  DISPUTED:           { label: 'Disputed',  color: '#D97706', bg: '#FFFBEB' },
+  IN_REVIEW:          { label: 'In Review', color: '#7C3AED', bg: '#F5F3FF' },
+  PAYMENT_SENT:       { label: 'Paid',      color: '#2563EB', bg: '#EFF6FF' },
+  PAID:               { label: 'Paid',      color: '#2563EB', bg: '#EFF6FF' },
+  ESCROW:             { label: 'In Escrow', color: '#7C3AED', bg: '#F5F3FF' },
+  FUNDS_LOCKED:       { label: 'Locked',    color: '#7C3AED', bg: '#F5F3FF' },
+  ACTIVE:             { label: 'Active',    color: '#059669', bg: '#ECFDF5' },
+  CREATED:            { label: 'Pending',   color: '#D97706', bg: '#FFFBEB' },
+};
+
+const tradeTimeStr = (ts) => {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const isToday = d.toDateString() === new Date().toDateString();
+  const hm = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return isToday
+    ? `Today ${hm}`
+    : d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }) + ', ' + hm;
+};
+
+function TradeNotifCard({ n, trade, userId, onNavigate }) {
+  const isBuyer  = String(userId) === String(trade.buyer_id);
+  const cp       = isBuyer ? trade.seller : trade.buyer;
+  const local    = parseFloat(trade.amount_local || trade.local_amount || 0);
+  const cur      = trade.local_currency || trade.currency || 'USD';
+  const sym      = CUR_SYM[cur] || '';
+  const btcRaw   = parseFloat(trade.amount_btc || 0);
+  const btcStr   = btcRaw.toFixed(8);
+  const pm       = trade.payment_method || '—';
+  const st       = (trade.status || '').toUpperCase();
+  const status   = TRADE_STATUS[st] || { label: st || 'Pending', color: '#64748B', bg: '#F8FAFC' };
+  const dateStr  = tradeTimeStr(trade.created_at || n.created_at);
+  const dirLabel = isBuyer ? 'Buy BTC' : 'Sell BTC';
+
+  // You pay / You receive from this user's perspective
+  const payStr     = isBuyer ? `${local.toFixed(2)} ${cur}` : `${btcStr} BTC`;
+  const receiveStr = isBuyer ? `${btcStr} BTC`              : `${sym}${local.toFixed(2)} ${cur}`;
 
   return (
-    <CardWrap isRead={n.is_read} palette={pal} onClick={() => onNavigate(n)}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <TypeBadge label="Trade Complete" color={pal.accent} bg={pal.bg} />
-          {!n.is_read && <UnreadDot color={pal.dot} />}
+    <NCard n={n} onNavigate={onNavigate}>
+      {/* Header */}
+      <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <span style={{ fontWeight: 900, fontSize: 15, color: '#0F172A' }}>{dirLabel}</span>
+          <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#F7931A,#E8790A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 1px 4px rgba(247,147,26,0.4)' }}>
+            <span style={{ fontSize: 11, color: '#fff', fontWeight: 900 }}>₿</span>
+          </div>
+          <span style={{ fontSize: 12, color: T.g400, fontWeight: 600 }}>{dateStr}</span>
+          {!n.is_read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3B82F6', display: 'inline-block', flexShrink: 0 }} />}
         </div>
-        <span style={{ fontSize: 11, color: T.g500, fontWeight: 700 }}>{relTime(trade.completed_at || n.created_at)}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: status.color, background: status.bg, padding: '4px 12px', borderRadius: 8, flexShrink: 0 }}>
+          {status.label}
+        </span>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-        <div style={{ position: 'relative', flexShrink: 0 }}>
-          <Avatar user={cp} size={46} color={T.mint} />
-          {cp?.country && (
-            <span style={{ position: 'absolute', bottom: -2, right: -4, fontSize: 13, lineHeight: 1 }}>
-              {flag(cp.country)}
-            </span>
-          )}
-        </div>
+      {/* Payment method | counterparty with real avatar */}
+      <div style={{ padding: '0 16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ fontSize: 13, color: '#374151', fontWeight: 500, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pm}</span>
+        {cp ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            <Avatar user={cp} name={cp.username} size={22} color={T.forest} />
+            <span style={{ fontSize: 13, color: T.g500, fontWeight: 600 }}>{cp.username}</span>
+          </div>
+        ) : (
+          <span style={{ fontSize: 13, color: T.g400 }}>—</span>
+        )}
+      </div>
+
+      <NDivider />
+
+      {/* You pay → You receive */}
+      <div style={{ padding: '11px 16px 14px', display: 'flex', alignItems: 'center' }}>
         <div style={{ flex: 1 }}>
-          <span style={{ fontWeight: 900, fontSize: 15, color: '#0F172A', display: 'block', marginBottom: 3 }}>
-            {cp?.username || 'Trader'}
-          </span>
-          <p style={{ fontSize: 12, color: T.g600, fontWeight: 600, margin: 0 }}>
-            {isBuyer ? '🎉 You bought Bitcoin successfully' : '✅ You sold Bitcoin successfully'}
-          </p>
+          <p style={{ margin: 0, fontSize: 11, color: T.g400, fontWeight: 500, marginBottom: 3 }}>You pay</p>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#111827' }}>{payStr}</p>
+        </div>
+        <div style={{ padding: '0 14px', color: T.g400, fontSize: 20, fontWeight: 300, flexShrink: 0 }}>→</div>
+        <div style={{ flex: 1, textAlign: 'right' }}>
+          <p style={{ margin: 0, fontSize: 11, color: T.g400, fontWeight: 500, marginBottom: 3 }}>You receive</p>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#111827' }}>{receiveStr}</p>
         </div>
       </div>
-
-      <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
-        {[
-          { val: `${sym}${fmt(local)} ${cur}`, color: pal.accent, bg: `${pal.accent}15` },
-          { val: `₿ ${btc}`, color: T.amber, bg: '#FEF3C7' },
-          { val: pm, color: T.g700, bg: T.g100 },
-        ].map(chip => (
-          <span key={chip.val} style={{
-            fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 20,
-            backgroundColor: chip.bg, color: chip.color,
-            border: `1.5px solid ${chip.color}35`,
-          }}>{chip.val}</span>
-        ))}
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 9, borderTop: `1px solid ${pal.border}` }}>
-        <span style={{ fontSize: 11, color: T.g500, fontWeight: 700, fontFamily: 'monospace' }}>
-          #{String(trade.id).slice(0, 8).toUpperCase()}
-        </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 900, color: pal.accent }}>
-          View trade <ArrowRight size={12} />
-        </span>
-      </div>
-    </CardWrap>
-  );
-}
-
-// ─── 4. ACTIVE TRADE card ─────────────────────────────────────────────────────
-function TradeCard({ n, trade, userId, onNavigate }) {
-  const isBuyer = String(userId) === String(trade.buyer_id);
-  const cp      = isBuyer ? trade.seller : trade.buyer;
-  const local   = trade.amount_local || trade.local_amount || 0;
-  const cur     = trade.local_currency || trade.currency || 'USD';
-  const sym     = CUR_SYM[cur] || '';
-  const btc     = fmtBtc(trade.amount_btc);
-  const pm      = trade.payment_method || '—';
-  const st      = (trade.status || '').toUpperCase();
-  const isPaid  = st === 'PAYMENT_SENT' || st === 'PAID';
-  const isDisp  = st === 'DISPUTED';
-  const pal     = isDisp ? TYPE_PALETTE.dispute : isPaid ? TYPE_PALETTE.trade_paid : TYPE_PALETTE.trade_new;
-
-  const statusLabel = isPaid ? '💳 Payment Sent' : isDisp ? '🚨 Disputed' : '🔒 Escrow Active';
-
-  return (
-    <CardWrap isRead={n.is_read} palette={pal} onClick={() => onNavigate(n)}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <TypeBadge label={isBuyer ? 'Trade Started' : 'New Request'} color={pal.accent} bg={pal.bg} />
-          {!n.is_read && <UnreadDot color={pal.dot} />}
-        </div>
-        <span style={{ fontSize: 11, color: T.g500, fontWeight: 700 }}>{relTime(n.created_at)}</span>
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-        <div style={{ position: 'relative', flexShrink: 0 }}>
-          <Avatar user={cp} size={46} color={pal.accent} />
-          {cp?.country && (
-            <span style={{ position: 'absolute', bottom: -2, right: -4, fontSize: 13, lineHeight: 1 }}>
-              {flag(cp.country)}
-            </span>
-          )}
-        </div>
-        <div style={{ flex: 1 }}>
-          <span style={{ fontWeight: 900, fontSize: 15, color: '#0F172A', display: 'block', marginBottom: 3 }}>
-            {cp?.username || 'Trader'}
-          </span>
-          <p style={{ fontSize: 12, color: T.g600, fontWeight: 600, margin: 0 }}>
-            {isBuyer ? `You started a trade with ${cp?.username || 'this seller'}` : `${cp?.username || 'A buyer'} wants to trade with you`}
-          </p>
-        </div>
-      </div>
-
-      {/* Trade chips */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
-        {[
-          { val: `${sym}${fmt(local)} ${cur}`, color: pal.accent, bg: `${pal.accent}15` },
-          { val: `₿ ${btc}`, color: T.amber, bg: '#FEF3C7' },
-          { val: pm, color: T.g700, bg: T.g100 },
-        ].map(chip => (
-          <span key={chip.val} style={{
-            fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 20,
-            backgroundColor: chip.bg, color: chip.color,
-            border: `1.5px solid ${chip.color}35`,
-          }}>{chip.val}</span>
-        ))}
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 9, borderTop: `1px solid ${pal.border}` }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 11, color: T.g500, fontWeight: 700, fontFamily: 'monospace' }}>
-            #{String(trade.id || '').slice(0, 8).toUpperCase()}
-          </span>
-          <span style={{
-            fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 20,
-            backgroundColor: `${pal.dot}18`, color: pal.dot,
-            border: `1px solid ${pal.dot}30`,
-          }}>{statusLabel}</span>
-        </div>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 900, color: pal.accent }}>
-          Open trade <ArrowRight size={12} />
-        </span>
-      </div>
-    </CardWrap>
+    </NCard>
   );
 }
 
 // ─── 5. TRADE MESSAGE card ────────────────────────────────────────────────────
 function MessageCard({ n, onNavigate }) {
-  const pal = TYPE_PALETTE.trade_paid;
-  const msg = n.message || '';
-  // "SenderName: preview text"
-  const colonIdx = msg.indexOf(': ');
+  const msg        = n.message || '';
+  const colonIdx   = msg.indexOf(': ');
   const senderName = colonIdx > 0 ? msg.slice(0, colonIdx) : null;
   const preview    = colonIdx > 0 ? msg.slice(colonIdx + 2) : msg;
-  const tradeRef   = (n.title || '').match(/#([A-F0-9]{6,10})/i)?.[1] || null;
+  const tradeRef   = getRealTradeRef(n);
+  const BLUE       = '#2563EB';
 
   return (
-    <CardWrap isRead={n.is_read} palette={pal} onClick={() => onNavigate(n)}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <TypeBadge label="Trade Chat" color="#2563EB" bg="#EFF6FF" />
-          {tradeRef && (
-            <span style={{ fontSize: 10, fontWeight: 800, color: T.g500, background: T.g100, borderRadius: 5, padding: '2px 6px', fontFamily: 'monospace' }}>
-              #{tradeRef}
-            </span>
-          )}
+    <NCard n={n} onNavigate={onNavigate}>
+      {/* Header */}
+      <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <span style={{ fontWeight: 900, fontSize: 15, color: '#0F172A' }}>Trade Chat</span>
+          <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#2563EB,#1D4ED8)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <MessageCircle size={11} color="#fff" />
+          </div>
+          <span style={{ fontSize: 12, color: T.g400, fontWeight: 600 }}>{tradeTimeStr(n.created_at)}</span>
+          {!n.is_read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3B82F6', display: 'inline-block', flexShrink: 0 }} />}
         </div>
-        <span style={{ fontSize: 11, color: T.g500, fontWeight: 700 }}>{relTime(n.created_at)}</span>
+        {tradeRef
+          ? <span style={{ fontSize: 12, fontWeight: 700, color: T.g600, background: T.g100, padding: '4px 10px', borderRadius: 8, fontFamily: 'monospace', flexShrink: 0 }}>#{tradeRef}</span>
+          : <span style={{ fontSize: 12, fontWeight: 700, color: BLUE, background: '#EFF6FF', padding: '4px 12px', borderRadius: 8, flexShrink: 0 }}>Message</span>
+        }
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-        <div style={{ width: 34, height: 34, borderRadius: 10, background: '#DBEAFE', border: '1.5px solid #BFDBFE', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <span style={{ fontSize: 16 }}>💬</span>
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {senderName && (
-            <p style={{ margin: '0 0 2px', fontSize: 12, fontWeight: 900, color: '#1E40AF' }}>
-              {senderName}
-            </p>
-          )}
-          <p style={{ margin: 0, fontSize: 12, color: T.g600, lineHeight: 1.5, wordBreak: 'break-word' }}>
-            {preview}
-          </p>
-        </div>
-      </div>
-
-      <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
-        <span style={{ fontSize: 11, fontWeight: 800, color: '#2563EB', background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 7, padding: '4px 10px', cursor: 'pointer' }}>
-          Open trade chat →
+      {/* Sender row */}
+      <div style={{ padding: '0 16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ fontSize: 13, color: '#374151', fontWeight: 500 }}>
+          {senderName ? `Message from ${senderName}` : 'New trade message'}
         </span>
+        <span style={{ fontSize: 13, color: T.g500, fontWeight: 600 }}>{senderName || '—'}</span>
       </div>
-    </CardWrap>
+
+      <NDivider />
+
+      {/* Preview */}
+      <div style={{ padding: '12px 16px 14px' }}>
+        <p style={{ margin: '0 0 10px', fontSize: 13, color: '#374151', lineHeight: 1.55, fontWeight: 500, wordBreak: 'break-word' }}>
+          {preview || 'New message in your trade'}
+        </p>
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 800, color: BLUE }}>
+            Open chat <ArrowRight size={12} />
+          </span>
+        </div>
+      </div>
+    </NCard>
   );
 }
 
@@ -454,144 +384,168 @@ function MessageCard({ n, onNavigate }) {
 function BasicCard({ n, onNavigate }) {
   const [expanded, setExpanded] = useState(false);
 
-  const title   = (n.title || '').toLowerCase();
-  const msg     = n.message || '';
-  const type    = n.type || '';
+  const title = (n.title || '').toLowerCase();
+  const msg   = n.message || '';
+  const type  = n.type || '';
 
-  const isCancelled  = /cancel/i.test(title) || /cancel/i.test(type);
-  const isExpired    = /expir/i.test(title)  || /expir/i.test(type);
-  const isNewTrade   = /new trade|trade request/i.test(title);
-  const isDispute    = /disput/i.test(title);
-  const isPayment    = /payment|paid/i.test(title);
-  const isRefund     = /refund/i.test(msg);
+  const isCancelled = /cancel/i.test(title) || /cancel/i.test(type);
+  const isExpired   = /expir/i.test(title)  || /expir/i.test(type);
+  const isNewTrade  = /new trade|trade request/i.test(title);
+  const isDispute   = /disput/i.test(title);
+  const isPayment   = /payment|paid/i.test(title);
+  const isRefund    = /refund/i.test(msg);
+  const isTradeRelated = isCancelled || isExpired || isNewTrade || isDispute || isPayment;
 
-  let pal, Icon, typeLabel, titleText;
+  const tradeId = getRealTradeRef(n);
 
-  if (isCancelled || isExpired) {
-    pal = TYPE_PALETTE.trade_cancel; Icon = XCircle;
-    typeLabel = isExpired ? 'Expired' : 'Cancelled';
-    titleText = isExpired ? '⏰ Trade Expired' : '❌ Trade Cancelled';
-  } else if (isNewTrade) {
-    pal = TYPE_PALETTE.trade_new; Icon = ShoppingBag;
-    typeLabel = 'New Request'; titleText = n.title;
-  } else if (isDispute) {
-    pal = TYPE_PALETTE.dispute; Icon = AlertTriangle;
-    typeLabel = 'Dispute 🚨'; titleText = n.title;
-  } else if (isPayment) {
-    pal = TYPE_PALETTE.trade_paid; Icon = CheckCircle;
-    typeLabel = 'Payment'; titleText = n.title;
-  } else {
-    pal = TYPE_PALETTE.system; Icon = Megaphone;
-    typeLabel = 'PRAQEN'; titleText = n.title;
-  }
+  // ── TRADE-RELATED: image-style card ──────────────────────────────────────────
+  if (isTradeRelated) {
+    const statusMap = {
+      cancel:  { label: 'Canceled',    color: '#DC2626', bg: '#FEF2F2' },
+      expire:  { label: 'Expired',     color: '#DC2626', bg: '#FEF2F2' },
+      dispute: { label: 'Disputed',    color: '#D97706', bg: '#FFFBEB' },
+      payment: { label: 'Paid',        color: '#2563EB', bg: '#EFF6FF' },
+      trade:   { label: 'In Progress', color: '#059669', bg: '#ECFDF5' },
+    };
+    const status = isCancelled ? statusMap.cancel
+      : isExpired   ? statusMap.expire
+      : isDispute   ? statusMap.dispute
+      : isPayment   ? statusMap.payment
+      : statusMap.trade;
 
-  const tradeIdMatch = msg.match(/trade\s*#?([A-F0-9]{6,10})/i) || msg.match(/#([A-F0-9]{6,10})/i);
-  const tradeId = tradeIdMatch ? tradeIdMatch[1].toUpperCase() : null;
+    // Clean up the reason text
+    const reason = msg
+      .replace(/^reason:\s*/i, '')
+      .replace(/^trade\s+expired\s*[—–-]?\s*/i, '')
+      .trim() || msg;
 
-  // Extract cancel reason — anything after "—", "–", or ". " at the end
-  const cancelReason = msg.match(/(?:[.—–]\s*)(.{10,})$/)?.[1]?.trim() || msg || null;
-  const PREVIEW_LIMIT = 110;
-  const isLong = msg.length > PREVIEW_LIMIT;
-
-  return (
-    <CardWrap isRead={n.is_read} palette={pal} onClick={() => onNavigate(n)}>
-      {/* Badge row */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 11 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <TypeBadge label={typeLabel} color={pal.accent} bg={pal.bg} />
-          {tradeId && (
-            <span style={{
-              fontSize: 10, fontWeight: 800, fontFamily: 'monospace',
-              padding: '3px 8px', borderRadius: 6,
-              backgroundColor: `${pal.accent}12`, color: pal.accent,
-              border: `1px solid ${pal.accent}30`,
-            }}>#{tradeId}</span>
-          )}
-          {!n.is_read && <UnreadDot color={pal.dot} />}
+    return (
+      <NCard n={n} onNavigate={onNavigate}>
+        {/* Header */}
+        <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <span style={{ fontWeight: 900, fontSize: 15, color: '#0F172A' }}>
+              {isNewTrade ? 'Trade Request' : 'Trade'}
+            </span>
+            <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#F7931A,#E8790A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 1px 4px rgba(247,147,26,0.35)' }}>
+              <span style={{ fontSize: 11, color: '#fff', fontWeight: 900 }}>₿</span>
+            </div>
+            <span style={{ fontSize: 12, color: T.g400, fontWeight: 600 }}>{tradeTimeStr(n.created_at)}</span>
+            {!n.is_read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3B82F6', display: 'inline-block', flexShrink: 0 }} />}
+          </div>
+          <span style={{ fontSize: 12, fontWeight: 700, color: status.color, background: status.bg, padding: '4px 12px', borderRadius: 8, flexShrink: 0 }}>
+            {status.label}
+          </span>
         </div>
-        <span style={{ fontSize: 11, color: T.g500, fontWeight: 700 }}>{relTime(n.created_at)}</span>
-      </div>
 
-      {/* Body */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-        <IconCircle icon={Icon} color={pal.accent} bg={`${pal.accent}15`} size={42} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ fontWeight: 900, fontSize: 14, color: '#0F172A', marginBottom: 6, lineHeight: 1.35 }}>
-            {titleText || n.title}
-          </p>
+        {/* Trade type | real trade ID */}
+        <div style={{ padding: '0 16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span style={{ fontSize: 13, color: '#374151', fontWeight: 500 }}>Bitcoin Trade</span>
+          {tradeId
+            ? <span style={{ fontSize: 13, color: T.g500, fontWeight: 600, fontFamily: 'monospace' }}>#{tradeId}</span>
+            : <span style={{ fontSize: 13, color: T.g400 }}>—</span>
+          }
+        </div>
 
-          {/* Cancelled/Expired detail box — always shows full reason */}
-          {(isCancelled || isExpired) && (
-            <div style={{
-              padding: '9px 12px', borderRadius: 10, marginBottom: 6,
-              backgroundColor: `${pal.accent}08`, border: `1.5px solid ${pal.border}`,
-            }}>
-              <p style={{ fontSize: 12, color: T.g700, lineHeight: 1.6, margin: 0, fontWeight: 600 }}>
-                <span style={{ color: T.g500, fontWeight: 700 }}>Reason: </span>
-                {cancelReason || msg || 'No reason provided'}
+        <NDivider />
+
+        {/* Detail section */}
+        <div style={{ padding: '11px 16px 14px' }}>
+          {(isCancelled || isExpired) ? (
+            <>
+              <p style={{ margin: '0 0 4px', fontSize: 11, color: T.g400, fontWeight: 500 }}>Reason</p>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#374151', lineHeight: 1.5 }}>
+                {reason || 'No reason provided'}
               </p>
               {isRefund && (
-                <p style={{ fontSize: 12, color: T.success, fontWeight: 700, marginTop: 6, marginBottom: 0 }}>
+                <p style={{ margin: '8px 0 0', fontSize: 12, color: T.success, fontWeight: 700 }}>
                   ✅ Your BTC has been refunded to your wallet
                 </p>
               )}
-            </div>
-          )}
-
-          {/* Dispute warning box — full text always visible */}
-          {isDispute && (
-            <div style={{
-              padding: '9px 12px', borderRadius: 10, marginBottom: 6,
-              backgroundColor: `${pal.accent}08`, border: `1.5px solid ${pal.border}`,
-            }}>
-              <p style={{ fontSize: 12, color: T.g700, lineHeight: 1.6, margin: 0, fontWeight: 600 }}>
-                {msg}
-              </p>
-              <p style={{ fontSize: 12, fontWeight: 800, color: pal.accent, marginTop: 6, marginBottom: 0 }}>
-                ⚠️ Do not release funds until resolved.
-              </p>
-            </div>
-          )}
-
-          {/* Generic / system message — expandable */}
-          {!isCancelled && !isExpired && !isDispute && msg && (
-            <div style={{
-              padding: '9px 12px', borderRadius: 10,
-              backgroundColor: `${pal.accent}08`, border: `1.5px solid ${pal.border}`,
-            }}>
-              <p style={{ fontSize: 12, color: T.g700, lineHeight: 1.65, margin: 0, fontWeight: 600 }}>
-                {expanded || !isLong ? msg : msg.slice(0, PREVIEW_LIMIT) + '…'}
-              </p>
-              {isLong && (
-                <button
-                  onClick={e => { e.stopPropagation(); setExpanded(v => !v); }}
-                  style={{
-                    marginTop: 7, padding: '4px 10px', borderRadius: 8, border: 'none',
-                    backgroundColor: `${pal.accent}15`, color: pal.accent,
-                    fontSize: 11, fontWeight: 800, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: 4,
-                  }}>
-                  {expanded ? '▲ Show less' : '▼ Read full message'}
-                </button>
-              )}
-            </div>
+            </>
+          ) : isDispute ? (
+            <>
+              <p style={{ margin: '0 0 4px', fontSize: 11, color: '#D97706', fontWeight: 700 }}>⚠️ Dispute Opened</p>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#374151', lineHeight: 1.5 }}>{msg || 'A dispute has been raised for this trade.'}</p>
+            </>
+          ) : isPayment ? (
+            <>
+              <p style={{ margin: '0 0 4px', fontSize: 11, color: '#2563EB', fontWeight: 700 }}>💳 Payment Confirmed</p>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#374151', lineHeight: 1.5 }}>{msg}</p>
+            </>
+          ) : (
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#374151', lineHeight: 1.5 }}>{msg}</p>
           )}
         </div>
+      </NCard>
+    );
+  }
+
+  // ── SYSTEM / PRAQEN ──────────────────────────────────────────────────────────
+  const GREEN  = '#1B4332';
+  const PREVIEW_LIMIT = 120;
+  const isLong = msg.length > PREVIEW_LIMIT;
+  // Detect subtype for a richer label
+  const isBtcReceived = /bitcoin received|btc received/i.test(n.title || '');
+  const isBonus       = /bonus|reward|gift/i.test(n.title || '');
+  const isBroadcast   = /broadcast|announcement|update/i.test(n.title || '');
+  const sysLabel  = isBtcReceived ? 'Received' : isBonus ? 'Bonus' : isBroadcast ? 'Announcement' : 'PRAQEN';
+  const sysColor  = isBtcReceived ? '#059669' : isBonus ? '#D97706' : GREEN;
+  const sysBg     = isBtcReceived ? '#ECFDF5' : isBonus ? '#FFFBEB' : '#F0FDF4';
+
+  return (
+    <NCard n={n} onNavigate={onNavigate}>
+      {/* Header */}
+      <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <span style={{ fontWeight: 900, fontSize: 15, color: '#0F172A' }}>PRAQEN</span>
+          <div style={{ width: 22, height: 22, borderRadius: '50%', background: `linear-gradient(135deg,${sysColor},${sysColor}cc)`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Megaphone size={11} color="#fff" />
+          </div>
+          <span style={{ fontSize: 12, color: T.g400, fontWeight: 600 }}>{tradeTimeStr(n.created_at)}</span>
+          {!n.is_read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3B82F6', display: 'inline-block', flexShrink: 0 }} />}
+        </div>
+        <span style={{ fontSize: 12, fontWeight: 700, color: sysColor, background: sysBg, padding: '4px 12px', borderRadius: 8, flexShrink: 0 }}>
+          {sysLabel}
+        </span>
       </div>
 
-      {/* Footer */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 11, paddingTop: 9, borderTop: `1px solid ${pal.border}` }}>
-        <span style={{ fontSize: 11, color: T.g500, fontWeight: 600 }}>{absTime(n.created_at)}</span>
+      {/* Title row */}
+      <div style={{ padding: '0 16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ fontSize: 13, color: '#374151', fontWeight: 600, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {n.title || 'System notification'}
+        </span>
+        <span style={{ fontSize: 12, color: T.g400, fontWeight: 500, flexShrink: 0, whiteSpace: 'nowrap' }}>
+          {absTime(n.created_at)}
+        </span>
+      </div>
+
+      <NDivider />
+
+      {/* Message body */}
+      <div style={{ padding: '12px 16px 14px' }}>
+        {msg && (
+          <>
+            <p style={{ margin: '0 0 8px', fontSize: 13, color: '#374151', lineHeight: 1.6, fontWeight: 500 }}>
+              {expanded || !isLong ? msg : msg.slice(0, PREVIEW_LIMIT) + '…'}
+            </p>
+            {isLong && (
+              <button onClick={e => { e.stopPropagation(); setExpanded(v => !v); }}
+                style={{ padding: '3px 10px', borderRadius: 7, border: 'none', background: `${sysColor}15`, color: sysColor, fontSize: 11, fontWeight: 800, cursor: 'pointer' }}>
+                {expanded ? '▲ Less' : '▼ Read more'}
+              </button>
+            )}
+          </>
+        )}
         {n.action && (
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 900, color: pal.accent }}>
-            {isCancelled || isExpired ? 'View details'
-              : isDispute ? 'View dispute'
-              : isPayment ? 'View trade'
-              : 'View'} <ArrowRight size={12} />
-          </span>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: msg ? 8 : 0 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 800, color: sysColor }}>
+              View <ArrowRight size={12} />
+            </span>
+          </div>
         )}
       </div>
-    </CardWrap>
+    </NCard>
   );
 }
 
@@ -609,11 +563,8 @@ function NotifCard({ n, userId, onNavigate }) {
   if (type === 'message') {
     return <MessageCard n={n} onNavigate={onNavigate} />;
   }
-  if (trade && trade.status === 'COMPLETED') {
-    return <CompletedCard n={n} trade={trade} userId={userId} onNavigate={onNavigate} />;
-  }
   if (trade) {
-    return <TradeCard n={n} trade={trade} userId={userId} onNavigate={onNavigate} />;
+    return <TradeNotifCard n={n} trade={trade} userId={userId} onNavigate={onNavigate} />;
   }
   return <BasicCard n={n} onNavigate={onNavigate} />;
 }
@@ -835,7 +786,7 @@ export default function Notifications({ user }) {
       </div>
 
       {/* ── List ── */}
-      <div style={{ overflowY: 'auto', flex: 1, WebkitOverflowScrolling: 'touch' }}>
+      <div style={{ overflowY: 'auto', flex: 1, WebkitOverflowScrolling: 'touch', background: '#F4F7FA', padding: '10px 10px 6px' }}>
         {loading && notifs.length === 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 0' }}>
             <div style={{

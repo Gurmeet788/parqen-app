@@ -9,7 +9,7 @@ import {
   ChevronRight, Search, X, Menu, Lock, Bitcoin,
   ThumbsUp, ThumbsDown, Star, Activity,
   Mail, Phone, UserPlus, MessageSquare, MessageCircle, Maximize2,
-  ChevronUp, Lightbulb, Send,
+  ChevronUp, Lightbulb, Send, ExternalLink,
 } from 'lucide-react';
 
 // ─── Suggestion constants (shared with SuggestionsPanel) ─────
@@ -3635,6 +3635,29 @@ export default function AdminDashboard({ user: appUser, onLogin }) {
             );
           })}
         </nav>
+
+        {/* Team Portal shortcut */}
+        <div style={{ padding: '8px 10px 10px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+          <button
+            onClick={() => window.location.href = '/team'}
+            title="Open Team Portal"
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center',
+              gap: sideOpen ? 10 : 0, justifyContent: sideOpen ? 'flex-start' : 'center',
+              padding: sideOpen ? '9px 14px' : '9px 0',
+              border: '1px solid rgba(244,164,34,0.35)',
+              borderRadius: 10, cursor: 'pointer',
+              background: 'rgba(244,164,34,0.08)',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = 'rgba(244,164,34,0.18)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'rgba(244,164,34,0.08)'}>
+            <ExternalLink size={14} style={{ color: '#F4A422', flexShrink: 0 }} />
+            {sideOpen && (
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#F4A422', flex: 1, textAlign: 'left' }}>Team Portal</span>
+            )}
+          </button>
+        </div>
 
         {/* Footer */}
         <div className="border-t p-3" style={{ borderColor:'rgba(255,255,255,0.1)' }}>
