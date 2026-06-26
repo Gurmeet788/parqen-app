@@ -116,9 +116,9 @@ class TradeEscrowService {
   }
 
   // ── Helper: send in-app notification ───────────────────────────────────────
-  async notify(userId, type, title, message, action) {
+  async notify(userId, type, title, message, action, extra = {}) {
     try {
-      await supabaseAdmin.from('notifications').insert({
+      const payload = {
         user_id:    userId,
         type,
         title,
@@ -126,7 +126,9 @@ class TradeEscrowService {
         action:     action || '/my-trades',
         is_read:    false,
         created_at: new Date().toISOString(),
-      });
+      };
+      if (extra.actor_id || extra.direction) payload.data = extra;
+      await supabaseAdmin.from('notifications').insert(payload);
     } catch (e) {
       console.error('[Escrow] Notification error:', e.message);
     }
@@ -843,13 +845,17 @@ class TradeEscrowService {
       })
       .eq('id', tradeId);
 
-    // ── 7. Notify both parties ────────────────────────────────────────────────
-    for (const uid of [trade.buyer_id, trade.seller_id]) {
-      if (uid) {
-        await this.notify(uid, 'trade', '❌ Trade Cancelled',
-          `Trade #${tradeId.slice(0,8).toUpperCase()} cancelled. ${reason || ''}`,
-          `/trade/${tradeId}`);
-      }
+    // ── 7. Notify both parties (with direction + counterparty for card display) ─
+    const cancelMsg = `Trade #${tradeId.slice(0,8).toUpperCase()} cancelled. ${reason || ''}`;
+    if (trade.buyer_id) {
+      await this.notify(trade.buyer_id, 'trade_cancel', '❌ Trade Cancelled',
+        cancelMsg, `/trade/${tradeId}`,
+        { actor_id: trade.seller_id, direction: 'buy' });
+    }
+    if (trade.seller_id) {
+      await this.notify(trade.seller_id, 'trade_cancel', '❌ Trade Cancelled',
+        cancelMsg, `/trade/${tradeId}`,
+        { actor_id: trade.buyer_id, direction: 'sell' });
     }
     // Push to the party who did NOT get the refund alert above (btcProviderId already got sendSystemAlert)
     const otherPartyId = btcProviderId === trade.buyer_id ? trade.seller_id : trade.buyer_id;

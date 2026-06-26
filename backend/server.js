@@ -1103,11 +1103,11 @@ async function notifyModerators(tradeId, trade, reason) {
   console.log(`✅ Notified ${ids.length} moderators about dispute on trade ${tradeId}`);
 }
 
-async function createNotification(userId, type, title, message, action) {
+async function createNotification(userId, type, title, message, action, extra = {}) {
   try {
-    const { data, error } = await supabaseAdmin.from('notifications').insert({
-      user_id: userId, type, title, message, action, created_at: new Date(), is_read: false,
-    }).select();
+    const payload = { user_id: userId, type, title, message, action, created_at: new Date(), is_read: false };
+    if (extra.actor_id || extra.direction) payload.data = extra;
+    const { data, error } = await supabaseAdmin.from('notifications').insert(payload).select();
     if (error) console.error('[createNotification] Supabase error:', error.message, '| code:', error.code, '| details:', error.details);
     return data?.[0] || null;
   } catch (error) {
@@ -5404,9 +5404,11 @@ app.post('/api/trades', verifyToken, async (req, res) => {
           ? `${listing.gift_card_brand} Gift Card`
           : 'Bitcoin';
         const btcDisp = `₿${parseFloat(trade[0].amount_btc || 0).toFixed(8)}`;
+        // Seller notification: actor = buyer, direction = sell
         await createNotification(sellerId, 'trade', '💰 New Trade Request',
           `${buyerName} wants to buy ${assetLabel} · ${btcDisp} · ${localDisp} via ${pmDisp}`,
-          `/trade/${trade[0].id}`);
+          `/trade/${trade[0].id}`,
+          { actor_id: buyerId, direction: 'sell' });
         // Send personalized emails to buyer and seller in parallel
         const [buyerEmailRes, sellerEmailRes] = await Promise.allSettled([
           supabaseAdmin.from('users').select('id, email, username').eq('id', buyerId).single(),
@@ -5418,11 +5420,12 @@ app.post('/api/trades', verifyToken, async (req, res) => {
           emailService.sendTradeOpenedEmail(buyerEmailUser,  trade[0], 'buyer').catch(e => console.error('[TradeOpen] buyer email:', e.message));
         if (sellerEmailUser?.email)
           emailService.sendTradeOpenedEmail(sellerEmailUser, trade[0], 'seller').catch(e => console.error('[TradeOpen] seller email:', e.message));
-        // Notify the BUYER too — they need to see the trade in their notifications
+        // Buyer notification: actor = seller, direction = buy
         const sellerName = sellerEmailUser?.username || 'the seller';
         await createNotification(buyerId, 'trade', '🔒 Trade Started',
           `Your trade with ${sellerName} is now open · ${btcDisp} · ${localDisp} via ${pmDisp}`,
-          `/trade/${trade[0].id}`);
+          `/trade/${trade[0].id}`,
+          { actor_id: sellerId, direction: 'buy' });
       } catch (notifyErr) {
         console.error('[Trade Open] Background notification failed:', notifyErr.message);
       }
@@ -6322,22 +6325,22 @@ app.get('/api/notifications', verifyToken, async (req, res) => {
 
     let tradeMap = {};
     if (tradeIds.length > 0) {
-      const { data: trades } = await supabaseAdmin
+      const { data: trades, error: tradeErr } = await supabaseAdmin
         .from('trades')
-        .select(`id, trade_type, status, amount_local, local_currency, local_amount, currency,
-                 amount_btc, amount_usd, payment_method, buyer_id, seller_id,
-                 created_at, completed_at,
+        .select(`id, status, trade_type, amount_btc, amount_usd, amount_local,
+                 local_currency, currency_symbol, payment_method,
+                 buyer_id, seller_id, created_at, completed_at, cancelled_at,
                  buyer:buyer_id(id, username, avatar_url, country),
                  seller:seller_id(id, username, avatar_url, country)`)
         .in('id', tradeIds);
+      if (tradeErr) console.error('[Notifications] trade fetch error:', tradeErr.message);
       (trades || []).forEach(t => { tradeMap[t.id] = t; });
     }
 
-    // Extract unique actor IDs from /profile/<uuid> action URLs (profile_view, offer_view)
+    // Extract unique actor IDs — from /profile/<uuid> URLs AND data.actor_id field
     const actorIds = [...new Set(
       (notifs || [])
-        .filter(n => n.type === 'profile_view' || n.type === 'offer_view')
-        .map(n => n.action?.match(/\/profile\/([0-9a-f-]{8,})/i)?.[1])
+        .map(n => n.action?.match(/\/profile\/([0-9a-f-]{8,})/i)?.[1] || n.data?.actor_id)
         .filter(Boolean)
     )];
 
@@ -6345,17 +6348,18 @@ app.get('/api/notifications', verifyToken, async (req, res) => {
     if (actorIds.length > 0) {
       const { data: actors } = await supabaseAdmin
         .from('users')
-        .select('id, username, full_name, avatar_url')
+        .select('id, username, full_name, avatar_url, country')
         .in('id', actorIds);
       (actors || []).forEach(u => { actorMap[u.id] = u; });
     }
 
     const enhanced = (notifs || []).map(n => {
       const tradeId = n.action?.match(/\/trade\/([0-9a-f-]{8,})/i)?.[1];
-      const actorId = n.action?.match(/\/profile\/([0-9a-f-]{8,})/i)?.[1];
+      const actorId = n.action?.match(/\/profile\/([0-9a-f-]{8,})/i)?.[1] || n.data?.actor_id;
       let result = n;
       if (tradeId && tradeMap[tradeId]) result = { ...result, trade: tradeMap[tradeId] };
       if (actorId && actorMap[actorId]) result = { ...result, actor: actorMap[actorId] };
+      if (n.data?.direction)            result = { ...result, direction: n.data.direction };
       return result;
     });
 

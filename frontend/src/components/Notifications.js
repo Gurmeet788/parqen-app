@@ -237,19 +237,27 @@ function OfferViewCard({ n, onNavigate }) {
 
 // ─── 3 & 4. UNIFIED TRADE CARD (image-style) ─────────────────────────────────
 const TRADE_STATUS = {
-  COMPLETED:          { label: 'Completed', color: '#059669', bg: '#ECFDF5' },
-  CANCELLED:          { label: 'Canceled',  color: '#DC2626', bg: '#FEF2F2' },
-  CANCELLED_BY_BUYER: { label: 'Canceled',  color: '#DC2626', bg: '#FEF2F2' },
-  CANCELLED_BY_SELLER:{ label: 'Canceled',  color: '#DC2626', bg: '#FEF2F2' },
-  EXPIRED:            { label: 'Expired',   color: '#DC2626', bg: '#FEF2F2' },
-  DISPUTED:           { label: 'Disputed',  color: '#D97706', bg: '#FFFBEB' },
-  IN_REVIEW:          { label: 'In Review', color: '#7C3AED', bg: '#F5F3FF' },
-  PAYMENT_SENT:       { label: 'Paid',      color: '#2563EB', bg: '#EFF6FF' },
-  PAID:               { label: 'Paid',      color: '#2563EB', bg: '#EFF6FF' },
-  ESCROW:             { label: 'In Escrow', color: '#7C3AED', bg: '#F5F3FF' },
-  FUNDS_LOCKED:       { label: 'Locked',    color: '#7C3AED', bg: '#F5F3FF' },
-  ACTIVE:             { label: 'Active',    color: '#059669', bg: '#ECFDF5' },
-  CREATED:            { label: 'Pending',   color: '#D97706', bg: '#FFFBEB' },
+  COMPLETED:           { label: 'Completed',  color: '#059669', bg: '#ECFDF5' },
+  COMPLETE:            { label: 'Completed',  color: '#059669', bg: '#ECFDF5' },
+  CANCELLED:           { label: 'Canceled',   color: '#DC2626', bg: '#FEF2F2' },
+  CANCELED:            { label: 'Canceled',   color: '#DC2626', bg: '#FEF2F2' },
+  CANCELLED_BY_BUYER:  { label: 'Canceled',   color: '#DC2626', bg: '#FEF2F2' },
+  CANCELLED_BY_SELLER: { label: 'Canceled',   color: '#DC2626', bg: '#FEF2F2' },
+  EXPIRED:             { label: 'Expired',    color: '#6B7280', bg: '#F9FAFB' },
+  EXPIRE:              { label: 'Expired',    color: '#6B7280', bg: '#F9FAFB' },
+  DISPUTED:            { label: 'Dispute',    color: '#6D28D9', bg: '#F5F3FF' },
+  IN_DISPUTE:          { label: 'Dispute',    color: '#6D28D9', bg: '#F5F3FF' },
+  IN_REVIEW:           { label: 'In Review',  color: '#6D28D9', bg: '#F5F3FF' },
+  RESOLVED:            { label: 'Resolved',   color: '#6D28D9', bg: '#F5F3FF' },
+  PAYMENT_SENT:        { label: 'Paid',       color: '#2563EB', bg: '#EFF6FF' },
+  PAID:                { label: 'Paid',       color: '#2563EB', bg: '#EFF6FF' },
+  ESCROW:              { label: 'In Escrow',  color: '#6D28D9', bg: '#F5F3FF' },
+  FUNDS_LOCKED:        { label: 'Locked',     color: '#6D28D9', bg: '#F5F3FF' },
+  ACTIVE:              { label: 'Active',     color: '#2563EB', bg: '#EFF6FF' },
+  IN_PROGRESS:         { label: 'Active',     color: '#2563EB', bg: '#EFF6FF' },
+  OPEN:                { label: 'Active',     color: '#2563EB', bg: '#EFF6FF' },
+  CREATED:             { label: 'Pending',    color: '#D97706', bg: '#FFFBEB' },
+  PENDING:             { label: 'Pending',    color: '#D97706', bg: '#FFFBEB' },
 };
 
 const tradeTimeStr = (ts) => {
@@ -264,25 +272,38 @@ const tradeTimeStr = (ts) => {
 
 function TradeNotifCard({ n, trade, userId, onNavigate }) {
   const isBuyer  = String(userId) === String(trade.buyer_id);
-  const cp       = isBuyer ? trade.seller : trade.buyer;
-  const local    = parseFloat(trade.amount_local || trade.local_amount || 0);
-  const cur      = trade.local_currency || trade.currency || 'USD';
-  const sym      = CUR_SYM[cur] || '';
+  const cpRaw    = isBuyer ? trade.seller : trade.buyer;
+  // Fallback: parse counterparty name from message when not enriched in trade
+  const msgActorName = !cpRaw
+    ? (
+        (n.message || '').match(/^([A-Za-z0-9_]+)\s+(?:wants to|cancelled|canceled|paid|disputed|completed)/i)?.[1]
+        || (n.message || '').match(/\bwith\s+([A-Za-z0-9_]+)\b/i)?.[1]
+      )
+    : null;
+  const cp = cpRaw || (msgActorName ? { username: msgActorName } : null);
+  const local    = parseFloat(trade.amount_local || 0);
+  const cur      = trade.local_currency || 'USD';
+  const sym      = trade.currency_symbol || CUR_SYM[cur] || '';
   const btcRaw   = parseFloat(trade.amount_btc || 0);
   const btcStr   = btcRaw.toFixed(8);
   const pm       = trade.payment_method || '—';
-  const st       = (trade.status || '').toUpperCase();
-  const status   = TRADE_STATUS[st] || { label: st || 'Pending', color: '#64748B', bg: '#F8FAFC' };
-  const dateStr  = tradeTimeStr(trade.created_at || n.created_at);
-  const dirLabel = isBuyer ? 'Buy BTC' : 'Sell BTC';
+  const st         = (trade.status || '').toUpperCase();
+  const status     = TRADE_STATUS[st] || { label: st || 'Active', color: '#2563EB', bg: '#EFF6FF' };
+  const dateStr    = tradeTimeStr(trade.created_at || n.created_at);
+  const dirLabel   = isBuyer ? 'Buy BTC' : 'Sell BTC';
+  const isDone     = st === 'COMPLETED' || st === 'COMPLETE';
+
+  // Past tense for completed trades, present for active
+  const payLabel     = isDone ? 'You paid'     : 'You pay';
+  const receiveLabel = isDone ? 'You received' : 'You receive';
 
   // You pay / You receive from this user's perspective
-  const payStr     = isBuyer ? `${local.toFixed(2)} ${cur}` : `${btcStr} BTC`;
-  const receiveStr = isBuyer ? `${btcStr} BTC`              : `${sym}${local.toFixed(2)} ${cur}`;
+  const payStr     = isBuyer ? `${sym}${local.toFixed(2)} ${cur}` : `${btcStr} BTC`;
+  const receiveStr = isBuyer ? `${btcStr} BTC`                    : `${sym}${local.toFixed(2)} ${cur}`;
 
   return (
     <NCard n={n} onNavigate={onNavigate}>
-      {/* Header */}
+      {/* Header: direction + ₿ icon + date + status (avatar is in row 2, not here) */}
       <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
           <span style={{ fontWeight: 900, fontSize: 15, color: '#0F172A' }}>{dirLabel}</span>
@@ -297,13 +318,16 @@ function TradeNotifCard({ n, trade, userId, onNavigate }) {
         </span>
       </div>
 
-      {/* Payment method | counterparty with real avatar */}
+      {/* Payment method (red) | vendor avatar + name + flag */}
       <div style={{ padding: '0 16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <span style={{ fontSize: 13, color: '#374151', fontWeight: 500, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pm}</span>
+        <span style={{ fontSize: 13, color: '#DC2626', fontWeight: 600, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pm}</span>
         {cp ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-            <Avatar user={cp} name={cp.username} size={22} color={T.forest} />
-            <span style={{ fontSize: 13, color: T.g500, fontWeight: 600 }}>{cp.username}</span>
+            <Avatar user={cp} name={cp.username} size={32} color={T.forest} />
+            <div>
+              <span style={{ fontSize: 13, color: '#EC4899', fontWeight: 700, display: 'block' }}>{cp.username}</span>
+              {cp.country && <span style={{ fontSize: 13, lineHeight: 1 }}>{flag(cp.country)}</span>}
+            </div>
           </div>
         ) : (
           <span style={{ fontSize: 13, color: T.g400 }}>—</span>
@@ -312,16 +336,16 @@ function TradeNotifCard({ n, trade, userId, onNavigate }) {
 
       <NDivider />
 
-      {/* You pay → You receive */}
+      {/* You pay/paid → You receive/received (orange amounts) */}
       <div style={{ padding: '11px 16px 14px', display: 'flex', alignItems: 'center' }}>
         <div style={{ flex: 1 }}>
-          <p style={{ margin: 0, fontSize: 11, color: T.g400, fontWeight: 500, marginBottom: 3 }}>You pay</p>
-          <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#111827' }}>{payStr}</p>
+          <p style={{ margin: 0, fontSize: 11, color: T.g400, fontWeight: 500, marginBottom: 3 }}>{payLabel}</p>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#F7931A' }}>{payStr}</p>
         </div>
         <div style={{ padding: '0 14px', color: T.g400, fontSize: 20, fontWeight: 300, flexShrink: 0 }}>→</div>
         <div style={{ flex: 1, textAlign: 'right' }}>
-          <p style={{ margin: 0, fontSize: 11, color: T.g400, fontWeight: 500, marginBottom: 3 }}>You receive</p>
-          <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#111827' }}>{receiveStr}</p>
+          <p style={{ margin: 0, fontSize: 11, color: T.g400, fontWeight: 500, marginBottom: 3 }}>{receiveLabel}</p>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#F7931A' }}>{receiveStr}</p>
         </div>
       </div>
     </NCard>
@@ -381,52 +405,120 @@ function MessageCard({ n, onNavigate }) {
 }
 
 // ─── 6. GENERAL / SYSTEM card ─────────────────────────────────────────────────
-function BasicCard({ n, onNavigate }) {
+function BasicCard({ n, userId, onNavigate }) {
   const [expanded, setExpanded] = useState(false);
 
   const title = (n.title || '').toLowerCase();
   const msg   = n.message || '';
   const type  = n.type || '';
+  const vendor = n.actor;
 
-  const isCancelled = /cancel/i.test(title) || /cancel/i.test(type);
-  const isExpired   = /expir/i.test(title)  || /expir/i.test(type);
-  const isNewTrade  = /new trade|trade request/i.test(title);
-  const isDispute   = /disput/i.test(title);
+  const isCancelled = /cancel/i.test(title)  || /cancel/i.test(type);
+  const isExpired   = /expir/i.test(title)   || /expir/i.test(type)  || /expir/i.test(msg);
+  const isNewTrade  = /new trade|trade request/i.test(title) || /trade_new|new_trade/i.test(type) || /wants to (buy|sell)/i.test(msg);
+  const isDispute   = /disput/i.test(title)  || /disput/i.test(type);
   const isPayment   = /payment|paid/i.test(title);
+  const isCompleted = /complet/i.test(title) || /complet/i.test(type)
+    || type === 'trade_done' || type === 'trade_complete' || type === 'trade_completed';
+  const isResolved  = /resolv/i.test(title)  || /resolv/i.test(type);
+  const isActive    = /\bactive\b/i.test(title) || /\bactive\b/i.test(type);
   const isRefund    = /refund/i.test(msg);
-  const isTradeRelated = isCancelled || isExpired || isNewTrade || isDispute || isPayment;
+  const isTradeRelated = isCancelled || isExpired || isNewTrade || isDispute
+    || isPayment || isCompleted || isResolved || isActive;
 
   const tradeId = getRealTradeRef(n);
 
   // ── TRADE-RELATED: image-style card ──────────────────────────────────────────
   if (isTradeRelated) {
     const statusMap = {
-      cancel:  { label: 'Canceled',    color: '#DC2626', bg: '#FEF2F2' },
-      expire:  { label: 'Expired',     color: '#DC2626', bg: '#FEF2F2' },
-      dispute: { label: 'Disputed',    color: '#D97706', bg: '#FFFBEB' },
-      payment: { label: 'Paid',        color: '#2563EB', bg: '#EFF6FF' },
-      trade:   { label: 'In Progress', color: '#059669', bg: '#ECFDF5' },
+      cancel:    { label: 'Canceled',    color: '#DC2626', bg: '#FEF2F2' },
+      expire:    { label: 'Expired',     color: '#6B7280', bg: '#F9FAFB' },
+      dispute:   { label: 'Dispute',     color: '#6D28D9', bg: '#F5F3FF' },
+      resolved:  { label: 'Resolved',    color: '#6D28D9', bg: '#F5F3FF' },
+      payment:   { label: 'Paid',        color: '#2563EB', bg: '#EFF6FF' },
+      active:    { label: 'Active',      color: '#2563EB', bg: '#EFF6FF' },
+      completed: { label: 'Completed', color: '#059669', bg: '#ECFDF5' },
+      trade:     { label: 'Pending',   color: '#D97706', bg: '#FFFBEB' },
     };
     const status = isCancelled ? statusMap.cancel
       : isExpired   ? statusMap.expire
+      : isResolved  ? statusMap.resolved
       : isDispute   ? statusMap.dispute
       : isPayment   ? statusMap.payment
+      : isCompleted ? statusMap.completed
+      : isActive    ? statusMap.active
       : statusMap.trade;
 
-    // Clean up the reason text
-    const reason = msg
-      .replace(/^reason:\s*/i, '')
-      .replace(/^trade\s+expired\s*[—–-]?\s*/i, '')
-      .trim() || msg;
+    // Parse payment method: text after "via "
+    const pmM = msg.match(/\bvia\s+([^·\n]+?)(?:\s*·\s*|\s*$)/i);
+    const parsedPm = pmM?.[1]?.trim() || n.payment_method || '—';
+
+    // BTC amount (₿ prefix in message)
+    const btcM = msg.match(/[₿]([\d.]+)/);
+    const parsedBtc = btcM ? parseFloat(btcM[1]) : null;
+    const btcAmtStr = parsedBtc ? `₿${parsedBtc.toFixed(8)}` : null;
+
+    // Local fiat amount + currency
+    const fiatM = msg.match(/([\d,]+(?:\.\d+)?)\s*(GHS|NGN|KES|ZAR|USD|GBP|EUR|UGX|TZS|XAF|XOF)\b/i);
+    const parsedLocalAmt = fiatM ? fiatM[1].replace(/,/g, '') : null;
+    const parsedLocalCur = fiatM ? fiatM[2].toUpperCase() : null;
+    const parsedLocalSym = parsedLocalCur ? (CUR_SYM[parsedLocalCur] || '') : '';
+    const parsedLocalStr = parsedLocalAmt
+      ? `${parsedLocalSym}${fmt(parsedLocalAmt)} ${parsedLocalCur}`
+      : null;
+
+    // Direction — priority: enriched field → message keywords → type hints
+    const wantsBuy  = /wants to buy/i.test(msg);
+    const wantsSell = /wants to sell/i.test(msg);
+    let dirLabel = 'Trade';
+    if (n.direction === 'buy')          dirLabel = 'Buy BTC';
+    else if (n.direction === 'sell')    dirLabel = 'Sell BTC';
+    else if (wantsBuy)                  dirLabel = 'Sell BTC';
+    else if (wantsSell)                 dirLabel = 'Buy BTC';
+    else if (/\bbuy\b/i.test(type) && !/sell/i.test(type)) dirLabel = 'Buy BTC';
+    else if (/\bsell\b/i.test(type) && !/buy/i.test(type)) dirLabel = 'Sell BTC';
+
+    // Past tense for completed trades
+    const isDone = isCompleted;
+    const payLabel     = isDone ? 'You paid'     : 'You pay';
+    const receiveLabel = isDone ? 'You received' : 'You receive';
+
+    // isSeller = true when we know the current user is selling
+    const isSeller = wantsBuy || n.direction === 'sell';
+    // You pay / You receive:
+    //   Seller: pays BTC → receives fiat
+    //   Buyer (default): pays fiat → receives BTC
+    // When an amount is unknown, show the asset name (BTC/currency) so user knows what they get
+    const payStr     = isSeller
+      ? (btcAmtStr || 'BTC')
+      : (parsedLocalStr || btcAmtStr || 'BTC');
+    const receiveStr = isSeller
+      ? (parsedLocalStr || '—')
+      : (btcAmtStr ? `${btcAmtStr}${parsedLocalStr ? ` · ${parsedLocalStr}` : ''}` : 'BTC');
+
+    // Actor: use enriched n.actor first, then parse username from message as fallback for letter avatar
+    const parsedActorName = !vendor
+      ? (
+          // "alicebuyer wants to buy…" or "alicebuyer cancelled the trade…"
+          msg.match(/^([A-Za-z0-9_]+)\s+(?:wants to|cancelled|canceled|paid|disputed|completed)/i)?.[1]
+          // "Your trade with aliceseller is now open…" or "Trade with aliceseller…"
+          || msg.match(/\bwith\s+([A-Za-z0-9_]+)\b/i)?.[1]
+        )
+      : null;
+    const displayActor = vendor || (parsedActorName ? { username: parsedActorName } : null);
+
+    // Extra direction hint: if actor username contains "buyer" → they buy → I sell, and vice versa
+    if (dirLabel === 'Trade' && parsedActorName) {
+      if (/buyer/i.test(parsedActorName))  dirLabel = 'Sell BTC';
+      if (/seller/i.test(parsedActorName)) dirLabel = 'Buy BTC';
+    }
 
     return (
       <NCard n={n} onNavigate={onNavigate}>
-        {/* Header */}
+        {/* Header: direction + ₿ icon + date + status (NO avatar here) */}
         <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-            <span style={{ fontWeight: 900, fontSize: 15, color: '#0F172A' }}>
-              {isNewTrade ? 'Trade Request' : 'Trade'}
-            </span>
+            <span style={{ fontWeight: 900, fontSize: 15, color: '#0F172A' }}>{dirLabel}</span>
             <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#F7931A,#E8790A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 1px 4px rgba(247,147,26,0.35)' }}>
               <span style={{ fontSize: 11, color: '#fff', fontWeight: 900 }}>₿</span>
             </div>
@@ -438,45 +530,45 @@ function BasicCard({ n, onNavigate }) {
           </span>
         </div>
 
-        {/* Trade type | real trade ID */}
+        {/* Payment method (red) | Actor name + flag (pink) */}
         <div style={{ padding: '0 16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <span style={{ fontSize: 13, color: '#374151', fontWeight: 500 }}>Bitcoin Trade</span>
-          {tradeId
-            ? <span style={{ fontSize: 13, color: T.g500, fontWeight: 600, fontFamily: 'monospace' }}>#{tradeId}</span>
-            : <span style={{ fontSize: 13, color: T.g400 }}>—</span>
-          }
+          <span style={{ fontSize: 13, color: '#DC2626', fontWeight: 600, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {parsedPm}
+          </span>
+          {displayActor ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+              <Avatar user={displayActor} name={displayActor.username} size={32} color={T.forest} />
+              <div>
+                <span style={{ fontSize: 13, color: '#EC4899', fontWeight: 700, display: 'block' }}>{displayActor.username}</span>
+                {displayActor.country && <span style={{ fontSize: 13, lineHeight: 1 }}>{flag(displayActor.country)}</span>}
+              </div>
+            </div>
+          ) : parsedLocalStr ? (
+            <span style={{ fontSize: 14, fontWeight: 800, color: '#F7931A', flexShrink: 0 }}>{parsedLocalStr}</span>
+          ) : tradeId ? (
+            <span style={{ fontSize: 12, color: '#EC4899', fontWeight: 800, fontFamily: 'monospace', background: '#FCE7F3', padding: '3px 10px', borderRadius: 7, flexShrink: 0 }}>#{tradeId}</span>
+          ) : null}
         </div>
 
         <NDivider />
 
-        {/* Detail section */}
-        <div style={{ padding: '11px 16px 14px' }}>
-          {(isCancelled || isExpired) ? (
-            <>
-              <p style={{ margin: '0 0 4px', fontSize: 11, color: T.g400, fontWeight: 500 }}>Reason</p>
-              <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#374151', lineHeight: 1.5 }}>
-                {reason || 'No reason provided'}
-              </p>
-              {isRefund && (
-                <p style={{ margin: '8px 0 0', fontSize: 12, color: T.success, fontWeight: 700 }}>
-                  ✅ Your BTC has been refunded to your wallet
-                </p>
-              )}
-            </>
-          ) : isDispute ? (
-            <>
-              <p style={{ margin: '0 0 4px', fontSize: 11, color: '#D97706', fontWeight: 700 }}>⚠️ Dispute Opened</p>
-              <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#374151', lineHeight: 1.5 }}>{msg || 'A dispute has been raised for this trade.'}</p>
-            </>
-          ) : isPayment ? (
-            <>
-              <p style={{ margin: '0 0 4px', fontSize: 11, color: '#2563EB', fontWeight: 700 }}>💳 Payment Confirmed</p>
-              <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#374151', lineHeight: 1.5 }}>{msg}</p>
-            </>
-          ) : (
-            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#374151', lineHeight: 1.5 }}>{msg}</p>
-          )}
+        {/* You pay/paid → You receive/received (orange amounts) */}
+        <div style={{ padding: '11px 16px 14px', display: 'flex', alignItems: 'center' }}>
+          <div style={{ flex: 1 }}>
+            <p style={{ margin: 0, fontSize: 11, color: T.g400, fontWeight: 500, marginBottom: 3 }}>{payLabel}</p>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#F7931A' }}>{payStr}</p>
+          </div>
+          <div style={{ padding: '0 14px', color: T.g400, fontSize: 20, fontWeight: 300, flexShrink: 0 }}>→</div>
+          <div style={{ flex: 1, textAlign: 'right' }}>
+            <p style={{ margin: 0, fontSize: 11, color: T.g400, fontWeight: 500, marginBottom: 3 }}>{receiveLabel}</p>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#F7931A' }}>{receiveStr}</p>
+          </div>
         </div>
+        {isRefund && (
+          <div style={{ padding: '0 16px 12px' }}>
+            <p style={{ margin: 0, fontSize: 12, color: T.success, fontWeight: 700 }}>✅ Your BTC has been refunded to your wallet</p>
+          </div>
+        )}
       </NCard>
     );
   }
@@ -566,7 +658,7 @@ function NotifCard({ n, userId, onNavigate }) {
   if (trade) {
     return <TradeNotifCard n={n} trade={trade} userId={userId} onNavigate={onNavigate} />;
   }
-  return <BasicCard n={n} onNavigate={onNavigate} />;
+  return <BasicCard n={n} userId={userId} onNavigate={onNavigate} />;
 }
 
 // ─── Filter tabs ──────────────────────────────────────────────────────────────
