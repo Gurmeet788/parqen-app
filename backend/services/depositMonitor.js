@@ -65,7 +65,7 @@ function depositEmailHtml(username, depositBTC, newBalance, address) {
         <tr>
           <td style="background:linear-gradient(135deg,#1B4332,#2D6A4F);padding:28px 32px;text-align:center;">
             <p style="margin:0;font-size:28px;font-weight:900;color:#fff;letter-spacing:2px;">PRA<span style="color:#F4A422;">QEN</span></p>
-            <p style="margin:8px 0 0;font-size:13px;color:rgba(255,255,255,0.65);">Africa's P2P Bitcoin Platform</p>
+            <p style="margin:8px 0 0;font-size:13px;color:rgba(255,255,255,0.65);">Global P2P Bitcoin Platform</p>
           </td>
         </tr>
 
@@ -542,7 +542,7 @@ class DepositMonitor {
 
     const displayName = user.username || username;
     await emailTransporter.sendMail({
-      from:    '"PRAQEN" <kendevdash@gmail.com>',
+      from:    '"PRAQEN" <support@praqen.com>',
       to:      user.email,
       subject: `₿ ${depositBTC.toFixed(8)} BTC received — PRAQEN`,
       html:    depositEmailHtml(displayName, depositBTC, newBalance, address),

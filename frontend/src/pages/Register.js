@@ -62,7 +62,7 @@ const BENEFITS = [
 
 const TESTIMONIALS = [
   { name: 'Sarah K.', location: 'Accra, Ghana', text: 'Praqen made my first Bitcoin purchase so easy! The escrow system gave me complete peace of mind.' },
-  { name: 'David M.', location: 'Lagos, Nigeria', text: 'Best P2P platform in Africa. Fast trades and amazing customer support. Highly recommended!' },
+  { name: 'David M.', location: 'Lagos, Nigeria', text: 'Best P2P platform worldwide. Fast trades and amazing customer support. Highly recommended!' },
 ];
 
 function PwStrength({ password }) {
@@ -931,7 +931,7 @@ export default function Register({ onLogin }) {
             </h1>
 
             <p className="hero-description">
-              Join Africa's most trusted P2P Bitcoin marketplace. 
+              Join the world's most trusted P2P Bitcoin marketplace.
               Trade directly with verified users, protected by 
               industry-leading escrow technology.
             </p>
@@ -1080,7 +1080,7 @@ export default function Register({ onLogin }) {
                           You were invited by <span style={{ color: '#fff' }}>@{referrerInfo.username}</span>!
                         </p>
                         <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11, margin: '2px 0 0', fontWeight: 500 }}>
-                          Sign up now and start trading on Africa's #1 P2P Bitcoin platform
+                          Sign up now and start trading on the world's #1 P2P Bitcoin platform
                         </p>
                       </>
                     ) : (
@@ -1089,7 +1089,7 @@ export default function Register({ onLogin }) {
                           You have a referral invitation!
                         </p>
                         <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11, margin: '2px 0 0', fontWeight: 500 }}>
-                          Sign up now and start trading on Africa's #1 P2P Bitcoin platform
+                          Sign up now and start trading on the world's #1 P2P Bitcoin platform
                         </p>
                       </>
                     )}

@@ -762,7 +762,7 @@ export default function MyTrades({user}) {
                 </span>
               </div>
               <p className="text-xs leading-relaxed mb-4" style={{color:'rgba(255,255,255,0.4)'}}>
-                Africa's most trusted P2P Bitcoin platform. Escrow-protected. Fast. Honest.
+                The world's most trusted P2P Bitcoin platform. Escrow-protected. Fast. Honest.
               </p>
               <div className="flex gap-2 flex-wrap">
                 {[

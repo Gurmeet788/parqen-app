@@ -91,7 +91,7 @@ export default function PRQFooter() {
       <div style={{ padding: '8px 14px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 900, color: '#fff', lineHeight: 1.2 }}>Keep Trading. <span style={{ color: '#F4A422' }}>Keep Growing.</span></div>
-          <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.3)', fontWeight: 500, marginTop: 2 }}>Africa's most trusted P2P platform</div>
+          <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.3)', fontWeight: 500, marginTop: 2 }}>The world's most trusted P2P platform</div>
         </div>
         <button onClick={() => nav('/buy-bitcoin')} style={{ flexShrink: 0, padding: '7px 13px', borderRadius: 8, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg,#2D6A4F,#40916C)', color: '#fff', fontWeight: 800, fontSize: 10, boxShadow: '0 2px 8px rgba(45,106,79,0.35)', whiteSpace: 'nowrap' }}>
           ₿ Buy Now

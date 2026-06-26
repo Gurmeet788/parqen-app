@@ -6,7 +6,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const emailService = require('../services/emailService');
 
-const SUBJECT = '🎉 500 USERS ACROSS AFRICA! BIG WIN! 🎉';
+const SUBJECT = '🎉 500 USERS WORLDWIDE! BIG WIN! 🎉';
 
 const HTML_BODY = `
   <!-- Hero celebration banner -->
@@ -16,7 +16,7 @@ const HTML_BODY = `
       WE HIT 500 USERS!
     </h1>
     <p style="margin:0;font-size:15px;color:#475569;font-weight:600;">
-      Across Africa in just <strong style="color:#D97706;">2 WEEKS</strong> — This is BIG! 🚀
+      Worldwide in just <strong style="color:#D97706;">2 WEEKS</strong> — This is BIG! 🚀
     </p>
   </div>
 
@@ -31,7 +31,7 @@ const HTML_BODY = `
   </p>
   <p style="color:#334155;font-size:15px;line-height:1.8;margin:0 0 24px;">
     <strong>WOW! What an amazing milestone!</strong> 🎉<br>
-    We have just hit <strong style="color:#059669;font-size:17px;">500 USERS across Africa</strong> in just <strong>2 weeks</strong> since our Africa launch!
+    We have just hit <strong style="color:#059669;font-size:17px;">500 USERS worldwide</strong> in just <strong>2 weeks</strong> since our global launch!
     This is a <strong>BIG WIN</strong> for all of us!
   </p>
 
@@ -42,7 +42,7 @@ const HTML_BODY = `
       THANK YOU for being part of this incredible journey!
     </p>
     <p style="margin:8px 0 0;font-size:13px;color:#15803D;font-weight:600;">
-      You are one of the first 500 traders shaping Africa's Bitcoin future.
+      You are one of the first 500 traders shaping Bitcoin's global future.
     </p>
   </div>
 
@@ -72,7 +72,7 @@ const HTML_BODY = `
       <span style="font-size:22px;margin-right:12px;flex-shrink:0;">✅</span>
       <div>
         <p style="margin:0;font-size:14px;font-weight:800;color:#059669;text-transform:uppercase;letter-spacing:0.5px;">START TRADING</p>
-        <p style="margin:3px 0 0;font-size:13px;color:#64748B;">Buy and sell with verified traders across Africa</p>
+        <p style="margin:3px 0 0;font-size:13px;color:#64748B;">Buy and sell with verified traders worldwide</p>
       </div>
     </div>
   </div>
@@ -95,7 +95,7 @@ const HTML_BODY = `
 
   <!-- Sign off -->
   <p style="color:#334155;font-size:15px;line-height:1.8;margin:0 0 6px;text-align:center;">
-    Let's keep building the <strong>biggest P2P trading community in Africa!</strong>
+    Let's keep building the <strong>biggest global P2P trading community!</strong>
   </p>
 
   <p style="color:#059669;font-size:15px;font-weight:800;text-align:center;margin:0 0 24px;">
@@ -105,7 +105,7 @@ const HTML_BODY = `
   <!-- Hashtag footer -->
   <div style="text-align:center;border-top:1px solid #E2E8F0;padding-top:16px;">
     <p style="margin:0;font-size:12px;color:#94A3B8;font-weight:600;letter-spacing:1px;">
-      #PRAQEN &nbsp;•&nbsp; #500Users &nbsp;•&nbsp; #AfricaRising 🌍
+      #PRAQEN &nbsp;•&nbsp; #500Users &nbsp;•&nbsp; #GlobalBitcoin 🌍
     </p>
   </div>
 `;

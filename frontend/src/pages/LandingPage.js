@@ -811,7 +811,7 @@ export default function LandingPage({ user }) {
                           if (navigator.share) {
                             navigator.share({
                               title: 'Earn $2 Bitcoin free on PRAQEN',
-                              text: `Join me on PRAQEN — the safest P2P Bitcoin platform in Africa. Get $2 free BTC!`,
+                              text: `Join me on PRAQEN — the safest P2P Bitcoin platform worldwide. Get $2 free BTC!`,
                               url: `https://praqen.com/signup?ref=${user.referral_code || ''}`,
                             }).catch(() => {});
                           }

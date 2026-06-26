@@ -11,7 +11,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
 );
 
-const FROM_ADDRESS = `PRAQEN <${process.env.SMTP_FROM || process.env.EMAIL_USER || 'kendevdash@gmail.com'}>`;
+const FROM_ADDRESS = `PRAQEN <${process.env.SMTP_FROM || process.env.EMAIL_USER || 'support@praqen.com'}>`;
 
 function makeTransporter() {
   return nodemailer.createTransport({
@@ -110,14 +110,14 @@ function base(title, body) {
         <tr><td style="background:linear-gradient(135deg,#10b981 0%,#059669 100%);padding:32px 40px;text-align:center;">
           <div style="display:inline-block;width:56px;height:56px;background:#fff;border-radius:14px;line-height:56px;font-size:28px;font-weight:900;color:#10b981;text-align:center;">P</div>
           <p style="margin:12px 0 0;color:#fff;font-size:22px;font-weight:900;letter-spacing:3px;">PRAQEN</p>
-          <p style="margin:4px 0 0;color:rgba(255,255,255,0.75);font-size:12px;letter-spacing:1px;">Africa's Safest Bitcoin Marketplace</p>
+          <p style="margin:4px 0 0;color:rgba(255,255,255,0.75);font-size:12px;letter-spacing:1px;">The World's Most Trusted Bitcoin Marketplace</p>
         </td></tr>
         <!-- BODY -->
         <tr><td style="padding:36px 40px 28px;">${body}</td></tr>
         <!-- FOOTER -->
         <tr><td style="background:#F8FAFC;padding:20px 40px;text-align:center;border-top:1px solid #E2E8F0;">
-          <p style="margin:0 0 4px;font-size:12px;color:#94A3B8;">Need help? <a href="mailto:hello@praqen.com" style="color:#10b981;font-weight:700;">hello@praqen.com</a></p>
-          <p style="margin:0;font-size:11px;color:#CBD5E1;">© ${yr} PRAQEN · Africa's Safest P2P Bitcoin Marketplace</p>
+          <p style="margin:0 0 4px;font-size:12px;color:#94A3B8;">Need help? <a href="mailto:support@praqen.com" style="color:#10b981;font-weight:700;">support@praqen.com</a></p>
+          <p style="margin:0;font-size:11px;color:#CBD5E1;">© ${yr} PRAQEN · The World's Most Trusted P2P Bitcoin Marketplace</p>
         </td></tr>
       </table>
     </td></tr>
@@ -156,7 +156,7 @@ function warningBox(msg) {
 function welcomeHtml(name) {
   return base('Welcome to PRAQEN!', `
     <h2 style="color:#10b981;font-size:22px;margin:0 0 8px;">Welcome, ${name}! 🎉</h2>
-    <p style="color:#475569;font-size:14px;line-height:1.7;margin:0 0 20px;">You've joined <strong>Africa's safest P2P Bitcoin marketplace</strong>. Your account is ready!</p>
+    <p style="color:#475569;font-size:14px;line-height:1.7;margin:0 0 20px;">You've joined <strong>the world's most trusted P2P Bitcoin marketplace</strong>. Your account is ready!</p>
     <div style="background:#F0FAF5;border-left:4px solid #10b981;padding:16px 20px;border-radius:8px;margin-bottom:24px;">
       <p style="margin:0 0 8px;font-weight:700;color:#1B4332;">✅ Your next steps:</p>
       <ul style="margin:0;padding-left:20px;color:#475569;font-size:14px;line-height:1.9;">
@@ -365,7 +365,7 @@ function withdrawalAlertHtml(name, amountBtc, toAddress) {
     `)}
     <p style="color:#64748B;font-size:13px;margin:0 0 16px;">Withdrawals are processed within 24 hours. You'll receive another email once complete.</p>
     <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:12px 16px;">
-      <p style="margin:0;font-size:13px;color:#991b1b;"><strong>⚠️ Didn't request this?</strong> Contact us immediately at <a href="mailto:hello@praqen.com" style="color:#b45309;font-weight:700;">hello@praqen.com</a></p>
+      <p style="margin:0;font-size:13px;color:#991b1b;"><strong>⚠️ Didn't request this?</strong> Contact us immediately at <a href="mailto:support@praqen.com" style="color:#b45309;font-weight:700;">support@praqen.com</a></p>
     </div>
   `);
 }
@@ -517,8 +517,8 @@ function txReceiptHtml(name, tx) {
 
   <!-- ═══ FOOTER ═══ -->
   <tr><td style="background:#F8FAFC;padding:18px 28px;text-align:center;border-top:1px solid #E2E8F0;">
-    <p style="margin:0 0 3px;font-size:12px;color:#94A3B8;">Need help? <a href="mailto:hello@praqen.com" style="color:#10b981;font-weight:700;">hello@praqen.com</a></p>
-    <p style="margin:0;font-size:11px;color:#CBD5E1;">© ${yr} PRAQEN · Africa's Safest P2P Bitcoin Marketplace</p>
+    <p style="margin:0 0 3px;font-size:12px;color:#94A3B8;">Need help? <a href="mailto:support@praqen.com" style="color:#10b981;font-weight:700;">support@praqen.com</a></p>
+    <p style="margin:0;font-size:11px;color:#CBD5E1;">© ${yr} PRAQEN · The World's Most Trusted P2P Bitcoin Marketplace</p>
   </td></tr>
 
 </table>
@@ -923,7 +923,7 @@ function buildEidBonusHtml(username, referralCode) {
   <tr>
     <td style="background:#1B4332;padding:22px 36px;text-align:center;">
       <p style="margin:0 0 6px;font-size:20px;font-weight:900;color:#F4A422;font-family:Georgia,serif;">PRAQEN</p>
-      <p style="margin:0 0 10px;font-size:10px;color:rgba(255,255,255,0.45);letter-spacing:2px;text-transform:uppercase;">Africa's Trusted P2P Bitcoin Platform</p>
+      <p style="margin:0 0 10px;font-size:10px;color:rgba(255,255,255,0.45);letter-spacing:2px;text-transform:uppercase;">The Global P2P Bitcoin Platform</p>
       <p style="margin:0 0 10px;">
         <a href="https://praqen.com/buy-bitcoin" style="color:rgba(255,255,255,0.5);text-decoration:none;font-size:11px;margin:0 8px;">Buy Bitcoin</a>
         <a href="https://praqen.com/sell-bitcoin" style="color:rgba(255,255,255,0.5);text-decoration:none;font-size:11px;margin:0 8px;">Sell Bitcoin</a>

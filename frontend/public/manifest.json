@@ -1,7 +1,7 @@
 {
   "short_name": "PRAQEN",
-  "name": "PRAQEN — P2P Bitcoin Trading Africa",
-  "description": "Africa's safest peer-to-peer Bitcoin and gift card trading platform.",
+  "name": "PRAQEN — Global P2P Bitcoin Trading",
+  "description": "The world's most trusted peer-to-peer Bitcoin and gift card trading platform.",
   "icons": [
     {
       "src": "favicon.ico",
@@ -25,5 +25,5 @@
   "background_color": "#1B4332",
   "orientation": "portrait-primary",
   "categories": ["finance", "business"],
-  "lang": "en-GH"
+  "lang": "en"
 }

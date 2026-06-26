@@ -438,7 +438,7 @@ function tradeEmailTemplate(subject, title, message, tradeRef, amount, actionUrl
                 <span style="font-size:32px;font-weight:900;color:#1B4332;font-family:Georgia,serif;line-height:60px;">P</span>
               </div>
               <h1 style="color:#FFFFFF;font-size:26px;font-weight:900;margin:0 0 4px 0;letter-spacing:-0.5px;">PRAQEN</h1>
-              <p style="color:#95C4AE;font-size:12px;margin:0;letter-spacing:1px;text-transform:uppercase;">Africa's Trusted P2P Platform</p>
+              <p style="color:#95C4AE;font-size:12px;margin:0;letter-spacing:1px;text-transform:uppercase;">The Global P2P Bitcoin Platform</p>
             </td>
           </tr>
 
@@ -497,7 +497,7 @@ function tradeEmailTemplate(subject, title, message, tradeRef, amount, actionUrl
           <tr>
             <td style="background:#F0F4F1;padding:18px 32px;text-align:center;">
               <p style="color:#64748B;font-size:11px;font-weight:700;margin:0 0 4px 0;letter-spacing:0.5px;">PRAQEN — SECURE P2P BITCOIN TRADING</p>
-              <p style="color:#94A3B8;font-size:10px;margin:0;">Escrow Protected · 0.5% Fee · Trusted by traders across Africa</p>
+              <p style="color:#94A3B8;font-size:10px;margin:0;">Escrow Protected · 0.5% Fee · Trusted by traders worldwide</p>
               <p style="color:#CBD5E1;font-size:10px;margin:8px 0 0 0;">© ${year} PRAQEN. All rights reserved. Do not reply to this email.</p>
             </td>
           </tr>
@@ -555,7 +555,7 @@ function buildVerificationEmailHtml(code) {
         <tr><td style="background:linear-gradient(135deg,#1B4332 0%,#2D6A4F 100%);padding:32px 40px;text-align:center;">
           <div style="display:inline-block;width:56px;height:56px;background:#F4A422;border-radius:14px;line-height:56px;font-size:28px;font-weight:900;color:#1B4332;font-family:Georgia,serif;text-align:center;">P</div>
           <p style="margin:12px 0 0;color:#ffffff;font-size:20px;font-weight:800;letter-spacing:3px;font-family:Georgia,serif;">PRAQEN</p>
-          <p style="margin:4px 0 0;color:rgba(255,255,255,0.65);font-size:12px;letter-spacing:1px;">Africa's Safest Bitcoin Marketplace</p>
+          <p style="margin:4px 0 0;color:rgba(255,255,255,0.65);font-size:12px;letter-spacing:1px;">The World's Most Trusted Bitcoin Marketplace</p>
         </td></tr>
         <!-- Body -->
         <tr><td style="padding:40px 40px 32px;text-align:center;">
@@ -576,8 +576,8 @@ function buildVerificationEmailHtml(code) {
         </td></tr>
         <!-- Footer -->
         <tr><td style="background:#F8FAFC;padding:20px 40px;text-align:center;border-top:1px solid #E2E8F0;">
-          <p style="margin:0 0 4px;font-size:12px;color:#94A3B8;">Need help? Contact us at <a href="mailto:hello@praqen.com" style="color:#2D6A4F;font-weight:700;">hello@praqen.com</a></p>
-          <p style="margin:0;font-size:11px;color:#CBD5E1;">© 2025 PRAQEN · Africa's Safest P2P Bitcoin Marketplace</p>
+          <p style="margin:0 0 4px;font-size:12px;color:#94A3B8;">Need help? Contact us at <a href="mailto:support@praqen.com" style="color:#2D6A4F;font-weight:700;">support@praqen.com</a></p>
+          <p style="margin:0;font-size:11px;color:#CBD5E1;">© 2025 PRAQEN · The World's Most Trusted P2P Bitcoin Marketplace</p>
         </td></tr>
       </table>
     </td></tr>
@@ -599,12 +599,12 @@ function buildWelcomeEmailHtml(username) {
         <tr><td style="background:linear-gradient(135deg,#1B4332 0%,#2D6A4F 100%);padding:40px 40px 32px;text-align:center;">
           <div style="display:inline-block;width:64px;height:64px;background:#F4A422;border-radius:16px;line-height:64px;font-size:32px;font-weight:900;color:#1B4332;font-family:Georgia,serif;text-align:center;">P</div>
           <p style="margin:14px 0 4px;color:#ffffff;font-size:22px;font-weight:900;letter-spacing:3px;font-family:Georgia,serif;">PRAQEN</p>
-          <p style="margin:0;color:rgba(255,255,255,0.70);font-size:13px;letter-spacing:1px;">Africa's Safest Bitcoin Marketplace</p>
+          <p style="margin:0;color:rgba(255,255,255,0.70);font-size:13px;letter-spacing:1px;">The World's Most Trusted Bitcoin Marketplace</p>
         </td></tr>
         <!-- Welcome headline -->
         <tr><td style="padding:36px 40px 8px;text-align:center;">
           <p style="margin:0 0 6px;font-size:22px;font-weight:800;color:#1B4332;">Welcome aboard, ${name}! 🎉</p>
-          <p style="margin:0;font-size:14px;color:#64748B;line-height:1.7;">You've just joined <strong>Africa's safest peer-to-peer Bitcoin marketplace</strong>. We're so glad you're here — think of PRAQEN as your secure home to buy, sell and trade Bitcoin freely and confidently.</p>
+          <p style="margin:0;font-size:14px;color:#64748B;line-height:1.7;">You've just joined <strong>the world's most trusted peer-to-peer Bitcoin marketplace</strong>. We're so glad you're here — think of PRAQEN as your secure home to buy, sell and trade Bitcoin freely and confidently.</p>
         </td></tr>
         <!-- Steps -->
         <tr><td style="padding:28px 40px;">
@@ -661,8 +661,8 @@ function buildWelcomeEmailHtml(username) {
         </td></tr>
         <!-- Footer -->
         <tr><td style="background:#F8FAFC;padding:20px 40px;text-align:center;border-top:1px solid #E2E8F0;">
-          <p style="margin:0 0 4px;font-size:12px;color:#94A3B8;">Questions? Reach us at <a href="mailto:hello@praqen.com" style="color:#2D6A4F;font-weight:700;">hello@praqen.com</a></p>
-          <p style="margin:0;font-size:11px;color:#CBD5E1;">© 2025 PRAQEN · Africa's Safest P2P Bitcoin Marketplace</p>
+          <p style="margin:0 0 4px;font-size:12px;color:#94A3B8;">Questions? Reach us at <a href="mailto:support@praqen.com" style="color:#2D6A4F;font-weight:700;">support@praqen.com</a></p>
+          <p style="margin:0;font-size:11px;color:#CBD5E1;">© 2025 PRAQEN · The World's Most Trusted P2P Bitcoin Marketplace</p>
         </td></tr>
       </table>
     </td></tr>
@@ -5862,7 +5862,7 @@ app.post('/api/trades/:id/moderator-join', verifyToken, async (req, res) => {
   }
 });
 
-const ADMIN_EMAIL = 'parqen5@gmail.com';
+const ADMIN_EMAIL = 'support@praqen.com';
 
 app.get('/api/admin/disputes', verifyToken, async (req, res) => {
   try {
@@ -6382,6 +6382,132 @@ app.put('/api/notifications/read-all', verifyToken, async (req, res) => {
 });
 
 // ============================================================
+// REFERRAL CHAT
+// ============================================================
+
+// GET /api/my-referrals — list of users who registered with this user's referral link
+app.get('/api/my-referrals', verifyToken, async (req, res) => {
+  try {
+    const userId = req.userId;
+
+    // Primary: users where referred_by = my user ID (UUID stored directly)
+    const { data: signups } = await supabaseAdmin
+      .from('users')
+      .select('id, username, avatar_url, country, created_at, total_trades')
+      .eq('referred_by', userId)
+      .order('created_at', { ascending: false });
+
+    // Legacy: also pull from affiliate_earnings in case referred_by wasn't set
+    const { data: earnings } = await supabaseAdmin
+      .from('affiliate_earnings')
+      .select('referred_user_id')
+      .eq('referrer_id', userId);
+
+    const seenIds = new Set((signups || []).map(u => u.id));
+    const extraIds = [...new Set(
+      (earnings || []).map(e => e.referred_user_id).filter(id => id && !seenIds.has(id))
+    )];
+
+    let extraUsers = [];
+    if (extraIds.length > 0) {
+      const { data: eu } = await supabaseAdmin
+        .from('users')
+        .select('id, username, avatar_url, country, created_at, total_trades')
+        .in('id', extraIds);
+      extraUsers = eu || [];
+    }
+
+    const referrals = [...(signups || []), ...extraUsers].map(u => ({
+      ...u,
+      trade_count: u.total_trades || 0,
+    }));
+
+    // Also return who referred the current user so they can chat back
+    const { data: myInfo } = await supabaseAdmin
+      .from('users')
+      .select('referred_by')
+      .eq('id', userId)
+      .single();
+
+    let myReferrer = null;
+    if (myInfo?.referred_by) {
+      const { data: referrerData } = await supabaseAdmin
+        .from('users')
+        .select('id, username, avatar_url, country, created_at, total_trades')
+        .eq('id', myInfo.referred_by)
+        .single();
+      if (referrerData) myReferrer = { ...referrerData, trade_count: referrerData.total_trades || 0 };
+    }
+
+    res.json({ referrals, myReferrer });
+  } catch (e) {
+    console.error('[my-referrals]', e.message);
+    res.json({ referrals: [] });
+  }
+});
+
+// GET /api/referral-messages/:userId — chat history between current user and a referral
+app.get('/api/referral-messages/:userId', verifyToken, async (req, res) => {
+  try {
+    const myId    = req.userId;
+    const otherId = req.params.userId;
+
+    const { data: msgs } = await supabaseAdmin
+      .from('referral_messages')
+      .select('*')
+      .or(`and(sender_id.eq.${myId},recipient_id.eq.${otherId}),and(sender_id.eq.${otherId},recipient_id.eq.${myId})`)
+      .order('created_at', { ascending: true });
+
+    // Mark incoming messages as read
+    await supabaseAdmin
+      .from('referral_messages')
+      .update({ is_read: true })
+      .eq('sender_id', otherId)
+      .eq('recipient_id', myId)
+      .eq('is_read', false);
+
+    res.json({ messages: msgs || [] });
+  } catch (e) {
+    console.error('[referral-messages GET]', e.message);
+    res.json({ messages: [] });
+  }
+});
+
+// POST /api/referral-messages/:userId — send a message to a referral (or referral replies to referrer)
+app.post('/api/referral-messages/:userId', verifyToken, async (req, res) => {
+  try {
+    const senderId    = req.userId;
+    const recipientId = req.params.userId;
+    const { message } = req.body;
+
+    if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
+
+    const { data: msg, error } = await supabaseAdmin
+      .from('referral_messages')
+      .insert({ sender_id: senderId, recipient_id: recipientId, message: message.trim() })
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    // Notify recipient
+    await supabaseAdmin.from('notifications').insert({
+      user_id: recipientId,
+      type: 'referral_message',
+      title: 'New message',
+      message: message.trim().slice(0, 100),
+      is_read: false,
+      created_at: new Date(),
+    }).catch(() => {});
+
+    res.json({ message: msg });
+  } catch (e) {
+    console.error('[referral-messages POST]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================================
 // ADMIN PROFITS
 // ============================================================
 
@@ -6440,7 +6566,7 @@ app.post('/api/admin/send-welcome-emails', verifyToken, async (req, res) => {
               <span style="font-size:32px;font-weight:900;color:#1B4332;font-family:Georgia,serif;">P</span>
             </div>
             <h1 style="color:#FFFFFF;font-size:26px;font-weight:900;margin:0 0 4px 0;">PRAQEN</h1>
-            <p style="color:#95C4AE;font-size:12px;margin:0;letter-spacing:1px;text-transform:uppercase;">Africa's Trusted P2P Bitcoin Platform</p>
+            <p style="color:#95C4AE;font-size:12px;margin:0;letter-spacing:1px;text-transform:uppercase;">The Global P2P Bitcoin Platform</p>
           </td>
         </tr>
 
@@ -6448,7 +6574,7 @@ app.post('/api/admin/send-welcome-emails', verifyToken, async (req, res) => {
           <td style="padding:36px 32px 28px;">
             <h2 style="color:#1B4332;font-size:20px;font-weight:800;margin:0 0 10px 0;">Welcome to PRAQEN, ${user.username}! 🎉</h2>
             <p style="color:#475569;font-size:14px;line-height:1.7;margin:0 0 20px 0;">
-              Thank you for joining Africa's fastest-growing P2P Bitcoin trading platform. Your account is ready — and so is your personal referral link.
+              Thank you for joining the world's fastest-growing P2P Bitcoin trading platform. Your account is ready — and so is your personal referral link.
             </p>
 
             <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F4F1;border-radius:14px;margin-bottom:24px;">
@@ -6498,7 +6624,7 @@ app.post('/api/admin/send-welcome-emails', verifyToken, async (req, res) => {
             </table>
 
             <p style="color:#94A3B8;font-size:11px;margin:0;text-align:center;">
-              Questions? Email <a href="mailto:hello@praqen.com" style="color:#2D6A4F;">hello@praqen.com</a>
+              Questions? Email <a href="mailto:support@praqen.com" style="color:#2D6A4F;">support@praqen.com</a>
             </p>
           </td>
         </tr>
@@ -6518,7 +6644,7 @@ app.post('/api/admin/send-welcome-emails', verifyToken, async (req, res) => {
 
       const subject = `Welcome to PRAQEN, ${user.username}! 🎉 Start Trading Bitcoin`;
       const mailOpts = {
-        from: `"PRAQEN" <${process.env.EMAIL_USER || 'kendevdash@gmail.com'}>`,
+        from: `"PRAQEN" <${process.env.EMAIL_USER || 'support@praqen.com'}>`,
         to: user.email, subject, html,
       };
 
@@ -8183,7 +8309,7 @@ app.post('/api/wallet/internal-transfer', verifyToken, async (req, res) => {
   </div>
 </div>`;
 
-    const emailFrom = `"PRAQEN" <${process.env.EMAIL_USER || 'kendevdash@gmail.com'}>`;
+    const emailFrom = `"PRAQEN" <${process.env.EMAIL_USER || 'support@praqen.com'}>`;
     Promise.all([
       recipientEmail && transporter.sendMail({ from: emailFrom, to: recipientEmail, subject: `₿ You received ${amount.toFixed(8)} BTC from @${senderName} on PRAQEN`, html: recipientHtml }),
       senderUser?.email && transporter.sendMail({ from: emailFrom, to: senderUser.email, subject: `✅ Transfer sent: ₿${amount.toFixed(8)} → @${recipientUsername}`, html: senderHtml }),

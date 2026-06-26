@@ -297,7 +297,7 @@ function AffiliateSection({ user, profile, earnings, referralData, btcPrice, onW
     {
       label:'Telegram', icon:'✈️',
       color:'#0088CC', bg:'#EFF6FF',
-      url:`https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent('Join PRAQEN — secure P2P Bitcoin trading in Africa!')}`,
+      url:`https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent('Join PRAQEN — secure P2P Bitcoin trading worldwide!')}`,
     },
   ];
 
@@ -1618,7 +1618,7 @@ export default function Dashboard({ user }) {
                 <span className="text-white font-black text-lg" style={{fontFamily:"'Syne',sans-serif"}}>PRAQEN</span>
               </div>
               <p className="text-xs leading-relaxed mb-4" style={{color:'rgba(255,255,255,0.45)'}}>
-                Africa's most trusted peer-to-peer Bitcoin trading platform. Escrow-protected. Fast. Honest.
+                The world's most trusted peer-to-peer Bitcoin trading platform. Escrow-protected. Fast. Honest.
               </p>
               {/* Social icons */}
               <div className="flex gap-2 flex-wrap">

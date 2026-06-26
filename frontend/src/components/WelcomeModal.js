@@ -20,7 +20,7 @@ const STEPS = [
     bg: `linear-gradient(135deg, ${C.forest} 0%, ${C.mint} 100%)`,
     iconBg: 'rgba(244,164,34,0.2)',
     title: (name) => `Welcome to PRAQEN${name ? `, ${name}` : ''}!`,
-    body: "You've joined Africa's safest peer-to-peer Bitcoin marketplace. We're so glad you're here — think of PRAQEN as your secure home to buy, sell and trade Bitcoin freely and confidently. 🏡",
+    body: "You've joined the world's most trusted peer-to-peer Bitcoin marketplace. We're so glad you're here — think of PRAQEN as your secure home to buy, sell and trade Bitcoin freely and confidently. 🏡",
     cta: null,
     ctaPath: null,
   },

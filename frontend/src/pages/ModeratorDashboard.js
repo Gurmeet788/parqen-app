@@ -19,7 +19,7 @@ const P = {
   gold: '#D97706', goldLight: '#FFFBEB',
 };
 
-const ADMIN_EMAIL = 'parqen5@gmail.com';
+const ADMIN_EMAIL = 'support@praqen.com';
 
 // ── helpers ──────────────────────────────────────────────────────
 const fmtDate  = d => !d ? '—' : new Date(d).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });

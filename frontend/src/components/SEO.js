@@ -5,46 +5,46 @@ const SITE = 'https://praqen.com';
 
 const PAGE_META = {
   '/': {
-    title: 'PRAQEN | Buy & Sell Bitcoin P2P in Africa | MTN MoMo, M-Pesa & Bank Transfer',
-    description: "PRAQEN is Africa's most trusted P2P Bitcoin & gift card trading platform. Buy or sell Bitcoin instantly with MTN Mobile Money, Airtel, M-Pesa & bank transfer. Escrow-protected, 0.5% flat fee, 180+ countries. No hidden charges.",
-    ogTitle: 'PRAQEN — Buy & Sell Bitcoin P2P in Africa',
-    ogDesc: "Africa's #1 peer-to-peer Bitcoin trading platform. Escrow-protected trades, 0.5% flat fee, pay with Mobile Money, M-Pesa or bank transfer. Instant & secure.",
+    title: 'PRAQEN | Buy & Sell Bitcoin P2P Worldwide | MTN MoMo, M-Pesa & Bank Transfer',
+    description: "PRAQEN is the world's most trusted P2P Bitcoin & gift card trading platform. Buy or sell Bitcoin instantly with MTN Mobile Money, Airtel, M-Pesa & bank transfer. Escrow-protected, 0.5% flat fee, 180+ countries. No hidden charges.",
+    ogTitle: 'PRAQEN — Buy & Sell Bitcoin P2P Worldwide',
+    ogDesc: "The world's #1 peer-to-peer Bitcoin trading platform. Escrow-protected trades, 0.5% flat fee, pay with Mobile Money, M-Pesa or bank transfer. Instant & secure.",
   },
   '/buy-bitcoin': {
-    title: 'Buy Bitcoin in Africa with Mobile Money | PRAQEN P2P',
-    description: 'Buy Bitcoin instantly in Ghana, Nigeria, Kenya & across Africa. Pay with MTN MoMo, M-Pesa, Airtel Money or bank transfer. Best rates, escrow-protected, 0.5% fee.',
-    ogTitle: 'Buy Bitcoin in Africa — PRAQEN P2P Marketplace',
-    ogDesc: 'Buy BTC with MTN Mobile Money, M-Pesa or bank transfer. Escrow-protected, best P2P rates in Ghana, Nigeria & Kenya.',
+    title: 'Buy Bitcoin Worldwide with Mobile Money | PRAQEN P2P',
+    description: 'Buy Bitcoin instantly in Ghana, Nigeria, Kenya & worldwide. Pay with MTN MoMo, M-Pesa, Airtel Money or bank transfer. Best rates, escrow-protected, 0.5% fee.',
+    ogTitle: 'Buy Bitcoin Worldwide — PRAQEN P2P Marketplace',
+    ogDesc: 'Buy BTC with MTN Mobile Money, M-Pesa or bank transfer. Escrow-protected, best P2P rates globally.',
   },
   '/sell-bitcoin': {
-    title: 'Sell Bitcoin for Mobile Money & Cash in Africa | PRAQEN',
-    description: 'Sell Bitcoin instantly for GHS, NGN, KES & more. Receive payment via MTN Mobile Money, M-Pesa, bank transfer. Fast, secure escrow. Best BTC rates in Africa.',
-    ogTitle: 'Sell Bitcoin for Cash in Africa — PRAQEN P2P',
-    ogDesc: 'Sell BTC and get paid via MTN MoMo, M-Pesa or bank transfer. Best rates in Ghana, Nigeria & Kenya. Escrow-protected.',
+    title: 'Sell Bitcoin for Mobile Money & Cash Worldwide | PRAQEN',
+    description: 'Sell Bitcoin instantly for GHS, NGN, KES & more. Receive payment via MTN Mobile Money, M-Pesa, bank transfer. Fast, secure escrow. Best BTC rates worldwide.',
+    ogTitle: 'Sell Bitcoin for Cash Worldwide — PRAQEN P2P',
+    ogDesc: 'Sell BTC and get paid via MTN MoMo, M-Pesa or bank transfer. Best rates globally. Escrow-protected.',
   },
   '/gift-cards': {
-    title: 'Trade Gift Cards for Bitcoin & Cash in Africa | PRAQEN',
+    title: 'Trade Gift Cards for Bitcoin & Cash Globally | PRAQEN',
     description: 'Exchange Amazon, iTunes, Steam, Google Play & 50+ gift cards for Bitcoin or cash. Instant payment via Mobile Money. Best rates guaranteed.',
-    ogTitle: 'Gift Card to Bitcoin Trading in Africa — PRAQEN',
+    ogTitle: 'Gift Card to Bitcoin Trading Globally — PRAQEN',
     ogDesc: 'Sell your Amazon, iTunes, Google Play & Steam gift cards for Bitcoin or mobile money. Instant, escrow-protected, best rates.',
   },
   '/sell-gift-card': {
-    title: 'Sell Gift Cards Instantly for Cash in Africa | PRAQEN',
-    description: 'Sell unused gift cards instantly in Ghana, Nigeria & Kenya. Get paid in Bitcoin or mobile money. Fast verification, best rates for Amazon, iTunes & more.',
+    title: 'Sell Gift Cards Instantly for Cash Worldwide | PRAQEN',
+    description: 'Sell unused gift cards instantly worldwide. Get paid in Bitcoin or mobile money. Fast verification, best rates for Amazon, iTunes & more.',
     ogTitle: 'Sell Gift Cards Instantly — PRAQEN',
-    ogDesc: 'Turn your gift cards into cash or Bitcoin. Fastest payout in Africa via Mobile Money.',
+    ogDesc: 'Turn your gift cards into cash or Bitcoin. Fastest payout worldwide via Mobile Money.',
   },
   '/register': {
-    title: 'Create Free Account | PRAQEN P2P Bitcoin Trading Africa',
-    description: 'Join PRAQEN and start trading Bitcoin P2P in Africa. Free account, instant verification, escrow-protected trades. MTN MoMo, M-Pesa, bank transfer supported.',
+    title: 'Create Free Account | PRAQEN Global P2P Bitcoin Trading',
+    description: 'Join PRAQEN and start trading Bitcoin P2P worldwide. Free account, instant verification, escrow-protected trades. MTN MoMo, M-Pesa, bank transfer supported.',
     ogTitle: 'Sign Up Free — PRAQEN P2P Bitcoin Trading',
-    ogDesc: 'Create your free PRAQEN account and start buying or selling Bitcoin in Africa today.',
+    ogDesc: 'Create your free PRAQEN account and start buying or selling Bitcoin worldwide today.',
   },
   '/login': {
-    title: 'Sign In to PRAQEN | P2P Bitcoin Trading Africa',
-    description: 'Sign in to your PRAQEN account to buy and sell Bitcoin, trade gift cards, and manage your P2P trades across Africa.',
+    title: 'Sign In to PRAQEN | Global P2P Bitcoin Trading',
+    description: 'Sign in to your PRAQEN account to buy and sell Bitcoin, trade gift cards, and manage your P2P trades worldwide.',
     ogTitle: 'Sign In — PRAQEN',
-    ogDesc: 'Access your PRAQEN account and continue trading Bitcoin P2P across Africa.',
+    ogDesc: 'Access your PRAQEN account and continue trading Bitcoin P2P worldwide.',
   },
 };
 
@@ -58,8 +58,8 @@ export default function SEO({ title, description, noindex }) {
   const shouldNoIndex  = noindex === true || hasQueryParams || isPrivatePage;
 
   const meta     = PAGE_META[pathname] || {};
-  const pageTitle = title       || meta.title       || 'PRAQEN | Buy & Sell Bitcoin P2P in Africa';
-  const pageDesc  = description || meta.description || "Africa's most trusted P2P Bitcoin trading platform. Buy or sell Bitcoin with Mobile Money.";
+  const pageTitle = title       || meta.title       || 'PRAQEN | Buy & Sell Bitcoin P2P Worldwide';
+  const pageDesc  = description || meta.description || "The world's most trusted P2P Bitcoin trading platform. Buy or sell Bitcoin with Mobile Money.";
   const ogTitle   = meta.ogTitle  || pageTitle;
   const ogDesc    = meta.ogDesc   || pageDesc;
 

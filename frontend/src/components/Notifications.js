@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
   Bell, X, CheckCheck, ArrowRight,
-  Megaphone, Eye, UserCircle, MessageCircle,
+  Megaphone, Eye, UserCircle, MessageCircle, Send, ChevronLeft,
 } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
@@ -290,26 +291,85 @@ function TradeNotifCard({ n, trade, userId, onNavigate }) {
   const st         = (trade.status || '').toUpperCase();
   const status     = TRADE_STATUS[st] || { label: st || 'Active', color: '#2563EB', bg: '#EFF6FF' };
   const dateStr    = tradeTimeStr(trade.created_at || n.created_at);
-  const dirLabel   = isBuyer ? 'Buy BTC' : 'Sell BTC';
   const isDone     = st === 'COMPLETED' || st === 'COMPLETE';
 
-  // Past tense for completed trades, present for active
-  const payLabel     = isDone ? 'You paid'     : 'You pay';
-  const receiveLabel = isDone ? 'You received' : 'You receive';
+  // Detect gift card trade via trade_type or known gift card brand in payment method
+  const GIFT_BRANDS = /amazon|itunes|apple|google.?play|steam|walmart|ebay|target|playstation|xbox|netflix|spotify|visa gift|mastercard gift|best buy/i;
+  const isGiftCard = /gift/i.test(trade.trade_type || '') || GIFT_BRANDS.test(pm);
 
-  // You pay / You receive from this user's perspective
-  const payStr     = isBuyer ? `${sym}${local.toFixed(2)} ${cur}` : `${btcStr} BTC`;
-  const receiveStr = isBuyer ? `${btcStr} BTC`                    : `${sym}${local.toFixed(2)} ${cur}`;
+  const dirLabel = isGiftCard
+    ? (isBuyer ? 'Buy Gift Card' : 'Sell Gift Card')
+    : (isBuyer ? 'Buy BTC' : 'Sell BTC');
+
+  // USD equivalent of BTC (from amount_usd field, already in DB)
+  const usdRaw   = parseFloat(trade.amount_usd || 0);
+  const usdEqStr = usdRaw > 0 ? `≈ $${usdRaw.toFixed(2)} USD` : null;
+  const fiatStr  = local > 0 ? `${sym}${local.toFixed(2)} ${cur}` : null;
+
+  // Build left/right column data based on trade type + user role.
+  // Rule: always lead with the amount the current user CARES ABOUT MOST.
+  //   • Seller (BTC or gift card): sees what they RECEIVE first (fiat / BTC)
+  //   • Buyer: sees what they PAY first (fiat), then what they GET (BTC)
+  const basePay     = isDone ? 'You paid'     : 'You pay';
+  const baseReceive = isDone ? 'You received' : 'You receive';
+  const baseProvide = isDone ? 'You provided' : 'You provide';
+
+  let leftLabel, leftStr, leftSubStr, rightLabel, rightStr, rightSubStr;
+
+  if (isGiftCard) {
+    if (!isBuyer) {
+      // Gift card seller  →  LEFT: what they RECEIVE (BTC + USD, shown first)  |  RIGHT: what they provide (card + face value)
+      leftLabel   = baseReceive;
+      leftStr     = `${btcStr} BTC`;   // "0.00029760 BTC"
+      leftSubStr  = usdEqStr;          // "≈ $38.50 USD"
+      rightLabel  = baseProvide;
+      rightStr    = pm;                // "Apple / iTunes"
+      rightSubStr = fiatStr;           // "$40.00 USD"  face value of the card
+    } else {
+      // Gift card buyer  →  LEFT: what they pay (fiat)  |  RIGHT: what they receive (card)
+      leftLabel  = basePay;
+      leftStr    = fiatStr || `${btcStr} BTC`;
+      leftSubStr = null;
+      rightLabel = baseReceive;
+      rightStr   = pm;                  // "Apple / iTunes"
+      rightSubStr = fiatStr;            // card face value on the receive side
+    }
+  } else {
+    if (!isBuyer) {
+      // BTC seller  →  LEFT: what they RECEIVE (fiat, shown first so seller sees payout immediately)
+      //               RIGHT: what they PAY (BTC)
+      leftLabel  = baseReceive;
+      leftStr    = fiatStr || '—';      // "₵150.00 GHS"
+      leftSubStr = null;
+      rightLabel = basePay;
+      rightStr   = `${btcStr} BTC`;    // "0.00021745 BTC"
+      rightSubStr = null;
+    } else {
+      // BTC buyer  →  LEFT: what they PAY (fiat)  |  RIGHT: what they RECEIVE (BTC + USD equiv)
+      leftLabel  = basePay;
+      leftStr    = fiatStr || '—';      // "₵150.00 GHS"
+      leftSubStr = null;
+      rightLabel = baseReceive;
+      rightStr   = `${btcStr} BTC`;    // "0.00021745 BTC"
+      rightSubStr = usdEqStr;           // "≈ $18.00 USD"
+    }
+  }
 
   return (
     <NCard n={n} onNavigate={onNavigate}>
-      {/* Header: direction + ₿ icon + date + status (avatar is in row 2, not here) */}
+      {/* Header: direction + icon + date + status (avatar is in row 2, not here) */}
       <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
           <span style={{ fontWeight: 900, fontSize: 15, color: '#0F172A' }}>{dirLabel}</span>
-          <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#F7931A,#E8790A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 1px 4px rgba(247,147,26,0.4)' }}>
-            <span style={{ fontSize: 11, color: '#fff', fontWeight: 900 }}>₿</span>
-          </div>
+          {isGiftCard ? (
+            <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#059669,#047857)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 1px 4px rgba(5,150,105,0.4)' }}>
+              <span style={{ fontSize: 13, lineHeight: 1 }}>🎁</span>
+            </div>
+          ) : (
+            <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#F7931A,#E8790A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 1px 4px rgba(247,147,26,0.4)' }}>
+              <span style={{ fontSize: 11, color: '#fff', fontWeight: 900 }}>₿</span>
+            </div>
+          )}
           <span style={{ fontSize: 12, color: T.g400, fontWeight: 600 }}>{dateStr}</span>
           {!n.is_read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3B82F6', display: 'inline-block', flexShrink: 0 }} />}
         </div>
@@ -336,16 +396,18 @@ function TradeNotifCard({ n, trade, userId, onNavigate }) {
 
       <NDivider />
 
-      {/* You pay/paid → You receive/received (orange amounts) */}
+      {/* Left | → | Right  (label + amount + optional sub) */}
       <div style={{ padding: '11px 16px 14px', display: 'flex', alignItems: 'center' }}>
         <div style={{ flex: 1 }}>
-          <p style={{ margin: 0, fontSize: 11, color: T.g400, fontWeight: 500, marginBottom: 3 }}>{payLabel}</p>
-          <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#F7931A' }}>{payStr}</p>
+          <p style={{ margin: 0, fontSize: 11, color: T.g400, fontWeight: 500, marginBottom: 3 }}>{leftLabel}</p>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#F7931A', lineHeight: 1.2 }}>{leftStr}</p>
+          {leftSubStr && <p style={{ margin: '3px 0 0', fontSize: 12, color: T.g500, fontWeight: 700 }}>{leftSubStr}</p>}
         </div>
-        <div style={{ padding: '0 14px', color: T.g400, fontSize: 20, fontWeight: 300, flexShrink: 0 }}>→</div>
+        <div style={{ padding: '0 10px', color: T.g400, fontSize: 20, fontWeight: 300, flexShrink: 0 }}>→</div>
         <div style={{ flex: 1, textAlign: 'right' }}>
-          <p style={{ margin: 0, fontSize: 11, color: T.g400, fontWeight: 500, marginBottom: 3 }}>{receiveLabel}</p>
-          <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#F7931A' }}>{receiveStr}</p>
+          <p style={{ margin: 0, fontSize: 11, color: T.g400, fontWeight: 500, marginBottom: 3 }}>{rightLabel}</p>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#F7931A', lineHeight: 1.2 }}>{rightStr}</p>
+          {rightSubStr && <p style={{ margin: '3px 0 0', fontSize: 12, color: T.g500, fontWeight: 700 }}>{rightSubStr}</p>}
         </div>
       </div>
     </NCard>
@@ -467,34 +529,76 @@ function BasicCard({ n, userId, onNavigate }) {
       ? `${parsedLocalSym}${fmt(parsedLocalAmt)} ${parsedLocalCur}`
       : null;
 
+    // Gift card detection for BasicCard (uses parsed payment method from message)
+    const GIFT_BRANDS_RE = /amazon|itunes|apple|google.?play|steam|walmart|ebay|target|playstation|xbox|netflix|spotify|visa gift|mastercard gift|best buy/i;
+    const basicIsGiftCard = GIFT_BRANDS_RE.test(parsedPm) || /gift.?card/i.test(msg);
+
     // Direction — priority: enriched field → message keywords → type hints
     const wantsBuy  = /wants to buy/i.test(msg);
     const wantsSell = /wants to sell/i.test(msg);
     let dirLabel = 'Trade';
-    if (n.direction === 'buy')          dirLabel = 'Buy BTC';
-    else if (n.direction === 'sell')    dirLabel = 'Sell BTC';
-    else if (wantsBuy)                  dirLabel = 'Sell BTC';
-    else if (wantsSell)                 dirLabel = 'Buy BTC';
-    else if (/\bbuy\b/i.test(type) && !/sell/i.test(type)) dirLabel = 'Buy BTC';
-    else if (/\bsell\b/i.test(type) && !/buy/i.test(type)) dirLabel = 'Sell BTC';
+    if (basicIsGiftCard) {
+      // Gift card: map direction to Buy/Sell Gift Card
+      if (n.direction === 'buy')       dirLabel = 'Buy Gift Card';
+      else if (n.direction === 'sell') dirLabel = 'Sell Gift Card';
+      else if (wantsBuy)               dirLabel = 'Sell Gift Card';
+      else if (wantsSell)              dirLabel = 'Buy Gift Card';
+      else                             dirLabel = 'Sell Gift Card';
+    } else {
+      if (n.direction === 'buy')          dirLabel = 'Buy BTC';
+      else if (n.direction === 'sell')    dirLabel = 'Sell BTC';
+      else if (wantsBuy)                  dirLabel = 'Sell BTC';
+      else if (wantsSell)                 dirLabel = 'Buy BTC';
+      else if (/\bbuy\b/i.test(type) && !/sell/i.test(type)) dirLabel = 'Buy BTC';
+      else if (/\bsell\b/i.test(type) && !/buy/i.test(type)) dirLabel = 'Sell BTC';
+    }
 
     // Past tense for completed trades
     const isDone = isCompleted;
-    const payLabel     = isDone ? 'You paid'     : 'You pay';
-    const receiveLabel = isDone ? 'You received' : 'You receive';
+    const basePay2     = isDone ? 'You paid'     : 'You pay';
+    const baseReceive2 = isDone ? 'You received' : 'You receive';
+    const baseProvide2 = isDone ? 'You provided' : 'You provide';
 
-    // isSeller = true when we know the current user is selling
+    // isSeller = true when we can detect the current user is selling BTC
     const isSeller = wantsBuy || n.direction === 'sell';
-    // You pay / You receive:
-    //   Seller: pays BTC → receives fiat
-    //   Buyer (default): pays fiat → receives BTC
-    // When an amount is unknown, show the asset name (BTC/currency) so user knows what they get
-    const payStr     = isSeller
-      ? (btcAmtStr || 'BTC')
-      : (parsedLocalStr || btcAmtStr || 'BTC');
-    const receiveStr = isSeller
-      ? (parsedLocalStr || '—')
-      : (btcAmtStr ? `${btcAmtStr}${parsedLocalStr ? ` · ${parsedLocalStr}` : ''}` : 'BTC');
+    const isBuyerB = wantsSell || n.direction === 'buy';
+
+    // Build left/right layout using same seller-first rule as TradeNotifCard
+    let bLeftLabel, bLeftStr, bLeftSubStr, bRightLabel, bRightStr;
+
+    if (basicIsGiftCard) {
+      if (isSeller || (!isBuyerB)) {
+        // Gift card seller: LEFT = receive BTC/fiat (shown first)  |  RIGHT = provide card (+face value)
+        bLeftLabel  = baseReceive2;
+        bLeftStr    = btcAmtStr || parsedLocalStr || 'BTC';
+        bLeftSubStr = null;
+        bRightLabel = baseProvide2;
+        bRightStr   = parsedPm !== '—' ? parsedPm : 'Gift Card';
+      } else {
+        // Gift card buyer: LEFT = pay fiat  |  RIGHT = receive card
+        bLeftLabel  = basePay2;
+        bLeftStr    = parsedLocalStr || btcAmtStr || 'BTC';
+        bLeftSubStr = null;
+        bRightLabel = baseReceive2;
+        bRightStr   = parsedPm !== '—' ? parsedPm : 'Gift Card';
+      }
+    } else if (isSeller) {
+      // BTC seller: LEFT = what they RECEIVE (fiat first)  |  RIGHT = what they PAY (BTC)
+      bLeftLabel  = baseReceive2;
+      bLeftStr    = parsedLocalStr || '—';
+      bLeftSubStr = null;
+      bRightLabel = basePay2;
+      bRightStr   = btcAmtStr || 'BTC';
+    } else {
+      // BTC buyer (default): LEFT = what they PAY (fiat)  |  RIGHT = what they RECEIVE (BTC)
+      bLeftLabel  = basePay2;
+      bLeftStr    = parsedLocalStr || btcAmtStr || 'BTC';
+      bLeftSubStr = null;
+      bRightLabel = baseReceive2;
+      bRightStr   = btcAmtStr
+        ? `${btcAmtStr}${parsedLocalStr ? ` · ${parsedLocalStr}` : ''}`
+        : 'BTC';
+    }
 
     // Actor: use enriched n.actor first, then parse username from message as fallback for letter avatar
     const parsedActorName = !vendor
@@ -509,19 +613,25 @@ function BasicCard({ n, userId, onNavigate }) {
 
     // Extra direction hint: if actor username contains "buyer" → they buy → I sell, and vice versa
     if (dirLabel === 'Trade' && parsedActorName) {
-      if (/buyer/i.test(parsedActorName))  dirLabel = 'Sell BTC';
-      if (/seller/i.test(parsedActorName)) dirLabel = 'Buy BTC';
+      if (/buyer/i.test(parsedActorName))  dirLabel = basicIsGiftCard ? 'Sell Gift Card' : 'Sell BTC';
+      if (/seller/i.test(parsedActorName)) dirLabel = basicIsGiftCard ? 'Buy Gift Card'  : 'Buy BTC';
     }
 
     return (
       <NCard n={n} onNavigate={onNavigate}>
-        {/* Header: direction + ₿ icon + date + status (NO avatar here) */}
+        {/* Header: direction + icon + date + status (NO avatar here) */}
         <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
             <span style={{ fontWeight: 900, fontSize: 15, color: '#0F172A' }}>{dirLabel}</span>
-            <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#F7931A,#E8790A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 1px 4px rgba(247,147,26,0.35)' }}>
-              <span style={{ fontSize: 11, color: '#fff', fontWeight: 900 }}>₿</span>
-            </div>
+            {basicIsGiftCard ? (
+              <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#059669,#047857)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 1px 4px rgba(5,150,105,0.4)' }}>
+                <span style={{ fontSize: 13, lineHeight: 1 }}>🎁</span>
+              </div>
+            ) : (
+              <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#F7931A,#E8790A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 1px 4px rgba(247,147,26,0.35)' }}>
+                <span style={{ fontSize: 11, color: '#fff', fontWeight: 900 }}>₿</span>
+              </div>
+            )}
             <span style={{ fontSize: 12, color: T.g400, fontWeight: 600 }}>{tradeTimeStr(n.created_at)}</span>
             {!n.is_read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3B82F6', display: 'inline-block', flexShrink: 0 }} />}
           </div>
@@ -552,16 +662,17 @@ function BasicCard({ n, userId, onNavigate }) {
 
         <NDivider />
 
-        {/* You pay/paid → You receive/received (orange amounts) */}
+        {/* Left | → | Right  (label + amount + optional sub) */}
         <div style={{ padding: '11px 16px 14px', display: 'flex', alignItems: 'center' }}>
           <div style={{ flex: 1 }}>
-            <p style={{ margin: 0, fontSize: 11, color: T.g400, fontWeight: 500, marginBottom: 3 }}>{payLabel}</p>
-            <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#F7931A' }}>{payStr}</p>
+            <p style={{ margin: 0, fontSize: 11, color: T.g400, fontWeight: 500, marginBottom: 3 }}>{bLeftLabel}</p>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#F7931A', lineHeight: 1.2 }}>{bLeftStr}</p>
+            {bLeftSubStr && <p style={{ margin: '3px 0 0', fontSize: 12, color: T.g500, fontWeight: 700 }}>{bLeftSubStr}</p>}
           </div>
-          <div style={{ padding: '0 14px', color: T.g400, fontSize: 20, fontWeight: 300, flexShrink: 0 }}>→</div>
+          <div style={{ padding: '0 10px', color: T.g400, fontSize: 20, fontWeight: 300, flexShrink: 0 }}>→</div>
           <div style={{ flex: 1, textAlign: 'right' }}>
-            <p style={{ margin: 0, fontSize: 11, color: T.g400, fontWeight: 500, marginBottom: 3 }}>{receiveLabel}</p>
-            <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#F7931A' }}>{receiveStr}</p>
+            <p style={{ margin: 0, fontSize: 11, color: T.g400, fontWeight: 500, marginBottom: 3 }}>{bRightLabel}</p>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#F7931A', lineHeight: 1.2 }}>{bRightStr}</p>
           </div>
         </div>
         {isRefund && (
@@ -641,6 +752,49 @@ function BasicCard({ n, userId, onNavigate }) {
   );
 }
 
+// ─── REFERRAL CARD ────────────────────────────────────────────────────────────
+function ReferralCard({ referral, onChat }) {
+  const tc      = referral.trade_count || 0;
+  const joinStr = referral.created_at
+    ? new Date(referral.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    : '';
+  return (
+    <div style={{
+      background: '#fff', borderRadius: 14, marginBottom: 10, padding: '12px 14px',
+      border: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 10,
+      boxShadow: '0 1px 6px rgba(0,0,0,0.06)',
+    }}>
+      <Avatar user={referral} name={referral.username} size={44} color={T.forest} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ fontWeight: 800, fontSize: 14, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {referral.username}
+          </span>
+          {referral.country && <span style={{ fontSize: 15, flexShrink: 0 }}>{flag(referral.country)}</span>}
+        </div>
+        <p style={{ margin: '3px 0 0', fontSize: 11, fontWeight: 500 }}>
+          {tc > 0
+            ? <span style={{ color: '#059669', fontWeight: 700 }}>✓ {tc} trade{tc !== 1 ? 's' : ''}</span>
+            : <span style={{ color: T.warn, fontWeight: 700 }}>No trades yet</span>
+          }
+          {joinStr && <span style={{ color: T.g400 }}> · Joined {joinStr}</span>}
+        </p>
+      </div>
+      <button
+        onClick={() => onChat(referral)}
+        style={{
+          flexShrink: 0, padding: '7px 14px', borderRadius: 9, border: 'none',
+          background: `linear-gradient(135deg,${T.forest},${T.mint})`,
+          color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: 5,
+          boxShadow: '0 2px 8px rgba(27,67,50,0.3)',
+        }}>
+        💬 Chat
+      </button>
+    </div>
+  );
+}
+
 // ─── Dispatcher ───────────────────────────────────────────────────────────────
 function NotifCard({ n, userId, onNavigate }) {
   const type = n.type || '';
@@ -692,10 +846,36 @@ export default function Notifications({ user }) {
   const [filter,   setFilter]   = useState('all');
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
 
+  // ── Referral chat state ────────────────────────────────────────────────────
+  const [referrals,   setReferrals]   = useState([]);
+  const [myReferrer,  setMyReferrer]  = useState(null);
+  const [refLoading,  setRefLoading]  = useState(false);
+  const [chatRef,     setChatRef]     = useState(null);
+  const [chatMsgs,    setChatMsgs]    = useState([]);
+  const [chatInput,   setChatInput]   = useState('');
+  const [chatSending, setChatSending] = useState(false);
+  const [kbOffset,    setKbOffset]    = useState(0);
+  const chatBottomRef  = useRef(null);
+  const chatInputRef   = useRef(null);
+  const portalRef      = useRef(null);
+
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 640);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // Detect virtual keyboard height so chat input stays above it on mobile
+  useEffect(() => {
+    const vp = window.visualViewport;
+    if (!vp) return;
+    const onVPChange = () => {
+      const kh = Math.max(0, window.innerHeight - vp.height - vp.offsetTop);
+      setKbOffset(kh);
+    };
+    vp.addEventListener('resize', onVPChange);
+    vp.addEventListener('scroll', onVPChange);
+    return () => { vp.removeEventListener('resize', onVPChange); vp.removeEventListener('scroll', onVPChange); };
   }, []);
 
   const unread = notifs.filter(n => !n.is_read).length;
@@ -720,7 +900,11 @@ export default function Notifications({ user }) {
   }, [user]); // eslint-disable-line
 
   useEffect(() => {
-    const h = e => { if (ref.current && !ref.current.contains(e.target)) setShowDrop(false); };
+    const h = e => {
+      const inBell   = ref.current    && ref.current.contains(e.target);
+      const inPortal = portalRef.current && portalRef.current.contains(e.target);
+      if (!inBell && !inPortal) setShowDrop(false);
+    };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
@@ -741,6 +925,58 @@ export default function Notifications({ user }) {
     setNotifs(prev => prev.map(n => ({ ...n, is_read: true })));
     try { await axios.put(`${API_URL}/notifications/read-all`, {}, { headers: hdrs() }); } catch {}
   };
+
+  // ── Referral helpers ────────────────────────────────────────────────────────
+  const loadReferrals = async () => {
+    if (!user) return;
+    setRefLoading(true);
+    try {
+      const r = await axios.get(`${API_URL}/my-referrals`, { headers: hdrs() });
+      setReferrals(r.data.referrals || []);
+      setMyReferrer(r.data.myReferrer || null);
+    } catch {}
+    finally { setRefLoading(false); }
+  };
+
+  const loadChatMsgs = async (uid) => {
+    try {
+      const r = await axios.get(`${API_URL}/referral-messages/${uid}`, { headers: hdrs() });
+      setChatMsgs(r.data.messages || []);
+    } catch {}
+  };
+
+  const sendChatMsg = async () => {
+    if (!chatInput.trim() || !chatRef || chatSending) return;
+    const text = chatInput.trim();
+    setChatInput('');
+    setChatSending(true);
+    try {
+      await axios.post(`${API_URL}/referral-messages/${chatRef.id}`, { message: text }, { headers: hdrs() });
+      await loadChatMsgs(chatRef.id);
+    } catch {}
+    finally { setChatSending(false); }
+  };
+
+  // Load referrals when Referrals tab becomes active (not in chat)
+  useEffect(() => {
+    if (filter === 'referral' && user && !chatRef) loadReferrals();
+  }, [filter, user, chatRef]); // eslint-disable-line
+
+  // Poll chat messages while in a conversation
+  useEffect(() => {
+    if (!chatRef) { setChatMsgs([]); return; }
+    loadChatMsgs(chatRef.id);
+    const iv = setInterval(() => loadChatMsgs(chatRef.id), 5000);
+    // Focus input after a short delay so the sheet has settled
+    setTimeout(() => chatInputRef.current?.focus(), 350);
+    return () => clearInterval(iv);
+  }, [chatRef]); // eslint-disable-line
+
+  // Auto-scroll messages container to bottom (same pattern as SuggestionsPanel)
+  useEffect(() => {
+    if (!chatBottomRef.current) return;
+    chatBottomRef.current.scrollTop = chatBottomRef.current.scrollHeight;
+  }, [chatMsgs]);
 
   const handleClick = n => {
     if (!n.is_read) markRead(n.id);
@@ -781,10 +1017,13 @@ export default function Notifications({ user }) {
   ];
   const tabDefs = isMobile ? MobileFilters : FILTERS;
 
+  // True when the chat view should take over the full screen on mobile
+  const mobileChat = isMobile && filter === 'referral' && !!chatRef;
+
   const PanelContent = (
     <>
-      {/* ── Header ── */}
-      <div style={{
+      {/* ── Header — hidden on mobile when chat is open ── */}
+      {!mobileChat && <div style={{
         padding: isMobile ? '16px 18px 12px' : '14px 16px 10px',
         flexShrink: 0,
         borderBottom: `1px solid ${T.g200}`,
@@ -849,7 +1088,7 @@ export default function Notifications({ user }) {
             const count = f.id === 'all' ? unread : notifs.filter(n => !n.is_read && matchFilter(n, f.id)).length;
             const active = filter === f.id;
             return (
-              <button key={f.id} onClick={() => setFilter(f.id)}
+              <button key={f.id} onClick={() => { if (f.id !== 'referral') setChatRef(null); setFilter(f.id); }}
                 style={{
                   flex: 1,
                   padding: isMobile ? '9px 6px' : '6px 4px',
@@ -875,70 +1114,231 @@ export default function Notifications({ user }) {
             );
           })}
         </div>
-      </div>
+      </div>}
 
-      {/* ── List ── */}
-      <div style={{ overflowY: 'auto', flex: 1, WebkitOverflowScrolling: 'touch', background: '#F4F7FA', padding: '10px 10px 6px' }}>
-        {loading && notifs.length === 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 0' }}>
-            <div style={{
-              width: 30, height: 30, borderRadius: '50%',
-              border: `2.5px solid ${T.mint}`, borderTopColor: 'transparent',
-              animation: 'notif-spin 0.8s linear infinite', marginBottom: 12,
-            }} />
-            <p style={{ fontSize: 13, color: T.g400, fontWeight: 600 }}>Loading…</p>
-            <style>{`@keyframes notif-spin{to{transform:rotate(360deg)}}`}</style>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 24px', textAlign: 'center' }}>
-            <div style={{
-              width: 60, height: 60, borderRadius: 18,
-              backgroundColor: T.g100,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14,
-            }}>
-              <Bell size={26} style={{ color: T.g400 }} />
+      {/* ── List / Referral panel ── */}
+      {filter === 'referral' && chatRef ? (
+        /* ── CHAT VIEW — mirrors SuggestionsPanel stable layout ── */
+        <>
+          {/* Green header bar */}
+          <div style={{ flexShrink: 0, background: `linear-gradient(135deg,${T.forest},${T.mint})` }}>
+            {isMobile && (
+              <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 10, paddingBottom: 4 }}>
+                <div style={{ width: 38, height: 4, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.3)' }} />
+              </div>
+            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', minHeight: isMobile ? 60 : 56 }}>
+              <button
+                onClick={() => { setChatRef(null); setChatInput(''); }}
+                style={{ width: isMobile ? 40 : 32, height: isMobile ? 40 : 32, borderRadius: 12, border: 'none', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}>
+                <ChevronLeft size={isMobile ? 22 : 18} color="white" />
+              </button>
+              <Avatar user={chatRef} name={chatRef.username} size={isMobile ? 38 : 32} color="rgba(255,255,255,0.2)" />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: 0, fontWeight: 900, fontSize: isMobile ? 15 : 13, color: '#fff', lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {chatRef.username}
+                  {chatRef.country && <span style={{ marginLeft: 6, fontSize: isMobile ? 14 : 12 }}>{flag(chatRef.country)}</span>}
+                </p>
+                <p style={{ margin: '3px 0 0', fontSize: isMobile ? 12 : 10, color: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', backgroundColor: '#4ADE80', flexShrink: 0 }} />
+                  {chatRef.trade_count > 0 ? `${chatRef.trade_count} trade${chatRef.trade_count !== 1 ? 's' : ''}` : 'No trades yet'} · Referral chat
+                </p>
+              </div>
+              <button onClick={() => { setChatRef(null); setChatInput(''); setShowDrop(false); }}
+                style={{ width: isMobile ? 40 : 32, height: isMobile ? 40 : 32, borderRadius: 12, border: 'none', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}>
+                <X size={isMobile ? 18 : 14} color="white" />
+              </button>
             </div>
-            <p style={{ fontWeight: 900, fontSize: 15, color: T.g700, marginBottom: 6 }}>
-              {filter === 'all' ? 'All caught up!' : `No ${tabDefs.find(f => f.id === filter)?.label.toLowerCase()} notifications`}
-            </p>
-            <p style={{ fontSize: 13, color: T.g400, lineHeight: 1.6, maxWidth: 260 }}>
-              {filter === 'all'
-                ? "We'll notify you when a trade comes in, payment is confirmed, or someone views your profile."
-                : 'Nothing here yet — check back soon.'}
-            </p>
           </div>
-        ) : (
-          filtered.map(n => (
-            <NotifCard key={n.id} n={n} userId={user?.id} onNavigate={handleClick} />
-          ))
-        )}
-      </div>
 
-      {/* ── Footer ── */}
-      <div style={{
-        padding: isMobile ? '12px 18px' : '10px 16px',
-        borderTop: `1px solid ${T.g200}`,
-        backgroundColor: T.g50, flexShrink: 0,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        paddingBottom: isMobile ? 'max(12px, env(safe-area-inset-bottom))' : 10,
-      }}>
-        <p style={{ fontSize: isMobile ? 13 : 12, color: T.g600, fontWeight: 700, margin: 0 }}>
-          {filtered.length} notification{filtered.length !== 1 ? 's' : ''}
-          {filter !== 'all' && (
-            <span style={{ color: T.g400 }}> · {tabDefs.find(f => f.id === filter)?.label}</span>
-          )}
-        </p>
-        <button
-          onClick={() => { setShowDrop(false); navigate('/my-trades'); }}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 5,
-            fontSize: isMobile ? 13 : 11, fontWeight: 900, color: T.green,
-            background: 'none', border: 'none', cursor: 'pointer',
-            padding: isMobile ? '8px 0' : '4px 0',
+          {/* Messages — flex-1 + overflow-y:auto, exactly like SuggestionsPanel */}
+          <div ref={chatBottomRef}
+            style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: isMobile ? '14px 14px 6px' : '12px 12px 4px', backgroundColor: '#F8FAFC', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {chatMsgs.length === 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, textAlign: 'center', padding: '40px 20px' }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>💬</div>
+                <p style={{ fontWeight: 800, fontSize: isMobile ? 15 : 14, color: T.g700, margin: '0 0 6px' }}>Start the conversation</p>
+                <p style={{ fontSize: isMobile ? 13 : 12, color: T.g400, lineHeight: 1.6 }}>
+                  Say hi to <strong>{chatRef.username}</strong> and encourage them to trade!
+                </p>
+              </div>
+            )}
+            {chatMsgs.map(m => {
+              const mine = String(m.sender_id) === String(user?.id);
+              return (
+                <div key={m.id} style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
+                  <div style={{
+                    maxWidth: '80%', padding: isMobile ? '10px 14px' : '8px 12px',
+                    fontSize: isMobile ? 15 : 13, lineHeight: 1.5,
+                    borderRadius: mine ? '18px 18px 4px 18px' : '4px 18px 18px 18px',
+                    backgroundColor: mine ? T.forest : '#fff',
+                    color: mine ? '#fff' : '#1E293B',
+                    boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+                    wordBreak: 'break-word',
+                  }}>
+                    <p style={{ margin: 0 }}>{m.message}</p>
+                    <p style={{ margin: '4px 0 0', fontSize: 10, opacity: 0.6, textAlign: mine ? 'right' : 'left' }}>
+                      {relTime(m.created_at)}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{ float: 'left', clear: 'both' }} />
+          </div>
+
+          {/* Input bar — flex-shrink-0, matches SuggestionsPanel exactly */}
+          <div style={{
+            flexShrink: 0,
+            display: 'flex', gap: 8, alignItems: 'flex-end',
+            padding: isMobile ? '10px 14px' : '10px 12px',
+            paddingBottom: isMobile ? 'max(12px, env(safe-area-inset-bottom))' : 10,
+            borderTop: `1.5px solid ${T.g200}`,
+            backgroundColor: '#fff',
           }}>
-          My trades <ArrowRight size={isMobile ? 13 : 11} />
-        </button>
-      </div>
+            <textarea
+              ref={chatInputRef}
+              value={chatInput}
+              onChange={e => setChatInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMsg(); } }}
+              placeholder={`Message ${chatRef.username}…`}
+              rows={1}
+              style={{
+                flex: 1, padding: isMobile ? '12px 14px' : '10px 12px',
+                borderRadius: 14,
+                fontSize: 16,
+                resize: 'none', outline: 'none', lineHeight: 1.4,
+                border: `2px solid ${chatInput ? T.forest : T.g200}`,
+                maxHeight: isMobile ? 120 : 90,
+                fontFamily: 'inherit',
+                WebkitTapHighlightColor: 'transparent',
+                transition: 'border-color 0.15s',
+              }}
+            />
+            <button
+              onClick={sendChatMsg}
+              disabled={!chatInput.trim() || chatSending}
+              style={{
+                width: isMobile ? 48 : 40, height: isMobile ? 48 : 40,
+                borderRadius: 14, border: 'none', cursor: 'pointer', flexShrink: 0,
+                background: `linear-gradient(135deg,${T.forest},${T.mint})`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                opacity: (!chatInput.trim() || chatSending) ? 0.4 : 1,
+                WebkitTapHighlightColor: 'transparent',
+                transition: 'opacity 0.15s',
+              }}>
+              <Send size={isMobile ? 18 : 15} color="white" />
+            </button>
+          </div>
+        </>
+
+      ) : (
+        <div style={{ overflowY: 'auto', flex: 1, WebkitOverflowScrolling: 'touch', background: '#F4F7FA', padding: '10px 10px 6px' }}>
+          {filter === 'referral' ? (
+            /* ── REFERRAL LIST ── */
+            refLoading ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 0' }}>
+                <div style={{ width: 30, height: 30, borderRadius: '50%', border: `2.5px solid ${T.mint}`, borderTopColor: 'transparent', animation: 'notif-spin 0.8s linear infinite', marginBottom: 12 }} />
+                <p style={{ fontSize: 13, color: T.g400, fontWeight: 600 }}>Loading…</p>
+                <style>{`@keyframes notif-spin{to{transform:rotate(360deg)}}`}</style>
+              </div>
+            ) : (referrals.length === 0 && !myReferrer) ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 24px', textAlign: 'center' }}>
+                <div style={{ fontSize: 44, marginBottom: 14 }}>🔗</div>
+                <p style={{ fontWeight: 900, fontSize: 15, color: T.g700, marginBottom: 6 }}>No referrals yet</p>
+                <p style={{ fontSize: 13, color: T.g400, lineHeight: 1.6, maxWidth: 260 }}>Share your referral link and earn rewards when friends join and start trading on PRAQEN.</p>
+              </div>
+            ) : (
+              <>
+                {/* ── Who referred me (reply back to referrer) ── */}
+                {myReferrer && (
+                  <div style={{ marginBottom: 14 }}>
+                    <p style={{ fontSize: 11, color: T.mint, fontWeight: 800, margin: '2px 4px 8px', textTransform: 'uppercase', letterSpacing: 0.6 }}>
+                      👑 Your Referrer
+                    </p>
+                    <ReferralCard referral={myReferrer} onChat={setChatRef} />
+                    {referrals.length > 0 && (
+                      <div style={{ height: 1, background: T.g200, margin: '14px 0 12px' }} />
+                    )}
+                  </div>
+                )}
+                {/* ── My referrals ── */}
+                {referrals.length > 0 && (
+                  <>
+                    <p style={{ fontSize: 11, color: T.g400, fontWeight: 700, margin: '2px 4px 10px', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      🔗 My Referrals · {referrals.length}
+                    </p>
+                    {referrals.map(r => (
+                      <ReferralCard key={r.id} referral={r} onChat={setChatRef} />
+                    ))}
+                  </>
+                )}
+              </>
+            )
+          ) : loading && notifs.length === 0 ? (
+            /* ── LOADING ── */
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 0' }}>
+              <div style={{ width: 30, height: 30, borderRadius: '50%', border: `2.5px solid ${T.mint}`, borderTopColor: 'transparent', animation: 'notif-spin 0.8s linear infinite', marginBottom: 12 }} />
+              <p style={{ fontSize: 13, color: T.g400, fontWeight: 600 }}>Loading…</p>
+              <style>{`@keyframes notif-spin{to{transform:rotate(360deg)}}`}</style>
+            </div>
+          ) : filtered.length === 0 ? (
+            /* ── EMPTY ── */
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 24px', textAlign: 'center' }}>
+              <div style={{ width: 60, height: 60, borderRadius: 18, backgroundColor: T.g100, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+                <Bell size={26} style={{ color: T.g400 }} />
+              </div>
+              <p style={{ fontWeight: 900, fontSize: 15, color: T.g700, marginBottom: 6 }}>
+                {filter === 'all' ? 'All caught up!' : `No ${tabDefs.find(f => f.id === filter)?.label.toLowerCase()} notifications`}
+              </p>
+              <p style={{ fontSize: 13, color: T.g400, lineHeight: 1.6, maxWidth: 260 }}>
+                {filter === 'all'
+                  ? "We'll notify you when a trade comes in, payment is confirmed, or someone views your profile."
+                  : 'Nothing here yet — check back soon.'}
+              </p>
+            </div>
+          ) : (
+            /* ── NOTIFICATION LIST ── */
+            filtered.map(n => (
+              <NotifCard key={n.id} n={n} userId={user?.id} onNavigate={handleClick} />
+            ))
+          )}
+        </div>
+      )}
+
+      {/* ── Footer (hidden in chat mode — chat has its own input) ── */}
+      {!(filter === 'referral' && chatRef) && (
+        <div style={{
+          padding: isMobile ? '12px 18px' : '10px 16px',
+          borderTop: `1px solid ${T.g200}`,
+          backgroundColor: T.g50, flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          paddingBottom: isMobile ? 'max(12px, env(safe-area-inset-bottom))' : 10,
+        }}>
+          {filter === 'referral' ? (
+            <p style={{ fontSize: isMobile ? 13 : 12, color: T.g600, fontWeight: 700, margin: 0 }}>
+              {referrals.length} referral{referrals.length !== 1 ? 's' : ''}
+            </p>
+          ) : (
+            <p style={{ fontSize: isMobile ? 13 : 12, color: T.g600, fontWeight: 700, margin: 0 }}>
+              {filtered.length} notification{filtered.length !== 1 ? 's' : ''}
+              {filter !== 'all' && (
+                <span style={{ color: T.g400 }}> · {tabDefs.find(f => f.id === filter)?.label}</span>
+              )}
+            </p>
+          )}
+          <button
+            onClick={() => { setShowDrop(false); navigate('/my-trades'); }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              fontSize: isMobile ? 13 : 11, fontWeight: 900, color: T.green,
+              background: 'none', border: 'none', cursor: 'pointer',
+              padding: isMobile ? '8px 0' : '4px 0',
+            }}>
+            My trades <ArrowRight size={isMobile ? 13 : 11} />
+          </button>
+        </div>
+      )}
     </>
   );
 
@@ -970,30 +1370,31 @@ export default function Notifications({ user }) {
         )}
       </button>
 
-      {/* ── MOBILE: full-screen bottom sheet ── */}
-      {showDrop && isMobile && (
+      {/* ── MOBILE — portalled to body to escape Navbar stacking context ── */}
+      {showDrop && isMobile && createPortal(
         <>
           {/* Backdrop */}
           <div
-            onClick={() => setShowDrop(false)}
-            style={{
-              position: 'fixed', inset: 0, zIndex: 998,
-              backgroundColor: 'rgba(0,0,0,0.45)',
-            }}
+            onClick={() => { setShowDrop(false); setChatRef(null); }}
+            style={{ position: 'fixed', inset: 0, zIndex: 1001, backgroundColor: 'rgba(0,0,0,0.45)' }}
           />
           {/* Sheet */}
-          <div style={{
-            position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 999,
+          <div ref={portalRef} style={{
+            position: 'fixed',
+            bottom: 0, left: 0, right: 0,
+            zIndex: 1002,
             backgroundColor: '#fff',
-            borderRadius: '22px 22px 0 0',
+            borderRadius: mobileChat ? 0 : '22px 22px 0 0',
             display: 'flex', flexDirection: 'column',
-            height: '90vh',
-            boxShadow: '0 -8px 40px rgba(0,0,0,0.18)',
+            height: mobileChat ? '92dvh' : '90dvh',
+            maxHeight: '92dvh',
             overflow: 'hidden',
+            boxShadow: '0 -8px 40px rgba(0,0,0,0.18)',
           }}>
             {PanelContent}
           </div>
-        </>
+        </>,
+        document.body
       )}
 
       {/* ── DESKTOP: dropdown ── */}

@@ -1697,7 +1697,7 @@ export default function WalletPage({ user }) {
                 <span className="text-white">PRA</span><span style={{ color: C.gold }}>QEN</span>
               </span>
               <p className="text-xs leading-relaxed my-3" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                Africa's most trusted P2P Bitcoin platform.
+                The world's most trusted P2P Bitcoin platform.
               </p>
               <div className="flex gap-2 flex-wrap">
                 {[

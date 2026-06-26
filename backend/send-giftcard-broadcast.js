@@ -91,7 +91,7 @@ async function sendBroadcast() {
         <p>Go to <strong>Gift Card Marketplace → Create Offer</strong></p>
 
         <h3>👉 BUY BITCOIN:</h3>
-        <p>Top vendors are active - best rates in Africa!</p>
+        <p>Top vendors are active - best rates worldwide!</p>
 
         <div style="text-align: center; margin: 30px 0;">
             <a href="https://praqen.com/gift-cards" style="background: #10b981; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; display: inline-block;">
