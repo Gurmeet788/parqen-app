@@ -118,6 +118,7 @@ class TradeEscrowService {
   // ── Helper: send in-app notification ───────────────────────────────────────
   async notify(userId, type, title, message, action, extra = {}) {
     try {
+      const hasExtra = extra && (extra.actor_id || extra.direction || extra.trade_id);
       const payload = {
         user_id:    userId,
         type,
@@ -127,8 +128,17 @@ class TradeEscrowService {
         is_read:    false,
         created_at: new Date().toISOString(),
       };
-      if (extra.actor_id || extra.direction) payload.data = extra;
-      await supabaseAdmin.from('notifications').insert(payload);
+      if (hasExtra) payload.data = extra;
+      const { error } = await supabaseAdmin.from('notifications').insert(payload);
+      if (error) {
+        console.error('[Escrow] Notification error:', error.message);
+        // Retry without data if the column doesn't exist yet
+        if (hasExtra && (error.message?.includes('"data"') || error.code === '42703')) {
+          const base = { user_id: userId, type, title, message, action: action || '/my-trades', is_read: false, created_at: new Date().toISOString() };
+          const { error: e2 } = await supabaseAdmin.from('notifications').insert(base);
+          if (e2) console.error('[Escrow] Notification retry error:', e2.message);
+        }
+      }
     } catch (e) {
       console.error('[Escrow] Notification error:', e.message);
     }
@@ -850,12 +860,12 @@ class TradeEscrowService {
     if (trade.buyer_id) {
       await this.notify(trade.buyer_id, 'trade_cancel', '❌ Trade Cancelled',
         cancelMsg, `/trade/${tradeId}`,
-        { actor_id: trade.seller_id, direction: 'buy' });
+        { actor_id: trade.seller_id, direction: 'buy', trade_id: tradeId });
     }
     if (trade.seller_id) {
       await this.notify(trade.seller_id, 'trade_cancel', '❌ Trade Cancelled',
         cancelMsg, `/trade/${tradeId}`,
-        { actor_id: trade.buyer_id, direction: 'sell' });
+        { actor_id: trade.buyer_id, direction: 'sell', trade_id: tradeId });
     }
     // Push to the party who did NOT get the refund alert above (btcProviderId already got sendSystemAlert)
     const otherPartyId = btcProviderId === trade.buyer_id ? trade.seller_id : trade.buyer_id;

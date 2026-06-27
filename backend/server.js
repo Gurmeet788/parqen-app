@@ -1105,10 +1105,22 @@ async function notifyModerators(tradeId, trade, reason) {
 
 async function createNotification(userId, type, title, message, action, extra = {}) {
   try {
+    const hasExtra = extra && (extra.actor_id || extra.direction || extra.trade_id);
     const payload = { user_id: userId, type, title, message, action, created_at: new Date(), is_read: false };
-    if (extra.actor_id || extra.direction) payload.data = extra;
+    if (hasExtra) payload.data = extra;
     const { data, error } = await supabaseAdmin.from('notifications').insert(payload).select();
-    if (error) console.error('[createNotification] Supabase error:', error.message, '| code:', error.code, '| details:', error.details);
+    if (error) {
+      console.error('[createNotification] Supabase error:', error.message, '| code:', error.code, '| details:', error.details);
+      // If the error is about the 'data' column not existing, retry without it so the notification still lands.
+      // This handles databases that haven't run the fix_notifications_data_column.sql migration yet.
+      if (hasExtra && (error.message?.includes('"data"') || error.code === '42703')) {
+        console.warn('[createNotification] Retrying without data field (column may not exist yet)');
+        const base = { user_id: userId, type, title, message, action, created_at: new Date(), is_read: false };
+        const { data: d2, error: e2 } = await supabaseAdmin.from('notifications').insert(base).select();
+        if (e2) console.error('[createNotification] retry error:', e2.message);
+        return d2?.[0] || null;
+      }
+    }
     return data?.[0] || null;
   } catch (error) {
     console.error('[createNotification] thrown error:', error);
@@ -5347,26 +5359,43 @@ app.post('/api/trades', verifyToken, async (req, res) => {
     }]).select();
     if (error) return res.status(400).json({ error: error.message });
 
-    // ── Push notification debug (fires immediately after DB insert) ──────────
-    console.error('[DEBUG] Trade saved to DB — id:', trade[0].id, '| ref:', trade[0].trade_ref);
-    console.error('[DEBUG] Seller ID:', sellerId, '| Buyer ID:', buyerId);
-    if (sellerId) {
-      console.error('[DEBUG] Calling sendTradeAlert for new_trade...');
-      try {
-        await sendTradeAlert(sellerId, trade[0], 'new_trade');
-        console.error('[DEBUG] sendTradeAlert completed successfully');
-      } catch (pushError) {
-        console.error('[DEBUG] sendTradeAlert failed:', pushError.message, pushError.stack);
-      }
-    } else {
-      console.error('[DEBUG] No seller_id — skipping push notification');
+    // ── Notify BOTH users immediately after trade is saved (before escrow) ──
+    try {
+      const [buyerRes, sellerRes] = await Promise.all([
+        supabaseAdmin.from('users').select('username').eq('id', buyerId).single(),
+        supabaseAdmin.from('users').select('username').eq('id', sellerId).single(),
+      ]);
+      const buyerName  = buyerRes.data?.username  || 'Buyer';
+      const sellerName = sellerRes.data?.username || 'Seller';
+      const fmtN       = n => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(n || 0);
+      const localDisp  = tradeLocalAmt > 0 && tradeCur
+        ? `${tradeSym || ''}${fmtN(tradeLocalAmt)} ${tradeCur}`
+        : `$${fmtN(tradeAmountUsd)} USD`;
+      const pmDisp     = paymentMethod || listing.payment_method || 'Mobile Money';
+      const isGiftCardListing = (listing.listing_type || '').toUpperCase() === 'BUY_GIFT_CARD';
+      const assetLabel = isGiftCardListing && listing.gift_card_brand
+        ? `${listing.gift_card_brand} Gift Card` : 'Bitcoin';
+      const btcDisp    = `₿${parseFloat(trade[0].amount_btc || 0).toFixed(8)}`;
+
+      const tradeUUID = trade[0].id;
+      await Promise.allSettled([
+        createNotification(sellerId, 'trade', '💰 New Trade Request',
+          `${buyerName} wants to buy ${assetLabel} · ${btcDisp} · ${localDisp} via ${pmDisp}`,
+          `/trade/${tradeUUID}`,
+          { actor_id: buyerId, direction: 'sell', trade_id: tradeUUID, payment_method: pmDisp }),
+        createNotification(buyerId, 'trade', '🔒 Trade Started',
+          `Your trade with ${sellerName} is now open · ${btcDisp} · ${localDisp} via ${pmDisp}`,
+          `/trade/${tradeUUID}`,
+          { actor_id: sellerId, direction: 'buy', trade_id: tradeUUID, payment_method: pmDisp }),
+        sendTradeAlert(sellerId, trade[0], 'new_trade').catch(() => {}),
+        sendTradeAlert(buyerId,  trade[0], 'new_trade').catch(() => {}),
+      ]);
+    } catch (notifyErr) {
+      console.error('[Trade Open] Pre-escrow notification failed:', notifyErr.message);
     }
     // ─────────────────────────────────────────────────────────────────────────
 
     console.log(`[BTC Lock] btcProvider:${btcProviderId.slice(0,8)} locking ${verifiedAmountBtc} BTC`);
-
-
-
 
 
 
@@ -5389,27 +5418,9 @@ app.post('/api/trades', verifyToken, async (req, res) => {
     // Respond immediately — escrow is locked, trade is live. Do NOT block on emails.
     res.json({ success: true, trade: trade[0], escrowAddress: escrowResult.escrowAddress, fee });
 
-    // Fire notifications in the background — never let email delay the user
+    // Send emails in the background — never block the response
     setImmediate(async () => {
       try {
-        const { data: buyerUser } = await supabaseAdmin.from('users').select('username').eq('id', buyerId).single();
-        const buyerName  = buyerUser?.username || 'Someone';
-        const fmtLocalN  = n => new Intl.NumberFormat('en-US',{maximumFractionDigits:0}).format(n||0);
-        const localDisp  = tradeLocalAmt > 0 && tradeCur
-          ? `${tradeSym||''}${fmtLocalN(tradeLocalAmt)} ${tradeCur}`
-          : `$${fmtLocalN(tradeAmountUsd)} USD`;
-        const pmDisp     = paymentMethod || listing.payment_method || 'Mobile Money';
-        const isGiftCardListing = (listing.listing_type || '').toUpperCase() === 'BUY_GIFT_CARD';
-        const assetLabel = isGiftCardListing && listing.gift_card_brand
-          ? `${listing.gift_card_brand} Gift Card`
-          : 'Bitcoin';
-        const btcDisp = `₿${parseFloat(trade[0].amount_btc || 0).toFixed(8)}`;
-        // Seller notification: actor = buyer, direction = sell
-        await createNotification(sellerId, 'trade', '💰 New Trade Request',
-          `${buyerName} wants to buy ${assetLabel} · ${btcDisp} · ${localDisp} via ${pmDisp}`,
-          `/trade/${trade[0].id}`,
-          { actor_id: buyerId, direction: 'sell' });
-        // Send personalized emails to buyer and seller in parallel
         const [buyerEmailRes, sellerEmailRes] = await Promise.allSettled([
           supabaseAdmin.from('users').select('id, email, username').eq('id', buyerId).single(),
           supabaseAdmin.from('users').select('id, email, username').eq('id', sellerId).single(),
@@ -5420,14 +5431,8 @@ app.post('/api/trades', verifyToken, async (req, res) => {
           emailService.sendTradeOpenedEmail(buyerEmailUser,  trade[0], 'buyer').catch(e => console.error('[TradeOpen] buyer email:', e.message));
         if (sellerEmailUser?.email)
           emailService.sendTradeOpenedEmail(sellerEmailUser, trade[0], 'seller').catch(e => console.error('[TradeOpen] seller email:', e.message));
-        // Buyer notification: actor = seller, direction = buy
-        const sellerName = sellerEmailUser?.username || 'the seller';
-        await createNotification(buyerId, 'trade', '🔒 Trade Started',
-          `Your trade with ${sellerName} is now open · ${btcDisp} · ${localDisp} via ${pmDisp}`,
-          `/trade/${trade[0].id}`,
-          { actor_id: sellerId, direction: 'buy' });
-      } catch (notifyErr) {
-        console.error('[Trade Open] Background notification failed:', notifyErr.message);
+      } catch (emailErr) {
+        console.error('[Trade Open] Email failed:', emailErr.message);
       }
     });
   } catch (error) {
@@ -5637,9 +5642,11 @@ app.post('/api/trades/:id/cancel', tradeLimiter, verifyToken, async (req, res) =
 
     setImmediate(async () => {
       try {
-        await createNotification(otherId, 'cancelled', '❌ Trade Cancelled', cancelMsg, `/trade/${req.params.id}`);
+        await createNotification(otherId, 'cancelled', '❌ Trade Cancelled', cancelMsg, `/trade/${req.params.id}`,
+          { trade_id: req.params.id, direction: req.userId === trade.buyer_id ? 'sell' : 'buy', actor_id: req.userId });
         await createNotification(req.userId, 'cancelled', '❌ Trade Cancelled',
-          `You cancelled the trade · ${cDisp} via ${cPM}`, `/trade/${req.params.id}`);
+          `You cancelled the trade · ${cDisp} via ${cPM}`, `/trade/${req.params.id}`,
+          { trade_id: req.params.id, direction: req.userId === trade.buyer_id ? 'buy' : 'sell', actor_id: otherId });
         sendTradeAlert([trade.buyer_id, trade.seller_id].filter(Boolean), trade, 'trade_cancelled').catch(() => {});
         // Email both parties about the cancellation
         const [buyerCancel, sellerCancel] = await Promise.allSettled([
@@ -6316,25 +6323,41 @@ app.get('/api/notifications', verifyToken, async (req, res) => {
       .order('created_at', { ascending: false }).limit(50);
     if (error) return res.json({ notifications: [] });
 
-    // Extract unique trade IDs from action URLs like /trade/<uuid>
-    const tradeIds = [...new Set(
-      (notifs || [])
-        .map(n => n.action?.match(/\/trade\/([0-9a-f-]{8,})/i)?.[1])
-        .filter(Boolean)
-    )];
-
-    let tradeMap = {};
-    if (tradeIds.length > 0) {
-      const { data: trades, error: tradeErr } = await supabaseAdmin
-        .from('trades')
-        .select(`id, status, trade_type, amount_btc, amount_usd, amount_local,
-                 local_currency, currency_symbol, payment_method,
+    // Extract trade lookup keys from every notification:
+    // 1. UUID from action URL  2. data.trade_id  3. any path segment after /trade/
+    const tradeSelect = `id, status, trade_type, amount_btc, amount_usd, amount_local,
+                 local_currency, currency_symbol, payment_method, trade_ref,
                  buyer_id, seller_id, created_at, completed_at, cancelled_at,
                  buyer:buyer_id(id, username, avatar_url, country),
-                 seller:seller_id(id, username, avatar_url, country)`)
-        .in('id', tradeIds);
-      if (tradeErr) console.error('[Notifications] trade fetch error:', tradeErr.message);
+                 seller:seller_id(id, username, avatar_url, country)`;
+
+    const uuidRe  = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+    const pathRe  = /\/trade\/([^/?#\s]+)/i;
+
+    // Separate UUIDs (lookup by id) from refs/slugs (lookup by trade_ref)
+    const tradeUUIDs = [], tradeRefs = [];
+    (notifs || []).forEach(n => {
+      const fromData = n.data?.trade_id;
+      const pathMatch = n.action?.match(pathRe)?.[1];
+      const candidate = fromData || pathMatch;
+      if (!candidate) return;
+      if (uuidRe.test(candidate)) tradeUUIDs.push(candidate);
+      else tradeRefs.push(candidate);
+    });
+    const uniqUUIDs = [...new Set(tradeUUIDs)];
+    const uniqRefs  = [...new Set(tradeRefs)];
+
+    let tradeMap = {};
+    if (uniqUUIDs.length > 0) {
+      const { data: trades, error: tradeErr } = await supabaseAdmin
+        .from('trades').select(tradeSelect).in('id', uniqUUIDs);
+      if (tradeErr) console.error('[Notifications] trade UUID fetch error:', tradeErr.message);
       (trades || []).forEach(t => { tradeMap[t.id] = t; });
+    }
+    if (uniqRefs.length > 0) {
+      const { data: trades2 } = await supabaseAdmin
+        .from('trades').select(tradeSelect).in('trade_ref', uniqRefs);
+      (trades2 || []).forEach(t => { tradeMap[t.id] = t; if (t.trade_ref) tradeMap[t.trade_ref] = t; });
     }
 
     // Extract unique actor IDs — from /profile/<uuid> URLs AND data.actor_id field
@@ -6354,12 +6377,18 @@ app.get('/api/notifications', verifyToken, async (req, res) => {
     }
 
     const enhanced = (notifs || []).map(n => {
-      const tradeId = n.action?.match(/\/trade\/([0-9a-f-]{8,})/i)?.[1];
+      const pathSeg = n.action?.match(pathRe)?.[1];
+      const tradeKey = n.data?.trade_id || pathSeg;
+      const trade = tradeKey ? (tradeMap[tradeKey] || null) : null;
       const actorId = n.action?.match(/\/profile\/([0-9a-f-]{8,})/i)?.[1] || n.data?.actor_id;
       let result = n;
-      if (tradeId && tradeMap[tradeId]) result = { ...result, trade: tradeMap[tradeId] };
+      if (trade)                        result = { ...result, trade };
       if (actorId && actorMap[actorId]) result = { ...result, actor: actorMap[actorId] };
       if (n.data?.direction)            result = { ...result, direction: n.data.direction };
+      // Payment method: prefer live trade data, then stored in data, then parse from message
+      const pm = trade?.payment_method || n.data?.payment_method
+        || n.message?.match(/\bvia\s+([^·\n]+?)(?:\s*·|\s*$)/i)?.[1]?.trim();
+      if (pm)                           result = { ...result, payment_method: pm };
       return result;
     });
 

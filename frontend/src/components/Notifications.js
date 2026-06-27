@@ -252,13 +252,13 @@ const TRADE_STATUS = {
   RESOLVED:            { label: 'Resolved',   color: '#6D28D9', bg: '#F5F3FF' },
   PAYMENT_SENT:        { label: 'Paid',       color: '#2563EB', bg: '#EFF6FF' },
   PAID:                { label: 'Paid',       color: '#2563EB', bg: '#EFF6FF' },
-  ESCROW:              { label: 'In Escrow',  color: '#6D28D9', bg: '#F5F3FF' },
-  FUNDS_LOCKED:        { label: 'Locked',     color: '#6D28D9', bg: '#F5F3FF' },
-  ACTIVE:              { label: 'Active',     color: '#2563EB', bg: '#EFF6FF' },
-  IN_PROGRESS:         { label: 'Active',     color: '#2563EB', bg: '#EFF6FF' },
-  OPEN:                { label: 'Active',     color: '#2563EB', bg: '#EFF6FF' },
-  CREATED:             { label: 'Pending',    color: '#D97706', bg: '#FFFBEB' },
-  PENDING:             { label: 'Pending',    color: '#D97706', bg: '#FFFBEB' },
+  ESCROW:              { label: '🔒 Active Trade', color: '#059669', bg: '#ECFDF5' },
+  FUNDS_LOCKED:        { label: '🔒 Active Trade', color: '#059669', bg: '#ECFDF5' },
+  ACTIVE:              { label: '🔒 Active Trade', color: '#059669', bg: '#ECFDF5' },
+  IN_PROGRESS:         { label: '🔒 Active Trade', color: '#059669', bg: '#ECFDF5' },
+  OPEN:                { label: '🔒 Active Trade', color: '#059669', bg: '#ECFDF5' },
+  CREATED:             { label: '🔒 Active Trade', color: '#059669', bg: '#ECFDF5' },
+  PENDING:             { label: '🔒 Active Trade', color: '#059669', bg: '#ECFDF5' },
 };
 
 const tradeTimeStr = (ts) => {
@@ -271,7 +271,7 @@ const tradeTimeStr = (ts) => {
     : d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }) + ', ' + hm;
 };
 
-function TradeNotifCard({ n, trade, userId, onNavigate }) {
+function TradeNotifCard({ n, trade, userId, onNavigate, isChat = false }) {
   const isBuyer  = String(userId) === String(trade.buyer_id);
   const cpRaw    = isBuyer ? trade.seller : trade.buyer;
   // Fallback: parse counterparty name from message when not enriched in trade
@@ -318,40 +318,39 @@ function TradeNotifCard({ n, trade, userId, onNavigate }) {
 
   if (isGiftCard) {
     if (!isBuyer) {
-      // Gift card seller  →  LEFT: what they RECEIVE (BTC + USD, shown first)  |  RIGHT: what they provide (card + face value)
+      // Gift card seller  →  LEFT: what they RECEIVE (BTC + local equiv)  |  RIGHT: what they provide (card + face value)
       leftLabel   = baseReceive;
-      leftStr     = `${btcStr} BTC`;   // "0.00029760 BTC"
-      leftSubStr  = usdEqStr;          // "≈ $38.50 USD"
+      leftStr     = `${btcStr} BTC`;
+      leftSubStr  = fiatStr || usdEqStr;   // local currency first, USD fallback
       rightLabel  = baseProvide;
-      rightStr    = pm;                // "Apple / iTunes"
-      rightSubStr = fiatStr;           // "$40.00 USD"  face value of the card
+      rightStr    = pm;
+      rightSubStr = fiatStr;
     } else {
       // Gift card buyer  →  LEFT: what they pay (fiat)  |  RIGHT: what they receive (card)
-      leftLabel  = basePay;
-      leftStr    = fiatStr || `${btcStr} BTC`;
-      leftSubStr = null;
-      rightLabel = baseReceive;
-      rightStr   = pm;                  // "Apple / iTunes"
-      rightSubStr = fiatStr;            // card face value on the receive side
+      leftLabel   = basePay;
+      leftStr     = fiatStr || `${btcStr} BTC`;
+      leftSubStr  = null;
+      rightLabel  = baseReceive;
+      rightStr    = pm;
+      rightSubStr = fiatStr;
     }
   } else {
     if (!isBuyer) {
-      // BTC seller  →  LEFT: what they RECEIVE (fiat, shown first so seller sees payout immediately)
-      //               RIGHT: what they PAY (BTC)
-      leftLabel  = baseReceive;
-      leftStr    = fiatStr || '—';      // "₵150.00 GHS"
-      leftSubStr = null;
-      rightLabel = basePay;
-      rightStr   = `${btcStr} BTC`;    // "0.00021745 BTC"
-      rightSubStr = null;
+      // BTC seller  →  LEFT: what they RECEIVE (fiat)  |  RIGHT: what they PAY (BTC + local equiv)
+      leftLabel   = baseReceive;
+      leftStr     = fiatStr || '—';
+      leftSubStr  = null;
+      rightLabel  = basePay;
+      rightStr    = `${btcStr} BTC`;
+      rightSubStr = fiatStr || usdEqStr;   // show local currency under BTC, not USD
     } else {
-      // BTC buyer  →  LEFT: what they PAY (fiat)  |  RIGHT: what they RECEIVE (BTC + USD equiv)
-      leftLabel  = basePay;
-      leftStr    = fiatStr || '—';      // "₵150.00 GHS"
-      leftSubStr = null;
-      rightLabel = baseReceive;
-      rightStr   = `${btcStr} BTC`;    // "0.00021745 BTC"
-      rightSubStr = usdEqStr;           // "≈ $18.00 USD"
+      // BTC buyer  →  LEFT: what they PAY (fiat)  |  RIGHT: what they RECEIVE (BTC + local equiv)
+      leftLabel   = basePay;
+      leftStr     = fiatStr || '—';
+      leftSubStr  = null;
+      rightLabel  = baseReceive;
+      rightStr    = `${btcStr} BTC`;
+      rightSubStr = fiatStr || usdEqStr;   // show local currency under BTC, not USD
     }
   }
 
@@ -373,9 +372,16 @@ function TradeNotifCard({ n, trade, userId, onNavigate }) {
           <span style={{ fontSize: 12, color: T.g400, fontWeight: 600 }}>{dateStr}</span>
           {!n.is_read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3B82F6', display: 'inline-block', flexShrink: 0 }} />}
         </div>
-        <span style={{ fontSize: 12, fontWeight: 700, color: status.color, background: status.bg, padding: '4px 12px', borderRadius: 8, flexShrink: 0 }}>
-          {status.label}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          {isChat && (
+            <span style={{ fontSize: 11, fontWeight: 800, color: '#2563EB', background: '#EFF6FF', padding: '4px 9px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
+              💬 New Message
+            </span>
+          )}
+          <span style={{ fontSize: 12, fontWeight: 700, color: status.color, background: status.bg, padding: '4px 12px', borderRadius: 8 }}>
+            {status.label}
+          </span>
+        </div>
       </div>
 
       {/* Payment method (red) | vendor avatar + name + flag */}
@@ -493,14 +499,14 @@ function BasicCard({ n, userId, onNavigate }) {
   // ── TRADE-RELATED: image-style card ──────────────────────────────────────────
   if (isTradeRelated) {
     const statusMap = {
-      cancel:    { label: 'Canceled',    color: '#DC2626', bg: '#FEF2F2' },
-      expire:    { label: 'Expired',     color: '#6B7280', bg: '#F9FAFB' },
-      dispute:   { label: 'Dispute',     color: '#6D28D9', bg: '#F5F3FF' },
-      resolved:  { label: 'Resolved',    color: '#6D28D9', bg: '#F5F3FF' },
-      payment:   { label: 'Paid',        color: '#2563EB', bg: '#EFF6FF' },
-      active:    { label: 'Active',      color: '#2563EB', bg: '#EFF6FF' },
-      completed: { label: 'Completed', color: '#059669', bg: '#ECFDF5' },
-      trade:     { label: 'Pending',   color: '#D97706', bg: '#FFFBEB' },
+      cancel:      { label: 'Canceled',          color: '#DC2626', bg: '#FEF2F2' },
+      expire:      { label: 'Expired',            color: '#6B7280', bg: '#F9FAFB' },
+      dispute:     { label: 'Dispute',            color: '#6D28D9', bg: '#F5F3FF' },
+      resolved:    { label: 'Resolved',           color: '#6D28D9', bg: '#F5F3FF' },
+      payment:     { label: 'Paid',               color: '#2563EB', bg: '#EFF6FF' },
+      activeTrade: { label: '🔒 Active Trade',    color: '#059669', bg: '#ECFDF5' },
+      completed:   { label: 'Completed',          color: '#059669', bg: '#ECFDF5' },
+      trade:       { label: '🔒 Active Trade',    color: '#059669', bg: '#ECFDF5' },
     };
     const status = isCancelled ? statusMap.cancel
       : isExpired   ? statusMap.expire
@@ -508,12 +514,11 @@ function BasicCard({ n, userId, onNavigate }) {
       : isDispute   ? statusMap.dispute
       : isPayment   ? statusMap.payment
       : isCompleted ? statusMap.completed
-      : isActive    ? statusMap.active
-      : statusMap.trade;
+      : statusMap.activeTrade;
 
-    // Parse payment method: text after "via "
+    // Parse payment method: enriched field first, then parse from message
     const pmM = msg.match(/\bvia\s+([^·\n]+?)(?:\s*·\s*|\s*$)/i);
-    const parsedPm = pmM?.[1]?.trim() || n.payment_method || '—';
+    const parsedPm = n.payment_method || pmM?.[1]?.trim() || '—';
 
     // BTC amount (₿ prefix in message)
     const btcM = msg.match(/[₿]([\d.]+)/);
@@ -536,17 +541,17 @@ function BasicCard({ n, userId, onNavigate }) {
     // Direction — priority: enriched field → message keywords → type hints
     const wantsBuy  = /wants to buy/i.test(msg);
     const wantsSell = /wants to sell/i.test(msg);
+    const enrichedDir = n.direction || n.data?.direction;
     let dirLabel = 'Trade';
     if (basicIsGiftCard) {
-      // Gift card: map direction to Buy/Sell Gift Card
-      if (n.direction === 'buy')       dirLabel = 'Buy Gift Card';
-      else if (n.direction === 'sell') dirLabel = 'Sell Gift Card';
+      if (enrichedDir === 'buy')       dirLabel = 'Buy Gift Card';
+      else if (enrichedDir === 'sell') dirLabel = 'Sell Gift Card';
       else if (wantsBuy)               dirLabel = 'Sell Gift Card';
       else if (wantsSell)              dirLabel = 'Buy Gift Card';
       else                             dirLabel = 'Sell Gift Card';
     } else {
-      if (n.direction === 'buy')          dirLabel = 'Buy BTC';
-      else if (n.direction === 'sell')    dirLabel = 'Sell BTC';
+      if (enrichedDir === 'buy')          dirLabel = 'Buy BTC';
+      else if (enrichedDir === 'sell')    dirLabel = 'Sell BTC';
       else if (wantsBuy)                  dirLabel = 'Sell BTC';
       else if (wantsSell)                 dirLabel = 'Buy BTC';
       else if (/\bbuy\b/i.test(type) && !/sell/i.test(type)) dirLabel = 'Buy BTC';
@@ -564,40 +569,42 @@ function BasicCard({ n, userId, onNavigate }) {
     const isBuyerB = wantsSell || n.direction === 'buy';
 
     // Build left/right layout using same seller-first rule as TradeNotifCard
-    let bLeftLabel, bLeftStr, bLeftSubStr, bRightLabel, bRightStr;
+    let bLeftLabel, bLeftStr, bLeftSubStr, bRightLabel, bRightStr, bRightSubStr;
 
     if (basicIsGiftCard) {
       if (isSeller || (!isBuyerB)) {
-        // Gift card seller: LEFT = receive BTC/fiat (shown first)  |  RIGHT = provide card (+face value)
-        bLeftLabel  = baseReceive2;
-        bLeftStr    = btcAmtStr || parsedLocalStr || 'BTC';
-        bLeftSubStr = null;
-        bRightLabel = baseProvide2;
-        bRightStr   = parsedPm !== '—' ? parsedPm : 'Gift Card';
+        // Gift card seller: LEFT = receive BTC + local equiv  |  RIGHT = provide card
+        bLeftLabel   = baseReceive2;
+        bLeftStr     = btcAmtStr || parsedLocalStr || 'BTC';
+        bLeftSubStr  = btcAmtStr && parsedLocalStr ? parsedLocalStr : null;
+        bRightLabel  = baseProvide2;
+        bRightStr    = parsedPm !== '—' ? parsedPm : 'Gift Card';
+        bRightSubStr = null;
       } else {
         // Gift card buyer: LEFT = pay fiat  |  RIGHT = receive card
-        bLeftLabel  = basePay2;
-        bLeftStr    = parsedLocalStr || btcAmtStr || 'BTC';
-        bLeftSubStr = null;
-        bRightLabel = baseReceive2;
-        bRightStr   = parsedPm !== '—' ? parsedPm : 'Gift Card';
+        bLeftLabel   = basePay2;
+        bLeftStr     = parsedLocalStr || btcAmtStr || 'BTC';
+        bLeftSubStr  = null;
+        bRightLabel  = baseReceive2;
+        bRightStr    = parsedPm !== '—' ? parsedPm : 'Gift Card';
+        bRightSubStr = null;
       }
     } else if (isSeller) {
-      // BTC seller: LEFT = what they RECEIVE (fiat first)  |  RIGHT = what they PAY (BTC)
-      bLeftLabel  = baseReceive2;
-      bLeftStr    = parsedLocalStr || '—';
-      bLeftSubStr = null;
-      bRightLabel = basePay2;
-      bRightStr   = btcAmtStr || 'BTC';
+      // BTC seller: LEFT = what they RECEIVE (fiat)  |  RIGHT = what they PAY (BTC + local equiv)
+      bLeftLabel   = baseReceive2;
+      bLeftStr     = parsedLocalStr || '—';
+      bLeftSubStr  = null;
+      bRightLabel  = basePay2;
+      bRightStr    = btcAmtStr || 'BTC';
+      bRightSubStr = parsedLocalStr || null;   // show local currency under BTC
     } else {
-      // BTC buyer (default): LEFT = what they PAY (fiat)  |  RIGHT = what they RECEIVE (BTC)
-      bLeftLabel  = basePay2;
-      bLeftStr    = parsedLocalStr || btcAmtStr || 'BTC';
-      bLeftSubStr = null;
-      bRightLabel = baseReceive2;
-      bRightStr   = btcAmtStr
-        ? `${btcAmtStr}${parsedLocalStr ? ` · ${parsedLocalStr}` : ''}`
-        : 'BTC';
+      // BTC buyer: LEFT = what they PAY (fiat)  |  RIGHT = what they RECEIVE (BTC + local equiv)
+      bLeftLabel   = basePay2;
+      bLeftStr     = parsedLocalStr || btcAmtStr || 'BTC';
+      bLeftSubStr  = null;
+      bRightLabel  = baseReceive2;
+      bRightStr    = btcAmtStr || 'BTC';
+      bRightSubStr = parsedLocalStr || null;   // show local currency under BTC
     }
 
     // Actor: use enriched n.actor first, then parse username from message as fallback for letter avatar
@@ -673,6 +680,7 @@ function BasicCard({ n, userId, onNavigate }) {
           <div style={{ flex: 1, textAlign: 'right' }}>
             <p style={{ margin: 0, fontSize: 11, color: T.g400, fontWeight: 500, marginBottom: 3 }}>{bRightLabel}</p>
             <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#F7931A', lineHeight: 1.2 }}>{bRightStr}</p>
+            {bRightSubStr && <p style={{ margin: '3px 0 0', fontSize: 12, color: T.g500, fontWeight: 700 }}>{bRightSubStr}</p>}
           </div>
         </div>
         {isRefund && (
@@ -796,9 +804,27 @@ function ReferralCard({ referral, onChat }) {
 }
 
 // ─── Dispatcher ───────────────────────────────────────────────────────────────
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
 function NotifCard({ n, userId, onNavigate }) {
   const type = n.type || '';
-  const trade = n.trade;
+  const [trade, setTrade] = useState(n.trade || null);
+
+  // If backend didn't enrich the trade (old notifications), fetch it client-side
+  useEffect(() => {
+    if (trade) return;
+    const isTradeType = type === 'trade' || type === 'message' || type === 'cancelled'
+      || /trade|payment|dispute/i.test(type);
+    if (!isTradeType) return;
+    const uuidMatch = n.action?.match(UUID_RE) || n.data?.trade_id?.match(UUID_RE);
+    const uuid = uuidMatch?.[0] || n.data?.trade_id;
+    if (!uuid) return;
+    const token = localStorage.getItem('token');
+    fetch(`${API_URL}/trades/${uuid}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.trade || d?.id) setTrade(d.trade || d); })
+      .catch(() => {});
+  }, [n.action, n.data, type]); // eslint-disable-line
 
   if (type === 'profile_view' || /viewed your profile/i.test(n.message || '')) {
     return <ProfileViewCard n={n} onNavigate={onNavigate} />;
@@ -807,6 +833,7 @@ function NotifCard({ n, userId, onNavigate }) {
     return <OfferViewCard n={n} onNavigate={onNavigate} />;
   }
   if (type === 'message') {
+    if (trade) return <TradeNotifCard n={n} trade={trade} userId={userId} onNavigate={onNavigate} isChat />;
     return <MessageCard n={n} onNavigate={onNavigate} />;
   }
   if (trade) {
@@ -824,12 +851,21 @@ const FILTERS = [
   { id: 'system',   label: 'System' },
 ];
 
+const TRADE_TYPES = new Set(['trade', 'trade_cancel', 'cancelled', 'payment', 'dispute', 'message', 'support']);
+
 function matchFilter(n, filter) {
   if (filter === 'all') return true;
-  const type = n.type || '';
+  const type = (n.type || '').toLowerCase();
   const title = (n.title || '').toLowerCase();
   const msg = (n.message || '').toLowerCase();
-  if (filter === 'trades')   return !!n.trade || /trade|payment|escrow|dispute|message/i.test(title + type);
+  const action = (n.action || '').toLowerCase();
+
+  if (filter === 'trades') {
+    if (n.trade) return true;
+    if (TRADE_TYPES.has(type)) return true;
+    if (action.includes('/trade/')) return true;
+    return /trade|payment|escrow|dispute/i.test(title + type);
+  }
   if (filter === 'views')    return /profile_view|offer_view/i.test(type) || /viewed your/i.test(title + msg);
   if (filter === 'referral') return /referral|commission|affiliate/i.test(type + title + msg);
   if (filter === 'system')   return /update|broadcast|system|welcome|bonus|received|sent|transfer/i.test(type + title + msg);
@@ -855,9 +891,11 @@ export default function Notifications({ user }) {
   const [chatInput,   setChatInput]   = useState('');
   const [chatSending, setChatSending] = useState(false);
   const [kbOffset,    setKbOffset]    = useState(0);
+  const [toasts,       setToasts]     = useState([]);
   const chatBottomRef  = useRef(null);
   const chatInputRef   = useRef(null);
   const portalRef      = useRef(null);
+  const seenIdsRef     = useRef(null); // tracks IDs from previous poll
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 640);
@@ -882,12 +920,34 @@ export default function Notifications({ user }) {
   const token  = () => localStorage.getItem('token');
   const hdrs   = () => ({ Authorization: `Bearer ${token()}` });
 
+  const showToast = n => {
+    const id = n.id + '-' + Date.now();
+    setToasts(prev => [...prev, { id, title: n.title, message: n.message, action: n.action, trade: n.trade }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 6000);
+  };
+
   const load = async () => {
     if (!user) return;
     setLoading(true);
     try {
       const r = await axios.get(`${API_URL}/notifications`, { headers: hdrs() });
-      setNotifs(r.data.notifications || []);
+      const incoming = r.data.notifications || [];
+      setNotifs(incoming);
+
+      if (seenIdsRef.current === null) {
+        // First load: show toasts for unread notifications created in the last 30 seconds
+        // so a page-refresh or remount doesn't swallow recent trade/cancel alerts.
+        const cutoff = Date.now() - 30_000;
+        incoming
+          .filter(n => !n.is_read && new Date(n.created_at).getTime() > cutoff)
+          .slice(0, 3)
+          .forEach(showToast);
+      } else {
+        // Subsequent polls: toast anything that is new AND unread since the last poll
+        const fresh = incoming.filter(n => !n.is_read && !seenIdsRef.current.has(n.id));
+        fresh.slice(0, 3).forEach(showToast);
+      }
+      seenIdsRef.current = new Set(incoming.map(n => n.id));
     } catch { /* keep previous */ }
     finally { setLoading(false); }
   };
@@ -895,7 +955,7 @@ export default function Notifications({ user }) {
   useEffect(() => {
     if (!user) return;
     load();
-    const iv = setInterval(load, 8000);
+    const iv = setInterval(load, 2000);
     return () => clearInterval(iv);
   }, [user]); // eslint-disable-line
 
@@ -1413,6 +1473,58 @@ export default function Notifications({ user }) {
           {PanelContent}
         </div>
       )}
+
+      {/* ── Toast notifications portal ── */}
+      {toasts.length > 0 && createPortal(
+        <div style={{ position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 9999,
+          display: 'flex', flexDirection: 'column', gap: 10, width: 'min(380px, calc(100vw - 32px))', pointerEvents: 'none' }}>
+          {toasts.map(t => (
+            <div key={t.id} style={{ pointerEvents: 'auto', background: '#fff',
+              borderRadius: 16, boxShadow: '0 8px 32px rgba(0,0,0,0.18)', overflow: 'hidden',
+              border: `1.5px solid ${T.g200}`, animation: 'prqSlideDown 0.3s ease' }}>
+              <div style={{ height: 4, background: `linear-gradient(90deg,${T.forest},${T.mint})` }} />
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px' }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                  background: `linear-gradient(135deg,${T.forest},${T.mint})`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
+                  {(t.title || '').startsWith('💰') ? '💰' : (t.title || '').startsWith('🔒') ? '🔒'
+                    : (t.title || '').startsWith('💬') ? '💬' : (t.title || '').startsWith('❌') ? '❌'
+                    : (t.title || '').startsWith('✅') ? '✅' : '🔔'}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ margin: 0, fontWeight: 800, fontSize: 13, color: '#0F172A',
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {(t.title || '').replace(/^[^\w]+ ?/, '')}
+                  </p>
+                  <p style={{ margin: '3px 0 0', fontSize: 12, color: T.g500, lineHeight: 1.4,
+                    display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                    {t.message}
+                  </p>
+                  {t.trade && (
+                    <p style={{ margin: '5px 0 0', fontSize: 11, fontWeight: 700, color: T.success,
+                      background: '#ECFDF5', display: 'inline-block', padding: '2px 8px', borderRadius: 6 }}>
+                      🔒 Active Trade
+                    </p>
+                  )}
+                </div>
+                <button onClick={() => setToasts(prev => prev.filter(x => x.id !== t.id))}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, flexShrink: 0,
+                    color: T.g400, display: 'flex', alignItems: 'center' }}>
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>,
+        document.body
+      )}
+
+      <style>{`
+        @keyframes prqSlideDown {
+          from { opacity: 0; transform: translateY(-16px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 }

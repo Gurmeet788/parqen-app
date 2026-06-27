@@ -309,12 +309,6 @@ export default function Navbar({ user, onLogout }) {
                 <span style={{ fontSize: 11, fontWeight: 900, color: C.forest, whiteSpace: 'nowrap', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {showBal ? `${localCode} ${sym}${fmt(totalLocal, 2)}` : '•••'}
                 </span>
-                {showBal && lockedBtc > 0 && (
-                  <span title={`₿${fmtBtc(lockedBtc)} in escrow`}
-                    style={{ fontSize: 9, fontWeight: 800, color: '#b45309', background: '#fef3c7', borderRadius: 4, padding: '1px 4px', whiteSpace: 'nowrap' }}>
-                    🔒{fmtBtc(lockedBtc)}
-                  </span>
-                )}
               </Link>
               <button
                 onClick={() => setShowBal(!showBal)}
@@ -338,12 +332,6 @@ export default function Navbar({ user, onLogout }) {
                 <span style={{ fontSize: 13, fontWeight: 900, color: C.forest }}>
                   {showBal ? `${localCode} ${sym}${fmt(totalLocal, 2)}` : '••••••'}
                 </span>
-                {showBal && lockedBtc > 0 && (
-                  <span title={`₿${fmtBtc(lockedBtc)} locked in escrow`}
-                    style={{ fontSize: 10, fontWeight: 800, color: '#b45309', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 5, padding: '2px 5px', whiteSpace: 'nowrap' }}>
-                    🔒 ₿{fmtBtc(lockedBtc)}
-                  </span>
-                )}
               </Link>
             </div>
 
