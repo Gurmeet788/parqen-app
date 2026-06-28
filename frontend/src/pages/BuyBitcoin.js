@@ -286,7 +286,7 @@ const FEATURED = {
 };
 
 // ── Offer Card ────────────────────────────────────────────────────────────────
-function OfferCard({listing, btcPriceUSD, onViewSeller, onBuy, liked, onToggleLike, featuredType, liveSeenAt}) {
+function OfferCard({listing, btcPriceUSD, onViewSeller, onBuy, liked, onToggleLike, featuredType, liveSeenAt, userBuyAmt}) {
   const { rates: USD_RATES } = useRates();
   const u         = getUser(listing.users);
   const badge     = deriveBadge(u);
@@ -309,8 +309,11 @@ function OfferCard({listing, btcPriceUSD, onViewSeller, onBuy, liked, onToggleLi
   const minLocal = listing.min_limit_local || (listing.min_limit_usd ? listing.min_limit_usd*usdRate : 100*usdRate);
   const maxLocal = listing.max_limit_local || (listing.max_limit_usd ? listing.max_limit_usd*usdRate : 1000*usdRate);
 
-  const examplePay = minLocal || Math.round(100*usdRate);
+  const examplePay = (userBuyAmt && parseFloat(userBuyAmt) > 0)
+    ? parseFloat(userBuyAmt)
+    : (minLocal || Math.round(100*usdRate));
   const { btcReceived } = calcBtc(examplePay, btcPriceUSD, margin, usdRate);
+  const fiatEquiv = parseFloat((btcReceived * btcPriceUSD * usdRate).toFixed(2));
 
   const marginLabel = margin===0 ? 'Market rate' : margin>0 ? `+${margin}% above market` : `${Math.abs(margin)}% below market`;
   const marginBg    = margin>0 ? C.danger : margin<0 ? C.success : C.g400;
@@ -449,16 +452,16 @@ function OfferCard({listing, btcPriceUSD, onViewSeller, onBuy, liked, onToggleLi
         <div>
           <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{color: ft ? ft.labelColor : C.g500}}>YOU PAY</p>
           <p className="text-lg font-bold leading-tight truncate" style={{color:C.g800}}>
-            {sym}{fmt(examplePay)}
+            {sym}{fmt(examplePay, 2)}
           </p>
           <p className="text-xs font-semibold mt-0.5" style={{color:C.g400}}>{cur}</p>
         </div>
         <div className="border-l pl-3" style={{borderColor: ft ? ft.divider : C.g100}}>
           <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{color: ft ? ft.labelColor : C.g500}}>YOU RECEIVE</p>
-          <p className="text-lg font-bold leading-tight truncate" style={{color:C.g800}}>
-            {sym}{fmt(parseFloat((btcReceived * btcPriceUSD * usdRate).toFixed(2)))} {cur}
+          <p className="text-lg font-bold leading-tight truncate" style={{color:C.gold}}>
+            ₿{fBtc(btcReceived)}
           </p>
-          <p className="text-xs font-semibold mt-0.5" style={{color:C.gold}}>₿{fBtc(btcReceived)}</p>
+          <p className="text-xs font-semibold mt-0.5" style={{color:C.g500}}>≈ {sym}{fmt(fiatEquiv, 2)} {cur}</p>
           <span className="inline-block mt-1.5 font-semibold px-2 py-0.5 rounded"
             style={{backgroundColor:marginBg, color:'#fff', fontSize:'10px', letterSpacing:'0.01em'}}>
             {marginLabel}
@@ -1703,6 +1706,7 @@ export default function BuyBitcoin({user}) {
                 <OfferCard
                   listing={l}
                   btcPriceUSD={btcPrice}
+                  userBuyAmt={buyAmt}
                   featuredType={l.id === activeTraderListingId ? 'active_trader' : undefined}
                   liveSeenAt={liveStatus[l.users?.id] || null}
                   onViewSeller={()=>{

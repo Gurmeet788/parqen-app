@@ -252,13 +252,13 @@ const TRADE_STATUS = {
   RESOLVED:            { label: 'Resolved',   color: '#6D28D9', bg: '#F5F3FF' },
   PAYMENT_SENT:        { label: 'Paid',       color: '#2563EB', bg: '#EFF6FF' },
   PAID:                { label: 'Paid',       color: '#2563EB', bg: '#EFF6FF' },
-  ESCROW:              { label: '🔒 Active Trade', color: '#059669', bg: '#ECFDF5' },
-  FUNDS_LOCKED:        { label: '🔒 Active Trade', color: '#059669', bg: '#ECFDF5' },
-  ACTIVE:              { label: '🔒 Active Trade', color: '#059669', bg: '#ECFDF5' },
-  IN_PROGRESS:         { label: '🔒 Active Trade', color: '#059669', bg: '#ECFDF5' },
-  OPEN:                { label: '🔒 Active Trade', color: '#059669', bg: '#ECFDF5' },
-  CREATED:             { label: '🔒 Active Trade', color: '#059669', bg: '#ECFDF5' },
-  PENDING:             { label: '🔒 Active Trade', color: '#059669', bg: '#ECFDF5' },
+  ESCROW:              { label: '🔒 Active Trade', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
+  FUNDS_LOCKED:        { label: '🔒 Active Trade', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
+  ACTIVE:              { label: '🔒 Active Trade', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
+  IN_PROGRESS:         { label: '🔒 Active Trade', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
+  OPEN:                { label: '🔒 Active Trade', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
+  CREATED:             { label: '🔒 Active Trade', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
+  PENDING:             { label: '🔒 Active Trade', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
 };
 
 const tradeTimeStr = (ts) => {
@@ -297,9 +297,7 @@ function TradeNotifCard({ n, trade, userId, onNavigate, isChat = false }) {
   const GIFT_BRANDS = /amazon|itunes|apple|google.?play|steam|walmart|ebay|target|playstation|xbox|netflix|spotify|visa gift|mastercard gift|best buy/i;
   const isGiftCard = /gift/i.test(trade.trade_type || '') || GIFT_BRANDS.test(pm);
 
-  const dirLabel = isGiftCard
-    ? (isBuyer ? 'Buy Gift Card' : 'Sell Gift Card')
-    : (isBuyer ? 'Buy BTC' : 'Sell BTC');
+  const dirLabel = isBuyer ? 'Buy BTC' : 'Sell BTC';
 
   // USD equivalent of BTC (from amount_usd field, already in DB)
   const usdRaw   = parseFloat(trade.amount_usd || 0);
@@ -336,21 +334,22 @@ function TradeNotifCard({ n, trade, userId, onNavigate, isChat = false }) {
     }
   } else {
     if (!isBuyer) {
-      // BTC seller  →  LEFT: what they RECEIVE (fiat)  |  RIGHT: what they PAY (BTC + local equiv)
+      // BTC seller  →  LEFT: what they RECEIVE (fiat)  |  RIGHT: what they PAY (BTC + fiat equiv)
       leftLabel   = baseReceive;
       leftStr     = fiatStr || '—';
       leftSubStr  = null;
       rightLabel  = basePay;
       rightStr    = `${btcStr} BTC`;
-      rightSubStr = fiatStr || usdEqStr;   // show local currency under BTC, not USD
+      rightSubStr = fiatStr ? `≈ ${fiatStr}` : usdEqStr;
     } else {
       // BTC buyer  →  LEFT: what they PAY (fiat)  |  RIGHT: what they RECEIVE (BTC + local equiv)
+      // Sub-text tells the buyer what the BTC they receive is worth in their currency.
       leftLabel   = basePay;
       leftStr     = fiatStr || '—';
       leftSubStr  = null;
       rightLabel  = baseReceive;
       rightStr    = `${btcStr} BTC`;
-      rightSubStr = fiatStr || usdEqStr;   // show local currency under BTC, not USD
+      rightSubStr = fiatStr ? `≈ ${fiatStr}` : usdEqStr;
     }
   }
 
@@ -373,9 +372,9 @@ function TradeNotifCard({ n, trade, userId, onNavigate, isChat = false }) {
           {!n.is_read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3B82F6', display: 'inline-block', flexShrink: 0 }} />}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-          {isChat && (
+          {(isChat || n._hasUnreadMsg) && (
             <span style={{ fontSize: 11, fontWeight: 800, color: '#2563EB', background: '#EFF6FF', padding: '4px 9px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
-              💬 New Message
+              💬 {(n._msgCount > 1) ? `${n._msgCount} msgs` : 'New msg'}
             </span>
           )}
           <span style={{ fontSize: 12, fontWeight: 700, color: status.color, background: status.bg, padding: '4px 12px', borderRadius: 8 }}>
@@ -544,11 +543,11 @@ function BasicCard({ n, userId, onNavigate }) {
     const enrichedDir = n.direction || n.data?.direction;
     let dirLabel = 'Trade';
     if (basicIsGiftCard) {
-      if (enrichedDir === 'buy')       dirLabel = 'Buy Gift Card';
-      else if (enrichedDir === 'sell') dirLabel = 'Sell Gift Card';
-      else if (wantsBuy)               dirLabel = 'Sell Gift Card';
-      else if (wantsSell)              dirLabel = 'Buy Gift Card';
-      else                             dirLabel = 'Sell Gift Card';
+      if (enrichedDir === 'buy')       dirLabel = 'Buy BTC';
+      else if (enrichedDir === 'sell') dirLabel = 'Sell BTC';
+      else if (wantsBuy)               dirLabel = 'Sell BTC';
+      else if (wantsSell)              dirLabel = 'Buy BTC';
+      else                             dirLabel = 'Sell BTC';
     } else {
       if (enrichedDir === 'buy')          dirLabel = 'Buy BTC';
       else if (enrichedDir === 'sell')    dirLabel = 'Sell BTC';
@@ -620,8 +619,8 @@ function BasicCard({ n, userId, onNavigate }) {
 
     // Extra direction hint: if actor username contains "buyer" → they buy → I sell, and vice versa
     if (dirLabel === 'Trade' && parsedActorName) {
-      if (/buyer/i.test(parsedActorName))  dirLabel = basicIsGiftCard ? 'Sell Gift Card' : 'Sell BTC';
-      if (/seller/i.test(parsedActorName)) dirLabel = basicIsGiftCard ? 'Buy Gift Card'  : 'Buy BTC';
+      if (/buyer/i.test(parsedActorName))  dirLabel = 'Sell BTC';
+      if (/seller/i.test(parsedActorName)) dirLabel = 'Buy BTC';
     }
 
     return (
@@ -806,6 +805,37 @@ function ReferralCard({ referral, onChat }) {
 // ─── Dispatcher ───────────────────────────────────────────────────────────────
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
+const getTradeId = n =>
+  n.trade?.id ? String(n.trade.id)
+    : n.action?.match(UUID_RE)?.[0] ?? n.data?.trade_id ?? null;
+
+// One card per trade: merge message notifications into the trade card badge
+const dedupByTrade = list => {
+  const groups = new Map();
+  list.forEach(n => {
+    const tid = getTradeId(n);
+    if (!tid) return;
+    const isMsg = n.type === 'message';
+    if (!groups.has(tid)) {
+      groups.set(tid, { best: n, hasUnread: isMsg && !n.is_read, count: isMsg && !n.is_read ? 1 : 0 });
+    } else {
+      const g = groups.get(tid);
+      if (isMsg && !n.is_read) { g.hasUnread = true; g.count++; }
+      if (g.best.type === 'message' && !isMsg) g.best = n;
+    }
+  });
+  const seen = new Set();
+  return list.reduce((acc, n) => {
+    const tid = getTradeId(n);
+    if (!tid) { acc.push(n); return acc; }
+    if (seen.has(tid)) return acc;
+    seen.add(tid);
+    const g = groups.get(tid);
+    acc.push({ ...g.best, _hasUnreadMsg: g.hasUnread, _msgCount: g.count });
+    return acc;
+  }, []);
+};
+
 function NotifCard({ n, userId, onNavigate }) {
   const type = n.type || '';
   const [trade, setTrade] = useState(n.trade || null);
@@ -837,7 +867,7 @@ function NotifCard({ n, userId, onNavigate }) {
     return <MessageCard n={n} onNavigate={onNavigate} />;
   }
   if (trade) {
-    return <TradeNotifCard n={n} trade={trade} userId={userId} onNavigate={onNavigate} />;
+    return <TradeNotifCard n={n} trade={trade} userId={userId} onNavigate={onNavigate} isChat={!!n._hasUnreadMsg} />;
   }
   return <BasicCard n={n} userId={userId} onNavigate={onNavigate} />;
 }
@@ -1359,7 +1389,7 @@ export default function Notifications({ user }) {
             </div>
           ) : (
             /* ── NOTIFICATION LIST ── */
-            filtered.map(n => (
+            dedupByTrade(filtered).map(n => (
               <NotifCard key={n.id} n={n} userId={user?.id} onNavigate={handleClick} />
             ))
           )}
