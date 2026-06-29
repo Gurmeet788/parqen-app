@@ -926,6 +926,7 @@ export default function Notifications({ user }) {
   const chatInputRef   = useRef(null);
   const portalRef      = useRef(null);
   const seenIdsRef     = useRef(null); // tracks IDs from previous poll
+  const errCountRef    = useRef(0);    // consecutive error count for backoff
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 640);
@@ -960,7 +961,8 @@ export default function Notifications({ user }) {
     if (!user) return;
     setLoading(true);
     try {
-      const r = await axios.get(`${API_URL}/notifications`, { headers: hdrs() });
+      const r = await axios.get(`${API_URL}/notifications`, { headers: hdrs(), timeout: 10000 });
+      errCountRef.current = 0;
       const incoming = r.data.notifications || [];
       setNotifs(incoming);
 
@@ -978,14 +980,16 @@ export default function Notifications({ user }) {
         fresh.slice(0, 3).forEach(showToast);
       }
       seenIdsRef.current = new Set(incoming.map(n => n.id));
-    } catch { /* keep previous */ }
+    } catch { errCountRef.current += 1; /* keep previous */ }
     finally { setLoading(false); }
   };
 
   useEffect(() => {
     if (!user) return;
     load();
-    const iv = setInterval(load, 2000);
+    // 30s base interval — prevents hammering the DB with the trade_ref lookup.
+    // Visibility handler (below) triggers an immediate refresh when tab re-focuses.
+    const iv = setInterval(load, 30000);
     return () => clearInterval(iv);
   }, [user]); // eslint-disable-line
 

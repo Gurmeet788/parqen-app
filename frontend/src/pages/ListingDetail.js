@@ -69,14 +69,25 @@ function pmLabel(raw) {
   return { icon:'💳', label:raw||'Mobile Money' };
 }
 
+// Seed listing from the marketplace localStorage cache so the page renders
+// immediately even when the backend is slow or returning 503.
+function _seedFromCache(listingId) {
+  try {
+    const c = JSON.parse(localStorage.getItem('praqen_market_all') || 'null');
+    if (!c?.data) return null;
+    return c.data.find(l => l.id === listingId) || null;
+  } catch { return null; }
+}
+
 export default function ListingDetail({ user }) {
   const { id }     = useParams();
   const navigate   = useNavigate();
   const { rates: USD_RATES, btcUsd: contextBtcUsd } = useRates();
-  const [listing,    setListing]    = useState(null);
-  const [seller,     setSeller]     = useState(null);
+  const _cached    = _seedFromCache(id);
+  const [listing,    setListing]    = useState(_cached || null);
+  const [seller,     setSeller]     = useState(_cached?.users || null);
   const [btcPrice,   setBtcPrice]   = useState(68000);
-  const [loading,    setLoading]    = useState(true);
+  const [loading,    setLoading]    = useState(!_cached);
   const [loadError,  setLoadError]  = useState(false);
   const [payAmt,          setPayAmt]          = useState('');
   const [submitting,      setSubmitting]      = useState(false);
@@ -85,20 +96,21 @@ export default function ListingDetail({ user }) {
   const [quote,             setQuote]             = useState(null);
   const [quoteFetching,     setQuoteFetching]     = useState(false);
   const [showSellerProfile, setShowSellerProfile] = useState(false);
-  const [popupOpen,         setPopupOpen]         = useState(false);
+  const [popupOpen,         setPopupOpen]         = useState(!!_cached);
 
   // Must be declared before the useEffect that depends on it
-const loadAll = useCallback(async () => {
-  setLoading(true);
-  setLoadError(false);
+const loadAll = useCallback(async (isBackground = false) => {
+  // When we already have a cached listing, fetch silently in the background
+  // so the user always sees something immediately.
+  const hasCached = !!listing;
+  if (!hasCached) { setLoading(true); setLoadError(false); }
   try {
     const r = await axios.get(`${API_URL}/listings/${id}`, { timeout: 12000 });
     const offer = r.data.listing;
     setListing(offer);
-    // Seller data is already joined in the listings response
+    setLoadError(false);
     const sellerData = Array.isArray(offer?.users) ? offer.users[0] : (offer?.users || offer?.seller || null);
     if (sellerData) setSeller(sellerData);
-    // Always fetch full profile to get real trade count, feedback & rating
     if (offer?.seller_id) {
       try {
         const sr = await axios.get(`${API_URL}/users/${offer.seller_id}`, { timeout: 8000 });
@@ -108,12 +120,28 @@ const loadAll = useCallback(async () => {
     }
     const viewToken = localStorage.getItem('token');
     axios.post(`${API_URL}/listings/${id}/view`, {}, viewToken ? { headers: { Authorization: `Bearer ${viewToken}` } } : {}).catch(() => {});
-  } catch {
-    setLoadError(true);
-    toast.error('Could not load listing — check your connection and try again.');
+  } catch (err) {
+    const status = err?.response?.status;
+    if (status === 404) {
+      // Listing truly doesn't exist
+      setListing(null);
+      setLoadError(false);
+    } else if (!hasCached) {
+      // Only show the error screen if we have nothing to display
+      setLoadError(true);
+      const msg = !err.response
+        ? (err.code === 'ECONNABORTED' || err.code === 'ERR_CANCELED')
+          ? 'Server is busy. Please try again in a moment.'
+          : 'No internet connection. Please check your network and try again.'
+        : (status === 503)
+          ? 'Server is temporarily busy. Please try again in a moment.'
+          : `Could not load offer (${status || 'error'}). Please try again.`;
+      toast.error(msg);
+    }
+    // If hasCached and error: silently keep showing the cached listing
   }
-  finally { setLoading(false); }
-}, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  finally { if (!hasCached) setLoading(false); }
+}, [id, listing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Slide up after listing loads
   useEffect(() => {
@@ -162,8 +190,8 @@ const loadAll = useCallback(async () => {
     <div className="min-h-screen flex items-center justify-center" style={{backgroundColor:C.mist}}>
       <div className="text-center px-6">
         <p className="text-4xl mb-3">📡</p>
-        <p className="font-black text-sm mb-2" style={{color:C.g800}}>Connection problem</p>
-        <p className="text-xs mb-4" style={{color:C.g500}}>Could not reach the server. Make sure the backend is running.</p>
+        <p className="font-black text-sm mb-2" style={{color:C.g800}}>Could not load offer</p>
+        <p className="text-xs mb-4" style={{color:C.g500}}>Server may be busy. Please tap Try Again.</p>
         <button onClick={loadAll} className="px-6 py-2.5 rounded-xl text-white font-bold text-sm mr-2" style={{backgroundColor:C.green}}>Try Again</button>
         <button onClick={()=>navigate(-1)} className="px-5 py-2.5 rounded-xl font-bold text-sm border-2" style={{color:C.g600,borderColor:C.g200}}>Go Back</button>
       </div>
@@ -281,25 +309,30 @@ const loadAll = useCallback(async () => {
           activeQuote = { quoteId: qr.data.quoteId, executableRate: qr.data.executableRate, expiresAt: Date.now() + qr.data.expiresIn * 1000 };
           setQuote(activeQuote);
         } catch(qe) {
-          const msg = qe.response?.data?.error || 'Could not lock a rate — check your connection and try again.';
-          setTradeError(msg);
-          return;
+          if (!qe.response) {
+            // True network error — can't reach server at all
+            setTradeError('No internet connection. Please check your network and try again.');
+            return;
+          }
+          // Server-side quote failure — backend has a fallback rate path, proceed without a locked quote
+          console.warn('[Trade] Quote fetch failed, proceeding with live rate fallback:', qe.response?.data?.error);
+          activeQuote = null;
         }
       }
 
-      const lockedBtcGross    = payAmtNum / activeQuote.executableRate;
+      const lockedBtcGross    = activeQuote ? payAmtNum / activeQuote.executableRate : btcGross;
       const lockedBtcAfterFee = lockedBtcGross * 0.995;
 
       const r = await axios.post(`${API_URL}/trades`, {
         listingId:        listing.id || id,
-        quoteId:          activeQuote.quoteId,
+        quoteId:          activeQuote?.quoteId || null,
         amountBtc:        parseFloat(lockedBtcAfterFee.toFixed(8)),
         amountLocal:      payAmtNum,
         currency:         cur,
         currencySymbol:   sym,
         paymentMethod:    pmRaw,
         trade_type:       (listing.listing_type === 'SELL' || listing.listing_type === 'SELL_GIFT_CARD') ? 'BUY' : 'SELL',
-        sellerRateLocal:  parseFloat(activeQuote.executableRate.toFixed(2)),
+        sellerRateLocal:  parseFloat((activeQuote?.executableRate || sellerRateLocal).toFixed(2)),
         sellerRateUsd:    parseFloat(sellerRateUSD.toFixed(2)),
         gc_region:        selectedGcRegion ? selectedGcRegion.region : null,
       }, { headers: { Authorization: `Bearer ${token}` }, timeout: 60000 });

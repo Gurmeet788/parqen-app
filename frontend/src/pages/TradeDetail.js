@@ -871,6 +871,8 @@ export default function TradeDetail({user}) {
   const [profUser,  setProfUser]  = useState(null);
   const [profLabel, setProfLabel] = useState('');
   const [loadErr,   setLoadErr]   = useState(false);
+  const [errMsg,    setErrMsg]    = useState('');
+  const toastShown  = useRef(false);
   const [infoOpen,  setInfoOpen]  = useState(false);
   const [showDisputeModal,  setShowDisputeModal]  = useState(false);
   const [disputeSubmitting, setDisputeSubmitting] = useState(false);
@@ -964,19 +966,29 @@ export default function TradeDetail({user}) {
     if(!id)return;
     try{
       setLoadErr(false);
-      const r=await axios.get(`${API_URL}/trades/${id}`,{headers:authH(),timeout:10000});
+      const r=await axios.get(`${API_URL}/trades/${id}`,{headers:authH(),timeout:15000});
       const t=r.data.trade;
       setTrade(t);
-      // buyer and seller are already embedded in the trade response via backend join — no extra calls needed
+      toastShown.current=false;
       if(t.seller) setSeller(t.seller);
       if(t.buyer)  setBuyer(t.buyer);
     }catch(e){
       const status = e.response?.status;
+      console.error('[TradeDetail] loadTrade error — status:', status, 'msg:', e.message);
       if(status===401){navigate('/login');return;}
+      // 503 or timeout → server is slow, auto-retry once after 3 seconds
+      if(status===503 || !e.response){
+        setTimeout(()=>{ setLoading(true); loadTrade(); }, 3000);
+        toast.info('Server is busy — retrying…');
+        return;
+      }
+      let msg='';
+      if(status===404) msg='Trade not found';
+      else if(status===403) msg='You do not have access to this trade';
+      else msg='Failed to load trade — please try again';
+      setErrMsg(msg);
       setLoadErr(true);
-      if(status===404) toast.error('Trade not found');
-      else if(status===403) toast.error('You do not have access to this trade');
-      else toast.error('Failed to load trade — please try again');
+      if(!toastShown.current){ toastShown.current=true; toast.error(msg); }
     }finally{setLoading(false);}
   };
 
@@ -1188,10 +1200,14 @@ export default function TradeDetail({user}) {
     <div className="min-h-screen flex items-center justify-center" style={{backgroundColor:C.mist}}>
       <div className="text-center space-y-4 p-8 bg-white rounded-2xl shadow-lg max-w-md">
         <AlertCircle size={56} style={{color:C.danger}} className="mx-auto"/>
-        <p className="font-black text-xl" style={{color:C.forest}}>Trade not found</p>
-        <p className="text-sm text-gray-500">This trade doesn't exist or you don't have access.</p>
+        <p className="font-black text-xl" style={{color:C.forest}}>{errMsg||'Trade not found'}</p>
+        <p className="text-sm text-gray-500">
+          {errMsg&&errMsg!=='Trade not found'
+            ? errMsg
+            : "This trade doesn't exist or you don't have access."}
+        </p>
         <div className="flex gap-3 justify-center">
-          <button onClick={()=>{setLoadErr(false);setLoading(true);loadAll();}} className="px-6 py-2.5 rounded-xl font-bold text-sm border-2" style={{borderColor:C.green,color:C.green}}>
+          <button onClick={()=>{toastShown.current=false;setLoadErr(false);setLoading(true);loadAll();}} className="px-6 py-2.5 rounded-xl font-bold text-sm border-2" style={{borderColor:C.green,color:C.green}}>
             Try Again
           </button>
           <button onClick={()=>navigate('/dashboard')} className="px-6 py-2.5 rounded-xl font-bold text-white text-sm" style={{backgroundColor:C.green}}>

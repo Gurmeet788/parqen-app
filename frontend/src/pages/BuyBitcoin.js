@@ -1107,12 +1107,24 @@ export default function BuyBitcoin({user}) {
       }
     } catch (err) {
       // 503 = DB temporarily down; longer retry delay so we don't spam the server
-      const retryDelay = err?.response?.status === 503 ? 3000 : 1000;
+      const retryDelay = err?.response?.status === 503 ? 5000 : 1000;
       if (attempt < 3) {
         setRetrying(true);
         setTimeout(() => loadListings(attempt + 1, force), retryDelay);
       } else {
         setRetrying(false);
+        // All retries failed — fall back to any stale localStorage cache (no TTL check)
+        try {
+          const stale = JSON.parse(localStorage.getItem('praqen_market_all') || 'null');
+          if (stale && _hasUsers(stale.data)) {
+            const sellOffers = (stale.data || []).filter(l => l.listing_type === 'SELL' || l.listing_type === 'SELL_BITCOIN');
+            if (sellOffers.length > 0) {
+              setListings(sellOffers);
+              toast.warn('Showing cached offers — server is busy. Prices may be slightly outdated.', { autoClose: 6000 });
+              return;
+            }
+          }
+        } catch {}
         if (!listings.length) setLoadError(true);
       }
     }

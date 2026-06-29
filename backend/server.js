@@ -19,13 +19,19 @@ const crypto     = require('crypto');
 const nodemailer = require('nodemailer');
 const { Resend } = require('resend');
 const resendClient = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
-const twilio = require('twilio');
-const twilioClient = (process.env.TWILIO_SID && process.env.TWILIO_TOKEN)
-  ? twilio(process.env.TWILIO_SID, process.env.TWILIO_TOKEN) : null;
+// Twilio is lazy-loaded to avoid ~150MB startup RAM cost on the free Render tier.
+// The SDK is only required the first time an SMS/call is actually sent.
+const TWILIO_ENABLED = !!(process.env.TWILIO_SID && process.env.TWILIO_TOKEN);
+let _twilioClient = null;
+function getTwilioClient() {
+  if (!_twilioClient && TWILIO_ENABLED) {
+    _twilioClient = require('twilio')(process.env.TWILIO_SID, process.env.TWILIO_TOKEN);
+  }
+  return _twilioClient;
+}
 const twilioVerifySid = process.env.TWILIO_VERIFY_SID || 'VAddba23c45841679ed249d49be8a90bbe';
-// Strip any accidental text after the phone number (e.g. from copy-paste errors in .env)
 const TWILIO_PHONE = (process.env.TWILIO_PHONE || '').split(',')[0].trim();
-const TWILIO_WA_FROM = process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886'; // sandbox default
+const TWILIO_WA_FROM = process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886';
 
 // ── OneSignal Push Notifications ────────────────────────────────────────────
 const { sendTradeAlert, sendSystemAlert, sendBroadcastPush } = require('./services/pushNotificationService');
@@ -82,6 +88,11 @@ const MARKET_CACHE_TTL = 300000; // 5 minutes
 function getCached(key) {
   const c = _marketCache.get(key);
   return c && Date.now() - c.ts < MARKET_CACHE_TTL ? c.data : null;
+}
+// Returns cached data even if stale — used as a fallback when the DB is slow.
+function getCachedStale(key) {
+  const c = _marketCache.get(key);
+  return c ? c.data : null;
 }
 function setCached(key, data) { _marketCache.set(key, { data, ts: Date.now() }); }
 
@@ -515,7 +526,7 @@ async function notifyUserSMS(userId, message) {
     const { data: user, error: dbErr } = await supabaseAdmin.from('users').select('phone').eq('id', userId).single();
     if (dbErr) { console.error(`[SMS] DB lookup failed for ${userId}:`, dbErr.message); return; }
     if (!user?.phone) { console.warn(`[SMS] No phone on file for user ${userId} — skipping`); return; }
-    if (!twilioClient) { console.error('[SMS] twilioClient not initialized'); return; }
+    if (!TWILIO_ENABLED) { console.error('[SMS] Twilio not configured'); return; }
     const phone = user.phone.startsWith('+') ? user.phone : `+${user.phone}`;
     await sendSmsOtp(phone, `[PRAQEN ⚡] ${message}`);
     console.log(`📱 SMS sent to user ${userId} (${phone})`);
@@ -1333,7 +1344,7 @@ app.post('/api/test-notify', async (req, res) => {
   results.twilio_sid    = process.env.TWILIO_SID    ? '✅ set' : '❌ missing';
   results.twilio_token  = process.env.TWILIO_TOKEN  ? '✅ set' : '❌ missing';
   results.twilio_phone  = process.env.TWILIO_PHONE  || '❌ missing';
-  results.twilio_client = twilioClient              ? '✅ initialized' : '❌ null';
+  results.twilio_client = TWILIO_ENABLED            ? '✅ configured' : '❌ null';
 
   // 2. Check user phone in DB
   if (userId) {
@@ -1348,7 +1359,7 @@ app.post('/api/test-notify', async (req, res) => {
   if (testTo) {
     try {
       const to = testTo.startsWith('+') ? testTo : `+${testTo}`;
-      await twilioClient.messages.create({
+      await getTwilioClient().messages.create({
         body: '[PRAQEN] Test notification — SMS is working!',
         from: process.env.TWILIO_PHONE,
         to
@@ -2674,9 +2685,9 @@ async function sendSmsOtp(phone, message) {
   }
 
   // ── Channel 2: Twilio SMS ────────────────────────────────────────────────────
-  if (twilioClient && TWILIO_PHONE) {
+  if (TWILIO_ENABLED && TWILIO_PHONE) {
     try {
-      await twilioClient.messages.create({ body: message, from: TWILIO_PHONE, to: phone });
+      await getTwilioClient().messages.create({ body: message, from: TWILIO_PHONE, to: phone });
       console.log(`[SMS] ✅ Twilio SMS → ${phone}`);
       return;
     } catch (twilioErr) {
@@ -2688,9 +2699,9 @@ async function sendSmsOtp(phone, message) {
   }
 
   // ── Channel 3: Twilio WhatsApp (last resort — works if user has WhatsApp) ───
-  if (twilioClient) {
+  if (TWILIO_ENABLED) {
     try {
-      await twilioClient.messages.create({
+      await getTwilioClient().messages.create({
         body: `*PRAQEN Verification* ⚡\n${message}`,
         from: TWILIO_WA_FROM,
         to:   `whatsapp:${phone}`,
@@ -3213,9 +3224,9 @@ app.post('/api/users/send-phone-otp', otpLimiter, verifyToken, async (req, res) 
     // ── SMS ────────────────────────────────────────────────────────────────────
     if (method === 'sms') {
       // ── Primary: Twilio Verify (best international OTP delivery) ────────────
-      if (twilioClient && twilioVerifySid) {
+      if (TWILIO_ENABLED && twilioVerifySid) {
         try {
-          await twilioClient.verify.v2.services(twilioVerifySid).verifications.create({ to: e164, channel: 'sms' });
+          await getTwilioClient().verify.v2.services(twilioVerifySid).verifications.create({ to: e164, channel: 'sms' });
           // Twilio manages the OTP code — mark this number as pending Twilio Verify
           twilioVerifyPending.set(e164, { expires: Date.now() + 10 * 60 * 1000 });
           console.log(`[send-phone-otp] ✅ Twilio Verify SMS → ${e164}`);
@@ -3244,7 +3255,7 @@ app.post('/api/users/send-phone-otp', otpLimiter, verifyToken, async (req, res) 
 
     // ── WhatsApp ───────────────────────────────────────────────────────────────
     if (method === 'whatsapp') {
-      if (!twilioClient) {
+      if (!TWILIO_ENABLED) {
         return res.status(500).json({
           error: 'WhatsApp is not configured on this server. Please use the email option.',
           devCode: isDev ? otp : undefined,
@@ -3253,7 +3264,7 @@ app.post('/api/users/send-phone-otp', otpLimiter, verifyToken, async (req, res) 
       // ── Primary: Twilio Verify WhatsApp (more reliable than sandbox) ────────
       if (twilioVerifySid) {
         try {
-          await twilioClient.verify.v2.services(twilioVerifySid).verifications.create({ to: e164, channel: 'whatsapp' });
+          await getTwilioClient().verify.v2.services(twilioVerifySid).verifications.create({ to: e164, channel: 'whatsapp' });
           twilioVerifyPending.set(e164, { expires: Date.now() + 10 * 60 * 1000 });
           console.log(`[send-phone-otp] ✅ Twilio Verify WhatsApp → ${e164}`);
           return res.json({ success: true, message: 'Verification code sent via WhatsApp' });
@@ -3263,7 +3274,7 @@ app.post('/api/users/send-phone-otp', otpLimiter, verifyToken, async (req, res) 
       }
       // ── Fallback: Twilio WhatsApp sandbox ─────────────────────────────────
       try {
-        await twilioClient.messages.create({
+        await getTwilioClient().messages.create({
           body: `*PRAQEN Phone Verification*\n\nYour code: *${otp}*\n\nValid 10 minutes. Never share this code.`,
           from: TWILIO_WA_FROM,
           to:   `whatsapp:${e164}`,
@@ -3399,9 +3410,9 @@ app.post('/api/users/verify-phone-otp', verifyToken, async (req, res) => {
 
     // ── Path 1: Twilio Verify (used when SMS/WhatsApp sent via Twilio Verify) ─
     const tvPending = twilioVerifyPending.get(e164);
-    if (tvPending && twilioClient && twilioVerifySid) {
+    if (tvPending && TWILIO_ENABLED && twilioVerifySid) {
       try {
-        const check = await twilioClient.verify.v2.services(twilioVerifySid)
+        const check = await getTwilioClient().verify.v2.services(twilioVerifySid)
           .verificationChecks.create({ to: e164, code });
         if (check.status === 'approved') {
           twilioVerifyPending.delete(e164);
@@ -4429,6 +4440,11 @@ app.get('/api/listings', async (req, res) => {
     ]);
     if (listErr) return res.status(400).json({ error: listErr.message });
     if (_listingsTimedOut || rawListings === null) {
+      const stale = getCachedStale(cacheKey);
+      if (stale) {
+        console.warn('[/api/listings] DB timed out — serving stale cache');
+        return res.json({ listings: stale, stale: true });
+      }
       console.warn('[/api/listings] DB query timed out — returning 503 so client retries');
       return res.status(503).json({ error: 'Marketplace is temporarily unavailable. Please try again in a moment.' });
     }
@@ -4456,13 +4472,15 @@ app.get('/api/listings', async (req, res) => {
             ])
           : Promise.resolve({ data: [] }),
       ]);
-      if (usersResult.error) {
-        console.error('[/api/listings] Users query FAILED:', usersResult.error.message, '| code:', usersResult.error.code);
-        return res.status(503).json({ error: 'Could not load seller profiles. Please retry in a moment.' });
-      }
-      if (!usersResult.data || usersResult.data.length === 0) {
-        // Users query timed out or returned nothing — don't serve/cache null-user cards
-        console.warn('[/api/listings] Users query returned 0 rows for', sellerIdSet.length, 'seller IDs. Timed out or RLS blocking. Returning 503.');
+      if (usersResult.error || !usersResult.data || usersResult.data.length === 0) {
+        const stale = getCachedStale(cacheKey);
+        if (stale) {
+          if (usersResult.error) console.error('[/api/listings] Users query FAILED:', usersResult.error.message, '— serving stale cache');
+          else console.warn('[/api/listings] Users query returned 0 rows — serving stale cache');
+          return res.json({ listings: stale, stale: true });
+        }
+        if (usersResult.error) console.error('[/api/listings] Users query FAILED:', usersResult.error.message, '| code:', usersResult.error.code);
+        else console.warn('[/api/listings] Users query returned 0 rows for', sellerIdSet.length, 'seller IDs. Timed out or RLS blocking. Returning 503.');
         return res.status(503).json({ error: 'Could not load seller profiles. Please retry in a moment.' });
       }
       (usersResult.data || []).forEach(u => { userMap[u.id] = u; });
@@ -4541,63 +4559,86 @@ app.get('/api/listings', async (req, res) => {
 });
 
 app.get('/api/listings/:id', async (req, res) => {
+  const timeout = ms => new Promise(resolve => setTimeout(() => resolve(null), ms));
   try {
-    // Get the listing
-    const { data: listing, error: listingError } = await supabaseAdmin
-      .from('listings')
-      .select('*')
-      .eq('id', req.params.id)
-      .single();
+    // Step 1: fetch the listing itself — hard 5s cap
+    const listingResult = await Promise.race([
+      supabaseAdmin.from('listings').select('*').eq('id', req.params.id).single(),
+      timeout(5000).then(() => ({ data: null, error: { message: 'timeout' } })),
+    ]);
+    const { data: listing, error: listingError } = listingResult;
 
-    if (listingError || !listing) {
+    if (listingError?.message === 'timeout' || !listing) {
+      // If we got a timeout (not a 404), return 503 so the frontend retries
+      if (!listingError || listingError.message === 'timeout') {
+        return res.status(503).json({ error: 'Server is temporarily busy. Please try again.' });
+      }
       return res.status(404).json({ error: 'Listing not found' });
     }
 
-    // Fetch seller info and live balance in parallel — never use cached balance for the detail view
-    // Use select('*') so missing migration columns never break the query; strip sensitive fields below
-    const [sellerResult, { data: walletRow }] = await Promise.all([
-      supabaseAdmin.from('users').select('*').eq('id', listing.seller_id).single(),
-      supabaseAdmin.from('wallets').select('balance_btc').eq('user_id', listing.seller_id).maybeSingle(),
-    ]);
-    // Strip sensitive fields before using seller data
-    const { password_hash: _ph, email: _em, phone_number: _pn, bitcoin_wallet_address: _bwa, ...sellerSafe } = sellerResult.data || {};
-    const seller = sellerResult.data?.id ? sellerSafe : null;
+    // Step 2: seller + wallet — 4s cap; these are enrichment so we continue on failure
+    let seller = null;
+    let sellerBalanceBtc = 0;
+    try {
+      const [sellerResult, walletResult] = await Promise.all([
+        Promise.race([
+          supabaseAdmin.from('users').select('*').eq('id', listing.seller_id).single(),
+          timeout(4000).then(() => ({ data: null })),
+        ]),
+        Promise.race([
+          supabaseAdmin.from('wallets').select('balance_btc').eq('user_id', listing.seller_id).maybeSingle(),
+          timeout(4000).then(() => ({ data: null })),
+        ]),
+      ]);
+      if (sellerResult?.data?.id) {
+        const { password_hash: _ph, email: _em, phone_number: _pn, bitcoin_wallet_address: _bwa, ...sellerSafe } = sellerResult.data;
+        seller = sellerSafe;
+      }
+      sellerBalanceBtc = parseFloat(walletResult?.data?.balance_btc || 0);
+    } catch (e) {
+      console.warn('[listings/:id] seller/wallet fetch failed:', e.message);
+    }
 
-    // Compute real trade count and feedback from actual tables
+    // Step 3: trade stats + reviews — 4s cap; skip entirely on timeout
     let enrichedSeller = seller || {};
     if (seller?.id) {
       try {
-        const [buyRes, sellRes, reviewRes] = await Promise.all([
-          supabaseAdmin.from('trades').select('*', { count: 'exact', head: true }).eq('buyer_id', seller.id).eq('status', 'COMPLETED'),
-          supabaseAdmin.from('trades').select('*', { count: 'exact', head: true }).eq('seller_id', seller.id).eq('status', 'COMPLETED'),
-          supabaseAdmin.from('reviews').select('rating').eq('reviewee_id', seller.id),
+        const statsResult = await Promise.race([
+          Promise.all([
+            supabaseAdmin.from('trades').select('*', { count: 'exact', head: true }).eq('buyer_id', seller.id).eq('status', 'COMPLETED'),
+            supabaseAdmin.from('trades').select('*', { count: 'exact', head: true }).eq('seller_id', seller.id).eq('status', 'COMPLETED'),
+            supabaseAdmin.from('reviews').select('rating').eq('reviewee_id', seller.id),
+          ]),
+          timeout(4000).then(() => null),
         ]);
-        const realTrades  = (buyRes.count || 0) + (sellRes.count || 0);
-        const reviews     = reviewRes.data || [];
-        const posCount    = reviews.filter(r => r.rating >= 4 || r.is_positive === true).length;
-        const negCount    = reviews.filter(r => r.rating <= 2 || r.is_positive === false).length;
-        const avgRating   = reviews.length > 0
-          ? reviews.reduce((s, r) => s + parseFloat(r.rating || 0), 0) / reviews.length : 0;
-        enrichedSeller = {
-          ...seller,
-          total_trades:        realTrades > seller.total_trades ? realTrades : seller.total_trades,
-          positive_feedback:   posCount   > seller.positive_feedback ? posCount : seller.positive_feedback,
-          negative_feedback:   negCount   > seller.negative_feedback ? negCount : seller.negative_feedback,
-          total_feedback_count: reviews.length > seller.total_feedback_count ? reviews.length : seller.total_feedback_count,
-          average_rating:      avgRating  > 0 ? parseFloat(avgRating.toFixed(2)) : seller.average_rating,
-        };
+        if (statsResult) {
+          const [buyRes, sellRes, reviewRes] = statsResult;
+          const realTrades = (buyRes.count || 0) + (sellRes.count || 0);
+          const reviews    = reviewRes.data || [];
+          const posCount   = reviews.filter(r => r.rating >= 4).length;
+          const negCount   = reviews.filter(r => r.rating <= 2).length;
+          const avgRating  = reviews.length > 0
+            ? reviews.reduce((s, r) => s + parseFloat(r.rating || 0), 0) / reviews.length : 0;
+          enrichedSeller = {
+            ...seller,
+            total_trades:         realTrades > seller.total_trades ? realTrades : seller.total_trades,
+            positive_feedback:    posCount > seller.positive_feedback ? posCount : seller.positive_feedback,
+            negative_feedback:    negCount > seller.negative_feedback ? negCount : seller.negative_feedback,
+            total_feedback_count: reviews.length > seller.total_feedback_count ? reviews.length : seller.total_feedback_count,
+            average_rating:       avgRating > 0 ? parseFloat(avgRating.toFixed(2)) : seller.average_rating,
+          };
+        }
       } catch {}
     }
 
-    const sellerBalanceBtc = parseFloat(walletRow?.balance_btc || 0);
-    const btcPriceVal = parseFloat(listing.bitcoin_price) || 88000;
+    const btcPriceVal     = parseFloat(listing.bitcoin_price) || 88000;
     const effectiveMaxUsd = sellerBalanceBtc > 0
       ? Math.min(sellerBalanceBtc * btcPriceVal, parseFloat(listing.max_limit_usd || 0) || sellerBalanceBtc * btcPriceVal)
       : parseFloat(listing.max_limit_usd || 0);
 
     res.json({ listing: { ...listing, users: enrichedSeller.id ? [enrichedSeller] : [], seller_balance_btc: sellerBalanceBtc, effective_max_usd: effectiveMaxUsd } });
   } catch (error) {
-    console.error('Listing error:', error);
+    console.error('[listings/:id] error:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -5130,30 +5171,55 @@ app.get('/api/trades/active', verifyToken, async (req, res) => {
   }
 });
 
+const DB_TIMEOUT = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error('DB_TIMEOUT')), ms));
+
 app.get('/api/trades/:id', verifyToken, async (req, res) => {
   try {
-    const { data, error } = await supabaseAdmin.from('trades')
-      .select(`*, listing:listing_id(*), buyer:buyer_id(id, username, avatar_url, average_rating, total_trades, completion_rate, last_login, last_seen_at, badge, positive_feedback, negative_feedback, country), seller:seller_id(id, username, avatar_url, average_rating, total_trades, completion_rate, last_login, last_seen_at, badge, positive_feedback, negative_feedback, country)`)
-      .eq('id', req.params.id).single();
-    if (error) return res.status(404).json({ error: 'Trade not found' });
-    if (data.buyer_id !== req.userId && data.seller_id !== req.userId) return res.status(403).json({ error: 'Unauthorized' });
-
-    // If Supabase join didn't return listing data, fall back to direct lookup
-    if (!data.listing && data.listing_id) {
-      const { data: listing } = await supabaseAdmin.from('listings').select('*').eq('id', data.listing_id).single();
-      if (listing) data.listing = listing;
+    // Step 1: fetch the trade row with a hard 8-second timeout
+    let tradeResult;
+    try {
+      tradeResult = await Promise.race([
+        supabaseAdmin.from('trades').select('*').eq('id', req.params.id).single(),
+        DB_TIMEOUT(8000),
+      ]);
+    } catch (e) {
+      if (e.message === 'DB_TIMEOUT') {
+        console.warn('[GET /trades/:id] Supabase trade fetch timed out for id:', req.params.id);
+        return res.status(503).json({ error: 'Database is slow — please retry in a moment' });
+      }
+      throw e;
     }
 
-    // Inject whether the current user has already submitted feedback for this trade
-    const { data: myReview } = await supabaseAdmin
-      .from('reviews').select('id')
-      .eq('trade_id', req.params.id)
-      .eq('reviewer_id', req.userId)
-      .maybeSingle();
-    if (myReview) data.user_gave_feedback = true;
+    const { data, error } = tradeResult;
+    if (error || !data) {
+      console.error('[GET /trades/:id] trade fetch error:', error?.message, 'id:', req.params.id);
+      return res.status(404).json({ error: 'Trade not found' });
+    }
+
+    if (String(data.buyer_id) !== String(req.userId) && String(data.seller_id) !== String(req.userId)) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Step 2: fetch listing + buyer + seller in parallel — each capped at 5s, failures tolerated
+    const USER_COLS = 'id, username, avatar_url, average_rating, total_trades, completion_rate, last_login, last_seen_at, badge, positive_feedback, negative_feedback, country';
+    const timeout5s = () => new Promise(resolve => setTimeout(() => resolve({ data: null }), 5000));
+    const [listingRes, buyerRes, sellerRes, reviewRes] = await Promise.allSettled([
+      data.listing_id
+        ? Promise.race([supabaseAdmin.from('listings').select('*').eq('id', data.listing_id).single(), timeout5s()])
+        : Promise.resolve({ data: null }),
+      Promise.race([supabaseAdmin.from('users').select(USER_COLS).eq('id', data.buyer_id).single(), timeout5s()]),
+      Promise.race([supabaseAdmin.from('users').select(USER_COLS).eq('id', data.seller_id).single(), timeout5s()]),
+      Promise.race([supabaseAdmin.from('reviews').select('id').eq('trade_id', req.params.id).eq('reviewer_id', req.userId).maybeSingle(), timeout5s()]),
+    ]);
+
+    data.listing = listingRes.status === 'fulfilled' ? (listingRes.value?.data || null) : null;
+    data.buyer   = buyerRes.status   === 'fulfilled' ? (buyerRes.value?.data   || null) : null;
+    data.seller  = sellerRes.status  === 'fulfilled' ? (sellerRes.value?.data  || null) : null;
+    if (reviewRes.status === 'fulfilled' && reviewRes.value?.data) data.user_gave_feedback = true;
 
     res.json({ trade: data });
   } catch (error) {
+    console.error('[GET /trades/:id] unexpected error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });

@@ -4,12 +4,11 @@
   "description": "PRAQEN P2P Gift Card & Bitcoin Trading Platform - Backend",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node --max-old-space-size=450 server.js",
     "dev": "nodemon server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "@coinbase/coinbase-sdk": "^0.25.0",
     "@supabase/supabase-js": "^2.26.0",
     "africastalking": "^0.7.9",
     "axios": "^1.16.0",
