@@ -954,6 +954,159 @@ async function sendEidBonusEmail({ userId, to, username, referralCode }) {
   });
 }
 
+// ── Happy New Month + USDT Wallet Live announcement (full personalization) ────
+function buildUsdtAnnouncementHtml(username, referralCode) {
+  const link  = `https://praqen.com/signup?ref=${referralCode || ''}`;
+  const yr    = new Date().getFullYear();
+  const month = new Date().toLocaleString('en-US', { month: 'long' });
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Happy New Month! USDT Wallet is Live on PRAQEN</title>
+</head>
+<body style="margin:0;padding:0;background:#F0FAF5;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#F0FAF5;padding:32px 16px;">
+<tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:20px;overflow:hidden;max-width:560px;width:100%;">
+
+  <!-- ═══ HEADER ═══ -->
+  <tr>
+    <td style="background:linear-gradient(135deg,#1B4332 0%,#2D6A4F 60%,#40916C 100%);padding:40px 32px 32px;text-align:center;">
+      <p style="margin:0 0 10px;font-size:22px;letter-spacing:8px;">✦ ✦ ✦ ✦ ✦</p>
+      <div style="display:inline-block;background:#F4A422;border-radius:50%;width:72px;height:72px;line-height:72px;text-align:center;margin-bottom:16px;box-shadow:0 0 32px rgba(244,164,34,0.55);">
+        <span style="font-size:34px;line-height:72px;">🎉</span>
+      </div>
+      <h1 style="color:#F4A422;font-size:28px;font-weight:900;margin:0 0 4px;font-family:Georgia,serif;letter-spacing:1px;">Happy New Month!</h1>
+      <p style="color:rgba(255,255,255,0.65);font-size:13px;margin:0;">From the entire PRAQEN team — welcome to ${month}! 🎊</p>
+    </td>
+  </tr>
+
+  <!-- ═══ GREETING ═══ -->
+  <tr>
+    <td style="padding:32px 36px 20px;background:#ffffff;">
+      <p style="color:#1B4332;font-size:17px;font-weight:800;margin:0 0 10px;">Hi ${username || 'Trader'},</p>
+      <p style="color:#475569;font-size:14px;line-height:1.75;margin:0;">
+        We've got big news to kick off the month — <strong style="color:#1B4332;">USDT wallets are now live on PRAQEN!</strong>
+        You can deposit, hold, and trade USDT directly from your wallet, no BTC conversion needed.
+      </p>
+    </td>
+  </tr>
+
+  <!-- ═══ USDT LIVE CARD ═══ -->
+  <tr>
+    <td style="padding:0 36px 16px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#0d3b2e,#1a5c41);border-radius:16px;overflow:hidden;">
+        <tr>
+          <td style="padding:24px 26px;text-align:center;">
+            <div style="display:inline-block;background:rgba(255,255,255,0.12);border-radius:50%;width:52px;height:52px;line-height:52px;margin-bottom:10px;">
+              <span style="font-size:24px;line-height:52px;">₮</span>
+            </div>
+            <p style="margin:0 0 6px;font-size:18px;font-weight:900;color:#ffffff;">USDT Wallet is Here 💵</p>
+            <p style="margin:0 0 18px;font-size:13px;color:rgba(255,255,255,0.65);line-height:1.7;">
+              Go to your Wallet → select USDT → Deposit, and start trading freely. Fast, stable, and always 1:1 with the dollar.
+            </p>
+            <a href="https://praqen.com/wallet" style="display:inline-block;background:#F4A422;color:#1B4332;text-decoration:none;padding:13px 32px;border-radius:12px;font-size:14px;font-weight:800;">
+              💰 Go to My Wallet
+            </a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- ═══ CREATE OFFER CARD ═══ -->
+  <tr>
+    <td style="padding:0 36px 24px;">
+      <div style="background:linear-gradient(135deg,#F0FDF4,#DCFCE7);border-radius:14px;padding:22px 24px;border:2px solid #86EFAC;">
+        <p style="margin:0 0 8px;font-size:16px;font-weight:900;color:#166534;">📢 Create Your Offer Now</p>
+        <p style="margin:0 0 16px;font-size:13px;color:#15803D;line-height:1.7;">
+          The marketplace is active 24/7 — post a buy or sell offer for BTC or USDT and reach thousands of traders today.
+        </p>
+        <a href="https://praqen.com/create-offer" style="display:inline-block;background:#166534;color:#ffffff;text-decoration:none;padding:11px 24px;border-radius:10px;font-size:13px;font-weight:800;">
+          ➕ Create an Offer
+        </a>
+      </div>
+    </td>
+  </tr>
+
+  <!-- ═══ REFERRAL SECTION ═══ -->
+  <tr>
+    <td style="padding:0 36px 24px;">
+      <p style="color:#1B4332;font-size:16px;font-weight:900;margin:0 0 6px;">Share Your Link — Friends Get $2 Free! 🎁</p>
+      <p style="color:#475569;font-size:13px;line-height:1.7;margin:0 0 16px;">
+        Share your referral link below. Anyone who signs up, verifies, and completes their first trade unlocks an
+        <strong style="color:#1B4332;">instant $2 Bitcoin bonus</strong> — and you keep earning ongoing commission every time they trade.
+      </p>
+      <!-- Referral link box -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0FAF5;border:2px dashed #40916C;border-radius:12px;">
+        <tr>
+          <td style="padding:14px 18px;">
+            <p style="margin:0 0 4px;font-size:10px;font-weight:700;color:#40916C;text-transform:uppercase;letter-spacing:1px;">🔗 Your Personal Referral Link</p>
+            <p style="margin:0;font-size:12px;font-family:monospace;color:#1B4332;word-break:break-all;">${link}</p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- ═══ CTA BUTTONS ═══ -->
+  <tr>
+    <td style="padding:0 36px 32px;text-align:center;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td width="48%" style="padding-right:6px;">
+            <a href="https://praqen.com/wallet" style="display:block;background:linear-gradient(135deg,#1B4332,#2D6A4F);color:#ffffff;text-decoration:none;padding:13px 10px;border-radius:12px;font-size:13px;font-weight:800;text-align:center;">
+              ₮ Deposit & Trade USDT
+            </a>
+          </td>
+          <td width="4%"></td>
+          <td width="48%" style="padding-left:6px;">
+            <a href="${link}" style="display:block;background:#F4A422;color:#1B4332;text-decoration:none;padding:13px 10px;border-radius:12px;font-size:13px;font-weight:800;text-align:center;">
+              🎁 Share & Earn
+            </a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- ═══ FOOTER ═══ -->
+  <tr>
+    <td style="background:#1B4332;padding:22px 36px;text-align:center;">
+      <p style="margin:0 0 6px;font-size:20px;font-weight:900;color:#F4A422;font-family:Georgia,serif;">PRAQEN</p>
+      <p style="margin:0 0 10px;font-size:10px;color:rgba(255,255,255,0.45);letter-spacing:2px;text-transform:uppercase;">The Global P2P Bitcoin Platform</p>
+      <p style="margin:0 0 10px;">
+        <a href="https://praqen.com/buy-bitcoin" style="color:rgba(255,255,255,0.5);text-decoration:none;font-size:11px;margin:0 8px;">Buy Bitcoin</a>
+        <a href="https://praqen.com/sell-bitcoin" style="color:rgba(255,255,255,0.5);text-decoration:none;font-size:11px;margin:0 8px;">Sell Bitcoin</a>
+        <a href="${link}" style="color:rgba(255,255,255,0.5);text-decoration:none;font-size:11px;margin:0 8px;">Refer Friends</a>
+      </p>
+      <p style="margin:0;font-size:10px;color:rgba(255,255,255,0.3);">
+        © ${yr} PRAQEN · You're receiving this because you have an account with us.<br>
+        <a href="https://praqen.com" style="color:rgba(255,255,255,0.3);text-decoration:underline;">praqen.com</a>
+      </p>
+    </td>
+  </tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+}
+
+async function sendUsdtAnnouncementEmail({ userId, to, username, referralCode }) {
+  return sendEmail({
+    userId,
+    to,
+    subject: '🎉 Happy New Month! USDT Wallet is Live — Deposit, Trade & Earn $2 Per Referral',
+    html:    buildUsdtAnnouncementHtml(username, referralCode),
+    type:    'usdt_announcement_broadcast',
+    metadata: { referral_code: referralCode, campaign: 'usdt_wallet_launch' },
+  });
+}
+
 async function sendBroadcastToAllUsers(subject, htmlBody, broadcastType = 'broadcast') {
   const { data: users, error } = await supabase
     .from('users')
@@ -1003,4 +1156,5 @@ module.exports = {
   sendTxReceiptEmail,
   sendBroadcastToAllUsers,
   sendEidBonusEmail,
+  sendUsdtAnnouncementEmail,
 };

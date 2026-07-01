@@ -4084,6 +4084,17 @@ app.get('/api/users/:userId/reviews', async (req, res) => {
   } catch { res.json({ reviews: [] }); }
 });
 
+// GET /api/users/:userId/listings — public: a user's ACTIVE marketplace offers, for their profile page
+app.get('/api/users/:userId/listings', async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin.from('listings').select(
+      'id, seller_id, listing_type, gift_card_brand, status, bitcoin_price, margin, pricing_type, currency, currency_symbol, country, country_name, payment_method, payment_methods, amount_usd, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local, time_limit, card_type, face_value, created_at'
+    ).eq('seller_id', req.params.userId).eq('status', 'ACTIVE').order('created_at', { ascending: false });
+    if (error) return res.json({ listings: [] });
+    res.json({ listings: data || [] });
+  } catch { res.json({ listings: [] }); }
+});
+
 // POST /api/users/:userId/view-profile — record a profile view + notify the owner
 app.post('/api/users/:userId/view-profile', async (req, res) => {
   try {
@@ -7265,6 +7276,74 @@ app.post('/api/admin/broadcast/eid-bonus', verifyToken, async (req, res) => {
         console.log(`✅ [eid-bonus] Broadcast complete — sent:${sent} failed:${failed} total:${sent + failed}`);
       } catch (e) {
         console.error('[eid-bonus] ❌ Fatal broadcast error:', e.message);
+      }
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/admin/broadcast/usdt-announcement — send personalised "USDT Wallet is Live" + $2 bonus email to all users
+app.post('/api/admin/broadcast/usdt-announcement', verifyToken, async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res); if (!admin) return;
+
+    const { count, error: countErr } = await supabaseAdmin
+      .from('users')
+      .select('id', { count: 'exact', head: true })
+      .not('email', 'is', null);
+
+    if (countErr) return res.status(500).json({ error: 'Failed to count users: ' + countErr.message });
+
+    res.json({
+      success: true,
+      message: `USDT announcement broadcast started in background for ~${count} users. Check server logs for progress.`,
+      total: count,
+    });
+
+    setImmediate(async () => {
+      console.log(`\n💵 [usdt-announcement] Starting broadcast to ~${count} users...`);
+      let sent = 0, failed = 0, page = 0;
+      const PAGE = 100;
+
+      try {
+        while (true) {
+          const { data: users, error: fetchErr } = await supabaseAdmin
+            .from('users')
+            .select('id, email, username, referral_code')
+            .not('email', 'is', null)
+            .not('email', 'eq', '')
+            .range(page * PAGE, page * PAGE + PAGE - 1);
+
+          if (fetchErr) { console.error('[usdt-announcement] Fetch error:', fetchErr.message); break; }
+          if (!users || users.length === 0) break;
+
+          for (let i = 0; i < users.length; i += 5) {
+            const batch = users.slice(i, i + 5);
+            await Promise.allSettled(batch.map(async (u) => {
+              try {
+                const result = await emailService.sendUsdtAnnouncementEmail({
+                  userId:       u.id,
+                  to:           u.email,
+                  username:     u.username || 'Trader',
+                  referralCode: u.referral_code || '',
+                });
+                if (result.success) sent++; else { failed++; console.warn(`[usdt-announcement] Failed for ${u.email}: ${result.error}`); }
+              } catch (e) {
+                failed++;
+                console.warn(`[usdt-announcement] Exception for ${u.email}:`, e.message);
+              }
+            }));
+            if (i + 5 < users.length) await new Promise(r => setTimeout(r, 1500));
+          }
+
+          console.log(`[usdt-announcement] Page ${page + 1}: sent=${sent} failed=${failed}`);
+          if (users.length < PAGE) break;
+          page++;
+          await new Promise(r => setTimeout(r, 3000));
+        }
+
+        console.log(`✅ [usdt-announcement] Broadcast complete — sent:${sent} failed:${failed} total:${sent + failed}`);
+      } catch (e) {
+        console.error('[usdt-announcement] ❌ Fatal broadcast error:', e.message);
       }
     });
   } catch (e) { res.status(500).json({ error: e.message }); }

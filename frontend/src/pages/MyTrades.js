@@ -5,7 +5,8 @@ import {
   Clock, CheckCircle, AlertCircle, Shield, Bitcoin,
   ArrowRight, RefreshCw, TrendingUp, Activity,
   AlertTriangle, Eye, MessageCircle, Zap, Timer,
-  Filter, Search, DollarSign, X, Bell, ChevronRight
+  Filter, Search, DollarSign, X, Bell, ChevronRight, SlidersHorizontal,
+  ArrowUpDown, Calendar, ChevronDown
 } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
@@ -431,6 +432,26 @@ export default function MyTrades({user}) {
   const [search,    setSearch]    = useState('');
   const [dismissed, setDismissed] = useState(new Set());
   const [showModal, setShowModal] = useState(false);
+
+  // Advanced filters & sorting
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [typeFilter,   setTypeFilter]   = useState('all');   // all | buying | selling | gift
+  const [sortBy,       setSortBy]       = useState('newest'); // newest | oldest | amount_desc | amount_asc
+  const [dateFrom,     setDateFrom]     = useState('');
+  const [dateTo,       setDateTo]       = useState('');
+  const [amountMin,    setAmountMin]    = useState('');
+  const [amountMax,    setAmountMax]    = useState('');
+
+  const advancedActiveCount =
+    (typeFilter !== 'all' ? 1 : 0) +
+    (sortBy !== 'newest' ? 1 : 0) +
+    (dateFrom ? 1 : 0) + (dateTo ? 1 : 0) +
+    (amountMin ? 1 : 0) + (amountMax ? 1 : 0);
+
+  const clearAdvanced = () => {
+    setTypeFilter('all'); setSortBy('newest');
+    setDateFrom(''); setDateTo(''); setAmountMin(''); setAmountMax('');
+  };
   const timerRef = useRef(null);
 
   // sessionStorage helpers — same key as ActiveTradeBanner so both share seen state
@@ -542,7 +563,43 @@ export default function MyTrades({user}) {
         (t.payment_method||'').toLowerCase().includes(q)||
         (t.listings?.gift_card_brand||'').toLowerCase().includes(q)
       );
+    })
+    .filter(t=>{
+      if(typeFilter==='all') return true;
+      const isBuyer = String(user?.id)===String(t.buyer_id);
+      const isGift  = tradeTypeOf(t)==='gift';
+      if(typeFilter==='gift')    return isGift;
+      if(typeFilter==='buying')  return isBuyer && !isGift;
+      if(typeFilter==='selling') return !isBuyer && !isGift;
+      return true;
+    })
+    .filter(t=>{
+      if(!dateFrom && !dateTo) return true;
+      const created = new Date(t.created_at);
+      if(dateFrom && created < new Date(dateFrom)) return false;
+      if(dateTo){ const end = new Date(dateTo); end.setHours(23,59,59,999); if(created > end) return false; }
+      return true;
+    })
+    .filter(t=>{
+      const amt = parseFloat(t.amount_btc||0);
+      if(amountMin && amt < parseFloat(amountMin)) return false;
+      if(amountMax && amt > parseFloat(amountMax)) return false;
+      return true;
     });
+
+  const sortTrades = arr => {
+    switch(sortBy){
+      case 'oldest':      return [...arr].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+      case 'amount_desc': return [...arr].sort((a,b)=>parseFloat(b.amount_btc||0)-parseFloat(a.amount_btc||0));
+      case 'amount_asc':  return [...arr].sort((a,b)=>parseFloat(a.amount_btc||0)-parseFloat(b.amount_btc||0));
+      default:             // 'newest' — active trades still surface first
+        return [...arr].sort((a,b)=>{
+          const aAct=isActive(a.status)?1:0, bAct=isActive(b.status)?1:0;
+          if(aAct!==bAct) return bAct-aAct;
+          return new Date(b.created_at)-new Date(a.created_at);
+        });
+    }
+  };
 
 
   return(
@@ -639,13 +696,122 @@ export default function MyTrades({user}) {
               </button>
             ))}
           </div>
-          <div className="relative">
-            <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2" style={{color:C.g400}}/>
-            <input value={search} onChange={e=>setSearch(e.target.value)}
-              placeholder="Search by Trade ID, username, payment…"
-              className="w-full pl-7 pr-3 py-2 text-xs border-2 rounded-xl focus:outline-none"
-              style={{borderColor:search?C.green:C.g200}}/>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2" style={{color:C.g400}}/>
+              <input value={search} onChange={e=>setSearch(e.target.value)}
+                placeholder="Search by Trade ID, username, payment…"
+                className="w-full pl-7 pr-3 py-2 text-xs border-2 rounded-xl focus:outline-none"
+                style={{borderColor:search?C.green:C.g200}}/>
+            </div>
+            <button onClick={()=>setShowAdvanced(v=>!v)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border-2 transition flex-shrink-0"
+              style={{
+                borderColor: advancedActiveCount>0||showAdvanced ? C.green : C.g200,
+                backgroundColor: advancedActiveCount>0 ? `${C.green}10` : 'transparent',
+                color: advancedActiveCount>0 ? C.green : C.g600,
+              }}>
+              <SlidersHorizontal size={12}/> Filters
+              {advancedActiveCount>0&&(
+                <span className="w-4 h-4 rounded-full text-white flex items-center justify-center flex-shrink-0"
+                  style={{backgroundColor:C.green, fontSize:9}}>{advancedActiveCount}</span>
+              )}
+              <ChevronDown size={11} style={{transform:showAdvanced?'rotate(180deg)':'none', transition:'transform 0.15s'}}/>
+            </button>
           </div>
+
+          {/* ── ADVANCED FILTERS PANEL ── */}
+          {showAdvanced&&(
+            <div className="pt-2 mt-1 border-t space-y-3" style={{borderColor:C.g100}}>
+              {/* Trade type */}
+              <div>
+                <p className="text-xs font-black uppercase tracking-wide mb-1.5" style={{color:C.g400}}>Trade Type</p>
+                <div className="flex gap-1 flex-wrap">
+                  {[
+                    ['all',     'All Types'],
+                    ['buying',  '🛒 Buying'],
+                    ['selling', '💰 Selling'],
+                    ['gift',    '🎁 Gift Cards'],
+                  ].map(([val,lbl])=>(
+                    <button key={val} onClick={()=>setTypeFilter(val)}
+                      className="px-3 py-1.5 rounded-xl text-xs font-bold transition"
+                      style={{
+                        backgroundColor:typeFilter===val?C.forest:C.g50,
+                        color:typeFilter===val?C.white:C.g600,
+                      }}>
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sort by */}
+              <div>
+                <p className="text-xs font-black uppercase tracking-wide mb-1.5" style={{color:C.g400}}>
+                  <ArrowUpDown size={10} className="inline mr-1"/>Sort By
+                </p>
+                <div className="flex gap-1 flex-wrap">
+                  {[
+                    ['newest',      'Newest First'],
+                    ['oldest',      'Oldest First'],
+                    ['amount_desc', 'Amount: High → Low'],
+                    ['amount_asc',  'Amount: Low → High'],
+                  ].map(([val,lbl])=>(
+                    <button key={val} onClick={()=>setSortBy(val)}
+                      className="px-3 py-1.5 rounded-xl text-xs font-bold transition"
+                      style={{
+                        backgroundColor:sortBy===val?C.forest:C.g50,
+                        color:sortBy===val?C.white:C.g600,
+                      }}>
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Date range + amount range */}
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wide mb-1.5" style={{color:C.g400}}>
+                    <Calendar size={10} className="inline mr-1"/>Date Range
+                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}
+                      className="flex-1 min-w-0 px-2 py-1.5 text-xs border-2 rounded-xl focus:outline-none"
+                      style={{borderColor:dateFrom?C.green:C.g200, color:C.g700}}/>
+                    <span className="text-xs flex-shrink-0" style={{color:C.g400}}>to</span>
+                    <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}
+                      className="flex-1 min-w-0 px-2 py-1.5 text-xs border-2 rounded-xl focus:outline-none"
+                      style={{borderColor:dateTo?C.green:C.g200, color:C.g700}}/>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wide mb-1.5" style={{color:C.g400}}>
+                    <Bitcoin size={10} className="inline mr-1"/>BTC Amount Range
+                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <input type="number" step="0.00000001" min="0" value={amountMin} onChange={e=>setAmountMin(e.target.value)}
+                      placeholder="Min"
+                      className="flex-1 min-w-0 px-2 py-1.5 text-xs border-2 rounded-xl focus:outline-none"
+                      style={{borderColor:amountMin?C.green:C.g200, color:C.g700}}/>
+                    <span className="text-xs flex-shrink-0" style={{color:C.g400}}>to</span>
+                    <input type="number" step="0.00000001" min="0" value={amountMax} onChange={e=>setAmountMax(e.target.value)}
+                      placeholder="Max"
+                      className="flex-1 min-w-0 px-2 py-1.5 text-xs border-2 rounded-xl focus:outline-none"
+                      style={{borderColor:amountMax?C.green:C.g200, color:C.g700}}/>
+                  </div>
+                </div>
+              </div>
+
+              {advancedActiveCount>0&&(
+                <button onClick={clearAdvanced}
+                  className="flex items-center gap-1.5 text-xs font-bold hover:underline"
+                  style={{color:C.danger}}>
+                  <X size={11}/> Clear advanced filters
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ── TRADE LIST ─────────────────────────────────────── */}
@@ -698,20 +864,15 @@ export default function MyTrades({user}) {
                 Active Trades
               </p>
             )}
-            {filtered
-              .sort((a,b)=>{
-                // Active trades always first
-                const aAct=isActive(a.status)?1:0, bAct=isActive(b.status)?1:0;
-                if(aAct!==bAct) return bAct-aAct;
-                return new Date(b.created_at)-new Date(a.created_at);
-              })
-              .map((t,i)=>{
-                const prevActive = i>0&&isActive(filtered[i-1].status);
+            {(() => {
+              const sorted = sortTrades(filtered);
+              return sorted.map((t,i)=>{
+                const prevActive = i>0&&isActive(sorted[i-1].status);
                 const thisActive = isActive(t.status);
                 return(
                   <React.Fragment key={t.id}>
-                    {/* Separator between active and non-active */}
-                    {i>0&&prevActive&&!thisActive&&filter==='all'&&(
+                    {/* Separator between active and non-active — only meaningful for default sort */}
+                    {i>0&&prevActive&&!thisActive&&filter==='all'&&sortBy==='newest'&&(
                       <p className="text-xs font-black uppercase tracking-widest px-1 pt-2" style={{color:C.g400}}>
                         Trade History
                       </p>
@@ -719,12 +880,13 @@ export default function MyTrades({user}) {
                     <TradeCard trade={t} userId={user?.id}/>
                   </React.Fragment>
                 );
-              })}
+              });
+            })()}
           </div>
         )}
 
         {/* Load More */}
-        {hasMore&&filter==='all'&&!search&&(
+        {hasMore&&filter==='all'&&!search&&advancedActiveCount===0&&(
           <div className="flex justify-center mt-3">
             <button onClick={loadMore} disabled={loadingMore}
               className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-sm border-2 transition hover:opacity-80"

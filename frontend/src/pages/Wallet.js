@@ -2806,7 +2806,7 @@ export default function WalletPage({ user }) {
             </div>
 
             {/* Action buttons */}
-            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            <div className="grid grid-cols-4 gap-1.5 sm:gap-3">
               {[
                 {
                   label: 'Deposit',
@@ -2828,6 +2828,13 @@ export default function WalletPage({ user }) {
                   grad: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
                   shadow: 'rgba(99,102,241,0.45)',
                   action: () => setAssetPicker({ type: 'transfer' }),
+                },
+                {
+                  label: 'Swap',
+                  icon: ArrowLeftRight,
+                  grad: `linear-gradient(135deg, ${C.gold} 0%, #e09318 100%)`,
+                  shadow: 'rgba(244,164,34,0.45)',
+                  action: () => { setActiveCoin('SWAP'); setSwapFrom('BTC'); },
                 },
               ].map(({ label, icon: Icon, grad, shadow, action }) => (
                 <button key={label} onClick={action}
