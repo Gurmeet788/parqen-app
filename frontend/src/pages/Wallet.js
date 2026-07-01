@@ -6,8 +6,8 @@ import { supabase } from '../lib/supabaseClient';
 import {
   Copy, Bitcoin, RefreshCw, CheckCircle,
   ArrowDownLeft, ArrowUpRight, Shield, AlertTriangle,
-  Clock, Eye, EyeOff, QrCode, Zap, Download, Send, ArrowLeftRight,
-  ChevronRight, X, Wallet, Users, Search,
+  Clock, Eye, EyeOff, Zap, Download, Send, ArrowLeftRight,
+  ChevronRight, ChevronDown, X, Wallet, Users, Search,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
@@ -457,7 +457,7 @@ function WithdrawModal({ balance, btcPrice, onClose, onSend, kycStatus }) {
 }
 
 // ─── Receive Modal ─────────────────────────────────────────────────────────────
-function ReceiveModal({ address, network, onClose }) {
+function ReceiveModal({ address, network, onClose, onGenerate, checking, onCheckDeposits }) {
   const [copied, setCopied] = useState(false);
 
   const copy = () => {
@@ -478,7 +478,7 @@ function ReceiveModal({ address, network, onClose }) {
             <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${C.success}15` }}>
               <ArrowDownLeft size={15} style={{ color: C.success }} />
             </div>
-            <h2 className="font-black text-sm" style={{ color: C.g800 }}>Receive Bitcoin</h2>
+            <h2 className="font-black text-sm" style={{ color: C.g800 }}>Deposit Bitcoin</h2>
           </div>
           <button onClick={onClose} className="w-7 h-7 rounded-xl flex items-center justify-center hover:bg-gray-100">
             <X size={14} style={{ color: C.g500 }} />
@@ -486,36 +486,57 @@ function ReceiveModal({ address, network, onClose }) {
         </div>
 
         <div className="p-5 space-y-4">
-          <p className="text-xs text-gray-500">Send BTC to your unique address. Credited after 1 confirmation (~10 min).</p>
+          {address ? (
+            <>
+              <p className="text-xs text-gray-500">Send BTC to your unique address. Credited after 1 confirmation (~10 min).</p>
 
-          <div>
-            <label className="block text-xs font-bold mb-1.5 text-gray-600">Your Bitcoin Address</label>
-            <div className="p-3 rounded-xl border font-mono text-xs break-all"
-              style={{ borderColor: C.g200, backgroundColor: C.g50, color: C.g700 }}>
-              {address || 'Loading…'}
+              <div>
+                <label className="block text-xs font-bold mb-1.5 text-gray-600">Your Bitcoin Address</label>
+                <div className="p-3 rounded-xl border font-mono text-xs break-all"
+                  style={{ borderColor: C.g200, backgroundColor: C.g50, color: C.g700 }}>
+                  {address}
+                </div>
+              </div>
+
+              <button onClick={copy}
+                className="w-full py-3 rounded-xl text-white font-black text-sm flex items-center justify-center gap-2 hover:opacity-90"
+                style={{ backgroundColor: copied ? C.success : C.green }}>
+                {copied ? <><CheckCircle size={15} /> Copied!</> : <><Copy size={15} /> Copy Address</>}
+              </button>
+
+              <button onClick={onCheckDeposits} disabled={checking}
+                className="w-full py-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 hover:bg-gray-50 transition"
+                style={{ borderColor: C.g200, color: C.g600 }}>
+                {checking
+                  ? <><RefreshCw size={12} className="animate-spin" /> Checking mempool…</>
+                  : <><Zap size={12} style={{ color: C.gold }} /> Check for New Deposits</>}
+              </button>
+
+              <a href={explorerUrl} target="_blank" rel="noopener noreferrer"
+                className="w-full py-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 hover:bg-gray-50"
+                style={{ borderColor: C.g200, color: C.g600 }}>
+                View on Mempool Explorer ↗
+              </a>
+
+              <div className="flex items-start gap-2 p-3 rounded-xl" style={{ backgroundColor: '#EFF6FF', border: `1px solid ${C.paid}20` }}>
+                <Shield size={12} style={{ color: C.paid, flexShrink: 0, marginTop: 1 }} />
+                <p className="text-xs font-semibold text-blue-700">
+                  Only send Bitcoin (BTC) to this address. Other coins will be lost permanently.
+                </p>
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-6">
+              <Bitcoin size={36} className="mx-auto mb-3" style={{ color: C.g300 }} />
+              <p className="text-sm font-bold text-gray-600 mb-1">No address generated yet</p>
+              <p className="text-xs text-gray-400 mb-4">Generate your unique Bitcoin deposit address</p>
+              <button onClick={onGenerate}
+                className="px-6 py-2.5 rounded-xl text-white font-black text-sm hover:opacity-90"
+                style={{ backgroundColor: C.green }}>
+                <Bitcoin size={14} className="inline mr-1.5" /> Generate My Address
+              </button>
             </div>
-          </div>
-
-          <button onClick={copy} disabled={!address}
-            className="w-full py-3 rounded-xl text-white font-black text-sm flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-40"
-            style={{ backgroundColor: copied ? C.success : C.green }}>
-            {copied ? <><CheckCircle size={15} /> Copied!</> : <><Copy size={15} /> Copy Address</>}
-          </button>
-
-          {address && (
-            <a href={explorerUrl} target="_blank" rel="noopener noreferrer"
-              className="w-full py-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 hover:bg-gray-50"
-              style={{ borderColor: C.g200, color: C.g600 }}>
-              View on Mempool Explorer ↗
-            </a>
           )}
-
-          <div className="flex items-start gap-2 p-3 rounded-xl" style={{ backgroundColor: '#EFF6FF', border: `1px solid ${C.paid}20` }}>
-            <Shield size={12} style={{ color: C.paid, flexShrink: 0, marginTop: 1 }} />
-            <p className="text-xs font-semibold text-blue-700">
-              Only send Bitcoin (BTC) to this address. Other coins will be lost permanently.
-            </p>
-          </div>
         </div>
       </div>
     </div>
@@ -2058,6 +2079,265 @@ function UsdtInternalTransferModal({ balance, onClose, onTransfer }) {
   );
 }
 
+// ─── Small Tether glyph (reused by switcher / picker) ─────────────────────────
+function TetherGlyph({ size = 16, color = '#fff' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+      <path d="M17.6 15.73v-2.05h4.35V10.5H10.07v3.18H14.4v2.05C10.6 15.9 7.8 16.72 7.8 17.7s2.8 1.8 6.6 1.97v7.03h3.2v-7.03c3.8-.17 6.6-.99 6.6-1.97s-2.8-1.8-6.6-1.97zm0 3.32c-.18.01-.62.04-1.62.04-.86 0-1.46-.02-1.67-.04v.01c-2.89-.13-5.05-.63-5.05-1.25s2.16-1.11 5.05-1.24v1.97c.21.01.82.05 1.68.05.98 0 1.45-.04 1.61-.05v-1.97c2.9.13 5.06.63 5.06 1.24s-2.16 1.12-5.06 1.25v-.01z" fill={color} />
+    </svg>
+  );
+}
+
+// ─── Wallet Switcher — compact dropdown embedded in the wallet card header ────
+// Replaces the old 3-wide tab strip so BTC/USDT/Swap live inside one shared card space.
+function WalletSwitcher({ activeCoin, onSelect, dark, pulse }) {
+  const [open, setOpen] = useState(false);
+  const options = [
+    { key: 'BTC',  label: 'Bitcoin', sub: 'BTC Network',   bg: 'linear-gradient(135deg,#F7931A,#e8830a)', icon: <span style={{ fontSize: 13, fontWeight: 900, color: '#fff' }}>₿</span> },
+    { key: 'USDT', label: 'Tether',  sub: 'TRC-20',        bg: '#26A17B',                                   icon: <TetherGlyph size={14} /> },
+    { key: 'SWAP', label: 'Swap',    sub: 'BTC ↔ USDT',    bg: 'linear-gradient(135deg,#6366f1,#4f46e5)',   icon: <span style={{ fontSize: 12, fontWeight: 900, color: '#fff' }}>⇄</span> },
+  ];
+
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg transition relative"
+        style={{
+          backgroundColor: dark ? 'rgba(255,255,255,0.12)' : C.g100,
+          boxShadow: pulse && !open ? '0 0 0 3px rgba(38,161,123,0.45)' : 'none',
+        }}>
+        {pulse && !open && (
+          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full animate-ping"
+            style={{ backgroundColor: '#26A17B' }} />
+        )}
+        {pulse && !open && (
+          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full"
+            style={{ backgroundColor: '#26A17B' }} />
+        )}
+        <div className="flex items-center flex-shrink-0" style={{ marginRight: 2 }}>
+          <div className="w-4 h-4 rounded-full flex items-center justify-center"
+            style={{ background: 'linear-gradient(135deg,#F7931A,#e8830a)', border: '1.5px solid rgba(255,255,255,0.9)', zIndex: 1 }}>
+            <span style={{ fontSize: 8, fontWeight: 900, color: '#fff', lineHeight: 1 }}>₿</span>
+          </div>
+          <div className="w-4 h-4 rounded-full flex items-center justify-center"
+            style={{ background: '#26A17B', border: '1.5px solid rgba(255,255,255,0.9)', marginLeft: -6, zIndex: 2 }}>
+            <TetherGlyph size={8} />
+          </div>
+        </div>
+        <span className="text-xs font-black" style={{ color: dark ? '#fff' : C.g700 }}>Select Asset</span>
+        <ChevronDown size={12} style={{ color: dark ? 'rgba(255,255,255,0.7)' : C.g500, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full mt-2 w-48 rounded-2xl shadow-xl overflow-hidden z-20"
+            style={{ backgroundColor: '#fff', border: `1px solid ${C.g200}` }}>
+            {options.map(opt => (
+              <button key={opt.key} onClick={() => { onSelect(opt.key); setOpen(false); }}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 transition"
+                style={{ backgroundColor: activeCoin === opt.key ? C.mist : 'transparent' }}>
+                <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: opt.bg }}>
+                  {opt.icon}
+                </div>
+                <div className="text-left flex-1 min-w-0">
+                  <p className="text-xs font-black" style={{ color: C.g800 }}>{opt.label}</p>
+                  <p className="text-xs" style={{ color: C.g400 }}>{opt.sub}</p>
+                </div>
+                {activeCoin === opt.key && <CheckCircle size={13} style={{ color: C.success, flexShrink: 0 }} />}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Asset Picker Sheet — shown when Send / Receive / Transfer is tapped ──────
+// Lets the user choose which asset (BTC or USDT) the action applies to before
+// the real modal opens, so Send/Receive/Transfer work from either wallet view.
+function AssetPickerSheet({ title, subtitle, onPick, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}>
+      <div className="bg-white w-full md:max-w-xs rounded-t-3xl md:rounded-3xl overflow-hidden shadow-2xl"
+        onClick={e => e.stopPropagation()}>
+        <div className="px-5 pt-5 pb-3 flex items-center justify-between">
+          <div>
+            <p className="font-black text-sm" style={{ color: C.g800 }}>{title}</p>
+            {subtitle && <p className="text-xs mt-0.5" style={{ color: C.g400 }}>{subtitle}</p>}
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-xl flex items-center justify-center hover:bg-gray-100">
+            <X size={14} style={{ color: C.g500 }} />
+          </button>
+        </div>
+        <div className="px-4 pb-5 space-y-2">
+          <button onClick={() => onPick('BTC')}
+            className="w-full flex items-center gap-3 p-3.5 rounded-2xl border hover:bg-gray-50 transition active:scale-[0.98]"
+            style={{ borderColor: C.g200 }}>
+            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg,#F7931A,#e8830a)' }}>
+              <span style={{ fontSize: 18, fontWeight: 900, color: '#fff' }}>₿</span>
+            </div>
+            <div className="text-left flex-1 min-w-0">
+              <p className="font-black text-sm" style={{ color: C.g800 }}>Bitcoin</p>
+              <p className="text-xs" style={{ color: C.g400 }}>BTC · On-chain</p>
+            </div>
+            <ChevronRight size={16} style={{ color: C.g300, flexShrink: 0 }} />
+          </button>
+          <button onClick={() => onPick('USDT')}
+            className="w-full flex items-center gap-3 p-3.5 rounded-2xl border hover:bg-gray-50 transition active:scale-[0.98]"
+            style={{ borderColor: C.g200 }}>
+            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#26A17B' }}>
+              <TetherGlyph size={20} />
+            </div>
+            <div className="text-left flex-1 min-w-0">
+              <p className="font-black text-sm" style={{ color: C.g800 }}>Tether</p>
+              <p className="text-xs" style={{ color: C.g400 }}>USDT · TRC-20</p>
+            </div>
+            <ChevronRight size={16} style={{ color: C.g300, flexShrink: 0 }} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── USDT Receive Modal ────────────────────────────────────────────────────────
+function UsdtReceiveModal({ address, onClose, checking, scanCooldown, onCheckDeposits }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = () => {
+    navigator.clipboard.writeText(address);
+    setCopied(true);
+    toast.success('Tron address copied!');
+    setTimeout(() => setCopied(false), 3000);
+  };
+
+  const explorerUrl = `https://tronscan.org/#/address/${address}`;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}>
+      <div className="bg-white w-full md:max-w-sm rounded-t-2xl md:rounded-2xl overflow-hidden shadow-2xl">
+        <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: C.g100 }}>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#26A17B15' }}>
+              <ArrowDownLeft size={15} style={{ color: '#26A17B' }} />
+            </div>
+            <h2 className="font-black text-sm" style={{ color: C.g800 }}>Deposit USDT</h2>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-xl flex items-center justify-center hover:bg-gray-100">
+            <X size={14} style={{ color: C.g500 }} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <p className="text-xs text-gray-500">Send USDT (TRC-20) to your Tron address. Credited after network confirmation.</p>
+
+          <div>
+            <label className="block text-xs font-bold mb-1.5 text-gray-600">Your Tron (USDT-TRC20) Address</label>
+            <div className="p-3 rounded-xl border font-mono text-xs break-all"
+              style={{ borderColor: C.g200, backgroundColor: C.g50, color: C.g700 }}>
+              {address || 'Loading…'}
+            </div>
+          </div>
+
+          <button onClick={copy} disabled={!address}
+            className="w-full py-3 rounded-xl text-white font-black text-sm flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-40"
+            style={{ backgroundColor: copied ? C.success : '#26A17B' }}>
+            {copied ? <><CheckCircle size={15} /> Copied!</> : <><Copy size={15} /> Copy Address</>}
+          </button>
+
+          {address && (
+            <button onClick={onCheckDeposits} disabled={checking || scanCooldown > 0}
+              className="w-full py-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 hover:bg-gray-50 transition disabled:opacity-50"
+              style={{ borderColor: C.g200, color: C.g600 }}>
+              {checking
+                ? <><RefreshCw size={12} className="animate-spin" /> Scanning…</>
+                : <><Zap size={12} style={{ color: C.gold }} /> {scanCooldown > 0 ? `Scan available in ${scanCooldown}s` : 'Check for New Deposits'}</>}
+            </button>
+          )}
+
+          {address && (
+            <a href={explorerUrl} target="_blank" rel="noopener noreferrer"
+              className="w-full py-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 hover:bg-gray-50"
+              style={{ borderColor: C.g200, color: C.g600 }}>
+              View on Tronscan Explorer ↗
+            </a>
+          )}
+
+          <div className="flex items-start gap-2 p-3 rounded-xl" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
+            <AlertTriangle size={12} style={{ color: '#d97706', flexShrink: 0, marginTop: 1 }} />
+            <p className="text-xs font-semibold" style={{ color: '#92400e' }}>
+              Only send <strong>USDT TRC-20</strong> to this address. Other coins or networks will be lost permanently.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── P2P Trade Promo Banner — big, attractive CTA that replaces the old address card ──
+function P2PPromoBanner({ navigate }) {
+  return (
+    <div className="rounded-3xl overflow-hidden shadow-lg relative"
+      style={{ background: `linear-gradient(150deg, ${C.forest} 0%, ${C.green} 55%, #0d3d2a 100%)` }}>
+      {/* decorative glow circles */}
+      <div className="absolute -top-14 -right-10 w-48 h-48 rounded-full pointer-events-none"
+        style={{ background: `radial-gradient(circle, ${C.gold}33 0%, transparent 70%)` }} />
+      <div className="absolute -bottom-12 -left-10 w-40 h-40 rounded-full pointer-events-none"
+        style={{ background: `radial-gradient(circle, ${C.mint}30 0%, transparent 70%)` }} />
+
+      <div className="relative p-4 sm:p-6">
+        <span className="inline-flex items-center gap-1.5 text-xs font-black px-2.5 py-1 rounded-full mb-2.5"
+          style={{ background: 'rgba(244,164,34,0.22)', color: '#FCD34D', border: '1px solid rgba(252,211,77,0.35)' }}>
+          🔥 P2P Marketplace
+        </span>
+
+        <p className="text-white font-black leading-snug mb-1.5" style={{ fontSize: 'clamp(1rem, 4.5vw, 1.3rem)' }}>
+          Trade Crypto, Get Paid Instantly
+        </p>
+        <p className="text-white/70 text-xs leading-relaxed mb-3 sm:mb-4 max-w-sm">
+          Buy or sell Bitcoin &amp; USDT directly with real people. Cash lands in your MTN MoMo or bank account in minutes — no waiting.
+        </p>
+
+        {/* Feature badges */}
+        <div className="flex flex-wrap gap-1.5 sm:gap-2 mb-4 sm:mb-5">
+          {[
+            { icon: '📱', label: 'MTN MoMo' },
+            { icon: '🏦', label: 'Bank Transfer' },
+            { icon: '⚡', label: 'Instant Payout' },
+            { icon: '🔒', label: 'Escrow Protected' },
+          ].map(({ icon, label }) => (
+            <span key={label} className="flex items-center gap-1.5 text-xs font-bold px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl"
+              style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.15)' }}>
+              <span>{icon}</span>{label}
+            </span>
+          ))}
+        </div>
+
+        {/* CTAs */}
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+          <button onClick={() => navigate('/sell-bitcoin')}
+            className="py-3 sm:py-3.5 rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 active:scale-95 transition"
+            style={{ background: '#fff', color: C.forest, boxShadow: '0 6px 18px rgba(0,0,0,0.18)' }}>
+            Sell Now <ChevronRight size={14} />
+          </button>
+          <button onClick={() => navigate('/buy-bitcoin')}
+            className="py-3 sm:py-3.5 rounded-2xl text-white font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 active:scale-95 transition"
+            style={{ background: 'rgba(255,255,255,0.14)', border: '1.5px solid rgba(255,255,255,0.28)' }}>
+            Buy Now <ChevronRight size={14} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Wallet Page ──────────────────────────────────────────────────────────
 export default function WalletPage({ user }) {
   const navigate = useNavigate();
@@ -2086,6 +2366,10 @@ export default function WalletPage({ user }) {
   const [swapHistory,   setSwapHistory]   = useState([]);
   const [showUsdtSend,     setShowUsdtSend]     = useState(false);
   const [showUsdtInternal, setShowUsdtInternal] = useState(false);
+  const [showUsdtRecv,     setShowUsdtRecv]     = useState(false);
+  const [assetPicker,      setAssetPicker]      = useState(null); // { type: 'send' | 'receive' | 'transfer' }
+  const [showUsdtHint,     setShowUsdtHint]     = useState(() => !localStorage.getItem('praqen_usdt_hint_seen'));
+  const dismissUsdtHint = () => { setShowUsdtHint(false); localStorage.setItem('praqen_usdt_hint_seen', '1'); };
   const [swapFrom,      setSwapFrom]      = useState('BTC');
   const [swapAmount,    setSwapAmount]    = useState('');
   const [swapInputMode, setSwapInputMode] = useState('native'); // 'native' | 'usd'
@@ -2094,7 +2378,6 @@ export default function WalletPage({ user }) {
   const [checkingUsdt,  setCheckingUsdt]  = useState(false);
   const [scanCooldown,  setScanCooldown]  = useState(0); // seconds remaining
   const [loadingUsdt,   setLoadingUsdt]   = useState(false);
-  const [copiedTron,    setCopiedTron]    = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -2188,7 +2471,7 @@ export default function WalletPage({ user }) {
     if (!user) { navigate('/login'); return; }
     const init = async () => {
       setLoading(true);
-      await Promise.all([loadWallet(), loadBtcPrice()]);
+      await Promise.all([loadWallet(), loadBtcPrice(), loadUsdtWallet()]);
       setLoading(false);
     };
     init();
@@ -2253,6 +2536,7 @@ export default function WalletPage({ user }) {
     if (!user) return;
     if (activeCoin === 'USDT') { loadUsdtWallet(); }
     if (activeCoin === 'SWAP') { loadSwapRate(); loadSwapHistory(); if (!usdtData) loadUsdtWallet(); }
+    if (activeCoin !== 'BTC') dismissUsdtHint();
   }, [activeCoin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Refresh ────────────────────────────────────────────────────────────────
@@ -2335,6 +2619,19 @@ export default function WalletPage({ user }) {
     return r.data;
   };
 
+  // ── Asset picker dispatch — Send/Receive/Transfer buttons resolve to this ──
+  const openAssetModal = (type, asset) => {
+    setAssetPicker(null);
+    if (asset === 'USDT' && !usdtData) loadUsdtWallet();
+    if (type === 'send') {
+      asset === 'BTC' ? setShowSend(true) : setShowUsdtSend(true);
+    } else if (type === 'receive') {
+      asset === 'BTC' ? setShowRecv(true) : setShowUsdtRecv(true);
+    } else if (type === 'transfer') {
+      asset === 'BTC' ? setShowInternal(true) : setShowUsdtInternal(true);
+    }
+  };
+
   // ── Execute BTC↔USDT swap ─────────────────────────────────────────────────
   const doSwap = async () => {
     // Resolve effective native amount from whichever input mode is active
@@ -2374,6 +2671,9 @@ export default function WalletPage({ user }) {
   const availableUsd = availableBal * livePrice;  // USD value of spendable BTC
   const totalUsd     = balance * livePrice;        // USD value of total (available + locked)
   const balUsd       = totalUsd; // kept for legacy references elsewhere in this component
+  const usdtBal       = parseFloat(usdtData?.balance_usdt        || 0);
+  const usdtLocked     = parseFloat(usdtData?.locked_balance_usdt || 0);
+  const portfolioUsd  = totalUsd + usdtBal + usdtLocked; // BTC total + USDT total, in USD
   console.log('[Wallet] balance_btc=', balance, 'locked=', lockedBal, 'available=', availableBal, 'btcPrice=', livePrice, 'availableUsd=', availableUsd, 'totalUsd=', totalUsd);
   const network = walletData?.network || 'mainnet';
 
@@ -2396,196 +2696,146 @@ export default function WalletPage({ user }) {
 
       <div className="max-w-2xl mx-auto w-full px-3 sm:px-4 py-4 sm:py-6 space-y-3 sm:space-y-4">
 
-        {/* ── COIN SELECTOR TABS ─────────────────────────────────── */}
-        <div className="rounded-2xl overflow-hidden shadow-md" style={{ border: `1.5px solid ${C.g200}`, backgroundColor: '#fff' }}>
-          <div className="flex">
-
-            {/* ── BTC tab ── */}
-            {(() => { const active = activeCoin === 'BTC'; return (
-              <button onClick={() => setActiveCoin('BTC')}
-                className="flex-1 flex flex-col items-center justify-center py-4 gap-1 transition-all relative"
-                style={{
-                  background: active ? `linear-gradient(160deg,${C.forest} 0%,${C.green} 100%)` : '#fff',
-                  borderRight: `1.5px solid ${C.g200}`,
-                }}>
-                {/* Bitcoin ₿ coin */}
-                <div className="w-11 h-11 rounded-full flex items-center justify-center shadow-md mb-0.5"
-                  style={{ background: active ? 'rgba(255,255,255,0.18)' : 'linear-gradient(135deg,#F7931A,#e8830a)', border: active ? '1.5px solid rgba(255,255,255,0.3)' : 'none' }}>
-                  <span style={{ fontSize: 22, fontWeight: 900, color: active ? '#F7931A' : '#fff', lineHeight: 1 }}>₿</span>
-                </div>
-                <span className="font-black text-sm tracking-wide" style={{ color: active ? '#fff' : C.g800 }}>Bitcoin</span>
-                <span className="font-bold text-xs" style={{ color: active ? 'rgba(255,255,255,0.65)' : C.g400 }}>BTC Network</span>
-                {active && <div className="absolute bottom-0 inset-x-5 h-0.5 rounded-full" style={{ backgroundColor: C.sage }} />}
-              </button>
-            );})()}
-
-            {/* ── SWAP tab ── */}
-            {(() => { const active = activeCoin === 'SWAP'; return (
-              <button onClick={() => setActiveCoin('SWAP')}
-                className="flex-1 flex flex-col items-center justify-center py-4 gap-1 transition-all relative"
-                style={{
-                  background: active ? `linear-gradient(160deg,${C.forest} 0%,${C.green} 100%)` : '#fff',
-                  borderRight: `1.5px solid ${C.g200}`,
-                }}>
-                {/* Swap icon with BTC + USDT */}
-                <div className="relative mb-0.5" style={{ width: 44, height: 44 }}>
-                  {/* BTC circle left */}
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center shadow"
-                    style={{ background: '#F7931A', border: '2px solid #fff', zIndex: 1 }}>
-                    <span style={{ fontSize: 13, fontWeight: 900, color: '#fff', lineHeight: 1 }}>₿</span>
-                  </div>
-                  {/* USDT circle right */}
-                  <div className="absolute right-0 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center shadow"
-                    style={{ background: '#26A17B', border: '2px solid #fff', zIndex: 2 }}>
-                    <span style={{ fontSize: 13, fontWeight: 900, color: '#fff', lineHeight: 1 }}>₮</span>
-                  </div>
-                  {/* Center swap arrow */}
-                  <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 3 }}>
-                    <div className="w-5 h-5 rounded-full flex items-center justify-center"
-                      style={{ background: active ? 'rgba(255,255,255,0.9)' : C.g50, border: `1.5px solid ${active ? C.green : C.g200}`, boxShadow: '0 2px 6px rgba(0,0,0,0.18)' }}>
-                      <span style={{ fontSize: 9, fontWeight: 900, color: active ? C.forest : C.g600, lineHeight: 1 }}>⇄</span>
-                    </div>
-                  </div>
-                </div>
-                <span className="font-black text-sm tracking-wide" style={{ color: active ? '#fff' : C.g800 }}>Swap</span>
-                <span className="font-bold text-xs" style={{ color: active ? 'rgba(255,255,255,0.65)' : C.g400 }}>BTC ↔ USDT</span>
-                {active && <div className="absolute bottom-0 inset-x-5 h-0.5 rounded-full" style={{ backgroundColor: C.sage }} />}
-              </button>
-            );})()}
-
-            {/* ── USDT tab ── */}
-            {(() => { const active = activeCoin === 'USDT'; return (
-              <button onClick={() => setActiveCoin('USDT')}
-                className="flex-1 flex flex-col items-center justify-center py-4 gap-1 transition-all relative"
-                style={{ background: active ? `linear-gradient(160deg,${C.forest} 0%,${C.green} 100%)` : '#fff' }}>
-                {/* Tether ₮ coin — proper Tether SVG */}
-                <div className="w-11 h-11 rounded-full flex items-center justify-center shadow-md mb-0.5 overflow-hidden"
-                  style={{ background: active ? 'rgba(255,255,255,0.18)' : '#26A17B', border: active ? '1.5px solid rgba(255,255,255,0.3)' : 'none' }}>
-                  <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
-                    <path d="M17.922 17.383v-.002c-.11.008-.677.042-1.942.042-1.01 0-1.721-.03-1.971-.042v.003c-3.888-.171-6.79-.848-6.79-1.658 0-.809 2.902-1.486 6.79-1.66v2.644c.254.018.982.061 1.988.061 1.207 0 1.812-.05 1.925-.06v-2.643c3.88.173 6.775.85 6.775 1.658 0 .81-2.895 1.485-6.775 1.657m0-3.59v-2.366h5.414V7.819H8.595v3.608h5.414v2.365c-4.4.202-7.709 1.073-7.709 2.117 0 1.045 3.309 1.915 7.709 2.118v7.582h3.913v-7.584c4.393-.202 7.694-1.073 7.694-2.116 0-1.043-3.301-1.914-7.694-2.116"
-                      fill={active ? '#26A17B' : '#fff'} />
-                  </svg>
-                </div>
-                <span className="font-black text-sm tracking-wide" style={{ color: active ? '#fff' : C.g800 }}>Tether</span>
-                <span className="font-bold text-xs" style={{ color: active ? 'rgba(255,255,255,0.65)' : C.g400 }}>TRC-20</span>
-                {active && <div className="absolute bottom-0 inset-x-5 h-0.5 rounded-full" style={{ backgroundColor: C.sage }} />}
-              </button>
-            );})()}
-
-          </div>
-        </div>
 
         {activeCoin === 'BTC' && (<>
         {/* ── WALLET CARD ──────────────────────────────────────────── */}
         <div className="rounded-3xl overflow-hidden shadow-lg relative"
           style={{ background: `linear-gradient(135deg,${C.forest} 0%,${C.green} 60%,${C.mint} 100%)` }}>
 
-          <div className="relative p-6">
+          <div className="relative p-3.5 sm:p-6">
             {/* Top row */}
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+            <div className="flex items-center justify-between mb-3 sm:mb-5 gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center flex-shrink-0"
                   style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
-                  <Wallet size={17} className="text-white" />
+                  <Wallet size={15} className="text-white" />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-white font-black text-sm">Bitcoin Wallet</p>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="text-white font-black text-xs sm:text-sm">Asset Wallet</p>
                     <span className="flex items-center gap-1 text-xs font-black px-1.5 py-0.5 rounded-full"
                       style={{ backgroundColor: 'rgba(16,185,129,0.25)', color: '#6EE7B7' }}>
                       <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse inline-block" />
                       Live
                     </span>
                   </div>
-                  <p className="text-white/60 text-xs">{user?.username} · Auto-refreshing</p>
+                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                    <p className="text-white/60 text-xs truncate">{user?.username} · Auto-refreshing</p>
+                    <WalletSwitcher activeCoin={activeCoin} onSelect={setActiveCoin} dark pulse={showUsdtHint} />
+                  </div>
                 </div>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-1.5 flex-shrink-0">
                 <button onClick={() => setShowBal(!showBal)}
-                  className="w-8 h-8 rounded-xl flex items-center justify-center"
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center"
                   style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
-                  {showBal ? <Eye size={13} className="text-white" /> : <EyeOff size={13} className="text-white" />}
+                  {showBal ? <Eye size={12} className="text-white" /> : <EyeOff size={12} className="text-white" />}
                 </button>
                 <button onClick={refresh} disabled={refreshing}
-                  className="w-8 h-8 rounded-xl flex items-center justify-center"
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center"
                   style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
-                  <RefreshCw size={13} className={`text-white ${refreshing ? 'animate-spin' : ''}`} />
+                  <RefreshCw size={12} className={`text-white ${refreshing ? 'animate-spin' : ''}`} />
                 </button>
               </div>
             </div>
 
             {/* Balance */}
-            <div className="mb-6">
+            <div className="mb-3 sm:mb-5">
               {showBal ? (
                 <>
-                  {/* Available — primary figure */}
-                  <p className="text-white/60 text-xs mb-1">Available Balance</p>
-                  <p className="font-black text-white tracking-tight" style={{ fontSize: 'clamp(1.6rem, 6vw, 2.5rem)' }}>
-                    ₿ {fmt(availableBal)}
+                  {/* Combined portfolio value */}
+                  <p className="text-white/60 text-xs mb-1">Total Portfolio Value</p>
+                  <p className="font-black text-white tracking-tight" style={{ fontSize: 'clamp(1.35rem, 6vw, 2.5rem)' }}>
+                    {fmtLocal(portfolioUsd)}
                   </p>
-                  <p className="text-white/70 text-sm mt-1">≈ {fmtLocal(availableUsd)}</p>
+                  <p className="text-white/70 text-xs sm:text-sm mt-1">Across Bitcoin &amp; USDT wallets</p>
 
-                  {/* Locked + Total breakdown */}
-                  <div className="flex gap-4 mt-3">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#F59E0B' }} />
-                      <div>
+                  {/* Side-by-side asset breakdown — makes both assets visible at once */}
+                  <div className="grid grid-cols-2 gap-2 sm:gap-3 mt-3">
+                    <div className="rounded-2xl p-2.5 sm:p-3.5 min-w-0" style={{ backgroundColor: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)' }}>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <div className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0"
+                          style={{ background: 'linear-gradient(135deg,#F7931A,#e8830a)' }}>
+                          <span style={{ fontSize: 9, fontWeight: 900, color: '#fff', lineHeight: 1 }}>₿</span>
+                        </div>
+                        <p className="text-white/70 text-xs font-bold">Bitcoin</p>
+                      </div>
+                      <p className="font-black text-white tracking-tight truncate" style={{ fontSize: 'clamp(0.9rem, 3.5vw, 1.25rem)' }}>{fmt(availableBal, 6)}</p>
+                      <p className="text-white/55 text-xs mt-0.5 truncate">≈ {fmtLocal(availableUsd)}</p>
+                    </div>
+                    <div className="rounded-2xl p-2.5 sm:p-3.5 min-w-0" style={{ backgroundColor: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)' }}>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <div className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#26A17B' }}>
+                          <TetherGlyph size={10} />
+                        </div>
+                        <p className="text-white/70 text-xs font-bold">USDT</p>
+                      </div>
+                      <p className="font-black text-white tracking-tight truncate" style={{ fontSize: 'clamp(0.9rem, 3.5vw, 1.25rem)' }}>{usdtBal.toFixed(2)}</p>
+                      <p className="text-white/55 text-xs mt-0.5 truncate">≈ {fmtLocal(usdtBal)}</p>
+                    </div>
+                  </div>
+
+                  {/* Locked + Total breakdown — combined across both assets */}
+                  <div className="grid grid-cols-2 gap-2 mt-3">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: '#F59E0B' }} />
+                      <div className="min-w-0">
                         <p className="text-white/40 text-xs">Locked in Escrow</p>
-                        <p className="text-white/80 text-xs font-bold">₿ {fmt(lockedBal)}</p>
+                        <p className="text-white/80 text-xs font-bold truncate">{fmt(lockedBal, 6)} BTC · {usdtLocked.toFixed(2)} USDT</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#52B788' }} />
-                      <div>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: '#52B788' }} />
+                      <div className="min-w-0">
                         <p className="text-white/40 text-xs">Total Balance</p>
-                        <p className="text-white/80 text-xs font-bold">₿ {fmt(balance)} ≈ {fmtLocal(totalUsd)}</p>
+                        <p className="text-white/80 text-xs font-bold truncate">{fmt(balance, 6)} BTC · {(usdtBal + usdtLocked).toFixed(2)} USDT</p>
                       </div>
                     </div>
                   </div>
 
                   {btcPrice > 0 && (
-                    <p className="text-white/40 text-xs mt-2">BTC price: {fmtLocal(btcPrice)}</p>
+                    <p className="text-white/40 text-xs mt-2 truncate">BTC: {fmtLocal(btcPrice)} · USDT: {fmtLocal(1)}</p>
                   )}
                 </>
               ) : (
                 <>
-                  <p className="text-white/60 text-xs mb-1">Available Balance</p>
-                  <p className="text-4xl font-black text-white">••••••••</p>
+                  <p className="text-white/60 text-xs mb-1">Total Portfolio Value</p>
+                  <p className="text-3xl sm:text-4xl font-black text-white">••••••••</p>
                 </>
               )}
             </div>
 
             {/* Action buttons */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
               {[
                 {
-                  label: 'Receive',
+                  label: 'Deposit',
                   icon: Download,
                   grad: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                   shadow: 'rgba(16,185,129,0.45)',
-                  action: () => setShowRecv(true),
+                  action: () => setAssetPicker({ type: 'receive' }),
                 },
                 {
                   label: 'Send',
                   icon: Send,
                   grad: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
                   shadow: 'rgba(239,68,68,0.45)',
-                  action: () => setShowSend(true),
+                  action: () => setAssetPicker({ type: 'send' }),
                 },
                 {
                   label: 'Transfer',
                   icon: ArrowLeftRight,
                   grad: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
                   shadow: 'rgba(99,102,241,0.45)',
-                  action: () => setShowInternal(true),
+                  action: () => setAssetPicker({ type: 'transfer' }),
                 },
               ].map(({ label, icon: Icon, grad, shadow, action }) => (
                 <button key={label} onClick={action}
-                  className="flex flex-col items-center gap-2 py-4 rounded-2xl transition active:scale-95"
+                  className="flex flex-col items-center gap-1.5 py-2.5 sm:py-4 rounded-2xl transition active:scale-95"
                   style={{ backgroundColor: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.14)' }}>
-                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
+                  <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center"
                     style={{ background: grad, boxShadow: `0 6px 18px ${shadow}` }}>
-                    <Icon size={20} color="#fff" strokeWidth={2.2} />
+                    <Icon size={16} color="#fff" strokeWidth={2.2} />
                   </div>
                   <span className="text-white text-xs font-extrabold tracking-wide">{label}</span>
                 </button>
@@ -2594,74 +2844,28 @@ export default function WalletPage({ user }) {
           </div>
         </div>
 
-        {/* ── DEPOSIT ADDRESS CARD ─────────────────────────────────── */}
-        <div className="bg-white rounded-2xl border shadow-sm p-5" style={{ borderColor: C.g200 }}>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <ArrowDownLeft size={15} style={{ color: C.success }} />
-              <p className="font-black text-sm" style={{ color: C.g800 }}>Your Deposit Address</p>
+        {/* ── USDT DISCOVERY HINT ──────────────────────────────────── */}
+        {showUsdtHint && (
+          <div className="flex items-start gap-3 p-4 rounded-2xl"
+            style={{ background: `linear-gradient(135deg, #26A17B12, #26A17B08)`, border: '1px solid #26A17B35' }}>
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#26A17B' }}>
+              <TetherGlyph size={18} />
             </div>
-            <span className="text-xs font-black px-2 py-0.5 rounded-full"
-              style={{
-                backgroundColor: walletData?.address ? `${C.success}15` : `${C.warn}15`,
-                color: walletData?.address ? C.success : C.warn
-              }}>
-              {walletData?.address ? '✅ Ready' : '⚠️ Not Generated'}
-            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-black" style={{ color: C.g800 }}>You have a USDT wallet too!</p>
+              <p className="text-xs mt-0.5 leading-relaxed" style={{ color: C.g600 }}>
+                Both balances are shown above at a glance. Tap <strong>"Select Asset ▾"</strong> for USDT's own deposit address &amp; history, or hit Send/Receive/Transfer below and pick USDT from the list.
+              </p>
+            </div>
+            <button onClick={dismissUsdtHint}
+              className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 hover:bg-black/5 transition">
+              <X size={13} style={{ color: C.g400 }} />
+            </button>
           </div>
+        )}
 
-          {walletData?.address ? (
-            <div className="space-y-3">
-              {/* Address display */}
-              <div className="p-3 rounded-xl border font-mono text-xs break-all"
-                style={{ borderColor: C.g100, backgroundColor: C.g50, color: C.g700 }}>
-                {walletData.address}
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => { navigator.clipboard.writeText(walletData.address); toast.success('Address copied!'); }}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-white font-bold text-xs hover:opacity-90"
-                  style={{ backgroundColor: C.green }}>
-                  <Copy size={13} /> Copy Address
-                </button>
-                <button onClick={() => setShowRecv(true)}
-                  className="px-3 py-2.5 rounded-xl border font-bold text-xs hover:bg-gray-50"
-                  style={{ borderColor: C.g200, color: C.g600 }}>
-                  <QrCode size={14} />
-                </button>
-              </div>
-
-              {/* Check for new deposits */}
-              <button onClick={checkDeposit} disabled={checking}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border text-xs font-bold hover:bg-gray-50 transition"
-                style={{ borderColor: C.g200, color: C.g600 }}>
-                {checking
-                  ? <><RefreshCw size={12} className="animate-spin" /> Checking mempool…</>
-                  : <><Zap size={12} style={{ color: C.gold }} /> Check for New Deposits</>}
-              </button>
-            </div>
-          ) : (
-            <div className="text-center py-6">
-              <Bitcoin size={36} className="mx-auto mb-3" style={{ color: C.g300 }} />
-              <p className="text-sm font-bold text-gray-600 mb-1">No address generated yet</p>
-              <p className="text-xs text-gray-400 mb-4">Generate your unique Bitcoin deposit address</p>
-              <button onClick={generateAddress}
-                className="px-6 py-2.5 rounded-xl text-white font-black text-sm hover:opacity-90"
-                style={{ backgroundColor: C.green }}>
-                <Bitcoin size={14} className="inline mr-1.5" /> Generate My Address
-              </button>
-            </div>
-          )}
-
-          <div className="mt-3 flex items-start gap-2 p-3 rounded-xl"
-            style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
-            <AlertTriangle size={12} style={{ color: C.warn, flexShrink: 0, marginTop: 1 }} />
-            <p className="text-xs font-semibold" style={{ color: '#92400E' }}>
-              Only send Bitcoin (BTC) to this address. Sending other coins will result in permanent loss.
-            </p>
-          </div>
-        </div>
+        {/* ── P2P TRADE PROMO BANNER — deposit address now lives in the Deposit modal ── */}
+        <P2PPromoBanner navigate={navigate} />
 
         {/* ── STATS ────────────────────────────────────────────────── */}
         <div className="grid grid-cols-3 gap-2 sm:gap-3">
@@ -2740,45 +2944,48 @@ export default function WalletPage({ user }) {
           <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full opacity-10" style={{ background: 'radial-gradient(circle, #fff 0%, transparent 70%)' }} />
           <div className="absolute -bottom-8 -left-8 w-32 h-32 rounded-full opacity-8" style={{ background: 'radial-gradient(circle, #26A17B 0%, transparent 70%)' }} />
 
-          <div className="relative p-6">
+          <div className="relative p-3.5 sm:p-6">
             {/* Top row */}
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-3">
+            <div className="flex items-center justify-between mb-3 sm:mb-5 gap-2">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                 {/* Tether logo badge */}
-                <div className="w-11 h-11 rounded-2xl flex items-center justify-center shadow-lg"
+                <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center shadow-lg flex-shrink-0"
                   style={{ background: 'linear-gradient(135deg, #26A17B, #1a7a5e)', border: '2px solid rgba(255,255,255,0.25)', boxShadow: '0 4px 16px rgba(38,161,123,0.55)' }}>
-                  <svg viewBox="0 0 32 32" width="24" height="24" fill="none">
+                  <svg viewBox="0 0 32 32" width="20" height="20" fill="none">
                     <path d="M17.6 15.73v-2.05h4.35V10.5H10.07v3.18H14.4v2.05C10.6 15.9 7.8 16.72 7.8 17.7s2.8 1.8 6.6 1.97v7.03h3.2v-7.03c3.8-.17 6.6-.99 6.6-1.97s-2.8-1.8-6.6-1.97zm0 3.32c-.18.01-.62.04-1.62.04-.86 0-1.46-.02-1.67-.04v.01c-2.89-.13-5.05-.63-5.05-1.25s2.16-1.11 5.05-1.24v1.97c.21.01.82.05 1.68.05.98 0 1.45-.04 1.61-.05v-1.97c2.9.13 5.06.63 5.06 1.24s-2.16 1.12-5.06 1.25v-.01z" fill="white"/>
                   </svg>
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-white font-black text-sm tracking-wide">USDT Wallet</p>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="text-white font-black text-xs sm:text-sm tracking-wide">USDT Wallet</p>
                     <span className="flex items-center gap-1 text-xs font-black px-2 py-0.5 rounded-full"
                       style={{ background: 'rgba(38,161,123,0.35)', color: '#6EE7B7', border: '1px solid rgba(110,231,183,0.3)' }}>
                       <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse inline-block" />
                       TRC-20
                     </span>
                   </div>
-                  <p className="text-white/55 text-xs mt-0.5">Tron Network · {user?.username}</p>
+                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                    <p className="text-white/55 text-xs truncate">Tron Network · {user?.username}</p>
+                    <WalletSwitcher activeCoin={activeCoin} onSelect={setActiveCoin} dark />
+                  </div>
                 </div>
               </div>
-              <div className="flex gap-1.5">
+              <div className="flex gap-1.5 flex-shrink-0">
                 <button onClick={() => setShowBal(!showBal)}
-                  className="w-8 h-8 rounded-xl flex items-center justify-center transition"
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center transition"
                   style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)' }}>
-                  {showBal ? <Eye size={13} className="text-white" /> : <EyeOff size={13} className="text-white" />}
+                  {showBal ? <Eye size={12} className="text-white" /> : <EyeOff size={12} className="text-white" />}
                 </button>
                 <button onClick={loadUsdtWallet} disabled={loadingUsdt}
-                  className="w-8 h-8 rounded-xl flex items-center justify-center transition"
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center transition"
                   style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)' }}>
-                  <RefreshCw size={13} className={`text-white ${loadingUsdt ? 'animate-spin' : ''}`} />
+                  <RefreshCw size={12} className={`text-white ${loadingUsdt ? 'animate-spin' : ''}`} />
                 </button>
               </div>
             </div>
 
             {/* Balance block */}
-            <div className="mb-6">
+            <div className="mb-3 sm:mb-5">
               {loadingUsdt && !usdtData ? (
                 <div className="flex items-center gap-2.5">
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -2788,156 +2995,87 @@ export default function WalletPage({ user }) {
                 <>
                   <p className="text-white/55 text-xs font-semibold mb-1 uppercase tracking-widest">Available Balance</p>
                   <div className="flex items-end gap-2">
-                    <p className="font-black text-white tracking-tight" style={{ fontSize: 'clamp(1.8rem, 7vw, 2.8rem)', lineHeight: 1 }}>
+                    <p className="font-black text-white tracking-tight" style={{ fontSize: 'clamp(1.5rem, 7vw, 2.8rem)', lineHeight: 1 }}>
                       {(usdtData?.balance_usdt || 0).toFixed(2)}
                     </p>
-                    <span className="text-white/70 font-black mb-1 text-base">USDT</span>
+                    <span className="text-white/70 font-black mb-1 text-sm sm:text-base">USDT</span>
                   </div>
-                  <p className="text-white/60 text-sm mt-1.5">≈ ${(usdtData?.balance_usdt || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD · 1:1 pegged</p>
-                  {(usdtData?.locked_balance_usdt || 0) > 0 && (
-                    <div className="flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-xl inline-flex w-fit"
-                      style={{ background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.3)' }}>
-                      <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: '#F59E0B' }} />
-                      <p className="text-xs font-bold" style={{ color: '#FCD34D' }}>₮{(usdtData.locked_balance_usdt).toFixed(2)} locked in escrow</p>
+                  <p className="text-white/60 text-xs sm:text-sm mt-1.5">≈ ${(usdtData?.balance_usdt || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD · 1:1 pegged</p>
+
+                  {/* Locked + Total breakdown — combined across both assets, same as the BTC card */}
+                  <div className="grid grid-cols-2 gap-2 mt-3">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: '#F59E0B' }} />
+                      <div className="min-w-0">
+                        <p className="text-white/40 text-xs">Locked in Escrow</p>
+                        <p className="text-white/80 text-xs font-bold truncate">{fmt(lockedBal, 6)} BTC · {usdtLocked.toFixed(2)} USDT</p>
+                      </div>
                     </div>
-                  )}
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: '#52B788' }} />
+                      <div className="min-w-0">
+                        <p className="text-white/40 text-xs">Total Balance</p>
+                        <p className="text-white/80 text-xs font-bold truncate">{fmt(balance, 6)} BTC · {(usdtBal + usdtLocked).toFixed(2)} USDT</p>
+                      </div>
+                    </div>
+                  </div>
                 </>
               ) : (
                 <>
                   <p className="text-white/55 text-xs font-semibold mb-1 uppercase tracking-widest">Available Balance</p>
-                  <p className="text-4xl font-black text-white tracking-widest">••••••</p>
+                  <p className="text-3xl sm:text-4xl font-black text-white tracking-widest">••••••</p>
                 </>
               )}
             </div>
 
             {/* Action buttons */}
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
               {[
                 {
-                  label: 'Receive',
-                  icon: <Download size={18} color="#fff" strokeWidth={2.2} />,
+                  label: 'Deposit',
+                  icon: <Download size={15} color="#fff" strokeWidth={2.2} />,
                   grad: `linear-gradient(135deg, ${C.mint} 0%, ${C.sage} 100%)`,
                   shadow: 'rgba(64,145,108,0.5)',
-                  action: () => {
-                    if (usdtData?.tron_address) {
-                      navigator.clipboard.writeText(usdtData.tron_address);
-                      toast.success('Tron deposit address copied!', { autoClose: 4000 });
-                    } else {
-                      toast.info('Loading your Tron address…');
-                    }
-                  },
+                  action: () => setAssetPicker({ type: 'receive' }),
                 },
                 {
                   label: 'Send',
-                  icon: <Send size={16} color="#fff" strokeWidth={2.2} />,
+                  icon: <Send size={14} color="#fff" strokeWidth={2.2} />,
                   grad: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
                   shadow: 'rgba(239,68,68,0.5)',
-                  action: () => setShowUsdtSend(true),
+                  action: () => setAssetPicker({ type: 'send' }),
                 },
                 {
                   label: 'Transfer',
-                  icon: <ArrowLeftRight size={16} color="#fff" strokeWidth={2.2} />,
+                  icon: <ArrowLeftRight size={14} color="#fff" strokeWidth={2.2} />,
                   grad: `linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)`,
                   shadow: 'rgba(99,102,241,0.5)',
-                  action: () => setShowUsdtInternal(true),
+                  action: () => setAssetPicker({ type: 'transfer' }),
                 },
                 {
                   label: 'Swap',
-                  icon: <ArrowLeftRight size={16} color="#fff" strokeWidth={2.2} />,
+                  icon: <ArrowLeftRight size={14} color="#fff" strokeWidth={2.2} />,
                   grad: `linear-gradient(135deg, ${C.gold} 0%, #e09318 100%)`,
                   shadow: 'rgba(244,164,34,0.5)',
                   action: () => { setActiveCoin('SWAP'); setSwapFrom('USDT'); },
                 },
               ].map(({ label, icon, grad, shadow, action }) => (
                 <button key={label} onClick={action}
-                  className="flex flex-col items-center gap-2 py-3 rounded-2xl transition active:scale-95"
+                  className="flex flex-col items-center gap-1.5 py-2 sm:py-3 rounded-2xl transition active:scale-95"
                   style={{ background: 'rgba(255,255,255,0.09)', border: '1px solid rgba(255,255,255,0.13)' }}>
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center"
                     style={{ background: grad, boxShadow: `0 5px 16px ${shadow}` }}>
                     {icon}
                   </div>
-                  <span className="text-white text-xs font-extrabold tracking-wide">{label}</span>
+                  <span className="text-white font-extrabold tracking-wide" style={{ fontSize: '10px' }}>{label}</span>
                 </button>
               ))}
             </div>
           </div>
         </div>
 
-        {/* ── USDT DEPOSIT ADDRESS ── */}
-        <div className="rounded-2xl overflow-hidden shadow-sm" style={{ border: `1.5px solid ${C.g200}`, backgroundColor: '#fff' }}>
-          {/* Header strip */}
-          <div className="px-5 pt-4 pb-3 flex items-center justify-between"
-            style={{ borderBottom: `1px solid ${C.g100}`, background: 'linear-gradient(135deg, #f0fdf4, #f8fffe)' }}>
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-                style={{ background: `linear-gradient(135deg, ${C.forest}, ${C.green})`, boxShadow: `0 3px 10px ${C.forest}40` }}>
-                <ArrowDownLeft size={14} color="#fff" strokeWidth={2.5} />
-              </div>
-              <div>
-                <p className="font-black text-sm" style={{ color: C.g800 }}>Deposit USDT</p>
-                <p className="text-xs" style={{ color: C.g400 }}>Send to this address on Tron network</p>
-              </div>
-            </div>
-            <span className="text-xs font-black px-2.5 py-1 rounded-full"
-              style={{
-                background: usdtData?.tron_address ? `linear-gradient(135deg, ${C.mint}25, ${C.sage}15)` : `${C.warn}15`,
-                color: usdtData?.tron_address ? C.green : C.warn,
-                border: `1px solid ${usdtData?.tron_address ? C.sage + '40' : C.warn + '40'}`,
-              }}>
-              {usdtData?.tron_address ? '✓ TRC-20 Ready' : '⏳ Loading'}
-            </span>
-          </div>
-
-          <div className="p-5 space-y-3">
-            {loadingUsdt && !usdtData ? (
-              <div className="flex items-center justify-center py-8 gap-3">
-                <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: `${C.sage}40`, borderTopColor: C.green }} />
-                <p className="text-sm font-semibold" style={{ color: C.g400 }}>Generating your Tron address…</p>
-              </div>
-            ) : usdtData?.tron_address ? (
-              <>
-                {/* Address display */}
-                <div className="rounded-2xl p-3.5 relative" style={{ background: C.g50, border: `1.5px solid ${C.g200}` }}>
-                  <p className="text-xs font-bold mb-1.5" style={{ color: C.g400 }}>Your Tron (TRX/USDT) Address</p>
-                  <p className="font-mono text-xs break-all font-bold" style={{ color: C.g700, lineHeight: 1.6 }}>
-                    {usdtData.tron_address}
-                  </p>
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => { navigator.clipboard.writeText(usdtData.tron_address); setCopiedTron(true); toast.success('Tron address copied!'); setTimeout(() => setCopiedTron(false), 3000); }}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-2xl text-white font-bold text-xs hover:opacity-90 transition"
-                    style={{ background: copiedTron ? `linear-gradient(135deg, ${C.success}, #059669)` : `linear-gradient(135deg, ${C.forest}, ${C.green})`, boxShadow: `0 4px 12px ${C.forest}40` }}>
-                    {copiedTron ? <><CheckCircle size={13} /> Address Copied!</> : <><Copy size={13} /> Copy Address</>}
-                  </button>
-                  <button onClick={checkUsdtDeposit} disabled={checkingUsdt || scanCooldown > 0}
-                    className="px-4 py-3 rounded-2xl border font-bold text-xs transition flex items-center gap-1.5"
-                    style={{
-                      borderColor: C.g200,
-                      color: (checkingUsdt || scanCooldown > 0) ? C.g400 : C.g600,
-                      cursor: (checkingUsdt || scanCooldown > 0) ? 'not-allowed' : 'pointer',
-                    }}>
-                    {checkingUsdt
-                      ? <RefreshCw size={12} className="animate-spin" />
-                      : <Zap size={12} style={{ color: scanCooldown > 0 ? C.g400 : C.gold }} />}
-                    {checkingUsdt ? 'Scanning…' : scanCooldown > 0 ? `${scanCooldown}s` : 'Scan'}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <p className="text-sm font-semibold text-center py-4" style={{ color: C.g400 }}>Could not load address. Tap refresh above.</p>
-            )}
-
-            <div className="flex items-start gap-2.5 p-3 rounded-xl"
-              style={{ background: `linear-gradient(135deg, ${C.mist}, #f0fdf8)`, border: `1px solid ${C.sage}30` }}>
-              <Shield size={13} style={{ color: C.green, flexShrink: 0, marginTop: 1 }} />
-              <p className="text-xs font-semibold leading-relaxed" style={{ color: C.forest }}>
-                Only send <strong>USDT TRC-20</strong> to this address. Sending BTC or ERC-20 tokens will be lost permanently.
-              </p>
-            </div>
-          </div>
-        </div>
+        {/* ── P2P TRADE PROMO BANNER — deposit address now lives in the Deposit modal ── */}
+        <P2PPromoBanner navigate={navigate} />
 
         {/* ── USDT STATS ── */}
         <div className="grid grid-cols-3 gap-2 sm:gap-3">
@@ -2971,7 +3109,10 @@ export default function WalletPage({ user }) {
                   <ArrowLeftRight size={17} color="#fff" strokeWidth={2.3} />
                 </div>
                 <div>
-                  <p className="font-black text-white text-base tracking-wide">BTC ↔ USDT</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-black text-white text-base tracking-wide">BTC ↔ USDT</p>
+                    <WalletSwitcher activeCoin={activeCoin} onSelect={setActiveCoin} dark />
+                  </div>
                   <p className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.55)' }}>Instant swap · 1% fee · No blockchain delay</p>
                 </div>
               </div>
@@ -3369,7 +3510,33 @@ export default function WalletPage({ user }) {
       {showSend && <WithdrawModal balance={availableBal} btcPrice={btcPrice} onClose={() => setShowSend(false)} onSend={sendBitcoin} kycStatus={userVerif} />}
       {showUsdtSend && <UsdtWithdrawModal balance={usdtData?.balance_usdt || 0} onClose={() => setShowUsdtSend(false)} onSend={sendUsdt} kycStatus={userVerif} />}
       {showUsdtInternal && <UsdtInternalTransferModal balance={usdtData?.balance_usdt || 0} onClose={() => setShowUsdtInternal(false)} onTransfer={doUsdtInternalTransfer} />}
-      {showRecv && <ReceiveModal address={walletData?.address} network={network} onClose={() => setShowRecv(false)} />}
+      {showRecv && (
+        <ReceiveModal
+          address={walletData?.address}
+          network={network}
+          onClose={() => setShowRecv(false)}
+          onGenerate={generateAddress}
+          checking={checking}
+          onCheckDeposits={checkDeposit}
+        />
+      )}
+      {showUsdtRecv && (
+        <UsdtReceiveModal
+          address={usdtData?.tron_address}
+          onClose={() => setShowUsdtRecv(false)}
+          checking={checkingUsdt}
+          scanCooldown={scanCooldown}
+          onCheckDeposits={checkUsdtDeposit}
+        />
+      )}
+      {assetPicker && (
+        <AssetPickerSheet
+          title={assetPicker.type === 'send' ? 'Send' : assetPicker.type === 'receive' ? 'Deposit' : 'Transfer'}
+          subtitle="Choose an asset to continue"
+          onPick={(asset) => openAssetModal(assetPicker.type, asset)}
+          onClose={() => setAssetPicker(null)}
+        />
+      )}
       {showInternal && (
         <InternalTransferModal
           balance={availableBal}
