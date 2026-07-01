@@ -145,17 +145,24 @@ class TradeEscrowService {
   }
 
   // ── Helper: log trade event to wallet_transactions ─────────────────────────
-  async logTransaction(userId, type, amountBtc, txHash, notes) {
+  // currency defaults to 'BTC' for all existing callers — pass 'USDT' for USDT trades
+  async logTransaction(userId, type, amount, txHash, notes, currency = 'BTC') {
     try {
-      await supabaseAdmin.from('wallet_transactions').insert({
+      const row = {
         user_id:    userId,
         type,
-        amount_btc: amountBtc,
         status:     'CONFIRMED',
         tx_hash:    txHash || null,
         notes:      notes  || null,
+        currency,
         created_at: new Date().toISOString(),
-      });
+      };
+      if (currency === 'USDT') {
+        row.amount_usdt = amount;
+      } else {
+        row.amount_btc = amount;
+      }
+      await supabaseAdmin.from('wallet_transactions').insert(row);
     } catch (e) {
       console.error('[Escrow] Log transaction error:', e.message);
     }
@@ -167,116 +174,131 @@ class TradeEscrowService {
   // Deducts from seller's PRAQEN wallet balance
   // Generates unique escrow address for this trade
   // ============================================================
-  async lockFundsInEscrow(tradeId, btcProviderId, amountBtc, timeLimitMins = 30) {
-    console.log(`\n🔒 lockFundsInEscrow — Trade: ${tradeId.slice(0,8)}, BTC Provider: ${btcProviderId.slice(0,8)}, Amount: ${amountBtc} BTC`);
+  // currency = 'BTC' (default) or 'USDT'
+  async lockFundsInEscrow(tradeId, btcProviderId, amount, timeLimitMins = 30, currency = 'BTC') {
+    const isUsdt = currency === 'USDT';
+    console.log(`\n🔒 lockFundsInEscrow — Trade: ${tradeId.slice(0,8)}, Provider: ${btcProviderId.slice(0,8)}, Amount: ${amount} ${currency}`);
 
-    const amount = parseFloat(amountBtc);
-    if (!amount || amount <= 0) throw new Error('Invalid escrow amount');
+    const parsedAmount = parseFloat(amount);
+    if (!parsedAmount || parsedAmount <= 0) throw new Error('Invalid escrow amount');
 
-    // Guarantee wallet rows exist for provider before touching their balance
     await ensureWalletExists(btcProviderId);
 
-    // ── 1. Get BTC provider's balance from wallets table (single source of truth) ──
+    // ── 1. Get provider balance ────────────────────────────────────────────
+    const balField    = isUsdt ? 'balance_usdt'        : 'balance_btc';
+    const lockedField = isUsdt ? 'locked_balance_usdt' : 'locked_balance_btc';
+
     const { data: walletRow, error: walletErr } = await supabaseAdmin
       .from('wallets')
-      .select('balance_btc, locked_balance_btc')
+      .select(`${balField}, ${lockedField}`)
       .eq('user_id', btcProviderId)
       .single();
 
     if (walletErr || !walletRow) {
-      throw new Error(`Wallet not found for BTC provider ${btcProviderId.slice(0,8)}`);
+      throw new Error(`Wallet not found for provider ${btcProviderId.slice(0,8)}`);
     }
 
-    const currentBalance = parseFloat(walletRow.balance_btc || 0);
-
-    if (currentBalance < amount) {
+    const currentBalance = parseFloat(walletRow[balField] || 0);
+    if (currentBalance < parsedAmount) {
       throw new Error(
-        `Insufficient balance. Provider has ${currentBalance.toFixed(8)} BTC, needs ${amount.toFixed(8)} BTC`
+        `Insufficient ${currency} balance. Provider has ${currentBalance.toFixed(isUsdt ? 2 : 8)} ${currency}, needs ${parsedAmount.toFixed(isUsdt ? 2 : 8)} ${currency}`
       );
     }
 
-    // ── 2. Generate unique escrow address for this trade ───────────────────
-    const escrowData    = hdWallet.generateEscrowAddress(tradeId);
+    // ── 2. Generate escrow address ─────────────────────────────────────────
+    const escrowData    = isUsdt
+      ? require('./tronWalletService').generateEscrowAddress(tradeId)
+      : hdWallet.generateEscrowAddress(tradeId);
     const escrowAddress = escrowData.address;
-    const feeBtc        = parseFloat((amount * this.feeRate).toFixed(8));
+    const feeAmount     = parseFloat((parsedAmount * this.feeRate).toFixed(isUsdt ? 6 : 8));
 
     console.log(`   Escrow address: ${escrowAddress}`);
-    console.log(`   Fee (1%):       ${feeBtc} BTC`);
+    console.log(`   Fee (1%):       ${feeAmount} ${currency}`);
 
-    // ── 3. Deduct trade amount from available balance, add to locked ─────────
-    const newAvailable = parseFloat((currentBalance - amount).toFixed(8));
-    const newLocked    = parseFloat((parseFloat(walletRow.locked_balance_btc || 0) + amount).toFixed(8));
+    // ── 3. Deduct from available, add to locked ────────────────────────────
+    const newAvailable = parseFloat((currentBalance - parsedAmount).toFixed(isUsdt ? 6 : 8));
+    const newLocked    = parseFloat((parseFloat(walletRow[lockedField] || 0) + parsedAmount).toFixed(isUsdt ? 6 : 8));
+
+    const updateFields = {
+      [balField]:    newAvailable,
+      [lockedField]: newLocked,
+      updated_at:    new Date().toISOString(),
+    };
 
     const { error: deductErr } = await supabaseAdmin
-      .from('wallets')
-      .update({ balance_btc: newAvailable, locked_balance_btc: newLocked, updated_at: new Date().toISOString() })
-      .eq('user_id', btcProviderId);
-
+      .from('wallets').update(updateFields).eq('user_id', btcProviderId);
     if (deductErr) throw new Error(`Failed to lock funds: ${deductErr.message}`);
 
-    // ── 4. Generate deterministic lock reference ────────────────────────────
+    // ── 4. Deterministic lock reference ───────────────────────────────────
     const crypto = require('crypto');
     const lockTxHash = 'ESCROW_LOCK_' + crypto
       .createHash('sha256')
-      .update(`${tradeId}:${btcProviderId}:${amount}:${Date.now()}`)
-      .digest('hex')
-      .slice(0, 32)
-      .toUpperCase();
+      .update(`${tradeId}:${btcProviderId}:${parsedAmount}:${Date.now()}`)
+      .digest('hex').slice(0, 32).toUpperCase();
 
     console.log(`🔒 Escrow lock reference: ${lockTxHash}`);
 
-    // ── 5. Create escrow_locks record ──────────────────────────────────────
-    const { error: lockErr } = await supabaseAdmin
-      .from('escrow_locks')
-      .insert({
-        trade_id:       tradeId,
-        seller_id:      btcProviderId,  // field name in DB; holds whoever provided BTC
-        amount_btc:     amount,
-        escrow_address: escrowAddress,
-        tx_hash:        lockTxHash,
-        status:         'LOCKED',
-        locked_at:      new Date().toISOString(),
-      });
+    // ── 5. Create escrow_locks record ─────────────────────────────────────
+    const escrowRow = {
+      trade_id:       tradeId,
+      seller_id:      btcProviderId,
+      escrow_address: escrowAddress,
+      tx_hash:        lockTxHash,
+      status:         'LOCKED',
+      currency,
+      locked_at:      new Date().toISOString(),
+    };
+    if (isUsdt) {
+      escrowRow.amount_usdt = parsedAmount;
+    } else {
+      escrowRow.amount_btc  = parsedAmount;
+    }
+
+    const { error: lockErr } = await supabaseAdmin.from('escrow_locks').insert(escrowRow);
 
     if (lockErr) {
-      // Revert wallets table back to pre-lock values
+      // Revert wallet changes on escrow_locks failure
       await supabaseAdmin.from('wallets')
         .update({
-          balance_btc:        currentBalance,
-          locked_balance_btc: parseFloat(walletRow.locked_balance_btc || 0),
-          updated_at:         new Date().toISOString(),
+          [balField]:    currentBalance,
+          [lockedField]: parseFloat(walletRow[lockedField] || 0),
+          updated_at:    new Date().toISOString(),
         })
         .eq('user_id', btcProviderId);
       throw new Error(`Failed to create escrow record: ${lockErr.message}`);
     }
 
-    // ── 6. Update trade with escrow details ────────────────────────────────
-    const { error: tradeUpdateErr } = await supabaseAdmin
-      .from('trades')
-      .update({
-        status:                'FUNDS_LOCKED',
-        escrow_wallet_address: escrowAddress,
-        seller_btc_txhash:     lockTxHash,
-        escrow_amount:         amount,
-        platform_fee_btc:      feeBtc,
-        escrow_locked_at:      new Date().toISOString(),
-        expires_at:            new Date(Date.now() + timeLimitMins * 60 * 1000).toISOString(),
-      })
-      .eq('id', tradeId);
+    // ── 6. Update trade ────────────────────────────────────────────────────
+    const tradeUpdate = {
+      status:                'FUNDS_LOCKED',
+      escrow_wallet_address: escrowAddress,
+      seller_btc_txhash:     lockTxHash,
+      escrow_amount:         parsedAmount,
+      escrow_locked_at:      new Date().toISOString(),
+      expires_at:            new Date(Date.now() + timeLimitMins * 60 * 1000).toISOString(),
+      currency,
+    };
+    if (isUsdt) {
+      tradeUpdate.platform_fee_usdt = feeAmount;
+    } else {
+      tradeUpdate.platform_fee_btc  = feeAmount;
+    }
 
+    const { error: tradeUpdateErr } = await supabaseAdmin
+      .from('trades').update(tradeUpdate).eq('id', tradeId);
     if (tradeUpdateErr) throw new Error(`Failed to update trade: ${tradeUpdateErr.message}`);
 
-    // ── 7. Log the lock ────────────────────────────────────────────────────
-    await this.logTransaction(btcProviderId, 'ESCROW_LOCK', amount, lockTxHash,
-      `Funds locked for trade #${tradeId.slice(0,8)}`);
+    // ── 7. Audit log ───────────────────────────────────────────────────────
+    await this.logTransaction(
+      btcProviderId, 'ESCROW_LOCK', parsedAmount, lockTxHash,
+      `Funds locked for trade #${tradeId.slice(0,8)}`, currency
+    );
 
-    console.log(`✅ Funds locked — ${amount} BTC from provider ${btcProviderId.slice(0,8)}`);
+    console.log(`✅ Funds locked — ${parsedAmount} ${currency} from provider ${btcProviderId.slice(0,8)}`);
 
-    // Fire-and-forget: push new_trade alert to the seller so they know to respond
     supabaseAdmin.from('trades')
-      .select('seller_id, trade_ref, amount_btc')
-      .eq('id', tradeId)
-      .maybeSingle()
+      .select('seller_id, trade_ref, amount_btc, amount_usdt')
+      .eq('id', tradeId).maybeSingle()
       .then(({ data: t }) => {
         if (t?.seller_id) sendTradeAlert(t.seller_id, t, 'new_trade').catch(() => {});
       }).catch(() => {});
@@ -285,8 +307,9 @@ class TradeEscrowService {
       success:      true,
       escrowAddress,
       lockTxHash,
-      amountLocked: amount,
-      feeBtc,
+      amountLocked: parsedAmount,
+      currency,
+      feeAmount,
       newBalance:   newAvailable,
       expiresAt:    new Date(Date.now() + timeLimitMins * 60 * 1000).toISOString(),
     };
@@ -436,12 +459,18 @@ class TradeEscrowService {
         ensureWalletExists(btcProviderId),
     ]);
 
-    const amount      = parseFloat(tradeData.amount_btc);
-    const feeRate     = isGiftCardTrade ? 0.02 : 0.01;
-    const buyerGets   = parseFloat((amount * (1 - feeRate)).toFixed(8));
-    const platformFee = parseFloat((amount * feeRate).toFixed(8));
+    // Determine trade currency (default BTC for backwards compatibility)
+    const tradeCurrency = (tradeData.currency || 'BTC').toUpperCase();
+    const isUsdt        = tradeCurrency === 'USDT';
 
-    console.log(`💰 Releasing ${buyerGets} BTC → receiver: ${btcReceiverId.slice(0, 8)}`);
+    const amount      = isUsdt
+      ? parseFloat(tradeData.amount_usdt || tradeData.escrow_amount || 0)
+      : parseFloat(tradeData.amount_btc);
+    const feeRate     = isGiftCardTrade ? 0.02 : 0.01;
+    const buyerGets   = parseFloat((amount * (1 - feeRate)).toFixed(isUsdt ? 6 : 8));
+    const platformFee = parseFloat((amount * feeRate).toFixed(isUsdt ? 6 : 8));
+
+    console.log(`💰 Releasing ${buyerGets} ${tradeCurrency} → receiver: ${btcReceiverId.slice(0, 8)}`);
 
     const crypto = require('crypto');
     const releaseTxHash = 'ESCROW_RELEASE_' + crypto
@@ -482,119 +511,129 @@ class TradeEscrowService {
         if (resetErr) throw new Error(`Failed to reset stuck escrow lock: ${resetErr.message}`);
     }
 
-    // ── Snapshot BOTH buyer AND company wallet BEFORE RPC ─────────────────────
+    // ── Field names depend on currency ────────────────────────────────────────
+    const balField    = isUsdt ? 'balance_usdt'        : 'balance_btc';
+    const lockedField = isUsdt ? 'locked_balance_usdt' : 'locked_balance_btc';
+    const decimals    = isUsdt ? 6 : 8;
+    const symbol      = isUsdt ? '$' : '₿';
+
+    // ── Snapshot BOTH receiver AND company wallet BEFORE credits ──────────────
     const [{ data: receiverBefore }, { data: companyBefore }] = await Promise.all([
-        supabaseAdmin.from('wallets').select('balance_btc').eq('user_id', btcReceiverId).maybeSingle(),
-        supabaseAdmin.from('wallets').select('balance_btc').eq('user_id', COMPANY_WALLET_ID).maybeSingle(),
+        supabaseAdmin.from('wallets').select(balField).eq('user_id', btcReceiverId).maybeSingle(),
+        supabaseAdmin.from('wallets').select(balField).eq('user_id', COMPANY_WALLET_ID).maybeSingle(),
     ]);
-    const receiverBalanceBefore = parseFloat(receiverBefore?.balance_btc || 0);
-    const companyBalanceBefore  = parseFloat(companyBefore?.balance_btc  || 0);
+    const receiverBalanceBefore = parseFloat(receiverBefore?.[balField] || 0);
+    const companyBalanceBefore  = parseFloat(companyBefore?.[balField]  || 0);
 
-    // ── ONE atomic DB call: credit receiver + fee + mark escrow released + complete trade ──
-    // praqen_release_escrow() runs as a single PostgreSQL transaction.
-    // If ANY step fails, ALL steps roll back — tables can never go out of sync.
-    const buyerGetsUsd = parseFloat(((parseFloat(tradeData.amount_usd || 0)) * (1 - feeRate)).toFixed(2));
-    const { error: releaseErr } = await supabaseAdmin.rpc('praqen_release_escrow', {
-      p_trade_id:    tradeId,
-      p_receiver_id: btcReceiverId,
-      p_company_id:  COMPANY_WALLET_ID,
-      p_amount_btc:  amount,
-      p_fee_btc:     platformFee,
-      p_amount_usd:  buyerGetsUsd,
-      p_tx_hash:     releaseTxHash,
-    });
+    if (isUsdt) {
+      // ── USDT: skip the BTC-only RPC, apply credits directly ─────────────────
+      const newReceiverUsdt = parseFloat((receiverBalanceBefore + buyerGets).toFixed(decimals));
+      const { error: creditErr } = await supabaseAdmin
+        .from('wallets')
+        .update({ [balField]: newReceiverUsdt, updated_at: new Date().toISOString() })
+        .eq('user_id', btcReceiverId);
+      if (creditErr) throw new Error(`USDT receiver credit failed: ${creditErr.message}`);
 
-    if (releaseErr) throw new Error(`Atomic escrow release failed: ${releaseErr.message}`);
+      // Fee to company wallet
+      const newCompanyUsdt = parseFloat((companyBalanceBefore + platformFee).toFixed(decimals));
+      await supabaseAdmin.from('wallets')
+        .update({ [balField]: newCompanyUsdt, updated_at: new Date().toISOString() })
+        .eq('user_id', COMPANY_WALLET_ID);
 
-    // ── Ensure buyer's wallets row is credited ─────────────────────────────────
-    // The RPC may UPDATE wallets WHERE user_id = receiver, but if the buyer has no
-    // row yet (first-time buyer, never had BTC), the UPDATE silently affects 0 rows.
-    // We detect this by comparing balance before vs after, then apply a manual UPSERT.
-    const { data: receiverAfter } = await supabaseAdmin
-        .from('wallets').select('balance_btc').eq('user_id', btcReceiverId).maybeSingle();
-    const receiverBalanceAfter = parseFloat(receiverAfter?.balance_btc || 0);
-    const rpcCredited = receiverBalanceAfter - receiverBalanceBefore;
-
-    if (rpcCredited < buyerGets * 0.99) {
-        // RPC did not credit the wallets table (or credited partially) — apply manually
-        console.warn(`[Escrow] RPC credited ₿${rpcCredited.toFixed(8)} to buyer wallets table (expected ₿${buyerGets.toFixed(8)}) — applying manual credit`);
-        const correctedBalance = parseFloat((receiverBalanceAfter + (buyerGets - rpcCredited)).toFixed(8));
-        const { error: manualCreditErr } = await supabaseAdmin
-            .from('wallets')
-            .update({
-                balance_btc:        correctedBalance,
-                locked_balance_btc: 0,
-                updated_at:         new Date().toISOString(),
-            })
-            .eq('user_id', btcReceiverId);
-        if (manualCreditErr) {
-            console.error(`[Escrow] Manual buyer credit failed: ${manualCreditErr.message}`);
-        } else {
-            console.log(`[Escrow] ✅ Manual credit applied: ₿${correctedBalance.toFixed(8)} → buyer ${btcReceiverId.slice(0,8)}`);
-        }
-    }
-
-    // ── Clear locked_balance_btc for the BTC provider (RPC only credits buyer) ──
-    const { data: providerWallet } = await supabaseAdmin
-        .from('wallets').select('locked_balance_btc').eq('user_id', btcProviderId).maybeSingle();
-    const clearedLocked = parseFloat(
-        Math.max(0, parseFloat(providerWallet?.locked_balance_btc || 0) - amount).toFixed(8)
-    );
-    await supabaseAdmin.from('wallets')
-        .update({ locked_balance_btc: clearedLocked, updated_at: new Date().toISOString() })
-        .eq('user_id', btcProviderId);
-
-    // Fetch receiver's final balance for audit log + return value
-    const { data: receiverWallet } = await supabaseAdmin
-        .from('wallets').select('balance_btc').eq('user_id', btcReceiverId).maybeSingle();
-    const newReceiverBalance = parseFloat(receiverWallet?.balance_btc || 0);
-
-    // Trade and escrow are now updated inside the DB function — skip redundant updates.
-    const { error: tradeUpdateError } = await supabaseAdmin
-        .from('trades')
-        .update({ buyer_btc_txhash: releaseTxHash })
+      // Mark escrow released + trade completed
+      await supabaseAdmin.from('escrow_locks')
+        .update({ status: 'RELEASED', released_at: new Date().toISOString() })
+        .eq('trade_id', tradeId);
+      await supabaseAdmin.from('trades')
+        .update({ status: 'COMPLETED', buyer_btc_txhash: releaseTxHash })
         .eq('id', tradeId);
 
-    if (tradeUpdateError) {
-        console.warn('⚠️  Trade status update failed (DB trigger issue):', tradeUpdateError.message);
+      console.log(`[Escrow] ✅ USDT credited: ${symbol}${buyerGets.toFixed(decimals)} → receiver ${btcReceiverId.slice(0,8)}`);
+
+    } else {
+      // ── BTC: use existing atomic RPC path ────────────────────────────────────
+      const buyerGetsUsd = parseFloat(((parseFloat(tradeData.amount_usd || 0)) * (1 - feeRate)).toFixed(2));
+      const { error: releaseErr } = await supabaseAdmin.rpc('praqen_release_escrow', {
+        p_trade_id:    tradeId,
+        p_receiver_id: btcReceiverId,
+        p_company_id:  COMPANY_WALLET_ID,
+        p_amount_btc:  amount,
+        p_fee_btc:     platformFee,
+        p_amount_usd:  buyerGetsUsd,
+        p_tx_hash:     releaseTxHash,
+      });
+      if (releaseErr) throw new Error(`Atomic escrow release failed: ${releaseErr.message}`);
+
+      // Guard: verify RPC actually credited balance_btc (first-time buyers may have no row)
+      const { data: receiverAfter } = await supabaseAdmin
+          .from('wallets').select('balance_btc').eq('user_id', btcReceiverId).maybeSingle();
+      const receiverBalanceAfter = parseFloat(receiverAfter?.balance_btc || 0);
+      const rpcCredited = receiverBalanceAfter - receiverBalanceBefore;
+
+      if (rpcCredited < buyerGets * 0.99) {
+          console.warn(`[Escrow] RPC credited ₿${rpcCredited.toFixed(8)} (expected ₿${buyerGets.toFixed(8)}) — applying manual credit`);
+          const correctedBalance = parseFloat((receiverBalanceAfter + (buyerGets - rpcCredited)).toFixed(8));
+          const { error: manualCreditErr } = await supabaseAdmin
+              .from('wallets')
+              .update({ balance_btc: correctedBalance, locked_balance_btc: 0, updated_at: new Date().toISOString() })
+              .eq('user_id', btcReceiverId);
+          if (manualCreditErr) console.error(`[Escrow] Manual buyer credit failed: ${manualCreditErr.message}`);
+          else console.log(`[Escrow] ✅ Manual credit: ₿${correctedBalance.toFixed(8)} → buyer ${btcReceiverId.slice(0,8)}`);
+      }
+
+      await supabaseAdmin.from('trades')
+          .update({ buyer_btc_txhash: releaseTxHash })
+          .eq('id', tradeId);
     }
 
-    // ── Collect platform fee — exactly once, verified against pre-RPC snapshot ──
-    try {
+    // ── Clear locked balance for the BTC/USDT provider ────────────────────────
+    const { data: providerWallet } = await supabaseAdmin
+        .from('wallets').select(lockedField).eq('user_id', btcProviderId).maybeSingle();
+    const clearedLocked = parseFloat(
+        Math.max(0, parseFloat(providerWallet?.[lockedField] || 0) - amount).toFixed(decimals)
+    );
+    await supabaseAdmin.from('wallets')
+        .update({ [lockedField]: clearedLocked, updated_at: new Date().toISOString() })
+        .eq('user_id', btcProviderId);
+
+    // Fetch receiver's final balance for return value
+    const { data: receiverFinalWallet } = await supabaseAdmin
+        .from('wallets').select(balField).eq('user_id', btcReceiverId).maybeSingle();
+    const newReceiverBalance = parseFloat(receiverFinalWallet?.[balField] || 0);
+
+    // ── Collect platform fee (BTC only — USDT fee already credited above) ─────
+    if (!isUsdt) {
+      try {
         console.log(`💸 Collecting ${(feeRate * 100)}% fee: ₿${platformFee.toFixed(8)} → company wallet`);
 
-        // Check if the RPC already credited the company wallet (it has p_company_id + p_fee_btc)
         const { data: companyAfterRpc } = await supabaseAdmin
             .from('wallets').select('balance_btc').eq('user_id', COMPANY_WALLET_ID).maybeSingle();
         const companyBalanceAfterRpc = parseFloat(companyAfterRpc?.balance_btc || 0);
         const rpcCreditedCompany = (companyBalanceAfterRpc - companyBalanceBefore) >= platformFee * 0.99;
 
         if (rpcCreditedCompany) {
-            // RPC already credited — skip JS credit to prevent double-fee
             console.log(`✅ Fee already credited by RPC: ₿${platformFee.toFixed(8)} (company: ${companyBalanceAfterRpc.toFixed(8)} BTC)`);
         } else {
-            // RPC did not credit company wallet — apply manually now
             const newCompanyBalance = parseFloat((companyBalanceAfterRpc + platformFee).toFixed(8));
             const { error: feeUpdateErr } = await supabaseAdmin
                 .from('wallets')
                 .update({ balance_btc: newCompanyBalance, updated_at: new Date().toISOString() })
                 .eq('user_id', COMPANY_WALLET_ID);
             if (feeUpdateErr) throw new Error(`Company wallet update failed: ${feeUpdateErr.message}`);
-            console.log(`✅ Fee manually credited: ₿${platformFee.toFixed(8)} → company (new balance: ${newCompanyBalance.toFixed(8)} BTC)`);
+            console.log(`✅ Fee manually credited: ₿${platformFee.toFixed(8)} → company`);
         }
 
-        // Audit trail — use _FEE suffix so tx_hash never collides with ESCROW_RELEASE log
         await supabaseAdmin.from('wallet_transactions').insert({
             user_id:    COMPANY_WALLET_ID,
             type:       'FEE',
             amount_btc: platformFee,
+            currency:   'BTC',
             status:     'CONFIRMED',
             tx_hash:    `${releaseTxHash}_FEE`,
             notes:      `Platform fee from trade ${tradeId.slice(0, 8).toUpperCase()} — ${(feeRate * 100)}% of ₿${amount.toFixed(8)}`,
             created_at: new Date().toISOString(),
         }).then(() => {}).catch(e => console.warn('[Escrow] FEE tx log failed (non-critical):', e.message));
 
-        // Ensure company_profits record exists (RPC may have inserted it; INSERT ON CONFLICT skips duplicate)
         await supabaseAdmin.from('company_profits').upsert({
             trade_id:     tradeId,
             profit_btc:   platformFee,
@@ -603,21 +642,44 @@ class TradeEscrowService {
             collected_at: new Date().toISOString(),
         }, { onConflict: 'trade_id', ignoreDuplicates: true }).then(() => {}).catch(() => {});
 
-        // Mark fee as collected on the trade record
         await supabaseAdmin.from('trades')
             .update({ fee_status: 'COLLECTED', fee_collected_at: new Date().toISOString(), platform_fee_btc: platformFee })
             .eq('id', tradeId);
 
         console.log(`✅ Fee CONFIRMED: ₿${platformFee.toFixed(8)} (${(feeRate * 100)}%) from trade ${tradeId.slice(0, 8).toUpperCase()}`);
 
-    } catch (feeErr) {
-        // Fee failed — log clearly so admin can see it and manually collect
-        console.error(`🚨 [Escrow] FEE COLLECTION FAILED for trade ${tradeId.slice(0, 8).toUpperCase()} — ₿${platformFee.toFixed(8)} NOT COLLECTED:`, feeErr.message);
-        // Mark on trade so admin can identify and recover
-        await supabaseAdmin.from('trades')
-            .update({ fee_status: 'FAILED', platform_fee_btc: platformFee })
-            .eq('id', tradeId)
-            .catch(() => {});
+      } catch (feeErr) {
+          console.error(`🚨 [Escrow] FEE COLLECTION FAILED — ₿${platformFee.toFixed(8)} NOT COLLECTED:`, feeErr.message);
+          await supabaseAdmin.from('trades')
+              .update({ fee_status: 'FAILED', platform_fee_btc: platformFee })
+              .eq('id', tradeId).catch(() => {});
+      }
+    } else {
+      // USDT fee audit trail
+      await supabaseAdmin.from('wallet_transactions').insert({
+          user_id:     COMPANY_WALLET_ID,
+          type:        'FEE',
+          amount_usdt: platformFee,
+          currency:    'USDT',
+          status:      'CONFIRMED',
+          tx_hash:     `${releaseTxHash}_FEE`,
+          notes:       `USDT fee from trade ${tradeId.slice(0,8).toUpperCase()} — ${(feeRate*100)}% of $${amount.toFixed(2)}`,
+          created_at:  new Date().toISOString(),
+      }).then(() => {}).catch(() => {});
+
+      await supabaseAdmin.from('company_profits').upsert({
+          trade_id:     tradeId,
+          profit_usdt:  platformFee,
+          profit_usd:   platformFee,
+          status:       'COLLECTED',
+          collected_at: new Date().toISOString(),
+      }, { onConflict: 'trade_id', ignoreDuplicates: true }).then(() => {}).catch(() => {});
+
+      await supabaseAdmin.from('trades')
+          .update({ fee_status: 'COLLECTED', fee_collected_at: new Date().toISOString(), platform_fee_usdt: platformFee })
+          .eq('id', tradeId);
+
+      console.log(`✅ USDT Fee CONFIRMED: $${platformFee.toFixed(2)} (${(feeRate*100)}%) from trade ${tradeId.slice(0,8).toUpperCase()}`);
     }
 
     // ── Re-evaluate offer status for the BTC provider after balance change ──
@@ -630,13 +692,14 @@ class TradeEscrowService {
     // ── Log transaction for receiver ───────────────────────────────────────
     await this.logTransaction(
         btcReceiverId, 'ESCROW_RELEASE', buyerGets, releaseTxHash,
-        `Trade #${tradeId.slice(0, 8)} completed — ₿${buyerGets.toFixed(8)} received`
+        `Trade #${tradeId.slice(0, 8)} completed — ${symbol}${buyerGets.toFixed(decimals)} received`,
+        tradeCurrency
     );
 
     // Audit log (fire-and-forget)
     supabaseAdmin.from('balance_audit').insert({
       user_id:     btcReceiverId,
-      change_btc:  buyerGets,
+      change_btc:  isUsdt ? 0 : buyerGets,
       new_balance: newReceiverBalance,
       reason:      'ESCROW_RELEASE',
       trade_id:    tradeId,
@@ -644,27 +707,31 @@ class TradeEscrowService {
     }).then(() => {}).catch(() => {});
 
     // ── Notify both parties ────────────────────────────────────────────────
+    const amtDisplay = isUsdt ? `$${buyerGets.toFixed(2)} USDT` : `₿${buyerGets.toFixed(8)}`;
     await this.notify(
-        btcReceiverId, 'trade', '🎉 Bitcoin Released!',
-        `Trade #${tradeId.slice(0, 8).toUpperCase()} complete! ₿${buyerGets.toFixed(8)} added to your wallet.`,
+        btcReceiverId, 'trade', '🎉 Funds Released!',
+        `Trade #${tradeId.slice(0, 8).toUpperCase()} complete! ${amtDisplay} added to your wallet.`,
         `/trade/${tradeId}`
     );
     await this.notify(
         releaserId, 'trade', '✅ Trade Complete',
-        `Trade #${tradeId.slice(0, 8).toUpperCase()} completed successfully. ₿${buyerGets.toFixed(8)} released to buyer.`,
+        `Trade #${tradeId.slice(0, 8).toUpperCase()} completed successfully. ${amtDisplay} released to buyer.`,
         `/trade/${tradeId}`
     );
     sendTradeAlert(btcReceiverId, tradeData, 'btc_released').catch(() => {});
     sendTradeAlert(releaserId, tradeData, 'btc_released').catch(() => {});
 
-    console.log(`✅ Trade ${tradeId.slice(0, 8)} COMPLETED — receiver got ₿${buyerGets} | fee ₿${platformFee} → company`);
+    console.log(`✅ Trade ${tradeId.slice(0, 8)} COMPLETED — receiver got ${amtDisplay} | fee ${symbol}${platformFee.toFixed(decimals)} → company`);
 
     return {
         success:          true,
         txHash:           releaseTxHash,
-        btcReceived:      buyerGets,
+        amountReceived:   buyerGets,
+        currency:         tradeCurrency,
         platformFee:      platformFee,
         receiverBalance:  newReceiverBalance,
+        // keep btcReceived for backwards-compat with existing frontend checks
+        btcReceived:      isUsdt ? 0 : buyerGets,
     };
   }
 
@@ -728,8 +795,12 @@ class TradeEscrowService {
     //   • Standard BTC trades (SELL / BUY listing):  btcProvider = trade.seller_id
     //   • Gift card trades (BUY_GIFT_CARD / SELL_GIFT_CARD): btcProvider = trade.buyer_id
     //     because for gift card trades the *buyer* role holds the BTC, not the seller.
-    const esc          = (await supabaseAdmin.from('escrow_locks').select('*').eq('trade_id', tradeId).maybeSingle()).data;
-    const refundAmount = parseFloat(esc?.amount_btc || trade.escrow_amount || trade.amount_btc || 0);
+    const esc            = (await supabaseAdmin.from('escrow_locks').select('*').eq('trade_id', tradeId).maybeSingle()).data;
+    const escCurrency    = (esc?.currency || trade.currency || 'BTC').toUpperCase();
+    const isUsdtRefund   = escCurrency === 'USDT';
+    const refundAmount   = isUsdtRefund
+      ? parseFloat(esc?.amount_usdt || trade.amount_usdt || trade.escrow_amount || 0)
+      : parseFloat(esc?.amount_btc  || trade.escrow_amount || trade.amount_btc  || 0);
 
     let fallbackBtcProvider = trade.seller_id;
     if (!esc?.seller_id && trade.listing_id) {
@@ -744,88 +815,91 @@ class TradeEscrowService {
 
     console.log(`[cancelTrade] refundAmount=₿${refundAmount} btcProvider=${btcProviderId?.slice(0,8)} escrow=${esc?.status || 'none'}`);
 
-    // ── 5. Refund the BTC provider ─────────────────────────────────────────────
+    // ── 5. Refund the provider (BTC or USDT) ─────────────────────────────────
     if (refundAmount > 0 && btcProviderId) {
       await ensureWalletExists(btcProviderId);
 
-      // Snapshot balance BEFORE RPC — same guard used in releaseBitcoinToBuyer.
-      // Lets us detect and fix the case where the RPC returns success but silently
-      // fails to update balance_btc (e.g. the wallets row is missing or the DB
-      // function has a bug). Without this check, funds disappear with no error.
-      const { data: providerBefore } = await supabaseAdmin
-        .from('wallets').select('balance_btc, locked_balance_btc').eq('user_id', btcProviderId).maybeSingle();
-      const balanceBefore = parseFloat(providerBefore?.balance_btc || 0);
+      const refundBalField    = isUsdtRefund ? 'balance_usdt'        : 'balance_btc';
+      const refundLockedField = isUsdtRefund ? 'locked_balance_usdt' : 'locked_balance_btc';
+      const refundDecimals    = isUsdtRefund ? 6 : 8;
+      const refundSymbol      = isUsdtRefund ? '$' : '₿';
 
-      const { error: refundErr } = await supabaseAdmin.rpc('praqen_refund_escrow', {
-        p_trade_id:    tradeId,
-        p_provider_id: btcProviderId,
-        p_amount_btc:  refundAmount,
-        p_reason:      reason || 'Trade cancelled',
-      });
-
-      if (refundErr) {
-        // RPC unavailable or threw — apply refund manually
-        console.warn(`[cancelTrade] praqen_refund_escrow RPC failed (${refundErr.message}) — applying manual refund`);
+      if (isUsdtRefund) {
+        // ── USDT refund: skip BTC-only RPC, apply directly ─────────────────
         const { data: pBal } = await supabaseAdmin
-          .from('wallets').select('balance_btc, locked_balance_btc').eq('user_id', btcProviderId).maybeSingle();
-        const manualAvail  = parseFloat((parseFloat(pBal?.balance_btc  || 0) + refundAmount).toFixed(8));
-        const manualLocked = parseFloat(Math.max(0, parseFloat(pBal?.locked_balance_btc || 0) - refundAmount).toFixed(8));
-        const { error: manualErr } = await supabaseAdmin
+          .from('wallets').select(`${refundBalField}, ${refundLockedField}`).eq('user_id', btcProviderId).maybeSingle();
+        const manualAvail  = parseFloat((parseFloat(pBal?.[refundBalField]  || 0) + refundAmount).toFixed(refundDecimals));
+        const manualLocked = parseFloat(Math.max(0, parseFloat(pBal?.[refundLockedField] || 0) - refundAmount).toFixed(refundDecimals));
+        const { error: refundErr } = await supabaseAdmin
           .from('wallets')
-          .update({
-            balance_btc:        manualAvail,
-            locked_balance_btc: manualLocked,
-            updated_at:         new Date().toISOString(),
-          })
+          .update({ [refundBalField]: manualAvail, [refundLockedField]: manualLocked, updated_at: new Date().toISOString() })
           .eq('user_id', btcProviderId);
-        if (manualErr) throw new Error(`Manual refund failed: ${manualErr.message}`);
-        console.log(`[cancelTrade] ✅ Manual refund applied: ₿${manualAvail.toFixed(8)} → provider ${btcProviderId.slice(0,8)}`);
+        if (refundErr) throw new Error(`USDT refund failed: ${refundErr.message}`);
+        console.log(`[cancelTrade] ✅ USDT refund: $${manualAvail.toFixed(refundDecimals)} USDT → provider ${btcProviderId.slice(0,8)}`);
 
       } else {
-        // RPC returned no error — now verify it actually updated balance_btc
-        const { data: providerAfter } = await supabaseAdmin
+        // ── BTC refund: use existing RPC with JS-side verification ─────────
+        const { data: providerBefore } = await supabaseAdmin
           .from('wallets').select('balance_btc, locked_balance_btc').eq('user_id', btcProviderId).maybeSingle();
-        const balanceAfter = parseFloat(providerAfter?.balance_btc || 0);
-        const rpcCredited  = balanceAfter - balanceBefore;
+        const balanceBefore = parseFloat(providerBefore?.balance_btc || 0);
 
-        if (rpcCredited < refundAmount * 0.99) {
-          // RPC succeeded but balance_btc was not actually updated — fix it manually
-          console.warn(`[cancelTrade] RPC credited ₿${rpcCredited.toFixed(8)} but expected ₿${refundAmount.toFixed(8)} — applying balance correction`);
-          const correctedBalance = parseFloat((balanceAfter + (refundAmount - rpcCredited)).toFixed(8));
-          const syncedLocked     = parseFloat(Math.max(0, parseFloat(providerAfter?.locked_balance_btc || 0) - refundAmount).toFixed(8));
-          const { error: fixErr } = await supabaseAdmin
-            .from('wallets')
-            .update({
-              balance_btc:        correctedBalance,
-              locked_balance_btc: syncedLocked,
-              updated_at:         new Date().toISOString(),
-            })
+        const { error: refundErr } = await supabaseAdmin.rpc('praqen_refund_escrow', {
+          p_trade_id:    tradeId,
+          p_provider_id: btcProviderId,
+          p_amount_btc:  refundAmount,
+          p_reason:      reason || 'Trade cancelled',
+        });
+
+        if (refundErr) {
+          console.warn(`[cancelTrade] praqen_refund_escrow RPC failed (${refundErr.message}) — applying manual refund`);
+          const { data: pBal } = await supabaseAdmin
+            .from('wallets').select('balance_btc, locked_balance_btc').eq('user_id', btcProviderId).maybeSingle();
+          const manualAvail  = parseFloat((parseFloat(pBal?.balance_btc  || 0) + refundAmount).toFixed(8));
+          const manualLocked = parseFloat(Math.max(0, parseFloat(pBal?.locked_balance_btc || 0) - refundAmount).toFixed(8));
+          const { error: manualErr } = await supabaseAdmin.from('wallets')
+            .update({ balance_btc: manualAvail, locked_balance_btc: manualLocked, updated_at: new Date().toISOString() })
             .eq('user_id', btcProviderId);
-          if (fixErr) throw new Error(`Balance correction after RPC mismatch failed: ${fixErr.message}`);
-          console.log(`[cancelTrade] ✅ Balance corrected: ₿${correctedBalance.toFixed(8)} → provider ${btcProviderId.slice(0,8)}`);
+          if (manualErr) throw new Error(`Manual refund failed: ${manualErr.message}`);
+          console.log(`[cancelTrade] ✅ Manual BTC refund: ₿${manualAvail.toFixed(8)} → provider ${btcProviderId.slice(0,8)}`);
+
         } else {
-          // RPC credited correctly — only sync locked_balance_btc
-          const syncedLocked = parseFloat(Math.max(0, parseFloat(providerAfter?.locked_balance_btc || 0) - refundAmount).toFixed(8));
-          await supabaseAdmin.from('wallets')
-            .update({ locked_balance_btc: syncedLocked, updated_at: new Date().toISOString() })
-            .eq('user_id', btcProviderId);
-          console.log(`[cancelTrade] ✅ RPC credited correctly: ₿${rpcCredited.toFixed(8)} → provider ${btcProviderId.slice(0,8)}`);
+          const { data: providerAfter } = await supabaseAdmin
+            .from('wallets').select('balance_btc, locked_balance_btc').eq('user_id', btcProviderId).maybeSingle();
+          const balanceAfter = parseFloat(providerAfter?.balance_btc || 0);
+          const rpcCredited  = balanceAfter - balanceBefore;
+
+          if (rpcCredited < refundAmount * 0.99) {
+            console.warn(`[cancelTrade] RPC credited ₿${rpcCredited.toFixed(8)} expected ₿${refundAmount.toFixed(8)} — correcting`);
+            const correctedBalance = parseFloat((balanceAfter + (refundAmount - rpcCredited)).toFixed(8));
+            const syncedLocked     = parseFloat(Math.max(0, parseFloat(providerAfter?.locked_balance_btc || 0) - refundAmount).toFixed(8));
+            const { error: fixErr } = await supabaseAdmin.from('wallets')
+              .update({ balance_btc: correctedBalance, locked_balance_btc: syncedLocked, updated_at: new Date().toISOString() })
+              .eq('user_id', btcProviderId);
+            if (fixErr) throw new Error(`Balance correction failed: ${fixErr.message}`);
+            console.log(`[cancelTrade] ✅ BTC balance corrected: ₿${correctedBalance.toFixed(8)} → provider ${btcProviderId.slice(0,8)}`);
+          } else {
+            const syncedLocked = parseFloat(Math.max(0, parseFloat(providerAfter?.locked_balance_btc || 0) - refundAmount).toFixed(8));
+            await supabaseAdmin.from('wallets')
+              .update({ locked_balance_btc: syncedLocked, updated_at: new Date().toISOString() })
+              .eq('user_id', btcProviderId);
+            console.log(`[cancelTrade] ✅ BTC RPC credited: ₿${rpcCredited.toFixed(8)} → provider ${btcProviderId.slice(0,8)}`);
+          }
         }
       }
 
-      // ── Log refund transaction (audit trail) ──────────────────────────────
+      // ── Audit log ─────────────────────────────────────────────────────────
       await this.logTransaction(
         btcProviderId, 'ESCROW_REFUND', refundAmount, null,
-        `Trade #${tradeId.slice(0,8)} cancelled — ₿${refundAmount.toFixed(8)} refunded`
+        `Trade #${tradeId.slice(0,8)} cancelled — ${refundSymbol}${refundAmount.toFixed(refundDecimals)} ${escCurrency} refunded`,
+        escCurrency
       );
 
-      // Balance audit (fire-and-forget — never blocks the refund)
-      supabaseAdmin.from('wallets').select('balance_btc').eq('user_id', btcProviderId).maybeSingle()
+      supabaseAdmin.from('wallets').select(refundBalField).eq('user_id', btcProviderId).maybeSingle()
         .then(({ data: final }) => {
           supabaseAdmin.from('balance_audit').insert({
             user_id:     btcProviderId,
-            change_btc:  refundAmount,
-            new_balance: parseFloat(final?.balance_btc || 0),
+            change_btc:  isUsdtRefund ? 0 : refundAmount,
+            new_balance: parseFloat(final?.[refundBalField] || 0),
             reason:      'ESCROW_REFUND',
             trade_id:    tradeId,
             created_at:  new Date().toISOString(),
@@ -835,11 +909,11 @@ class TradeEscrowService {
       sendSystemAlert(
         btcProviderId,
         '💸 Escrow Refunded',
-        `Trade #${tradeId.slice(0,8).toUpperCase()} cancelled — ${refundAmount.toFixed(8)} BTC returned to your wallet.`,
+        `Trade #${tradeId.slice(0,8).toUpperCase()} cancelled — ${refundSymbol}${refundAmount.toFixed(refundDecimals)} ${escCurrency} returned to your wallet.`,
         'https://praqen.com/wallet'
       ).catch(err => console.error('[Escrow] Refund push error:', err.message));
 
-      console.log(`[cancelTrade] ✅ Refund complete: ₿${refundAmount} → provider ${btcProviderId.slice(0,8)}`);
+      console.log(`[cancelTrade] ✅ Refund complete: ${refundSymbol}${refundAmount} ${escCurrency} → provider ${btcProviderId.slice(0,8)}`);
 
     } else {
       console.log(`[cancelTrade] No escrow funds to refund for trade ${tradeId.slice(0,8)}`);

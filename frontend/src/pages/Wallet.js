@@ -1212,6 +1212,852 @@ function InternalTransferModal({ balance, btcPrice, displayCurrency, fxRate, cur
   );
 }
 
+// ─── USDT Withdraw Modal ──────────────────────────────────────────────────────
+function UsdtWithdrawModal({ balance, onClose, onSend, kycStatus }) {
+  const [address,       setAddress]       = useState('');
+  const [amount,        setAmount]        = useState('');
+  const [inputMode,     setInputMode]     = useState('usdt'); // 'usdt' | 'usd'
+  const [usdInput,      setUsdInput]      = useState('');
+  const [confirm,       setConfirm]       = useState(false);
+  const [step,          setStep]          = useState('form');
+  const [codeInput,     setCodeInput]     = useState('');
+  const [sending2FA,    setSending2FA]    = useState(false);
+  const [sending,       setSending]       = useState(false);
+  const [sendError,     setSendError]     = useState('');
+
+  const FEE_FLAT    = 4.00;
+  const FEE_PERCENT = 0.04;
+  const MIN_SEND    = 5.00;
+
+  const calcFee = (amt) => amt <= 50
+    ? FEE_FLAT
+    : parseFloat((amt * FEE_PERCENT).toFixed(2));
+
+  const usdtAmt     = parseFloat(amount || 0);
+  const fee         = usdtAmt > 0 ? calcFee(usdtAmt) : 0;
+  const totalDeduct = usdtAmt > 0 ? parseFloat((usdtAmt + fee).toFixed(2)) : 0;
+  const bal         = parseFloat(balance || 0);
+  const feeLabel    = usdtAmt > 0 && usdtAmt <= 50
+    ? `₮${fee.toFixed(2)} flat fee`
+    : usdtAmt > 50
+    ? `₮${fee.toFixed(2)} (4%)`
+    : '';
+
+  // Calculate true max sendable so that amount + fee(amount) ≤ balance
+  const calcMax = (b) => {
+    if (b <= FEE_FLAT + MIN_SEND) return 0;
+    const tryFlat = parseFloat((b - FEE_FLAT).toFixed(2));
+    if (tryFlat > 0 && tryFlat <= 50 && tryFlat + FEE_FLAT <= b) return tryFlat;
+    const tryPct = parseFloat((b / (1 + FEE_PERCENT)).toFixed(2));
+    return tryPct >= MIN_SEND ? tryPct : 0;
+  };
+
+  const isValidTron = addr => /^T[A-Za-z1-9]{33}$/.test(addr.trim());
+  const addrOk      = isValidTron(address);
+  const hasEnough   = usdtAmt >= MIN_SEND && totalDeduct <= bal;
+  const valid       = addrOk && hasEnough;
+
+  const requestCode = async () => {
+    if (!valid) return;
+    setSending2FA(true);
+    try {
+      const t = localStorage.getItem('token');
+      await axios.post(`${API_URL}/auth/send-action-code`, { action: 'send_usdt' },
+        { headers: t ? { Authorization: `Bearer ${t}` } : {} });
+      setCodeInput(''); setStep('code');
+      toast.success('Security code sent to your email.', { autoClose: 5000 });
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Could not send security code.');
+    } finally { setSending2FA(false); }
+  };
+
+  const handleSend = async () => {
+    if (!codeInput || codeInput.length !== 6) { toast.error('Enter the 6-digit code from your email.'); return; }
+    setSending(true); setSendError('');
+    try {
+      await onSend(address.trim(), usdtAmt, codeInput);
+      toast.success('USDT sent! Transaction broadcast to Tron network.', { autoClose: 6000 });
+      onClose();
+    } catch (e) {
+      const msg = e?.response?.data?.error || 'Send failed. Your funds are safe — please try again.';
+      setSendError(msg);
+    } finally { setSending(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}>
+      <div className="bg-white w-full md:max-w-md rounded-t-3xl md:rounded-3xl overflow-hidden shadow-2xl"
+        style={{ marginBottom: 'calc(60px + env(safe-area-inset-bottom, 0px))' }}>
+        <div style={{ background: 'linear-gradient(135deg, #1B4332 0%, #2D6A4F 100%)', padding: '20px 20px 18px' }}>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl flex items-center justify-center"
+                style={{ background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', boxShadow: '0 4px 14px rgba(239,68,68,0.5)' }}>
+                <Send size={18} color="#fff" strokeWidth={2.2} />
+              </div>
+              <div>
+                <h2 className="font-black text-base text-white">Send USDT</h2>
+                <p className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>TRC-20 · Tron network · ~1 min</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}>
+              <X size={15} color="rgba(255,255,255,0.7)" />
+            </button>
+          </div>
+        </div>
+        <div className="p-5 overflow-y-auto space-y-4" style={{ maxHeight: '75vh' }}>
+
+          {/* ── KYC gate ── */}
+          {kycStatus && !(kycStatus.email && kycStatus.phone && kycStatus.kyc) ? (
+            <div className="space-y-4">
+              <div className="flex flex-col items-center text-center py-4">
+                <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-3"
+                  style={{ background: 'linear-gradient(135deg, #f59e0b22, #f59e0b11)', border: '1px solid #f59e0b30' }}>
+                  <Shield size={30} style={{ color: '#f59e0b' }} />
+                </div>
+                <h3 className="font-black text-base mb-1" style={{ color: '#1f2937' }}>Verification Required</h3>
+                <p className="text-sm" style={{ color: '#6b7280' }}>
+                  Complete all 3 steps to send USDT to an external wallet.
+                </p>
+              </div>
+              <div className="space-y-2">
+                {[
+                  { label: 'Email Verified',    done: kycStatus.email, step: 1 },
+                  { label: 'Phone Verified',    done: kycStatus.phone, step: 2 },
+                  { label: 'ID / KYC Verified', done: kycStatus.kyc,   step: 3 },
+                ].map(({ label, done, step: s }) => (
+                  <div key={s} className="flex items-center gap-3 p-3 rounded-2xl"
+                    style={{ backgroundColor: done ? '#10b98108' : '#f59e0b08', border: `1px solid ${done ? '#10b98130' : '#f59e0b30'}` }}>
+                    <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: done ? '#10b98120' : '#f59e0b20' }}>
+                      {done
+                        ? <CheckCircle size={15} style={{ color: '#10b981' }} />
+                        : <span className="text-xs font-black" style={{ color: '#f59e0b' }}>{s}</span>}
+                    </div>
+                    <p className="text-sm font-bold flex-1" style={{ color: done ? '#10b981' : '#374151' }}>{label}</p>
+                    {done
+                      ? <CheckCircle size={14} style={{ color: '#10b981' }} />
+                      : <span className="text-xs font-black px-2 py-0.5 rounded-full"
+                          style={{ backgroundColor: '#f59e0b20', color: '#f59e0b' }}>Pending</span>}
+                  </div>
+                ))}
+              </div>
+              <a href="/profile" onClick={onClose}
+                className="w-full py-3.5 rounded-2xl text-white font-black text-sm flex items-center justify-center gap-2 hover:opacity-90 transition"
+                style={{ background: 'linear-gradient(135deg, #10b981, #059669)', boxShadow: '0 4px 14px rgba(16,185,129,0.35)' }}>
+                <Shield size={15} /> Complete Verification Now
+              </a>
+              <p className="text-xs text-center" style={{ color: '#9ca3af' }}>
+                Internal transfers to PRAQEN users don't require KYC.
+              </p>
+            </div>
+          ) : <>
+
+          {/* ── Fee tier info ── */}
+          <div className="rounded-2xl overflow-hidden" style={{ border: '1.5px solid #fde68a' }}>
+            <div className="px-4 py-2.5 flex items-center gap-2" style={{ backgroundColor: '#fffbeb' }}>
+              <AlertTriangle size={13} style={{ color: '#d97706', flexShrink: 0 }} />
+              <p className="text-xs font-black" style={{ color: '#92400e' }}>Withdrawal Fee</p>
+            </div>
+            <div className="px-4 py-3 space-y-1.5" style={{ backgroundColor: '#fffdf5' }}>
+              {[
+                { range: 'Up to ₮50',    fee: '₮4.00 flat' },
+                { range: 'Above ₮50',    fee: '4% of amount' },
+                { range: 'Minimum send', fee: `₮${MIN_SEND.toFixed(2)}` },
+              ].map(({ range, fee: f }) => (
+                <div key={range} className="flex justify-between items-center">
+                  <span className="text-xs font-semibold" style={{ color: '#92400e' }}>{range}</span>
+                  <span className="text-xs font-black" style={{ color: '#78350f' }}>{f}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Balance pill ── */}
+          <div className="flex items-center justify-between px-4 py-3 rounded-2xl"
+            style={{ background: 'linear-gradient(135deg, #eff6ff, #dbeafe)', border: '1px solid #bfdbfe' }}>
+            <div>
+              <p className="text-xs font-bold mb-0.5" style={{ color: '#1e40af' }}>Available USDT</p>
+              <p className="font-black text-xl" style={{ color: '#1d4ed8' }}>₮ {bal.toFixed(2)}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs font-bold" style={{ color: '#3b82f6' }}>TRC-20</p>
+              {calcMax(bal) > 0 && (
+                <p className="text-xs font-semibold mt-0.5" style={{ color: '#60a5fa' }}>
+                  Max send: ₮{calcMax(bal).toFixed(2)}
+                </p>
+              )}
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-black mb-2" style={{ color: C.g700 }}>Recipient Tron Address</label>
+            <div className="relative">
+              <input type="text" value={address} onChange={e => setAddress(e.target.value)}
+                placeholder="T… (starts with T, 34 characters)"
+                className="w-full px-4 py-3.5 text-sm rounded-2xl focus:outline-none font-mono transition"
+                style={{
+                  border: `2px solid ${!address ? C.g200 : addrOk ? '#10b981' : '#ef4444'}`,
+                  backgroundColor: !address ? '#fafafa' : addrOk ? '#f0fdf4' : '#fff5f5',
+                  color: C.g800, paddingRight: address ? '40px' : '16px',
+                }} />
+              {address && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  {addrOk ? <CheckCircle size={16} style={{ color: '#10b981' }} /> : <AlertTriangle size={16} style={{ color: '#ef4444' }} />}
+                </div>
+              )}
+            </div>
+            {address.length > 3 && !addrOk && (
+              <p className="text-xs mt-1.5 font-semibold flex items-center gap-1" style={{ color: '#ef4444' }}>
+                <AlertTriangle size={11} /> Must start with T, 34 characters (Tron mainnet)
+              </p>
+            )}
+            {addrOk && <p className="text-xs mt-1.5 font-semibold flex items-center gap-1" style={{ color: '#10b981' }}><CheckCircle size={11} /> Valid Tron address</p>}
+          </div>
+          <div>
+            {/* ── Input mode toggle ── */}
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-black" style={{ color: C.g700 }}>Amount</label>
+              <div className="flex rounded-xl overflow-hidden" style={{ border: '1.5px solid #e2e8f0' }}>
+                {[
+                  { key: 'usdt', label: '₮ USDT' },
+                  { key: 'usd',  label: '$ USD'  },
+                ].map(({ key, label }) => (
+                  <button key={key}
+                    onClick={() => { setInputMode(key); }}
+                    className="px-3 py-1.5 text-xs font-black transition"
+                    style={{
+                      background: inputMode === key ? 'linear-gradient(135deg, #1d4ed8, #2563eb)' : '#fff',
+                      color: inputMode === key ? '#fff' : C.g500,
+                    }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* ── USD input ── */}
+            {inputMode === 'usd' && (
+              <div className="space-y-1.5">
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-base" style={{ color: '#2563eb' }}>$</span>
+                  <input type="number" value={usdInput}
+                    onChange={e => { setUsdInput(e.target.value); setAmount(e.target.value); }}
+                    placeholder="10.00" min="0" step="0.01"
+                    className="w-full pl-8 pr-16 py-3.5 text-sm rounded-2xl focus:outline-none transition"
+                    style={{
+                      border: `2px solid ${!usdInput ? C.g200 : hasEnough ? '#10b981' : '#ef4444'}`,
+                      backgroundColor: !usdInput ? '#fafafa' : hasEnough ? '#f0fdf4' : '#fff5f5',
+                    }} />
+                  <button onClick={() => { const m = calcMax(bal); if (m > 0) { setUsdInput(m.toFixed(2)); setAmount(m.toFixed(2)); } }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black px-2.5 py-1 rounded-xl"
+                    style={{ background: 'linear-gradient(135deg, #10b981, #059669)', color: '#fff' }}>MAX</button>
+                </div>
+                {parseFloat(usdInput) > 0 && (
+                  <p className="text-xs font-semibold px-1" style={{ color: '#2563eb' }}>
+                    = ₮{parseFloat(usdInput || 0).toFixed(2)} USDT · Min: $5.00 · Max: ${calcMax(bal).toFixed(2)}
+                  </p>
+                )}
+                {!usdInput && (
+                  <p className="text-xs font-semibold px-1" style={{ color: C.g400 }}>
+                    Min: $5.00 · Max: ${calcMax(bal).toFixed(2)} · 1 USD = 1 USDT
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* ── USDT input ── */}
+            {inputMode === 'usdt' && (
+              <div className="space-y-1.5">
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-base" style={{ color: C.g400 }}>₮</span>
+                  <input type="number" value={amount}
+                    onChange={e => { setAmount(e.target.value); setUsdInput(e.target.value); }}
+                    placeholder="0.00" min="0" step="0.01"
+                    className="w-full pl-8 pr-16 py-3.5 text-sm rounded-2xl focus:outline-none transition"
+                    style={{
+                      border: `2px solid ${!amount ? C.g200 : hasEnough ? '#10b981' : '#ef4444'}`,
+                      backgroundColor: !amount ? '#fafafa' : hasEnough ? '#f0fdf4' : '#fff5f5',
+                    }} />
+                  <button onClick={() => { const m = calcMax(bal); if (m > 0) { setAmount(m.toFixed(2)); setUsdInput(m.toFixed(2)); } }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black px-2.5 py-1 rounded-xl"
+                    style={{ background: 'linear-gradient(135deg, #10b981, #059669)', color: '#fff' }}>MAX</button>
+                </div>
+                {usdtAmt > 0 && (
+                  <p className="text-xs font-semibold px-1" style={{ color: '#10b981' }}>
+                    = ${usdtAmt.toFixed(2)} USD · Min: ₮{MIN_SEND.toFixed(2)} · Max: ₮{calcMax(bal).toFixed(2)}
+                  </p>
+                )}
+                {!amount && (
+                  <p className="text-xs font-semibold px-1" style={{ color: C.g400 }}>
+                    Min: ₮{MIN_SEND.toFixed(2)} · Max: ₮{calcMax(bal).toFixed(2)} · 1 USDT = $1.00
+                  </p>
+                )}
+              </div>
+            )}
+
+            {usdtAmt > 0 && !hasEnough && (
+              <div className="flex items-center gap-1.5 mt-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#fff5f5', border: '1px solid #fecaca' }}>
+                <AlertTriangle size={12} style={{ color: '#ef4444', flexShrink: 0 }} />
+                <p className="text-xs font-semibold" style={{ color: '#dc2626' }}>
+                  Need ₮{totalDeduct.toFixed(2)} (₮{usdtAmt.toFixed(2)} + {fee.toFixed(2)} fee) — only ₮{bal.toFixed(2)} available
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* ── Live fee breakdown ── */}
+          {usdtAmt > 0 && (
+            <div className="rounded-2xl overflow-hidden" style={{ border: '1.5px solid #e2e8f0' }}>
+              {[
+                { label: 'You send',        val: `₮${usdtAmt.toFixed(2)}`,      icon: '→',  bold: false },
+                { label: `Platform fee (${usdtAmt <= 50 ? '₮4 flat' : '4%'})`, val: `₮${fee.toFixed(2)}`, icon: '💰', bold: false, warn: true },
+                { label: 'Total deducted',  val: `₮${totalDeduct.toFixed(2)}`,  icon: null, bold: true  },
+              ].map(({ label, val, icon, bold, warn }, i) => (
+                <div key={label} className="flex justify-between items-center px-4 py-3"
+                  style={{
+                    backgroundColor: bold ? '#f8fafc' : '#fff',
+                    borderTop: bold ? '2px solid #e2e8f0' : i > 0 ? '1px solid #f1f5f9' : 'none',
+                  }}>
+                  <span className="text-xs font-semibold flex items-center gap-1.5"
+                    style={{ color: warn ? '#d97706' : bold ? '#334155' : '#64748b' }}>
+                    {icon && <span>{icon}</span>}{label}
+                  </span>
+                  <span className={`text-xs ${bold ? 'font-black' : 'font-bold'}`}
+                    style={{ color: warn ? '#d97706' : bold ? '#1e293b' : '#475569' }}>
+                    {val}
+                  </span>
+                </div>
+              ))}
+              <div className="px-4 py-2.5 flex items-center gap-2"
+                style={{ backgroundColor: '#f0fdf4', borderTop: '1px solid #dcfce7' }}>
+                <CheckCircle size={12} style={{ color: '#10b981', flexShrink: 0 }} />
+                <p className="text-xs font-semibold" style={{ color: '#166534' }}>
+                  Recipient gets exactly <strong>₮{usdtAmt.toFixed(2)}</strong> · fee is separate
+                </p>
+              </div>
+            </div>
+          )}
+          <label className="flex items-start gap-3 cursor-pointer p-3 rounded-2xl transition"
+            style={{ backgroundColor: confirm ? '#f0fdf4' : '#fafafa', border: `1.5px solid ${confirm ? '#bbf7d0' : C.g200}` }}>
+            <div className="mt-0.5 w-4 h-4 rounded-md flex items-center justify-center flex-shrink-0"
+              style={{ backgroundColor: confirm ? '#10b981' : '#fff', border: `2px solid ${confirm ? '#10b981' : C.g300}` }}>
+              {confirm && <CheckCircle size={10} color="#fff" strokeWidth={3} />}
+            </div>
+            <input type="checkbox" checked={confirm} onChange={e => setConfirm(e.target.checked)} className="sr-only" />
+            <p className="text-xs font-semibold leading-relaxed" style={{ color: confirm ? '#166534' : C.g600 }}>
+              I confirm this Tron address is correct. USDT-TRC20 transactions are irreversible.
+            </p>
+          </label>
+          {step === 'form' && (
+            <div className="space-y-3">
+              <button onClick={requestCode} disabled={!valid || !confirm || sending2FA}
+                className="w-full py-4 rounded-2xl text-white font-black text-sm flex items-center justify-center gap-2 transition disabled:opacity-40"
+                style={{ background: (!valid || !confirm || sending2FA) ? '#94a3b8' : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', boxShadow: (valid && confirm && !sending2FA) ? '0 6px 20px rgba(239,68,68,0.4)' : 'none' }}>
+                {sending2FA ? <><RefreshCw size={15} className="animate-spin" /> Sending code…</> : <><Shield size={15} /> Get Security Code &amp; Continue</>}
+              </button>
+              <div className="flex items-center gap-2.5 px-4 py-3 rounded-2xl" style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a' }}>
+                <AlertTriangle size={13} style={{ color: '#d97706', flexShrink: 0 }} />
+                <p className="text-xs font-semibold" style={{ color: '#92400e' }}>A 6-digit security code will be emailed to confirm this withdrawal.</p>
+              </div>
+            </div>
+          )}
+          {step === 'code' && (
+            <div className="space-y-3">
+              <div className="flex flex-col items-center text-center px-4 py-4 rounded-2xl"
+                style={{ background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)', border: '1px solid #bbf7d0' }}>
+                <div className="w-10 h-10 rounded-2xl flex items-center justify-center mb-2"
+                  style={{ background: 'linear-gradient(135deg, #10b981, #059669)', boxShadow: '0 4px 12px rgba(16,185,129,0.35)' }}>
+                  <Shield size={18} color="#fff" />
+                </div>
+                <p className="font-black text-sm" style={{ color: '#166534' }}>Security Code Sent</p>
+                <p className="text-xs mt-0.5" style={{ color: '#15803d' }}>Enter the 6-digit code to confirm this withdrawal</p>
+              </div>
+              {/* Mini fee summary on code step */}
+              <div className="rounded-2xl overflow-hidden" style={{ border: '1.5px solid #e2e8f0' }}>
+                {[
+                  { label: 'Recipient gets',  val: `₮${usdtAmt.toFixed(2)}`,     color: '#10b981' },
+                  { label: `Fee (${usdtAmt <= 50 ? '₮4 flat' : '4%'})`,          val: `₮${fee.toFixed(2)}`,       color: '#d97706' },
+                  { label: 'Total deducted',  val: `₮${totalDeduct.toFixed(2)}`,  color: '#1e293b', bold: true },
+                ].map(({ label, val, color, bold }, i) => (
+                  <div key={label} className="flex justify-between items-center px-4 py-2.5"
+                    style={{ backgroundColor: bold ? '#f8fafc' : '#fff', borderTop: i > 0 ? '1px solid #f1f5f9' : 'none' }}>
+                    <span className="text-xs font-semibold" style={{ color: '#64748b' }}>{label}</span>
+                    <span className={`text-xs ${bold ? 'font-black' : 'font-bold'}`} style={{ color }}>{val}</span>
+                  </div>
+                ))}
+              </div>
+              <input type="text" inputMode="numeric" value={codeInput} autoFocus
+                onChange={e => setCodeInput(e.target.value.replace(/\D/g,'').slice(0,6))}
+                placeholder="0  0  0  0  0  0"
+                className="w-full text-center py-4 rounded-2xl font-mono tracking-[0.5em] focus:outline-none transition"
+                style={{ fontSize: 28, fontWeight: 900, border: `2.5px solid ${codeInput.length === 6 ? '#10b981' : C.g200}`, backgroundColor: codeInput.length === 6 ? '#f0fdf4' : '#fafafa', color: C.g800 }}
+                maxLength={6} />
+              <p className="text-xs text-center" style={{ color: C.g400 }}>
+                Didn't receive it?{' '}
+                <button onClick={requestCode} disabled={sending2FA} className="font-black underline disabled:opacity-50" style={{ color: '#10b981' }}>
+                  {sending2FA ? 'Sending…' : 'Resend code'}
+                </button>
+              </p>
+              {sendError && (
+                <div className="rounded-2xl p-4 space-y-1" style={{ background: '#fef2f2', border: '1.5px solid #fecaca' }}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <AlertTriangle size={14} style={{ color: '#dc2626', flexShrink: 0 }} />
+                    <p className="text-xs font-black" style={{ color: '#dc2626' }}>Withdrawal Failed</p>
+                  </div>
+                  <p className="text-xs font-semibold" style={{ color: '#991b1b' }}>{sendError}</p>
+                  <p className="text-xs mt-1" style={{ color: '#b91c1c' }}>Your balance has been fully restored — no funds were lost.</p>
+                </div>
+              )}
+              <div className="flex gap-3">
+                <button onClick={() => { setStep('form'); setCodeInput(''); }}
+                  className="flex-1 py-3.5 rounded-2xl border font-bold text-sm hover:bg-gray-50 transition"
+                  style={{ borderColor: C.g200, color: C.g600 }}>← Back</button>
+                <button onClick={handleSend} disabled={codeInput.length !== 6 || sending}
+                  className="flex-1 py-3.5 rounded-2xl text-white font-black text-sm transition disabled:opacity-40"
+                  style={{ background: codeInput.length === 6 && !sending ? 'linear-gradient(135deg, #ef4444, #dc2626)' : '#94a3b8', boxShadow: codeInput.length === 6 && !sending ? '0 6px 20px rgba(239,68,68,0.4)' : 'none' }}>
+                  {sending
+                    ? <span className="flex items-center justify-center gap-2"><RefreshCw size={15} className="animate-spin" /> Sending…</span>
+                    : <span className="flex items-center justify-center gap-2"><Send size={15} /> Confirm Send</span>}
+                </button>
+              </div>
+            </div>
+          )}
+          </>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── USDT Internal Transfer Modal ─────────────────────────────────────────────
+function UsdtInternalTransferModal({ balance, onClose, onTransfer }) {
+  // steps: 'recipient' → 'amount' → 'preview' → 'success'
+  const [step,          setStep]          = useState('recipient');
+  const [mode,          setMode]          = useState('username');   // always 'username' for internal
+  const [recipientInput, setRecipientInput] = useState('');
+  const [amount,        setAmount]        = useState('');
+  const [searching,     setSearching]     = useState(false);
+  const [recipient,     setRecipient]     = useState(null);
+  const [sending,       setSending]       = useState(false);
+  const [result,        setResult]        = useState(null);
+  const [err,           setErr]           = useState('');
+
+  const bal    = parseFloat(balance || 0);
+  const amt    = parseFloat(amount  || 0);
+  // USDT ≈ $1 USD — show dollar equivalent
+  const usdVal = amt > 0 ? amt.toFixed(2) : '0.00';
+  const remaining = Math.max(0, bal - amt);
+
+  const isTronAddr = v => /^T[A-Za-z1-9]{33}$/.test(v.trim());
+
+  const handleRecipientContinue = async () => {
+    const raw = recipientInput.trim().replace(/^@/, '');
+    if (!raw) { setErr('Enter a PRAQEN username'); return; }
+
+    setSearching(true); setErr('');
+    try {
+      const r = await axios.get(`${API_URL}/users/${encodeURIComponent(raw)}`);
+      const u = r.data?.user || r.data;
+      if (!u?.username) { setErr('User not found on PRAQEN'); return; }
+      setRecipient({ ...u, displayName: `@${u.username}`, isTronAddr: false });
+      setStep('amount');
+    } catch (e) {
+      setErr(e.response?.data?.error || 'User not found on PRAQEN');
+    } finally { setSearching(false); }
+  };
+
+  const handleAmountContinue = () => {
+    if (!amt || amt <= 0) { setErr('Enter a valid USDT amount'); return; }
+    if (amt < 0.01)       { setErr('Minimum transfer is ₮0.01 USDT'); return; }
+    if (amt > bal)        { setErr(`Insufficient balance. Available: ₮${bal.toFixed(2)}`); return; }
+    setErr('');
+    setStep('preview');
+  };
+
+  const handleSend = async () => {
+    setSending(true); setErr('');
+    try {
+      const payload = recipient.isTronAddr
+        ? { toTronAddress: recipient.tronAddress, amountUsdt: amt }
+        : { toUsername: recipient.username, amountUsdt: amt };
+      const res = await onTransfer(payload);
+      setResult(res);
+      setStep('success');
+    } catch (e) {
+      setErr(e.response?.data?.error || e.message || 'Transfer failed');
+      setStep('preview');
+    } finally { setSending(false); }
+  };
+
+  const ErrBox = ({ msg }) => msg ? (
+    <div className="flex items-start gap-2.5 px-4 py-3 rounded-2xl" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
+      <span className="text-red-500 mt-0.5 flex-shrink-0">✕</span>
+      <p className="text-xs font-bold" style={{ color: '#dc2626' }}>{msg}</p>
+    </div>
+  ) : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}>
+      <div className="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl"
+        style={{ backgroundColor: '#fff', maxHeight: '96dvh', overflowY: 'auto' }}>
+
+        {/* ── Header ── */}
+        <div className="relative px-6 pt-6 pb-5"
+          style={{ background: `linear-gradient(145deg, ${C.forest} 0%, ${C.green} 60%, #26A17B 100%)` }}>
+          {/* decorative circle */}
+          <div className="absolute top-0 right-0 w-40 h-40 rounded-full opacity-10"
+            style={{ background: 'radial-gradient(circle, #fff 0%, transparent 70%)', transform: 'translate(30%,-30%)' }} />
+
+          <div className="flex items-center justify-between relative">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl flex items-center justify-center"
+                style={{ background: 'rgba(255,255,255,0.16)', border: '1px solid rgba(255,255,255,0.25)' }}>
+                {/* Tether logo */}
+                <svg width="22" height="22" viewBox="0 0 32 32" fill="none">
+                  <circle cx="16" cy="16" r="16" fill="#26A17B"/>
+                  <path d="M17.922 17.383v-.002c-.11.008-.677.042-1.942.042-1.01 0-1.721-.03-1.971-.042v.003c-3.888-.171-6.79-.848-6.79-1.658 0-.809 2.902-1.486 6.79-1.66v2.644c.254.018.982.061 1.988.061 1.207 0 1.812-.05 1.925-.06v-2.643c3.88.173 6.775.85 6.775 1.658 0 .81-2.895 1.485-6.775 1.657m0-3.59v-2.366h5.414V7.819H8.595v3.608h5.414v2.365c-4.4.202-7.709 1.073-7.709 2.117 0 1.045 3.309 1.915 7.709 2.118v7.582h3.913v-7.584c4.393-.202 7.694-1.073 7.694-2.116 0-1.043-3.301-1.914-7.694-2.116" fill="#fff"/>
+                </svg>
+              </div>
+              <div>
+                <p className="text-white font-black text-base tracking-wide">Transfer USDT</p>
+                <p className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                  {step === 'recipient' ? 'Find recipient' : step === 'amount' ? 'Enter amount' : step === 'preview' ? 'Review transfer' : 'Transfer complete'}
+                </p>
+              </div>
+            </div>
+            <button onClick={onClose}
+              className="w-9 h-9 rounded-full flex items-center justify-center transition active:scale-90"
+              style={{ background: 'rgba(255,255,255,0.16)' }}>
+              <X size={16} color="#fff" />
+            </button>
+          </div>
+
+          {/* Balance + step progress */}
+          <div className="flex items-center justify-between mt-4 relative">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl"
+              style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.18)' }}>
+              <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#26A17B' }}>
+                <span className="text-white font-black" style={{ fontSize: 9 }}>₮</span>
+              </div>
+              <span className="text-white text-xs font-bold">₮{bal.toFixed(2)} available</span>
+            </div>
+            {/* Step dots */}
+            <div className="flex items-center gap-1.5">
+              {['recipient','amount','preview'].map((s, i) => (
+                <div key={s} className="rounded-full transition-all"
+                  style={{
+                    width: step === s ? 20 : 6, height: 6,
+                    backgroundColor: ['recipient','amount','preview','success'].indexOf(step) >= i ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.3)',
+                  }} />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+
+          {/* ══ STEP 1: Recipient ══════════════════════════════════════════ */}
+          {step === 'recipient' && (
+            <>
+              {/* Input */}
+              <div>
+                <label className="block text-xs font-black mb-2 uppercase tracking-wide" style={{ color: C.g500 }}>
+                  PRAQEN Username
+                </label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-sm select-none"
+                      style={{ color: C.g400 }}>@</span>
+                    <input
+                      type="text"
+                      value={recipientInput}
+                      onChange={e => { setRecipientInput(e.target.value); setErr(''); }}
+                      onKeyDown={e => e.key === 'Enter' && handleRecipientContinue()}
+                      placeholder="username"
+                      className="w-full pl-8 pr-4 py-3.5 rounded-2xl text-sm font-semibold focus:outline-none transition"
+                      style={{ border: `2px solid ${err ? '#fca5a5' : C.g200}`, backgroundColor: C.g50, color: C.g800 }}
+                      autoFocus
+                    />
+                  </div>
+                  <button onClick={handleRecipientContinue}
+                    disabled={searching || !recipientInput.trim()}
+                    className="px-5 rounded-2xl font-black text-white text-sm transition disabled:opacity-40 flex items-center gap-1.5 flex-shrink-0"
+                    style={{ background: `linear-gradient(135deg, ${C.forest}, ${C.green})`, boxShadow: `0 4px 14px ${C.forest}40` }}>
+                    {searching ? <RefreshCw size={14} className="animate-spin" /> : 'Next →'}
+                  </button>
+                </div>
+              </div>
+
+              <ErrBox msg={err} />
+
+              {/* Info box */}
+              <div className="rounded-2xl p-4 space-y-2.5"
+                style={{ background: `linear-gradient(135deg, ${C.mist}, #f0fdf8)`, border: `1px solid ${C.sage}30` }}>
+                {[
+                  { icon: '⚡', text: 'Instant settlement — no blockchain delay' },
+                  { icon: '🆓', text: 'Zero fees — completely free between PRAQEN users' },
+                  { icon: '🔒', text: 'Username search only — use Send (on-chain) for external wallets' },
+                ].map(({ icon, text }) => (
+                  <div key={text} className="flex items-start gap-2.5">
+                    <span className="text-sm flex-shrink-0 mt-0.5">{icon}</span>
+                    <p className="text-xs font-semibold" style={{ color: C.green }}>{text}</p>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* ══ STEP 2: Amount ════════════════════════════════════════════ */}
+          {step === 'amount' && recipient && (
+            <>
+              {/* Recipient preview chip */}
+              <div className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+                style={{ background: `linear-gradient(135deg, ${C.mist}, #f0fdf8)`, border: `1.5px solid ${C.sage}35` }}>
+                <div className="w-10 h-10 rounded-full flex items-center justify-center font-black text-white flex-shrink-0"
+                  style={{ background: `linear-gradient(135deg, ${C.forest}, ${C.green})` }}>
+                  {recipient.isTronAddr ? '₮' : (recipient.username?.[0]?.toUpperCase() || 'U')}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-black text-sm truncate" style={{ color: C.forest }}>
+                    {recipient.displayName}
+                  </p>
+                  {recipient.full_name && <p className="text-xs truncate" style={{ color: C.green }}>{recipient.full_name}</p>}
+                  {recipient.isTronAddr && <p className="text-xs font-semibold" style={{ color: C.sage }}>Tron address · PRAQEN internal</p>}
+                </div>
+                <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{ background: `linear-gradient(135deg, ${C.green}, ${C.mint})` }}>
+                  <span className="text-white text-xs font-black">✓</span>
+                </div>
+              </div>
+
+              {/* Amount input */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-black uppercase tracking-wide" style={{ color: C.g500 }}>Amount</label>
+                  <button onClick={() => { setAmount(bal.toFixed(2)); setErr(''); }}
+                    className="text-xs font-black px-2.5 py-1 rounded-lg"
+                    style={{ background: `${C.sage}25`, color: C.green }}>
+                    MAX ₮{bal.toFixed(2)}
+                  </button>
+                </div>
+
+                {/* USDT input */}
+                <div className="rounded-2xl overflow-hidden" style={{ border: `2px solid ${err ? '#fca5a5' : C.g200}`, backgroundColor: C.g50 }}>
+                  <div className="flex items-center gap-3 px-4 py-4">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 shadow-md"
+                      style={{ backgroundColor: '#26A17B' }}>
+                      <span className="text-white font-black text-base">₮</span>
+                    </div>
+                    <div className="flex-1">
+                      <input type="number" value={amount}
+                        onChange={e => { setAmount(e.target.value); setErr(''); }}
+                        onKeyDown={e => e.key === 'Enter' && handleAmountContinue()}
+                        placeholder="0.00" step="0.01" min="0.01"
+                        className="w-full text-3xl font-black bg-transparent focus:outline-none leading-none"
+                        style={{ color: C.g800 }} autoFocus />
+                      <p className="text-xs font-semibold mt-1" style={{ color: C.g400 }}>USDT · Tether</p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-xs font-black px-2 py-1 rounded-lg" style={{ background: `${C.gold}15`, color: C.gold }}>
+                        ≈ USD
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* USD equivalent row */}
+                  <div className="flex items-center justify-between px-4 py-3"
+                    style={{ background: `linear-gradient(135deg, ${C.mist}60, #f0fdf8)`, borderTop: `1px solid ${C.g100}` }}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold px-2 py-0.5 rounded" style={{ background: '#d1fae5', color: '#065f46' }}>USD</span>
+                      <span className="text-sm font-black" style={{ color: C.forest }}>
+                        $ {usdVal}
+                      </span>
+                    </div>
+                    <p className="text-xs font-semibold" style={{ color: C.g400 }}>1 USDT ≈ $1.00 USD</p>
+                  </div>
+                </div>
+
+                {/* Remaining balance indicator */}
+                {amt > 0 && amt <= bal && (
+                  <div className="mt-2 flex items-center justify-between px-3.5 py-2.5 rounded-xl"
+                    style={{ background: `${C.forest}08`, border: `1px solid ${C.sage}25` }}>
+                    <span className="text-xs font-semibold" style={{ color: C.g500 }}>Balance after transfer</span>
+                    <span className="text-xs font-black" style={{ color: remaining < bal * 0.1 ? '#f59e0b' : C.green }}>
+                      ₮{remaining.toFixed(2)} USDT · ≈ ${remaining.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+
+                {/* Fee note */}
+                <div className="mt-2 flex items-center justify-between px-3.5 py-2"
+                  style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12 }}>
+                  <span className="text-xs font-semibold" style={{ color: '#047857' }}>Platform fee</span>
+                  <span className="text-xs font-black" style={{ color: '#065f46' }}>₮ 0.00 · FREE</span>
+                </div>
+              </div>
+
+              <ErrBox msg={err} />
+
+              <div className="flex gap-3 pt-1">
+                <button onClick={() => { setStep('recipient'); setErr(''); }}
+                  className="py-3.5 px-5 rounded-2xl border font-bold text-sm transition hover:bg-gray-50"
+                  style={{ borderColor: C.g200, color: C.g600 }}>← Back</button>
+                <button onClick={handleAmountContinue}
+                  disabled={!amount || amt <= 0}
+                  className="flex-1 py-3.5 rounded-2xl text-white font-black text-sm flex items-center justify-center gap-2 transition disabled:opacity-40"
+                  style={{
+                    background: !amount || amt <= 0 ? '#94a3b8' : `linear-gradient(135deg, ${C.forest}, ${C.green})`,
+                    boxShadow: amount && amt > 0 ? `0 6px 20px ${C.forest}45` : 'none',
+                  }}>
+                  Preview Transfer →
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* ══ STEP 3: Preview ═══════════════════════════════════════════ */}
+          {step === 'preview' && recipient && (
+            <>
+              <div className="text-center pb-1">
+                <p className="font-black text-base" style={{ color: C.g800 }}>Review your transfer</p>
+                <p className="text-xs font-semibold mt-0.5" style={{ color: C.g400 }}>Double-check the details before sending</p>
+              </div>
+
+              {/* Big amount display */}
+              <div className="rounded-3xl p-5 text-center relative overflow-hidden"
+                style={{ background: `linear-gradient(145deg, ${C.forest} 0%, ${C.green} 100%)` }}>
+                <div className="absolute inset-0 opacity-10"
+                  style={{ background: 'radial-gradient(circle at 70% 30%, #fff 0%, transparent 60%)' }} />
+                <p className="text-xs font-bold text-white/60 uppercase tracking-widest mb-2">You are sending</p>
+                <div className="flex items-baseline justify-center gap-2 mb-1">
+                  <span className="text-5xl font-black text-white">₮{amt.toFixed(2)}</span>
+                  <span className="text-xl font-bold text-white/70">USDT</span>
+                </div>
+                <p className="text-sm font-bold" style={{ color: 'rgba(255,255,255,0.55)' }}>≈ ${usdVal} USD</p>
+                <div className="flex items-center justify-center gap-1.5 mt-3 px-3 py-1.5 rounded-full inline-flex mx-auto"
+                  style={{ background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.22)' }}>
+                  <span className="text-xs font-black text-white">→</span>
+                  <span className="text-xs font-bold text-white/80">{recipient.displayName}</span>
+                </div>
+              </div>
+
+              {/* Detail rows */}
+              <div className="rounded-2xl overflow-hidden" style={{ border: `1.5px solid ${C.g200}` }}>
+                {[
+                  { label: 'Recipient',       val: recipient.displayName,                          mono: false },
+                  { label: 'Network',         val: 'PRAQEN Internal (TRC-20)',                     mono: false },
+                  { label: 'Amount (USDT)',   val: `₮ ${amt.toFixed(2)}`,                         mono: false },
+                  { label: 'Amount (USD)',    val: `$ ${usdVal}`,                                  mono: false },
+                  { label: 'Platform fee',    val: '₮ 0.00  (100% Free)',                         mono: false },
+                  { label: 'You will have',   val: `₮ ${remaining.toFixed(2)} USDT  ·  $ ${remaining.toFixed(2)}`, mono: false },
+                  { label: 'Settlement',      val: 'Instant',                                       mono: false },
+                ].map(({ label, val, mono }, i) => (
+                  <div key={label} className="flex items-center justify-between px-4 py-3"
+                    style={{
+                      borderTop: i > 0 ? `1px solid ${C.g100}` : 'none',
+                      backgroundColor: i % 2 === 0 ? C.g50 : '#fff',
+                    }}>
+                    <span className="text-xs font-semibold" style={{ color: C.g500 }}>{label}</span>
+                    <span className="text-xs font-black text-right" style={{ color: C.forest, fontFamily: mono ? 'monospace' : 'inherit' }}>{val}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Warning if Tron address */}
+              {recipient.isTronAddr && (
+                <div className="flex items-start gap-2.5 px-4 py-3 rounded-2xl"
+                  style={{ background: '#fffbeb', border: '1.5px solid #fcd34d' }}>
+                  <span className="text-yellow-500 text-sm flex-shrink-0 mt-0.5">⚠</span>
+                  <p className="text-xs font-semibold" style={{ color: '#92400e' }}>
+                    Sending to a Tron address. This is an internal PRAQEN transfer — the recipient must be a PRAQEN user. Transfers cannot be reversed.
+                  </p>
+                </div>
+              )}
+
+              <ErrBox msg={err} />
+
+              <div className="flex gap-3 pt-1">
+                <button onClick={() => { setStep('amount'); setErr(''); }}
+                  className="py-3.5 px-5 rounded-2xl border font-bold text-sm transition hover:bg-gray-50"
+                  style={{ borderColor: C.g200, color: C.g600 }}>← Edit</button>
+                <button onClick={handleSend} disabled={sending}
+                  className="flex-1 py-4 rounded-2xl text-white font-black text-sm flex items-center justify-center gap-2 transition disabled:opacity-50 active:scale-[0.98]"
+                  style={{
+                    background: sending ? '#94a3b8' : `linear-gradient(135deg, ${C.forest} 0%, ${C.green} 100%)`,
+                    boxShadow: !sending ? `0 8px 24px ${C.forest}50` : 'none',
+                  }}>
+                  {sending
+                    ? <><RefreshCw size={15} className="animate-spin" /> Sending…</>
+                    : <><ArrowLeftRight size={15} /> Confirm & Send ₮{amt.toFixed(2)}</>}
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* ══ STEP 4: Success ═══════════════════════════════════════════ */}
+          {step === 'success' && result && (
+            <div className="text-center py-3 space-y-5">
+              {/* Animated check */}
+              <div className="relative mx-auto w-24 h-24">
+                <div className="w-24 h-24 rounded-full flex items-center justify-center"
+                  style={{ background: `linear-gradient(135deg, ${C.forest} 0%, ${C.green} 60%, #26A17B 100%)`, boxShadow: `0 16px 48px ${C.forest}55` }}>
+                  <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+                    <path d="M8 20l9 9 15-17" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-2xl font-black" style={{ color: C.forest }}>Transfer Sent!</p>
+                <p className="text-sm font-semibold mt-1" style={{ color: C.g500 }}>
+                  Your USDT arrived instantly
+                </p>
+              </div>
+
+              {/* Receipt card */}
+              <div className="rounded-2xl overflow-hidden text-left" style={{ border: `1.5px solid ${C.sage}40` }}>
+                <div className="px-4 py-3" style={{ background: `linear-gradient(135deg, ${C.mist}, #f0fdf8)`, borderBottom: `1px solid ${C.sage}25` }}>
+                  <p className="text-xs font-black uppercase tracking-widest" style={{ color: C.green }}>Transfer Receipt</p>
+                </div>
+                {[
+                  { label: 'Sent to',       val: `${result.to ? '@' : ''}${result.to || recipient.displayName}` },
+                  { label: 'Amount USDT',   val: `₮ ${parseFloat(result.amount_usdt).toFixed(2)}` },
+                  { label: 'Amount USD',    val: `$ ${parseFloat(result.amount_usdt).toFixed(2)}` },
+                  { label: 'Fee',           val: '₮ 0.00  (Free)' },
+                  { label: 'New balance',   val: `₮ ${parseFloat(result.new_balance).toFixed(2)} USDT` },
+                  { label: 'Reference',     val: result.txRef },
+                ].map(({ label, val }, i) => (
+                  <div key={label} className="flex items-center justify-between px-4 py-2.5"
+                    style={{ borderTop: i > 0 ? `1px solid ${C.g100}` : 'none', backgroundColor: i % 2 === 0 ? C.g50 : '#fff' }}>
+                    <span className="text-xs font-semibold" style={{ color: C.g500 }}>{label}</span>
+                    <span className="text-xs font-black" style={{
+                      color: C.forest,
+                      fontFamily: label === 'Reference' ? 'monospace' : 'inherit',
+                      fontSize: label === 'Reference' ? 10 : 'inherit',
+                    }}>{val}</span>
+                  </div>
+                ))}
+              </div>
+
+              <button onClick={onClose}
+                className="w-full py-4 rounded-2xl text-white font-black text-sm transition active:scale-[0.98]"
+                style={{
+                  background: `linear-gradient(135deg, ${C.forest} 0%, ${C.green} 100%)`,
+                  boxShadow: `0 8px 24px ${C.forest}45`,
+                }}>
+                Done
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Wallet Page ──────────────────────────────────────────────────────────
 export default function WalletPage({ user }) {
   const navigate = useNavigate();
@@ -1232,6 +2078,23 @@ export default function WalletPage({ user }) {
   const [selectedTx,       setSelectedTx]       = useState(null);
   const [displayCurrency,  setDisplayCurrency]  = useState(localStorage.getItem('praqen_currency') || 'USD');
   const [userVerif,        setUserVerif]        = useState(null);
+
+  // USDT + Swap state
+  const [activeCoin,    setActiveCoin]    = useState('BTC');
+  const [usdtData,      setUsdtData]      = useState(null);
+  const [swapRate,      setSwapRate]      = useState(null);
+  const [swapHistory,   setSwapHistory]   = useState([]);
+  const [showUsdtSend,     setShowUsdtSend]     = useState(false);
+  const [showUsdtInternal, setShowUsdtInternal] = useState(false);
+  const [swapFrom,      setSwapFrom]      = useState('BTC');
+  const [swapAmount,    setSwapAmount]    = useState('');
+  const [swapInputMode, setSwapInputMode] = useState('native'); // 'native' | 'usd'
+  const [swapUsdAmount, setSwapUsdAmount] = useState('');
+  const [swapping,      setSwapping]      = useState(false);
+  const [checkingUsdt,  setCheckingUsdt]  = useState(false);
+  const [scanCooldown,  setScanCooldown]  = useState(0); // seconds remaining
+  const [loadingUsdt,   setLoadingUsdt]   = useState(false);
+  const [copiedTron,    setCopiedTron]    = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -1292,6 +2155,33 @@ export default function WalletPage({ user }) {
         setBtcPrice(88000); // fallback
       }
     }
+  };
+
+  const loadUsdtWallet = async () => {
+    setLoadingUsdt(true);
+    try {
+      const r = await axios.get(`${API_URL}/wallet/usdt`, { headers: authH() });
+      setUsdtData({
+        tron_address:        r.data.tron_address,
+        balance_usdt:        parseFloat(r.data.balance_usdt        || 0),
+        locked_balance_usdt: parseFloat(r.data.locked_balance_usdt || 0),
+      });
+    } catch { toast.error('Failed to load USDT wallet'); }
+    finally { setLoadingUsdt(false); }
+  };
+
+  const loadSwapRate = async () => {
+    try {
+      const r = await axios.get(`${API_URL}/swap/rate`, { headers: authH() });
+      setSwapRate(parseFloat(r.data.rate || 0));
+    } catch { /* silent */ }
+  };
+
+  const loadSwapHistory = async () => {
+    try {
+      const r = await axios.get(`${API_URL}/swap/history`, { headers: authH() });
+      setSwapHistory(r.data.swaps || []);
+    } catch { /* silent */ }
   };
 
   useEffect(() => {
@@ -1358,6 +2248,13 @@ export default function WalletPage({ user }) {
     return () => { supabase.removeChannel(channel); };
   }, [user?.id]);
 
+  // ── Load USDT / swap data when tab switches ────────────────────────────────
+  useEffect(() => {
+    if (!user) return;
+    if (activeCoin === 'USDT') { loadUsdtWallet(); }
+    if (activeCoin === 'SWAP') { loadSwapRate(); loadSwapHistory(); if (!usdtData) loadUsdtWallet(); }
+  }, [activeCoin]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Refresh ────────────────────────────────────────────────────────────────
   const refresh = async () => {
     setRefreshing(true);
@@ -1403,6 +2300,72 @@ export default function WalletPage({ user }) {
     }
   };
 
+  // ── Check USDT deposits manually ──────────────────────────────────────────
+  const checkUsdtDeposit = async () => {
+    if (scanCooldown > 0 || checkingUsdt) return;
+    setCheckingUsdt(true);
+    try {
+      const r = await axios.get(`${API_URL}/wallet/usdt/check`, { headers: authH() });
+      toast.success(r.data.message || 'Deposit scan complete — balance updated');
+      await loadUsdtWallet();
+      // Start 30s cooldown countdown
+      let secs = 30;
+      setScanCooldown(secs);
+      const tick = setInterval(() => {
+        secs -= 1;
+        setScanCooldown(secs);
+        if (secs <= 0) clearInterval(tick);
+      }, 1000);
+    } catch (err) {
+      const msg = err?.response?.data?.error || 'Failed to check USDT deposits';
+      toast.error(msg);
+    } finally { setCheckingUsdt(false); }
+  };
+
+  // ── Send USDT on-chain ─────────────────────────────────────────────────────
+  const sendUsdt = async (toAddress, amount, actionCode) => {
+    const r = await axios.post(`${API_URL}/wallet/usdt/send`, { toAddress, amount, actionCode }, { headers: authH() });
+    await loadUsdtWallet();
+    return r;
+  };
+
+  const doUsdtInternalTransfer = async ({ toUsername, toTronAddress, amountUsdt }) => {
+    const r = await axios.post(`${API_URL}/wallet/usdt/internal-transfer`, { toUsername, toTronAddress, amountUsdt }, { headers: authH() });
+    await loadUsdtWallet();
+    return r.data;
+  };
+
+  // ── Execute BTC↔USDT swap ─────────────────────────────────────────────────
+  const doSwap = async () => {
+    // Resolve effective native amount from whichever input mode is active
+    const effAmt = swapInputMode === 'usd' && swapRate
+      ? (swapFrom === 'BTC'
+          ? parseFloat((parseFloat(swapUsdAmount || 0) / swapRate).toFixed(8))
+          : parseFloat(parseFloat(swapUsdAmount || 0).toFixed(2)))
+      : parseFloat(swapAmount || 0);
+
+    if (!effAmt || effAmt <= 0) { toast.error('Enter a valid amount'); return; }
+    setSwapping(true);
+    try {
+      if (swapFrom === 'BTC') {
+        const r = await axios.post(`${API_URL}/swap/btc-to-usdt`, { btcAmount: effAmt }, { headers: authH() });
+        toast.success(`Swapped ₿${effAmt} BTC → ₮${r.data.to_amount?.toFixed(2)} USDT`, { autoClose: 6000 });
+        setWalletData(prev => prev ? { ...prev, balance_btc: r.data.new_btc_balance, available_btc: r.data.new_btc_balance } : prev);
+        setUsdtData(prev => prev ? { ...prev, balance_usdt: r.data.new_usdt_balance } : prev);
+      } else {
+        const r = await axios.post(`${API_URL}/swap/usdt-to-btc`, { usdtAmount: effAmt }, { headers: authH() });
+        toast.success(`Swapped ₮${effAmt} USDT → ₿${r.data.to_amount?.toFixed(8)} BTC`, { autoClose: 6000 });
+        setUsdtData(prev => prev ? { ...prev, balance_usdt: r.data.new_usdt_balance } : prev);
+        setWalletData(prev => prev ? { ...prev, balance_btc: r.data.new_btc_balance, available_btc: r.data.new_btc_balance } : prev);
+      }
+      setSwapAmount('');
+      setSwapUsdAmount('');
+      await loadSwapHistory();
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Swap failed. Please try again.');
+    } finally { setSwapping(false); }
+  };
+
   const balance      = parseFloat(walletData?.balance_btc   || 0); // total (available + locked)
   const lockedBal    = parseFloat(lockedBtc                 || 0);
   const availableBal = parseFloat(walletData?.available_btc ?? balance); // already deducted server-side
@@ -1433,6 +2396,86 @@ export default function WalletPage({ user }) {
 
       <div className="max-w-2xl mx-auto w-full px-3 sm:px-4 py-4 sm:py-6 space-y-3 sm:space-y-4">
 
+        {/* ── COIN SELECTOR TABS ─────────────────────────────────── */}
+        <div className="rounded-2xl overflow-hidden shadow-md" style={{ border: `1.5px solid ${C.g200}`, backgroundColor: '#fff' }}>
+          <div className="flex">
+
+            {/* ── BTC tab ── */}
+            {(() => { const active = activeCoin === 'BTC'; return (
+              <button onClick={() => setActiveCoin('BTC')}
+                className="flex-1 flex flex-col items-center justify-center py-4 gap-1 transition-all relative"
+                style={{
+                  background: active ? `linear-gradient(160deg,${C.forest} 0%,${C.green} 100%)` : '#fff',
+                  borderRight: `1.5px solid ${C.g200}`,
+                }}>
+                {/* Bitcoin ₿ coin */}
+                <div className="w-11 h-11 rounded-full flex items-center justify-center shadow-md mb-0.5"
+                  style={{ background: active ? 'rgba(255,255,255,0.18)' : 'linear-gradient(135deg,#F7931A,#e8830a)', border: active ? '1.5px solid rgba(255,255,255,0.3)' : 'none' }}>
+                  <span style={{ fontSize: 22, fontWeight: 900, color: active ? '#F7931A' : '#fff', lineHeight: 1 }}>₿</span>
+                </div>
+                <span className="font-black text-sm tracking-wide" style={{ color: active ? '#fff' : C.g800 }}>Bitcoin</span>
+                <span className="font-bold text-xs" style={{ color: active ? 'rgba(255,255,255,0.65)' : C.g400 }}>BTC Network</span>
+                {active && <div className="absolute bottom-0 inset-x-5 h-0.5 rounded-full" style={{ backgroundColor: C.sage }} />}
+              </button>
+            );})()}
+
+            {/* ── SWAP tab ── */}
+            {(() => { const active = activeCoin === 'SWAP'; return (
+              <button onClick={() => setActiveCoin('SWAP')}
+                className="flex-1 flex flex-col items-center justify-center py-4 gap-1 transition-all relative"
+                style={{
+                  background: active ? `linear-gradient(160deg,${C.forest} 0%,${C.green} 100%)` : '#fff',
+                  borderRight: `1.5px solid ${C.g200}`,
+                }}>
+                {/* Swap icon with BTC + USDT */}
+                <div className="relative mb-0.5" style={{ width: 44, height: 44 }}>
+                  {/* BTC circle left */}
+                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center shadow"
+                    style={{ background: '#F7931A', border: '2px solid #fff', zIndex: 1 }}>
+                    <span style={{ fontSize: 13, fontWeight: 900, color: '#fff', lineHeight: 1 }}>₿</span>
+                  </div>
+                  {/* USDT circle right */}
+                  <div className="absolute right-0 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center shadow"
+                    style={{ background: '#26A17B', border: '2px solid #fff', zIndex: 2 }}>
+                    <span style={{ fontSize: 13, fontWeight: 900, color: '#fff', lineHeight: 1 }}>₮</span>
+                  </div>
+                  {/* Center swap arrow */}
+                  <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 3 }}>
+                    <div className="w-5 h-5 rounded-full flex items-center justify-center"
+                      style={{ background: active ? 'rgba(255,255,255,0.9)' : C.g50, border: `1.5px solid ${active ? C.green : C.g200}`, boxShadow: '0 2px 6px rgba(0,0,0,0.18)' }}>
+                      <span style={{ fontSize: 9, fontWeight: 900, color: active ? C.forest : C.g600, lineHeight: 1 }}>⇄</span>
+                    </div>
+                  </div>
+                </div>
+                <span className="font-black text-sm tracking-wide" style={{ color: active ? '#fff' : C.g800 }}>Swap</span>
+                <span className="font-bold text-xs" style={{ color: active ? 'rgba(255,255,255,0.65)' : C.g400 }}>BTC ↔ USDT</span>
+                {active && <div className="absolute bottom-0 inset-x-5 h-0.5 rounded-full" style={{ backgroundColor: C.sage }} />}
+              </button>
+            );})()}
+
+            {/* ── USDT tab ── */}
+            {(() => { const active = activeCoin === 'USDT'; return (
+              <button onClick={() => setActiveCoin('USDT')}
+                className="flex-1 flex flex-col items-center justify-center py-4 gap-1 transition-all relative"
+                style={{ background: active ? `linear-gradient(160deg,${C.forest} 0%,${C.green} 100%)` : '#fff' }}>
+                {/* Tether ₮ coin — proper Tether SVG */}
+                <div className="w-11 h-11 rounded-full flex items-center justify-center shadow-md mb-0.5 overflow-hidden"
+                  style={{ background: active ? 'rgba(255,255,255,0.18)' : '#26A17B', border: active ? '1.5px solid rgba(255,255,255,0.3)' : 'none' }}>
+                  <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
+                    <path d="M17.922 17.383v-.002c-.11.008-.677.042-1.942.042-1.01 0-1.721-.03-1.971-.042v.003c-3.888-.171-6.79-.848-6.79-1.658 0-.809 2.902-1.486 6.79-1.66v2.644c.254.018.982.061 1.988.061 1.207 0 1.812-.05 1.925-.06v-2.643c3.88.173 6.775.85 6.775 1.658 0 .81-2.895 1.485-6.775 1.657m0-3.59v-2.366h5.414V7.819H8.595v3.608h5.414v2.365c-4.4.202-7.709 1.073-7.709 2.117 0 1.045 3.309 1.915 7.709 2.118v7.582h3.913v-7.584c4.393-.202 7.694-1.073 7.694-2.116 0-1.043-3.301-1.914-7.694-2.116"
+                      fill={active ? '#26A17B' : '#fff'} />
+                  </svg>
+                </div>
+                <span className="font-black text-sm tracking-wide" style={{ color: active ? '#fff' : C.g800 }}>Tether</span>
+                <span className="font-bold text-xs" style={{ color: active ? 'rgba(255,255,255,0.65)' : C.g400 }}>TRC-20</span>
+                {active && <div className="absolute bottom-0 inset-x-5 h-0.5 rounded-full" style={{ backgroundColor: C.sage }} />}
+              </button>
+            );})()}
+
+          </div>
+        </div>
+
+        {activeCoin === 'BTC' && (<>
         {/* ── WALLET CARD ──────────────────────────────────────────── */}
         <div className="rounded-3xl overflow-hidden shadow-lg relative"
           style={{ background: `linear-gradient(135deg,${C.forest} 0%,${C.green} 60%,${C.mint} 100%)` }}>
@@ -1685,6 +2728,582 @@ export default function WalletPage({ user }) {
             )}
           </div>
         </div>
+        </>)} {/* END BTC view */}
+
+        {/* ══════════════════ USDT VIEW ══════════════════ */}
+        {activeCoin === 'USDT' && (<>
+
+        {/* ── USDT WALLET CARD ── */}
+        <div className="rounded-3xl overflow-hidden shadow-2xl relative"
+          style={{ background: `linear-gradient(145deg, ${C.forest} 0%, #1a5c41 45%, #26A17B 100%)` }}>
+          {/* Decorative circles */}
+          <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full opacity-10" style={{ background: 'radial-gradient(circle, #fff 0%, transparent 70%)' }} />
+          <div className="absolute -bottom-8 -left-8 w-32 h-32 rounded-full opacity-8" style={{ background: 'radial-gradient(circle, #26A17B 0%, transparent 70%)' }} />
+
+          <div className="relative p-6">
+            {/* Top row */}
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                {/* Tether logo badge */}
+                <div className="w-11 h-11 rounded-2xl flex items-center justify-center shadow-lg"
+                  style={{ background: 'linear-gradient(135deg, #26A17B, #1a7a5e)', border: '2px solid rgba(255,255,255,0.25)', boxShadow: '0 4px 16px rgba(38,161,123,0.55)' }}>
+                  <svg viewBox="0 0 32 32" width="24" height="24" fill="none">
+                    <path d="M17.6 15.73v-2.05h4.35V10.5H10.07v3.18H14.4v2.05C10.6 15.9 7.8 16.72 7.8 17.7s2.8 1.8 6.6 1.97v7.03h3.2v-7.03c3.8-.17 6.6-.99 6.6-1.97s-2.8-1.8-6.6-1.97zm0 3.32c-.18.01-.62.04-1.62.04-.86 0-1.46-.02-1.67-.04v.01c-2.89-.13-5.05-.63-5.05-1.25s2.16-1.11 5.05-1.24v1.97c.21.01.82.05 1.68.05.98 0 1.45-.04 1.61-.05v-1.97c2.9.13 5.06.63 5.06 1.24s-2.16 1.12-5.06 1.25v-.01z" fill="white"/>
+                  </svg>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-white font-black text-sm tracking-wide">USDT Wallet</p>
+                    <span className="flex items-center gap-1 text-xs font-black px-2 py-0.5 rounded-full"
+                      style={{ background: 'rgba(38,161,123,0.35)', color: '#6EE7B7', border: '1px solid rgba(110,231,183,0.3)' }}>
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse inline-block" />
+                      TRC-20
+                    </span>
+                  </div>
+                  <p className="text-white/55 text-xs mt-0.5">Tron Network · {user?.username}</p>
+                </div>
+              </div>
+              <div className="flex gap-1.5">
+                <button onClick={() => setShowBal(!showBal)}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center transition"
+                  style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)' }}>
+                  {showBal ? <Eye size={13} className="text-white" /> : <EyeOff size={13} className="text-white" />}
+                </button>
+                <button onClick={loadUsdtWallet} disabled={loadingUsdt}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center transition"
+                  style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)' }}>
+                  <RefreshCw size={13} className={`text-white ${loadingUsdt ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+            </div>
+
+            {/* Balance block */}
+            <div className="mb-6">
+              {loadingUsdt && !usdtData ? (
+                <div className="flex items-center gap-2.5">
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <p className="text-white/60 text-sm font-semibold">Loading USDT balance…</p>
+                </div>
+              ) : showBal ? (
+                <>
+                  <p className="text-white/55 text-xs font-semibold mb-1 uppercase tracking-widest">Available Balance</p>
+                  <div className="flex items-end gap-2">
+                    <p className="font-black text-white tracking-tight" style={{ fontSize: 'clamp(1.8rem, 7vw, 2.8rem)', lineHeight: 1 }}>
+                      {(usdtData?.balance_usdt || 0).toFixed(2)}
+                    </p>
+                    <span className="text-white/70 font-black mb-1 text-base">USDT</span>
+                  </div>
+                  <p className="text-white/60 text-sm mt-1.5">≈ ${(usdtData?.balance_usdt || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD · 1:1 pegged</p>
+                  {(usdtData?.locked_balance_usdt || 0) > 0 && (
+                    <div className="flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-xl inline-flex w-fit"
+                      style={{ background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.3)' }}>
+                      <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: '#F59E0B' }} />
+                      <p className="text-xs font-bold" style={{ color: '#FCD34D' }}>₮{(usdtData.locked_balance_usdt).toFixed(2)} locked in escrow</p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="text-white/55 text-xs font-semibold mb-1 uppercase tracking-widest">Available Balance</p>
+                  <p className="text-4xl font-black text-white tracking-widest">••••••</p>
+                </>
+              )}
+            </div>
+
+            {/* Action buttons */}
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                {
+                  label: 'Receive',
+                  icon: <Download size={18} color="#fff" strokeWidth={2.2} />,
+                  grad: `linear-gradient(135deg, ${C.mint} 0%, ${C.sage} 100%)`,
+                  shadow: 'rgba(64,145,108,0.5)',
+                  action: () => {
+                    if (usdtData?.tron_address) {
+                      navigator.clipboard.writeText(usdtData.tron_address);
+                      toast.success('Tron deposit address copied!', { autoClose: 4000 });
+                    } else {
+                      toast.info('Loading your Tron address…');
+                    }
+                  },
+                },
+                {
+                  label: 'Send',
+                  icon: <Send size={16} color="#fff" strokeWidth={2.2} />,
+                  grad: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                  shadow: 'rgba(239,68,68,0.5)',
+                  action: () => setShowUsdtSend(true),
+                },
+                {
+                  label: 'Transfer',
+                  icon: <ArrowLeftRight size={16} color="#fff" strokeWidth={2.2} />,
+                  grad: `linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)`,
+                  shadow: 'rgba(99,102,241,0.5)',
+                  action: () => setShowUsdtInternal(true),
+                },
+                {
+                  label: 'Swap',
+                  icon: <ArrowLeftRight size={16} color="#fff" strokeWidth={2.2} />,
+                  grad: `linear-gradient(135deg, ${C.gold} 0%, #e09318 100%)`,
+                  shadow: 'rgba(244,164,34,0.5)',
+                  action: () => { setActiveCoin('SWAP'); setSwapFrom('USDT'); },
+                },
+              ].map(({ label, icon, grad, shadow, action }) => (
+                <button key={label} onClick={action}
+                  className="flex flex-col items-center gap-2 py-3 rounded-2xl transition active:scale-95"
+                  style={{ background: 'rgba(255,255,255,0.09)', border: '1px solid rgba(255,255,255,0.13)' }}>
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                    style={{ background: grad, boxShadow: `0 5px 16px ${shadow}` }}>
+                    {icon}
+                  </div>
+                  <span className="text-white text-xs font-extrabold tracking-wide">{label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ── USDT DEPOSIT ADDRESS ── */}
+        <div className="rounded-2xl overflow-hidden shadow-sm" style={{ border: `1.5px solid ${C.g200}`, backgroundColor: '#fff' }}>
+          {/* Header strip */}
+          <div className="px-5 pt-4 pb-3 flex items-center justify-between"
+            style={{ borderBottom: `1px solid ${C.g100}`, background: 'linear-gradient(135deg, #f0fdf4, #f8fffe)' }}>
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center"
+                style={{ background: `linear-gradient(135deg, ${C.forest}, ${C.green})`, boxShadow: `0 3px 10px ${C.forest}40` }}>
+                <ArrowDownLeft size={14} color="#fff" strokeWidth={2.5} />
+              </div>
+              <div>
+                <p className="font-black text-sm" style={{ color: C.g800 }}>Deposit USDT</p>
+                <p className="text-xs" style={{ color: C.g400 }}>Send to this address on Tron network</p>
+              </div>
+            </div>
+            <span className="text-xs font-black px-2.5 py-1 rounded-full"
+              style={{
+                background: usdtData?.tron_address ? `linear-gradient(135deg, ${C.mint}25, ${C.sage}15)` : `${C.warn}15`,
+                color: usdtData?.tron_address ? C.green : C.warn,
+                border: `1px solid ${usdtData?.tron_address ? C.sage + '40' : C.warn + '40'}`,
+              }}>
+              {usdtData?.tron_address ? '✓ TRC-20 Ready' : '⏳ Loading'}
+            </span>
+          </div>
+
+          <div className="p-5 space-y-3">
+            {loadingUsdt && !usdtData ? (
+              <div className="flex items-center justify-center py-8 gap-3">
+                <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: `${C.sage}40`, borderTopColor: C.green }} />
+                <p className="text-sm font-semibold" style={{ color: C.g400 }}>Generating your Tron address…</p>
+              </div>
+            ) : usdtData?.tron_address ? (
+              <>
+                {/* Address display */}
+                <div className="rounded-2xl p-3.5 relative" style={{ background: C.g50, border: `1.5px solid ${C.g200}` }}>
+                  <p className="text-xs font-bold mb-1.5" style={{ color: C.g400 }}>Your Tron (TRX/USDT) Address</p>
+                  <p className="font-mono text-xs break-all font-bold" style={{ color: C.g700, lineHeight: 1.6 }}>
+                    {usdtData.tron_address}
+                  </p>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(usdtData.tron_address); setCopiedTron(true); toast.success('Tron address copied!'); setTimeout(() => setCopiedTron(false), 3000); }}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-2xl text-white font-bold text-xs hover:opacity-90 transition"
+                    style={{ background: copiedTron ? `linear-gradient(135deg, ${C.success}, #059669)` : `linear-gradient(135deg, ${C.forest}, ${C.green})`, boxShadow: `0 4px 12px ${C.forest}40` }}>
+                    {copiedTron ? <><CheckCircle size={13} /> Address Copied!</> : <><Copy size={13} /> Copy Address</>}
+                  </button>
+                  <button onClick={checkUsdtDeposit} disabled={checkingUsdt || scanCooldown > 0}
+                    className="px-4 py-3 rounded-2xl border font-bold text-xs transition flex items-center gap-1.5"
+                    style={{
+                      borderColor: C.g200,
+                      color: (checkingUsdt || scanCooldown > 0) ? C.g400 : C.g600,
+                      cursor: (checkingUsdt || scanCooldown > 0) ? 'not-allowed' : 'pointer',
+                    }}>
+                    {checkingUsdt
+                      ? <RefreshCw size={12} className="animate-spin" />
+                      : <Zap size={12} style={{ color: scanCooldown > 0 ? C.g400 : C.gold }} />}
+                    {checkingUsdt ? 'Scanning…' : scanCooldown > 0 ? `${scanCooldown}s` : 'Scan'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm font-semibold text-center py-4" style={{ color: C.g400 }}>Could not load address. Tap refresh above.</p>
+            )}
+
+            <div className="flex items-start gap-2.5 p-3 rounded-xl"
+              style={{ background: `linear-gradient(135deg, ${C.mist}, #f0fdf8)`, border: `1px solid ${C.sage}30` }}>
+              <Shield size={13} style={{ color: C.green, flexShrink: 0, marginTop: 1 }} />
+              <p className="text-xs font-semibold leading-relaxed" style={{ color: C.forest }}>
+                Only send <strong>USDT TRC-20</strong> to this address. Sending BTC or ERC-20 tokens will be lost permanently.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* ── USDT STATS ── */}
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          {[
+            { label: 'USDT Balance',   value: `₮${(usdtData?.balance_usdt || 0).toFixed(2)}`,        color: C.green,   bg: `${C.sage}15`,  border: `${C.sage}30` },
+            { label: 'In Escrow',      value: `₮${(usdtData?.locked_balance_usdt || 0).toFixed(2)}`, color: C.warn,    bg: `${C.warn}12`,  border: `${C.warn}25` },
+            { label: 'USD Value',      value: `$${(usdtData?.balance_usdt || 0).toFixed(2)}`,         color: C.success, bg: `${C.success}10`, border: `${C.success}25` },
+          ].map(({ label, value, color, bg, border }) => (
+            <div key={label} className="rounded-2xl p-3 sm:p-4 text-center shadow-sm"
+              style={{ backgroundColor: '#fff', border: `1.5px solid ${C.g200}`, background: '#fff' }}>
+              <div className="w-8 h-1 rounded-full mx-auto mb-2" style={{ backgroundColor: color, opacity: 0.6 }} />
+              <p className="font-black truncate" style={{ color, fontSize: 'clamp(0.7rem, 2.8vw, 1rem)' }}>{value}</p>
+              <p className="text-xs font-semibold mt-1 truncate" style={{ color: C.g400 }}>{label}</p>
+            </div>
+          ))}
+        </div>
+
+        </>)} {/* END USDT view */}
+
+        {/* ══════════════════ SWAP VIEW ══════════════════ */}
+        {activeCoin === 'SWAP' && (<>
+
+        {/* ── SWAP WIDGET ── */}
+        <div className="rounded-3xl overflow-hidden shadow-lg" style={{ border: `1.5px solid ${C.g200}` }}>
+          {/* Header */}
+          <div className="p-5 pb-4" style={{ background: `linear-gradient(145deg, ${C.forest} 0%, ${C.green} 100%)` }}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl flex items-center justify-center"
+                  style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)' }}>
+                  <ArrowLeftRight size={17} color="#fff" strokeWidth={2.3} />
+                </div>
+                <div>
+                  <p className="font-black text-white text-base tracking-wide">BTC ↔ USDT</p>
+                  <p className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.55)' }}>Instant swap · 1% fee · No blockchain delay</p>
+                </div>
+              </div>
+              <div className="text-right">
+                {swapRate ? (
+                  <div className="rounded-xl px-3 py-1.5" style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.18)' }}>
+                    <p className="text-xs font-bold text-white/60 mb-0.5">Live Rate</p>
+                    <p className="text-sm font-black text-white">${swapRate.toLocaleString('en-US', { maximumFractionDigits: 0 })}</p>
+                  </div>
+                ) : (
+                  <button onClick={loadSwapRate}
+                    className="rounded-xl px-3 py-2 text-xs font-bold flex items-center gap-1.5"
+                    style={{ background: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.7)' }}>
+                    <RefreshCw size={11} /> Fetch Rate
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Coin badges */}
+            <div className="flex items-center justify-center gap-3 mt-4">
+              <div className="flex items-center gap-2 px-3 py-2 rounded-2xl"
+                style={{ background: swapFrom === 'BTC' ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)', border: `1px solid ${swapFrom === 'BTC' ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.12)'}`, transition: 'all 0.2s' }}>
+                <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{ backgroundColor: '#F7931A' }}>
+                  <span className="text-white font-black text-xs">₿</span>
+                </div>
+                <div>
+                  <p className="text-white font-black text-xs">Bitcoin</p>
+                  <p className="text-white/50 text-xs font-semibold">₿{fmt(availableBal, 6)}</p>
+                </div>
+              </div>
+              <button onClick={() => { setSwapFrom(f => f === 'BTC' ? 'USDT' : 'BTC'); setSwapAmount(''); }}
+                className="w-9 h-9 rounded-full flex items-center justify-center transition active:scale-90"
+                style={{ background: 'rgba(255,255,255,0.18)', border: '1.5px solid rgba(255,255,255,0.3)', boxShadow: '0 3px 10px rgba(0,0,0,0.2)' }}>
+                <ArrowLeftRight size={14} color="#fff" strokeWidth={2.5} />
+              </button>
+              <div className="flex items-center gap-2 px-3 py-2 rounded-2xl"
+                style={{ background: swapFrom === 'USDT' ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)', border: `1px solid ${swapFrom === 'USDT' ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.12)'}`, transition: 'all 0.2s' }}>
+                <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{ backgroundColor: '#26A17B' }}>
+                  <span className="text-white font-black text-xs">₮</span>
+                </div>
+                <div>
+                  <p className="text-white font-black text-xs">Tether</p>
+                  <p className="text-white/50 text-xs font-semibold">₮{(usdtData?.balance_usdt || 0).toFixed(2)}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Swap form body */}
+          <div className="bg-white p-5 space-y-4">
+            {/* Direction tabs */}
+            <div className="flex rounded-2xl overflow-hidden" style={{ border: `1.5px solid ${C.g200}`, backgroundColor: C.g50 }}>
+              {[
+                { dir: 'BTC',  label: '₿ Bitcoin  →  ₮ USDT' },
+                { dir: 'USDT', label: '₮ USDT  →  ₿ Bitcoin' },
+              ].map(({ dir, label }) => (
+                <button key={dir} onClick={() => { setSwapFrom(dir); setSwapAmount(''); setSwapUsdAmount(''); }}
+                  className="flex-1 py-2.5 text-xs font-black transition"
+                  style={{
+                    background: swapFrom === dir ? `linear-gradient(135deg, ${C.forest}, ${C.green})` : 'transparent',
+                    color: swapFrom === dir ? '#fff' : C.g500,
+                    borderRight: dir === 'BTC' ? `1.5px solid ${C.g200}` : 'none',
+                    borderRadius: dir === 'BTC' ? '14px 0 0 14px' : '0 14px 14px 0',
+                  }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* You send — with $ USD / native toggle */}
+            {(() => {
+              // Derive effective native amount for preview regardless of input mode
+              const usdVal   = parseFloat(swapUsdAmount || 0);
+              const natVal   = parseFloat(swapAmount || 0);
+              const effNative = swapInputMode === 'usd' && swapRate
+                ? (swapFrom === 'BTC' ? parseFloat((usdVal / swapRate).toFixed(8)) : parseFloat(usdVal.toFixed(2)))
+                : natVal;
+              const maxNative = swapFrom === 'BTC' ? availableBal : (usdtData?.balance_usdt || 0);
+              const maxUsd    = swapFrom === 'BTC' ? availableBal * (swapRate || 0) : (usdtData?.balance_usdt || 0);
+              const minUsd    = swapFrom === 'BTC' ? 1 : 1; // $1 minimum
+              const hasInput  = swapInputMode === 'usd' ? usdVal > 0 : natVal > 0;
+              const insufficient = swapInputMode === 'usd'
+                ? (swapFrom === 'BTC' ? effNative > availableBal : usdVal > (usdtData?.balance_usdt || 0))
+                : (effNative > maxNative);
+
+              return (
+                <>
+                <div>
+                  {/* Input mode toggle */}
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-black" style={{ color: C.g500 }}>YOU SEND</label>
+                    <div className="flex rounded-xl overflow-hidden" style={{ border: `1.5px solid ${C.g200}` }}>
+                      {[
+                        { mode: 'native', label: swapFrom === 'BTC' ? '₿ BTC' : '₮ USDT' },
+                        { mode: 'usd',    label: '$ USD' },
+                      ].map(({ mode, label }) => (
+                        <button key={mode}
+                          onClick={() => { setSwapInputMode(mode); setSwapAmount(''); setSwapUsdAmount(''); }}
+                          className="px-3 py-1.5 text-xs font-black transition"
+                          style={{
+                            background: swapInputMode === mode ? 'linear-gradient(135deg, #1a1a2e, #16213e)' : 'transparent',
+                            color: swapInputMode === mode ? '#fff' : C.g500,
+                          }}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 p-4 rounded-2xl" style={{ background: C.g50, border: `1.5px solid ${insufficient ? '#ef4444' : C.g200}` }}>
+                    <div className="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center shadow-md"
+                      style={{ backgroundColor: swapInputMode === 'usd' ? '#22c55e' : (swapFrom === 'BTC' ? '#F7931A' : '#26A17B') }}>
+                      <span className="text-white font-black text-base">{swapInputMode === 'usd' ? '$' : (swapFrom === 'BTC' ? '₿' : '₮')}</span>
+                    </div>
+                    <div className="flex-1">
+                      {swapInputMode === 'usd' ? (
+                        <>
+                          <input type="number" value={swapUsdAmount} onChange={e => setSwapUsdAmount(e.target.value)}
+                            placeholder="10.00" step="0.01" min="0"
+                            className="w-full text-xl font-black bg-transparent focus:outline-none"
+                            style={{ color: C.g800 }} />
+                          <p className="text-xs font-semibold mt-0.5" style={{ color: C.g400 }}>
+                            US Dollars
+                            {usdVal > 0 && swapRate && (
+                              <span style={{ color: C.green }}>
+                                {' '}≈ {swapFrom === 'BTC' ? `₿${effNative.toFixed(8)}` : `₮${effNative.toFixed(2)}`}
+                              </span>
+                            )}
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <input type="number" value={swapAmount} onChange={e => setSwapAmount(e.target.value)}
+                            placeholder={swapFrom === 'BTC' ? '0.00000000' : '0.00'}
+                            step={swapFrom === 'BTC' ? '0.00000001' : '0.01'} min="0"
+                            className="w-full text-xl font-black bg-transparent focus:outline-none"
+                            style={{ color: C.g800 }} />
+                          <p className="text-xs font-semibold mt-0.5" style={{ color: C.g400 }}>
+                            {swapFrom === 'BTC' ? 'Bitcoin' : 'Tether USDT'}
+                            {natVal > 0 && swapRate && (
+                              <span style={{ color: C.green }}>
+                                {' '}≈ ${swapFrom === 'BTC' ? (natVal * swapRate).toFixed(2) : natVal.toFixed(2)}
+                              </span>
+                            )}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                    <button onClick={() => {
+                      if (swapInputMode === 'usd') { setSwapUsdAmount(maxUsd.toFixed(2)); }
+                      else { setSwapAmount(swapFrom === 'BTC' ? fmt(availableBal, 8) : maxNative.toFixed(2)); }
+                    }}
+                      className="text-xs font-black px-2.5 py-1.5 rounded-xl transition"
+                      style={{ background: `linear-gradient(135deg, ${C.forest}, ${C.green})`, color: '#fff', boxShadow: `0 2px 8px ${C.forest}40` }}>
+                      MAX
+                    </button>
+                  </div>
+
+                  {/* Min / Max info row */}
+                  <div className="flex items-center justify-between mt-2 px-1">
+                    <span className="text-xs font-semibold" style={{ color: C.g400 }}>
+                      Min: <span style={{ color: C.g600 }}>${minUsd.toFixed(2)}</span>
+                    </span>
+                    <span className="text-xs font-semibold" style={{ color: C.g400 }}>
+                      Max: <span style={{ color: C.green }}>${maxUsd.toFixed(2)}</span>
+                      {' '}
+                      <span style={{ color: C.g400 }}>
+                        ({swapFrom === 'BTC' ? `₿${fmt(availableBal, 6)}` : `₮${maxNative.toFixed(2)}`})
+                      </span>
+                    </span>
+                  </div>
+
+                  {/* Insufficient balance warning */}
+                  {hasInput && insufficient && (
+                    <div className="flex items-center gap-1.5 mt-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#fff5f5', border: '1px solid #fecaca' }}>
+                      <AlertTriangle size={12} style={{ color: '#ef4444', flexShrink: 0 }} />
+                      <p className="text-xs font-semibold" style={{ color: '#dc2626' }}>
+                        Insufficient {swapFrom} balance
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* You receive preview */}
+                {hasInput && !insufficient && swapRate && effNative > 0 && (() => {
+                  const gross = swapFrom === 'BTC' ? effNative * swapRate : effNative / swapRate;
+                  const fee   = gross * 0.01;
+                  const net   = gross - fee;
+                  const isB2U = swapFrom === 'BTC';
+                  const sendUsd = swapInputMode === 'usd' ? usdVal : (swapFrom === 'BTC' ? effNative * swapRate : effNative);
+                  return (
+                    <div>
+                      <label className="block text-xs font-black mb-2" style={{ color: C.g500 }}>YOU RECEIVE</label>
+                      <div className="flex items-center gap-3 p-4 rounded-2xl"
+                        style={{ background: `linear-gradient(135deg, ${C.mist}, #f0fdf6)`, border: `1.5px solid ${C.sage}40` }}>
+                        <div className="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center shadow-md"
+                          style={{ backgroundColor: isB2U ? '#26A17B' : '#F7931A' }}>
+                          <span className="text-white font-black text-base">{isB2U ? '₮' : '₿'}</span>
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-xl font-black" style={{ color: C.forest }}>
+                            {isB2U ? net.toFixed(2) : net.toFixed(8)}
+                          </p>
+                          <p className="text-xs font-semibold mt-0.5" style={{ color: C.green }}>
+                            {isB2U ? 'Tether USDT' : 'Bitcoin'} · after 1% fee
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs font-black" style={{ color: C.forest }}>≈ ${isB2U ? net.toFixed(2) : (net * swapRate).toFixed(2)}</p>
+                          <p className="text-xs font-semibold" style={{ color: C.g400 }}>USD value</p>
+                        </div>
+                      </div>
+
+                      {/* Fee breakdown */}
+                      <div className="mt-2 rounded-xl overflow-hidden" style={{ border: `1px solid ${C.g200}` }}>
+                        {[
+                          { label: isB2U ? 'BTC sent'        : 'USDT sent',   val: `${isB2U ? '₿' : '₮'}${isB2U ? fmt(effNative, 8) : effNative.toFixed(2)}` },
+                          { label: 'USD equivalent',                            val: `$${sendUsd.toFixed(2)}` },
+                          { label: 'Rate',                                      val: `1 BTC = $${swapRate.toLocaleString('en-US', { maximumFractionDigits: 0 })}` },
+                          { label: 'Platform fee (1%)',                         val: `${isB2U ? '₮' : '₿'}${isB2U ? fee.toFixed(2) : fee.toFixed(8)}  ≈ $${(fee * (isB2U ? 1 : swapRate)).toFixed(2)}` },
+                          { label: `${isB2U ? 'USDT' : 'BTC'} received`,       val: `${isB2U ? '₮' : '₿'}${isB2U ? net.toFixed(2) : net.toFixed(8)}`, bold: true },
+                        ].map(({ label, val, bold }, i) => (
+                          <div key={label} className="flex items-center justify-between px-3.5 py-2"
+                            style={{ backgroundColor: bold ? C.g50 : '#fff', borderTop: i > 0 ? `1px solid ${C.g100}` : 'none' }}>
+                            <span className={`text-xs ${bold ? 'font-black' : 'font-semibold'}`} style={{ color: bold ? C.g700 : C.g500 }}>{label}</span>
+                            <span className={`text-xs ${bold ? 'font-black' : 'font-bold'}`} style={{ color: bold ? C.forest : C.g700 }}>{val}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+                </>
+              );
+            })()}
+
+            {(() => {
+              const swapReady = swapInputMode === 'usd'
+                ? parseFloat(swapUsdAmount || 0) > 0
+                : parseFloat(swapAmount || 0) > 0;
+              return (
+            <button onClick={doSwap} disabled={!swapReady || swapping}
+              className="w-full py-4 rounded-2xl text-white font-black text-sm flex items-center justify-center gap-2 transition active:scale-[0.98] disabled:opacity-40"
+              style={{
+                background: swapping || !swapReady ? '#94a3b8' : `linear-gradient(135deg, ${C.forest} 0%, ${C.green} 100%)`,
+                boxShadow: (!swapping && swapReady) ? `0 8px 24px ${C.forest}50` : 'none',
+              }}>
+              {swapping
+                ? <><RefreshCw size={15} className="animate-spin" /> Processing Swap…</>
+                : <><ArrowLeftRight size={15} /> {swapFrom === 'BTC' ? 'Swap BTC → USDT' : 'Swap USDT → BTC'}</>}
+            </button>
+              );
+            })()}
+
+            <div className="flex items-center justify-center gap-4 pt-1">
+              {[
+                { icon: '⚡', text: 'Instant' },
+                { icon: '🔒', text: 'Secure' },
+                { icon: '0⛓', text: 'No blockchain fees' },
+              ].map(({ icon, text }) => (
+                <div key={text} className="flex items-center gap-1">
+                  <span className="text-xs">{icon}</span>
+                  <span className="text-xs font-semibold" style={{ color: C.g400 }}>{text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ── SWAP HISTORY ── */}
+        <div className="rounded-2xl overflow-hidden shadow-sm" style={{ border: `1.5px solid ${C.g200}`, backgroundColor: '#fff' }}>
+          <div className="px-5 py-3.5 flex items-center justify-between"
+            style={{ background: `linear-gradient(135deg, ${C.mist}, #f0fdf8)`, borderBottom: `1px solid ${C.g100}` }}>
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-xl flex items-center justify-center"
+                style={{ background: `linear-gradient(135deg, ${C.forest}, ${C.green})` }}>
+                <ArrowLeftRight size={12} color="#fff" strokeWidth={2.5} />
+              </div>
+              <p className="font-black text-sm" style={{ color: C.g800 }}>Swap History</p>
+            </div>
+            <span className="text-xs font-black px-2.5 py-1 rounded-full"
+              style={{ background: `${C.sage}20`, color: C.green, border: `1px solid ${C.sage}35` }}>
+              {swapHistory.length} swaps
+            </span>
+          </div>
+
+          {swapHistory.length === 0 ? (
+            <div className="p-10 text-center">
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3"
+                style={{ background: `linear-gradient(135deg, ${C.mist}, #e8f8f0)`, border: `1.5px solid ${C.sage}25` }}>
+                <ArrowLeftRight size={24} style={{ color: C.sage }} />
+              </div>
+              <p className="font-black text-sm" style={{ color: C.g600 }}>No swaps yet</p>
+              <p className="text-xs mt-1" style={{ color: C.g400 }}>Your swap history will appear here</p>
+            </div>
+          ) : (
+            <div>
+              {swapHistory.map((sw, i) => {
+                const isBtcToUsdt = sw.from_currency === 'BTC';
+                return (
+                  <div key={sw.id || i} className="px-5 py-3.5 flex items-center gap-3 hover:bg-gray-50 transition"
+                    style={{ borderTop: i > 0 ? `1px solid ${C.g100}` : 'none' }}>
+                    <div className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-sm"
+                      style={{ background: `linear-gradient(135deg, ${C.forest}15, ${C.green}10)`, border: `1.5px solid ${C.sage}30` }}>
+                      <ArrowLeftRight size={14} style={{ color: C.green }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-black" style={{ color: C.g800 }}>
+                        {isBtcToUsdt
+                          ? <><span style={{ color: '#F7931A' }}>₿{parseFloat(sw.from_amount).toFixed(8)}</span> → <span style={{ color: '#26A17B' }}>₮{parseFloat(sw.to_amount).toFixed(2)}</span></>
+                          : <><span style={{ color: '#26A17B' }}>₮{parseFloat(sw.from_amount).toFixed(2)}</span> → <span style={{ color: '#F7931A' }}>₿{parseFloat(sw.to_amount).toFixed(8)}</span></>}
+                      </p>
+                      <p className="text-xs font-semibold mt-0.5" style={{ color: C.g400 }}>
+                        @ ${parseFloat(sw.rate).toLocaleString('en-US', { maximumFractionDigits: 0 })}/BTC · fee {isBtcToUsdt ? `₮${parseFloat(sw.fee_amount).toFixed(2)}` : `₿${parseFloat(sw.fee_amount).toFixed(8)}`}
+                      </p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <span className="text-xs font-black px-2 py-0.5 rounded-full"
+                        style={{ background: `${C.success}15`, color: C.success, border: `1px solid ${C.success}25` }}>
+                        ✓ Done
+                      </span>
+                      {sw.created_at && <p className="text-xs mt-1 font-semibold" style={{ color: C.g400 }}>{fmtAge(sw.created_at)}</p>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        </>)} {/* END SWAP view */}
 
       </div>
 
@@ -1748,6 +3367,8 @@ export default function WalletPage({ user }) {
       {selectedTx && <TxReceiptModal tx={selectedTx} btcPrice={btcPrice} onClose={() => setSelectedTx(null)}
           onRepeat={(username) => { setSelectedTx(null); setRepeatUsername(username); setShowInternal(true); }} />}
       {showSend && <WithdrawModal balance={availableBal} btcPrice={btcPrice} onClose={() => setShowSend(false)} onSend={sendBitcoin} kycStatus={userVerif} />}
+      {showUsdtSend && <UsdtWithdrawModal balance={usdtData?.balance_usdt || 0} onClose={() => setShowUsdtSend(false)} onSend={sendUsdt} kycStatus={userVerif} />}
+      {showUsdtInternal && <UsdtInternalTransferModal balance={usdtData?.balance_usdt || 0} onClose={() => setShowUsdtInternal(false)} onTransfer={doUsdtInternalTransfer} />}
       {showRecv && <ReceiveModal address={walletData?.address} network={network} onClose={() => setShowRecv(false)} />}
       {showInternal && (
         <InternalTransferModal

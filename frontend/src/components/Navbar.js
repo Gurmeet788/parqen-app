@@ -31,6 +31,7 @@ export default function Navbar({ user, onLogout }) {
   const [hdBalance,       setHdBalance]       = useState(() => parseFloat(localStorage.getItem('praqen_btc_balance') || 0));
   const [balanceUsd,      setBalanceUsd]      = useState(() => parseFloat(localStorage.getItem('praqen_usd_balance') || 0));
   const [lockedBtc,       setLockedBtc]       = useState(() => parseFloat(localStorage.getItem('praqen_locked_btc') || 0));
+  const [usdtBalance,     setUsdtBalance]     = useState(() => parseFloat(localStorage.getItem('praqen_usdt_balance') || 0));
   const [localUser,       setLocalUser]       = useState(user);
   const [showBal,         setShowBal]         = useState(true);
   const [displayCurrency, setDisplayCurrency] = useState(localStorage.getItem('praqen_currency') || 'USD');
@@ -77,17 +78,35 @@ export default function Navbar({ user, onLogout }) {
     try {
       const tk = localStorage.getItem('token');
       if (!tk) return;
-      const r = await axios.get(`${API_URL}/hd-wallet/wallet`, { headers: { Authorization: `Bearer ${tk}` } });
-      const avail    = parseFloat(r.data?.available_btc ?? r.data?.balance_btc ?? 0);
-      const locked   = parseFloat(r.data?.locked_btc || 0);
-      const btcPrice = parseFloat(r.data?.btc_price || 0);
-      const availUsd = btcPrice > 0 ? avail * btcPrice : parseFloat(r.data?.balance_usd || 0);
+      const headers = { Authorization: `Bearer ${tk}` };
+
+      // Fetch BTC + USDT in parallel
+      const [btcRes, usdtRes] = await Promise.all([
+        axios.get(`${API_URL}/hd-wallet/wallet`, { headers }),
+        axios.get(`${API_URL}/wallet/usdt`, { headers }).catch(() => ({ data: {} })),
+      ]);
+
+      const avail      = parseFloat(btcRes.data?.available_btc ?? btcRes.data?.balance_btc ?? 0);
+      const locked     = parseFloat(btcRes.data?.locked_btc || 0);
+      const btcPrice   = parseFloat(btcRes.data?.btc_price || 0);
+      // Total BTC value includes escrow-locked funds (money is still the user's)
+      const totalBtcUsd = btcPrice > 0 ? (avail + locked) * btcPrice : parseFloat(btcRes.data?.balance_usd || 0);
+
+      const usdtAvail  = parseFloat(usdtRes.data?.balance_usdt || 0);
+      const usdtLocked = parseFloat(usdtRes.data?.locked_balance_usdt || 0);
+      const totalUsdt  = usdtAvail + usdtLocked; // USDT is 1:1 with USD
+
+      const combinedUsd = totalBtcUsd + totalUsdt;
+
       setHdBalance(avail);
-      setBalanceUsd(availUsd);
       setLockedBtc(locked);
-      localStorage.setItem('praqen_btc_balance', avail.toString());
-      localStorage.setItem('praqen_usd_balance', availUsd.toString());
-      localStorage.setItem('praqen_locked_btc', locked.toString());
+      setUsdtBalance(totalUsdt);
+      setBalanceUsd(combinedUsd);
+
+      localStorage.setItem('praqen_btc_balance',  avail.toString());
+      localStorage.setItem('praqen_locked_btc',   locked.toString());
+      localStorage.setItem('praqen_usdt_balance', totalUsdt.toString());
+      localStorage.setItem('praqen_usd_balance',  combinedUsd.toString());
     } catch {}
   };
 
@@ -103,11 +122,11 @@ export default function Navbar({ user, onLogout }) {
   const displayUser = localUser?.id ? localUser : user;
   const totalBtc    = parseFloat(hdBalance || 0);
   const fxRate      = displayCurrency === 'USD' ? 1 : (USD_RATES?.[displayCurrency] || 1);
-  // Use stored DB balance_usd — never derive from live BTC price which causes display drift.
-  // Fall back to live calculation only when balance_usd hasn't been fetched yet (first load).
+  // Combined USD = BTC (available + locked) * price + USDT (available + locked)
+  // Fall back to live BTC price + cached USDT when API hasn't responded yet.
   const totalLocal  = balanceUsd > 0
     ? balanceUsd * fxRate
-    : totalBtc * (btcUsd || 88000) * fxRate;
+    : (totalBtc * (btcUsd || 88000) + (usdtBalance || 0)) * fxRate;
   const localCode   = displayCurrency;
   const CURRENCY_SYMBOLS = { USD:'$', GBP:'£', EUR:'€', GHS:'₵', NGN:'₦', KES:'KSh', ZAR:'R' };
   const sym         = CURRENCY_SYMBOLS[displayCurrency] || '';

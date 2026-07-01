@@ -1872,9 +1872,9 @@ app.post('/api/team/setup-account', async (req, res) => {
     const newUser = inserted[0];
 
     await Promise.all([
-      supabaseAdmin.from('user_balances').insert([{ user_id: newUser.id, balance_btc: 0, balance_usd: 0 }]).catch(() => {}),
-      supabaseAdmin.from('wallets').insert({ user_id: newUser.id, balance_btc: 0, locked_balance_btc: 0, updated_at: new Date().toISOString() }).catch(() => {}),
-    ]);
+      supabaseAdmin.from('user_balances').insert([{ user_id: newUser.id, balance_btc: 0, balance_usd: 0 }]),
+      supabaseAdmin.from('wallets').insert({ user_id: newUser.id, balance_btc: 0, locked_balance_btc: 0, updated_at: new Date().toISOString() }),
+    ]).catch(() => {});
 
     const token = jwt.sign({ userId: newUser.id, email }, JWT_SECRET, { expiresIn: '7d' });
     return res.json({
@@ -2877,7 +2877,7 @@ app.post('/api/auth/verify-otp', otpLimiter, async (req, res) => {
         const { data: bonusUser } = await q.single();
         if (bonusUser?.id && bonusUser.bonus_step === 1 &&
             bonusUser.bonus_expires_at && new Date(bonusUser.bonus_expires_at) > new Date()) {
-          supabaseAdmin.from('users').update({ bonus_step: 2 }).eq('id', bonusUser.id).catch(() => {});
+          supabaseAdmin.from('users').update({ bonus_step: 2 }).eq('id', bonusUser.id).then(null, () => {});
         }
       } catch (_) {}
     });
@@ -3860,7 +3860,7 @@ app.get('/api/users/:userId', async (req, res) => {
       const realCount = (buyerRes.count || 0) + (sellerRes.count || 0);
       if (realCount > real_total_trades) {
         real_total_trades = realCount;
-        supabaseAdmin.from('users').update({ total_trades: realCount }).eq('id', data.id).then(() => {}).catch(() => {});
+        supabaseAdmin.from('users').update({ total_trades: realCount }).eq('id', data.id).then(null, () => {});
       }
     } catch {}
 
@@ -5903,7 +5903,7 @@ app.post('/api/trades/:id/dispute', tradeLimiter, verifyToken, async (req, res) 
       await createNotification(trade.seller_id, 'support', '⚠️ Dispute Opened', `Dispute opened for trade #${req.params.id.slice(0, 8)}. Moderator will review.`, `/trade/${req.params.id}`);
       await createNotification(trade.buyer_id,  'support', '⚠️ Dispute Opened', `Dispute opened for trade #${req.params.id.slice(0, 8)}. Please provide evidence.`, `/trade/${req.params.id}`);
       notifyModerators(req.params.id, trade, reason || 'User opened a dispute').catch(e => console.error('[dispute] notifyModerators failed:', e.message));
-      supabaseAdmin.from('messages').insert([{ trade_id: req.params.id, sender_id: null, recipient_id: null, message_text: `🚨 DISPUTE OPENED — Reason: ${reason || 'User opened a dispute'}. Moderators notified.`, message_type: 'SYSTEM', sender_role: 'system', created_at: new Date() }]).then(() => {}).catch(() => {});
+      supabaseAdmin.from('messages').insert([{ trade_id: req.params.id, sender_id: null, recipient_id: null, message_text: `🚨 DISPUTE OPENED — Reason: ${reason || 'User opened a dispute'}. Moderators notified.`, message_type: 'SYSTEM', sender_role: 'system', created_at: new Date() }]).then(null, () => {});
 
       // Email both parties — fetch their user records in parallel
       const [buyerRes, sellerRes] = await Promise.allSettled([
@@ -8689,6 +8689,643 @@ async function backfillCountriesFromPhone() {
   }
 }
 
+// ============================================================
+// USDT TRC-20 WALLET ENDPOINTS
+// ============================================================
+
+const tronWalletService  = require('./services/tronWalletService');
+const tronHotWallet      = require('./services/tronHotWallet');
+const usdtDepositMonitor = require('./services/usdtDepositMonitor');
+const swapService        = require('./services/swapService');
+const COMPANY_WALLET_ID  = '14762cd0-d3b2-474f-acab-fe0071961e9a';
+
+// GET /api/wallet/usdt — return USDT balance + Tron deposit address
+app.get('/api/wallet/usdt', verifyToken, async (req, res) => {
+  try {
+    // Generate (or re-derive) this user's Tron deposit address
+    const { address: tronAddress } = tronWalletService.generateUserAddress(req.userId);
+
+    // Persist tron_address to user_wallets so the deposit monitor can scan it
+    const { error: upsertErr } = await supabaseAdmin.from('user_wallets').upsert(
+      { user_id: req.userId, tron_address: tronAddress, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' }
+    );
+    if (upsertErr) console.warn('[GET /wallet/usdt] user_wallets upsert failed:', upsertErr.message);
+
+    // Read USDT balance from wallets table (single source of truth)
+    const { data: walRow } = await supabaseAdmin
+      .from('wallets').select('balance_usdt, locked_balance_usdt').eq('user_id', req.userId).maybeSingle();
+
+    res.json({
+      success:             true,
+      tron_address:        tronAddress,
+      network:             'Tron (TRC-20)',
+      contract:            process.env.TRON_USDT_CONTRACT || 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+      balance_usdt:        parseFloat(walRow?.balance_usdt || 0),
+      locked_balance_usdt: parseFloat(walRow?.locked_balance_usdt || 0),
+    });
+  } catch (error) {
+    console.error('[GET /wallet/usdt] error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/wallet/usdt/send — withdraw USDT to external Tron address (2FA required)
+// Sends from PRAQEN hot wallet. Tiered fee credited to company wallet.
+// Fee tiers: ₮1–₮50 → ₮4.00 flat | ₮50+ → 4% of amount
+app.post('/api/wallet/usdt/send', verifyToken, async (req, res) => {
+  const FEE_FLAT    = parseFloat(process.env.USDT_WITHDRAWAL_FEE_FLAT    || '4.0');  // flat for ≤ $50
+  const FEE_PERCENT = parseFloat(process.env.USDT_WITHDRAWAL_FEE_PERCENT || '0.04'); // 4% for > $50
+  const MIN_SEND    = parseFloat(process.env.USDT_MIN_SEND               || '5.0');  // minimum $5
+
+  // ── Tiered fee calculator ─────────────────────────────────────────────────
+  const calcFee = (amt) => {
+    if (amt <= 50) return FEE_FLAT;                                   // ₮4 flat
+    return parseFloat((amt * FEE_PERCENT).toFixed(6));               // 4%
+  };
+
+  try {
+    const { toAddress, amount, actionCode } = req.body;
+
+    // ── 2FA gate ──────────────────────────────────────────────────────────
+    if (!actionCode) {
+      return res.status(403).json({
+        error: 'Security verification required.',
+        requireActionCode: true,
+        action: 'send_usdt',
+      });
+    }
+    const codeCheck = actionCodeService.verify(req.userId, 'send_usdt', actionCode);
+    if (!codeCheck.valid) return res.status(403).json({ error: codeCheck.error });
+
+    // ── KYC gate: all 3 steps required ───────────────────────────────────
+    const { data: kycUser } = await supabaseAdmin
+      .from('users')
+      .select('is_email_verified, email_verified, is_phone_verified, phone_verified, is_id_verified, kyc_verified')
+      .eq('id', req.userId).single();
+
+    const kycEmail = !!(kycUser?.is_email_verified || kycUser?.email_verified);
+    const kycPhone = !!(kycUser?.is_phone_verified  || kycUser?.phone_verified);
+    const kycId    = !!(kycUser?.is_id_verified      || kycUser?.kyc_verified);
+
+    if (!kycEmail || !kycPhone || !kycId) {
+      return res.status(403).json({
+        error: 'KYC required: You must complete all 3 verification steps — Email, Phone, and ID verification — before sending USDT to an external wallet. Go to Profile → Verification to complete your KYC.',
+        requireVerification: 'kyc',
+        verified: { email: kycEmail, phone: kycPhone, id: kycId },
+      });
+    }
+
+    // ── Validate destination ──────────────────────────────────────────────
+    if (!toAddress || !tronWalletService.isValidTronAddress(toAddress)) {
+      return res.status(400).json({ error: 'Invalid Tron address — must be 34 characters starting with T' });
+    }
+
+    // Prevent sending to hot wallet (would double-count)
+    if (toAddress === tronHotWallet.getHotWalletAddress()) {
+      return res.status(400).json({ error: 'Cannot withdraw to the PRAQEN system address. Use internal transfer instead.' });
+    }
+
+    // ── Validate amount ───────────────────────────────────────────────────
+    const sendAmount = parseFloat(amount); // net amount user receives on-chain
+    if (!sendAmount || sendAmount <= 0) return res.status(400).json({ error: 'Invalid USDT amount' });
+    if (sendAmount < MIN_SEND) {
+      return res.status(400).json({
+        error: `Minimum withdrawal is ₮${MIN_SEND.toFixed(2)} USDT`,
+      });
+    }
+
+    // ── Calculate tiered fee ──────────────────────────────────────────────
+    const withdrawalFee = calcFee(sendAmount);
+    const totalDeduct   = parseFloat((sendAmount + withdrawalFee).toFixed(6));
+    const feeLabel      = sendAmount <= 50
+      ? `₮${withdrawalFee.toFixed(2)} flat`
+      : `${(FEE_PERCENT * 100).toFixed(0)}% (₮${withdrawalFee.toFixed(2)})`;
+
+    // ── Check user balance (must cover amount + fee) ──────────────────────
+    const { data: walRow } = await supabaseAdmin
+      .from('wallets').select('balance_usdt').eq('user_id', req.userId).maybeSingle();
+    const available = parseFloat(walRow?.balance_usdt || 0);
+
+    if (available < totalDeduct) {
+      return res.status(400).json({
+        error: `Insufficient balance. Need ₮${totalDeduct.toFixed(2)} (₮${sendAmount.toFixed(2)} + ${feeLabel} fee). Available: ₮${available.toFixed(2)}`,
+      });
+    }
+
+    // ── Step 1: Deduct (amount + fee) from user DB balance FIRST ─────────
+    // Optimistic lock: eq('balance_usdt', available) ensures a concurrent request
+    // that already modified the balance will return 0 rows and be rejected.
+    const newBalance = parseFloat((available - totalDeduct).toFixed(6));
+    const { data: deductRows, error: deductErr } = await supabaseAdmin.from('wallets')
+      .update({ balance_usdt: newBalance, updated_at: new Date().toISOString() })
+      .eq('user_id', req.userId)
+      .eq('balance_usdt', available)   // optimistic lock
+      .select('balance_usdt');
+    if (deductErr) {
+      return res.status(500).json({ error: 'Failed to reserve USDT — please try again' });
+    }
+    if (!deductRows || deductRows.length === 0) {
+      return res.status(409).json({ error: 'Balance changed — please retry the withdrawal' });
+    }
+
+    // ── Step 2: Credit fee to company wallet (internal ledger) ───────────
+    await tronHotWallet.creditFeeToCompany(
+      withdrawalFee,
+      `withdrawal fee (${feeLabel}) from ${req.userId.slice(0, 8)}`
+    );
+
+    // ── Step 3: Send net amount from hot wallet on-chain ──────────────────
+    let txResult;
+    try {
+      txResult = await tronHotWallet.sendUsdtToExternal(toAddress, sendAmount);
+    } catch (broadcastErr) {
+      // On-chain send failed — fully restore user balance AND reverse fee credit
+      console.error('[USDT Send] Hot wallet broadcast failed — rolling back:', broadcastErr.message);
+
+      const { error: restoreErr } = await supabaseAdmin.from('wallets')
+        .update({ balance_usdt: available, updated_at: new Date().toISOString() })
+        .eq('user_id', req.userId);
+      if (restoreErr) {
+        console.error('[USDT Send] CRITICAL: user balance restore failed!', restoreErr.message, 'user:', req.userId, 'amount:', totalDeduct);
+      }
+
+      const { data: cw, error: cwErr } = await supabaseAdmin
+        .from('wallets').select('balance_usdt').eq('user_id', COMPANY_WALLET_ID).maybeSingle();
+      if (!cwErr) {
+        const { error: feeRestoreErr } = await supabaseAdmin.from('wallets')
+          .update({ balance_usdt: Math.max(0, parseFloat(cw?.balance_usdt || 0) - withdrawalFee), updated_at: new Date().toISOString() })
+          .eq('user_id', COMPANY_WALLET_ID);
+        if (feeRestoreErr) {
+          console.error('[USDT Send] CRITICAL: company fee reverse failed!', feeRestoreErr.message);
+        }
+      }
+
+      return res.status(500).json({ error: broadcastErr.message });
+    }
+
+    // ── Step 4: Record withdrawal transaction (user) + fee credit (company) ──
+    const txNow = new Date().toISOString();
+    await Promise.all([
+      supabaseAdmin.from('wallet_transactions').insert({
+        user_id:     req.userId,
+        type:        'WITHDRAWAL',
+        currency:    'USDT',
+        amount_usdt: sendAmount,
+        status:      'CONFIRMED',
+        tx_hash:     txResult.txid,
+        notes:       `USDT withdrawal to ${toAddress.slice(0, 16)}…${toAddress.slice(-4)} | fee: ${feeLabel}`,
+        created_at:  txNow,
+      }),
+      supabaseAdmin.from('wallet_transactions').insert({
+        user_id:     COMPANY_WALLET_ID,
+        type:        'FEE',
+        currency:    'USDT',
+        amount_usdt: withdrawalFee,
+        status:      'CONFIRMED',
+        tx_hash:     txResult.txid,
+        notes:       `USDT withdrawal fee (${feeLabel}) from user ${req.userId.slice(0, 8)} — sent ₮${sendAmount.toFixed(2)} to ${toAddress.slice(0, 10)}…`,
+        created_at:  txNow,
+      }),
+    ]).catch(e => console.error('[USDT Send] tx log error (non-fatal):', e.message));
+
+    // ── Step 5: Notify user ───────────────────────────────────────────────
+    await supabaseAdmin.from('notifications').insert({
+      user_id:    req.userId,
+      type:       'wallet',
+      title:      '💸 USDT Sent!',
+      message:    `₮${sendAmount.toFixed(2)} USDT sent to ${toAddress.slice(0, 8)}…${toAddress.slice(-4)} | fee: ${feeLabel}`,
+      action:     '/wallet',
+      is_read:    false,
+      created_at: new Date().toISOString(),
+    }).catch(() => {});
+
+    console.log(`[USDT Send] ₮${sendAmount} → ${toAddress} | fee ${feeLabel} | user: ${req.userId.slice(0, 8)} | txid: ${txResult.txid}`);
+
+    res.json({
+      success:         true,
+      txid:            txResult.txid,
+      amount_sent:     sendAmount,
+      fee:             withdrawalFee,
+      fee_label:       feeLabel,
+      total_deducted:  totalDeduct,
+      to:              toAddress,
+      new_balance:     newBalance,
+      explorer:        txResult.explorer_url,
+    });
+
+  } catch (error) {
+    console.error('[POST /wallet/usdt/send] error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// SWAP ENDPOINTS — BTC ↔ USDT
+// ============================================================
+
+// GET /api/swap/rate — live BTC/USDT rate
+app.get('/api/swap/rate', verifyToken, async (req, res) => {
+  try {
+    const rate = await swapService.getBtcUsdtRate();
+    res.json({
+      success: true,
+      rate,
+      pair:    'BTC/USDT',
+      fee_pct: '1%',
+      source:  'binance',
+    });
+  } catch (error) {
+    res.status(503).json({ error: error.message });
+  }
+});
+
+// POST /api/swap/btc-to-usdt — swap BTC → USDT (internal ledger)
+app.post('/api/swap/btc-to-usdt', verifyToken, async (req, res) => {
+  try {
+    const { btcAmount } = req.body;
+    if (!btcAmount || parseFloat(btcAmount) <= 0) {
+      return res.status(400).json({ error: 'Missing or invalid btcAmount' });
+    }
+    const result = await swapService.swapBtcToUsdt(req.userId, btcAmount);
+    res.json(result);
+  } catch (error) {
+    console.error('[POST /swap/btc-to-usdt] error:', error.message);
+    res.status(error.message.includes('Insufficient') ? 400 : 500).json({ error: error.message });
+  }
+});
+
+// POST /api/swap/usdt-to-btc — swap USDT → BTC (internal ledger)
+app.post('/api/swap/usdt-to-btc', verifyToken, async (req, res) => {
+  try {
+    const { usdtAmount } = req.body;
+    if (!usdtAmount || parseFloat(usdtAmount) <= 0) {
+      return res.status(400).json({ error: 'Missing or invalid usdtAmount' });
+    }
+    const result = await swapService.swapUsdtToBtc(req.userId, usdtAmount);
+    res.json(result);
+  } catch (error) {
+    console.error('[POST /swap/usdt-to-btc] error:', error.message);
+    res.status(error.message.includes('Insufficient') ? 400 : 500).json({ error: error.message });
+  }
+});
+
+// GET /api/swap/history — user's swap history
+app.get('/api/swap/history', verifyToken, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('swap_transactions')
+      .select('*')
+      .eq('user_id', req.userId)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) throw error;
+    res.json({ success: true, swaps: data || [] });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Per-user rate limit for manual deposit check (1 call per 30s per user)
+const _usdtCheckLastCall = new Map(); // userId → timestamp (ms)
+const USDT_CHECK_COOLDOWN_MS = 30_000;
+
+// GET /api/wallet/usdt/check — manually trigger a USDT deposit scan for this user
+app.get('/api/wallet/usdt/check', verifyToken, async (req, res) => {
+  const now = Date.now();
+  const last = _usdtCheckLastCall.get(req.userId) || 0;
+  const elapsed = now - last;
+  if (elapsed < USDT_CHECK_COOLDOWN_MS) {
+    const waitSec = Math.ceil((USDT_CHECK_COOLDOWN_MS - elapsed) / 1000);
+    return res.status(429).json({ error: `Please wait ${waitSec}s before checking again` });
+  }
+  _usdtCheckLastCall.set(req.userId, now);
+
+  try {
+    // Derive the user's Tron address deterministically (same result every time)
+    const { address: derivedAddress } = tronWalletService.generateUserAddress(req.userId);
+
+    // Persist to user_wallets (best-effort — scan still works even if this fails)
+    const { error: upsertErr } = await supabaseAdmin.from('user_wallets').upsert(
+      { user_id: req.userId, tron_address: derivedAddress, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' }
+    );
+    if (upsertErr) console.warn('[/wallet/usdt/check] upsert error (non-fatal):', upsertErr.message);
+
+    // Read last_onchain_usdt if available (for idempotent deposit detection)
+    let lastOnchainUsdt = 0;
+    const { data: walletRow, error: fetchErr } = await supabaseAdmin
+      .from('user_wallets').select('last_onchain_usdt').eq('user_id', req.userId).maybeSingle();
+    if (!fetchErr && walletRow?.last_onchain_usdt != null) {
+      lastOnchainUsdt = parseFloat(walletRow.last_onchain_usdt);
+    }
+
+    await usdtDepositMonitor.checkUserDeposit({
+      userId:          req.userId,
+      address:         derivedAddress,
+      username:        null,
+      lastOnchainUsdt,
+    });
+
+    const { data: wal } = await supabaseAdmin
+      .from('wallets').select('balance_usdt').eq('user_id', req.userId).maybeSingle();
+
+    res.json({
+      success:      true,
+      balance_usdt: parseFloat(wal?.balance_usdt || 0),
+      tron_address: walletRow.tron_address,
+      checked_at:   new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/wallet/usdt/internal-transfer — FREE instant USDT transfer between PRAQEN users
+// Internal ledger only — no Tron broadcast, no gas fee, instant settlement.
+// ─────────────────────────────────────────────────────────────────────────────
+app.post('/api/wallet/usdt/internal-transfer', verifyToken, async (req, res) => {
+  try {
+    const { toUsername, toTronAddress, amountUsdt } = req.body;
+    const amount = parseFloat(amountUsdt);
+
+    if ((!toUsername && !toTronAddress) || !amountUsdt || isNaN(amount) || amount <= 0) {
+      return res.status(400).json({ error: 'Recipient (username or Tron address) and a positive USDT amount are required' });
+    }
+    if (amount < 0.01) {
+      return res.status(400).json({ error: 'Minimum transfer amount is ₮0.01 USDT' });
+    }
+
+    // ── Find recipient ────────────────────────────────────────────────────
+    let recipient;
+
+    if (toUsername) {
+      const { data: u } = await supabaseAdmin
+        .from('users').select('id, username, email').eq('username', toUsername.trim().replace(/^@/, '')).single();
+      if (!u) return res.status(404).json({ error: `@${toUsername} not found on PRAQEN. Check the username and try again.` });
+      recipient = u;
+
+    } else {
+      // Tron address lookup — must belong to a PRAQEN user
+      const addr = toTronAddress.trim();
+      if (!/^T[A-Za-z1-9]{33}$/.test(addr)) {
+        return res.status(400).json({ error: 'Invalid Tron address format. Tron addresses start with T and are 34 characters.' });
+      }
+      const { data: walletRow } = await supabaseAdmin
+        .from('user_wallets').select('user_id').eq('tron_address', addr).maybeSingle();
+      if (!walletRow) {
+        return res.status(404).json({
+          error: 'This Tron address is not registered on PRAQEN. For external sends use the Send (on-chain) button.',
+          isExternal: true,
+        });
+      }
+      const { data: u } = await supabaseAdmin
+        .from('users').select('id, username, email').eq('id', walletRow.user_id).single();
+      if (!u) return res.status(404).json({ error: 'Recipient account not found.' });
+      recipient = u;
+    }
+
+    if (String(recipient.id) === String(req.userId)) {
+      return res.status(400).json({ error: 'You cannot transfer USDT to yourself' });
+    }
+
+    // ── Ensure recipient has a wallets row ────────────────────────────────
+    const { data: recipWallet } = await supabaseAdmin
+      .from('wallets').select('balance_usdt').eq('user_id', recipient.id).maybeSingle();
+    if (!recipWallet) {
+      return res.status(400).json({ error: 'Recipient wallet not initialised. Ask them to open the PRAQEN wallet page first.' });
+    }
+
+    // ── Check sender USDT balance ─────────────────────────────────────────
+    const { data: senderWallet } = await supabaseAdmin
+      .from('wallets').select('balance_usdt').eq('user_id', req.userId).maybeSingle();
+    const available = parseFloat(senderWallet?.balance_usdt || 0);
+    if (available < amount) {
+      return res.status(400).json({
+        error: `Insufficient USDT. Available: ₮${available.toFixed(2)}, Required: ₮${amount.toFixed(2)}`,
+      });
+    }
+
+    // ── Deduct from sender (optimistic lock: reject if balance changed since read) ──
+    const newSenderBal = parseFloat((available - amount).toFixed(6));
+    const { data: deductRows, error: deductErr } = await supabaseAdmin
+      .from('wallets')
+      .update({ balance_usdt: newSenderBal, updated_at: new Date().toISOString() })
+      .eq('user_id', req.userId)
+      .eq('balance_usdt', available)   // optimistic lock — fails if concurrent tx modified it
+      .select('balance_usdt');
+    if (deductErr) {
+      return res.status(500).json({ error: 'Transfer failed — please try again' });
+    }
+    if (!deductRows || deductRows.length === 0) {
+      return res.status(409).json({ error: 'Balance changed — please retry the transfer' });
+    }
+
+    // ── Credit recipient (rollback sender on failure) ─────────────────────
+    const newRecipBal = parseFloat((parseFloat(recipWallet.balance_usdt || 0) + amount).toFixed(6));
+    const { error: creditErr } = await supabaseAdmin
+      .from('wallets')
+      .update({ balance_usdt: newRecipBal, updated_at: new Date().toISOString() })
+      .eq('user_id', recipient.id);
+    if (creditErr) {
+      // Rollback sender deduction so no funds are lost
+      await supabaseAdmin.from('wallets')
+        .update({ balance_usdt: available, updated_at: new Date().toISOString() })
+        .eq('user_id', req.userId);
+      return res.status(500).json({ error: 'Transfer failed — your balance has been restored' });
+    }
+
+    // ── Generate transfer reference ────────────────────────────────────────
+    const txRef = 'UINT_' + require('crypto')
+      .createHash('sha256')
+      .update(`${req.userId}:${recipient.id}:${amount}:${Date.now()}`)
+      .digest('hex').slice(0, 16).toUpperCase();
+
+    const { data: senderUser } = await supabaseAdmin.from('users').select('username, email').eq('id', req.userId).single();
+    const senderName = senderUser?.username || 'a PRAQEN user';
+    const txTs = new Date().toISOString();
+
+    // ── Log TRANSFER_OUT for sender ───────────────────────────────────────
+    {
+      const { error: outErr } = await supabaseAdmin.from('wallet_transactions').insert({
+        user_id:     req.userId,
+        type:        'TRANSFER_OUT',
+        currency:    'USDT',
+        amount_usdt: amount,
+        amount_btc:  0,
+        status:      'CONFIRMED',
+        tx_hash:     `${txRef}_OUT`,
+        notes:       `USDT transfer → @${recipient.username} · No fee`,
+        created_at:  txTs,
+      });
+      if (outErr) console.error('[UsdtTransfer] OUT log err:', outErr.message);
+    }
+
+    // ── Log TRANSFER_IN for recipient ─────────────────────────────────────
+    {
+      const { error: inErr } = await supabaseAdmin.from('wallet_transactions').insert({
+        user_id:     recipient.id,
+        type:        'TRANSFER_IN',
+        currency:    'USDT',
+        amount_usdt: amount,
+        amount_btc:  0,
+        status:      'CONFIRMED',
+        tx_hash:     `${txRef}_IN`,
+        notes:       `USDT received from @${senderName} · No fee`,
+        created_at:  txTs,
+      });
+      if (inErr) console.error('[UsdtTransfer] IN log err:', inErr.message);
+    }
+
+    // ── In-app notifications ──────────────────────────────────────────────
+    await createNotification(
+      recipient.id, 'system', '₮ USDT Received!',
+      `@${senderName} sent you ₮${amount.toFixed(2)} USDT — instant & free.`, '/wallet'
+    ).catch(() => {});
+    await createNotification(
+      req.userId, 'system', '✅ USDT Transfer Sent',
+      `₮${amount.toFixed(2)} USDT sent to @${recipient.username} instantly. Ref: ${txRef}`, '/wallet'
+    ).catch(() => {});
+
+    // ── Email notifications (fire-and-forget) ──────────────────────────────
+    const txDate = new Date().toUTCString();
+    const emailFrom = `"PRAQEN" <${process.env.EMAIL_USER || 'support@praqen.com'}>`;
+
+    const recipHtml = `<div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:520px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #E2E8F0">
+  <div style="background:linear-gradient(135deg,#1B4332,#26A17B);padding:28px 32px;text-align:center">
+    <h1 style="color:#F4A422;font-size:26px;margin:0;font-weight:900">₮ USDT Received!</h1>
+    <p style="color:rgba(255,255,255,0.7);margin:8px 0 0;font-size:14px">Instant PRAQEN internal transfer</p>
+  </div>
+  <div style="padding:28px 32px">
+    <div style="background:#F0FAF5;border-radius:12px;padding:20px;text-align:center;margin-bottom:20px">
+      <p style="color:#64748B;font-size:12px;margin:0 0 6px">You received</p>
+      <p style="color:#1B4332;font-size:32px;font-weight:900;margin:0">₮ ${amount.toFixed(2)} USDT</p>
+      <p style="color:#10B981;font-size:12px;font-weight:700;margin:6px 0 0">⚡ Instant &amp; FREE</p>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <tr><td style="color:#64748B;padding:6px 0">From</td><td style="color:#1B4332;font-weight:700;text-align:right">@${senderName}</td></tr>
+      <tr><td style="color:#64748B;padding:6px 0">Fee</td><td style="color:#10B981;font-weight:700;text-align:right">₮ 0.00 (Free)</td></tr>
+      <tr><td style="color:#64748B;padding:6px 0">Reference</td><td style="color:#1B4332;font-weight:700;text-align:right;font-family:monospace;font-size:11px">${txRef}</td></tr>
+      <tr><td style="color:#64748B;padding:6px 0">Date</td><td style="color:#475569;text-align:right">${txDate}</td></tr>
+    </table>
+    <div style="text-align:center;margin-top:24px"><a href="https://praqen.com/wallet" style="display:inline-block;background:#1B4332;color:#fff;font-weight:900;padding:14px 32px;border-radius:12px;text-decoration:none;font-size:14px">View Wallet</a></div>
+  </div>
+</div>`;
+
+    const senderHtml = `<div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:520px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #E2E8F0">
+  <div style="background:linear-gradient(135deg,#1B4332,#26A17B);padding:28px 32px;text-align:center">
+    <h1 style="color:#fff;font-size:22px;margin:0;font-weight:900">USDT Transfer Sent ✅</h1>
+  </div>
+  <div style="padding:28px 32px">
+    <div style="background:#F8FAFC;border-radius:12px;padding:20px;text-align:center;margin-bottom:20px">
+      <p style="color:#64748B;font-size:12px;margin:0 0 6px">You sent</p>
+      <p style="color:#EF4444;font-size:32px;font-weight:900;margin:0">−₮ ${amount.toFixed(2)} USDT</p>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <tr><td style="color:#64748B;padding:6px 0">To</td><td style="color:#1B4332;font-weight:700;text-align:right">@${recipient.username}</td></tr>
+      <tr><td style="color:#64748B;padding:6px 0">Fee</td><td style="color:#10B981;font-weight:700;text-align:right">₮ 0.00 (Free)</td></tr>
+      <tr><td style="color:#64748B;padding:6px 0">New USDT Balance</td><td style="color:#1B4332;font-weight:700;text-align:right">₮ ${newSenderBal.toFixed(2)}</td></tr>
+      <tr><td style="color:#64748B;padding:6px 0">Reference</td><td style="color:#1B4332;font-weight:700;text-align:right;font-family:monospace;font-size:11px">${txRef}</td></tr>
+    </table>
+    <div style="text-align:center;margin-top:24px"><a href="https://praqen.com/wallet" style="display:inline-block;background:#1B4332;color:#fff;font-weight:900;padding:14px 32px;border-radius:12px;text-decoration:none;font-size:14px">View Wallet</a></div>
+  </div>
+</div>`;
+
+    Promise.all([
+      recipient.email && transporter.sendMail({ from: emailFrom, to: recipient.email, subject: `₮ You received ₮${amount.toFixed(2)} USDT from @${senderName} on PRAQEN`, html: recipHtml }),
+      senderUser?.email && transporter.sendMail({ from: emailFrom, to: senderUser.email, subject: `✅ USDT sent: ₮${amount.toFixed(2)} → @${recipient.username}`, html: senderHtml }),
+    ]).catch(err => console.warn('[UsdtTransfer] Email error (non-fatal):', err.message));
+
+    console.log(`[UsdtInternalTransfer] @${senderName} → @${recipient.username} | ₮${amount} | FREE | ref:${txRef}`);
+
+    res.json({
+      success:      true,
+      txRef,
+      amount_usdt:  amount,
+      fee:          0,
+      to:           recipient.username,
+      new_balance:  newSenderBal,
+      message:      `₮${amount.toFixed(2)} USDT sent to @${recipient.username} — instantly & free!`,
+    });
+
+  } catch (error) {
+    console.error('[POST /api/wallet/usdt/internal-transfer]', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// ADMIN — HOT WALLET MANAGEMENT
+// ============================================================
+
+// GET /api/admin/hot-wallet/status
+// Returns hot wallet balances, TRX level, pending sweeps, company USDT earned
+app.get('/api/admin/hot-wallet/status', verifyToken, async (req, res) => {
+  try {
+    const { data: me } = await supabaseAdmin.from('users').select('is_admin').eq('id', req.userId).single();
+    if (!me?.is_admin) return res.status(403).json({ error: 'Admin only' });
+
+    const status = await tronHotWallet.getStatus();
+    res.json({ success: true, ...status });
+  } catch (e) {
+    console.error('[GET /admin/hot-wallet/status]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/admin/hot-wallet/process-sweeps
+// Manually trigger pending sweep processing
+app.post('/api/admin/hot-wallet/process-sweeps', verifyToken, async (req, res) => {
+  try {
+    const { data: me } = await supabaseAdmin.from('users').select('is_admin').eq('id', req.userId).single();
+    if (!me?.is_admin) return res.status(403).json({ error: 'Admin only' });
+
+    await tronHotWallet.processPendingSweeps();
+    res.json({ success: true, message: 'Pending sweeps processed' });
+  } catch (e) {
+    console.error('[POST /admin/hot-wallet/process-sweeps]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/admin/hot-wallet/collect-fees
+// Cash out accumulated company USDT fees from hot wallet to a cold wallet address
+app.post('/api/admin/hot-wallet/collect-fees', verifyToken, async (req, res) => {
+  try {
+    const { data: me } = await supabaseAdmin.from('users').select('is_admin').eq('id', req.userId).single();
+    if (!me?.is_admin) return res.status(403).json({ error: 'Admin only' });
+
+    const { toAddress, amountUsdt } = req.body;
+    const amount = parseFloat(amountUsdt);
+
+    if (!toAddress || !tronWalletService.isValidTronAddress(toAddress)) {
+      return res.status(400).json({ error: 'Valid Tron cold wallet address required' });
+    }
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ error: 'Positive USDT amount required' });
+    }
+
+    const result = await tronHotWallet.collectFeesToColdWallet(amount, toAddress);
+
+    // Log the collection
+    await supabaseAdmin.from('wallet_transactions').insert({
+      user_id:     COMPANY_WALLET_ID,
+      type:        'WITHDRAWAL',
+      currency:    'USDT',
+      amount_usdt: amount,
+      status:      'CONFIRMED',
+      tx_hash:     result.txid,
+      notes:       `Admin fee collection → ${toAddress.slice(0, 16)}… by ${req.userId.slice(0, 8)}`,
+      created_at:  new Date().toISOString(),
+    }).catch(() => {});
+
+    res.json({ success: true, ...result });
+  } catch (e) {
+    console.error('[POST /admin/hot-wallet/collect-fees]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // START SERVER
 // ============================================================
 
@@ -8696,6 +9333,9 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`✅ PRAQEN Backend running on http://localhost:${PORT}`);
   console.log('📋 Routes: /api/auth, /api/users, /api/listings, /api/trades, /api/my-trades, /api/wallet, /api/hd-wallet, /api/notifications');
+
+  // Log hot wallet address so admin knows where to fund TRX + USDT
+  tronHotWallet.logStartup();
 
   // Pre-warm the listings cache immediately so the very first request hits a warm cache
   _warmListingsCache();
@@ -8723,6 +9363,10 @@ app.listen(PORT, () => {
   // 5-minute scanner kept as safety net (catches anything WebSocket misses on reconnect)
   depositMonitor.start();
   console.log('🔍 Deposit monitor: MAINNET — polls every 5 min | SMS + Email alerts enabled');
+
+  // USDT TRC-20 deposit monitor — scans all Tron addresses every 15 min
+  usdtDepositMonitor.start();
+  console.log('🔍 USDT Deposit monitor: MAINNET (Tron) — polls every 15 min | Email + Push alerts enabled');
 
   // ── Deposit sweeper — moves confirmed deposits to hot wallet ─────────────
   // Runs 2 min after startup then every 30 min. Silent — never affects user balances.
