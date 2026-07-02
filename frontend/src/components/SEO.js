@@ -1,54 +1,8 @@
 import { Helmet } from 'react-helmet-async';
 import { useLocation } from 'react-router-dom';
+import { PAGE_META, NOINDEX_PAGES } from '../seoMeta';
 
 const SITE = 'https://praqen.com';
-
-const PAGE_META = {
-  '/': {
-    title: 'PRAQEN | Buy & Sell Bitcoin & USDT P2P Worldwide | MTN MoMo, M-Pesa & Bank Transfer',
-    description: "PRAQEN is the world's most trusted P2P Bitcoin, USDT & gift card trading platform. Buy or sell Bitcoin and USDT instantly with MTN Mobile Money, Airtel, M-Pesa & bank transfer. Escrow-protected, 0.5% flat fee, 180+ countries. No hidden charges.",
-    ogTitle: 'PRAQEN — Buy & Sell Bitcoin & USDT P2P Worldwide',
-    ogDesc: "The world's #1 peer-to-peer Bitcoin & USDT trading platform. Escrow-protected trades, 0.5% flat fee, pay with Mobile Money, M-Pesa or bank transfer. Instant & secure.",
-  },
-  '/buy-bitcoin': {
-    title: 'Buy Bitcoin Worldwide with Mobile Money | PRAQEN P2P',
-    description: 'Buy Bitcoin instantly in Ghana, Nigeria, Kenya & worldwide. Pay with MTN MoMo, M-Pesa, Airtel Money or bank transfer. Best rates, escrow-protected, 0.5% fee.',
-    ogTitle: 'Buy Bitcoin Worldwide — PRAQEN P2P Marketplace',
-    ogDesc: 'Buy BTC with MTN Mobile Money, M-Pesa or bank transfer. Escrow-protected, best P2P rates globally.',
-  },
-  '/sell-bitcoin': {
-    title: 'Sell Bitcoin for Mobile Money & Cash Worldwide | PRAQEN',
-    description: 'Sell Bitcoin instantly for GHS, NGN, KES & more. Receive payment via MTN Mobile Money, M-Pesa, bank transfer. Fast, secure escrow. Best BTC rates worldwide.',
-    ogTitle: 'Sell Bitcoin for Cash Worldwide — PRAQEN P2P',
-    ogDesc: 'Sell BTC and get paid via MTN MoMo, M-Pesa or bank transfer. Best rates globally. Escrow-protected.',
-  },
-  '/gift-cards': {
-    title: 'Trade Gift Cards for Bitcoin & Cash Globally | PRAQEN',
-    description: 'Exchange Amazon, iTunes, Steam, Google Play & 50+ gift cards for Bitcoin or cash. Instant payment via Mobile Money. Best rates guaranteed.',
-    ogTitle: 'Gift Card to Bitcoin Trading Globally — PRAQEN',
-    ogDesc: 'Sell your Amazon, iTunes, Google Play & Steam gift cards for Bitcoin or mobile money. Instant, escrow-protected, best rates.',
-  },
-  '/sell-gift-card': {
-    title: 'Sell Gift Cards Instantly for Cash Worldwide | PRAQEN',
-    description: 'Sell unused gift cards instantly worldwide. Get paid in Bitcoin or mobile money. Fast verification, best rates for Amazon, iTunes & more.',
-    ogTitle: 'Sell Gift Cards Instantly — PRAQEN',
-    ogDesc: 'Turn your gift cards into cash or Bitcoin. Fastest payout worldwide via Mobile Money.',
-  },
-  '/register': {
-    title: 'Create Free Account | PRAQEN Global P2P Bitcoin & USDT Trading',
-    description: 'Join PRAQEN and start trading Bitcoin & USDT P2P worldwide. Free account, instant verification, escrow-protected trades. MTN MoMo, M-Pesa, bank transfer supported.',
-    ogTitle: 'Sign Up Free — PRAQEN P2P Bitcoin & USDT Trading',
-    ogDesc: 'Create your free PRAQEN account and start buying or selling Bitcoin & USDT worldwide today.',
-  },
-  '/login': {
-    title: 'Sign In to PRAQEN | Global P2P Bitcoin & USDT Trading',
-    description: 'Sign in to your PRAQEN account to buy and sell Bitcoin & USDT, trade gift cards, and manage your P2P trades worldwide.',
-    ogTitle: 'Sign In — PRAQEN',
-    ogDesc: 'Access your PRAQEN account and continue trading Bitcoin & USDT P2P worldwide.',
-  },
-};
-
-const NOINDEX_PAGES = ['/dashboard', '/wallet', '/settings', '/my-trades', '/my-listings', '/admin', '/moderator'];
 
 export default function SEO({ title, description, noindex }) {
   const { pathname, search } = useLocation();
