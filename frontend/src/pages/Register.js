@@ -925,14 +925,14 @@ export default function Register({ onLogin }) {
             </div>
 
             <h1 className="hero-title">
-              Trade Bitcoin<br />
+              Trade Bitcoin &amp; USDT<br />
               <span className="highlight">Peer-to-Peer</span><br />
               with Confidence
             </h1>
 
             <p className="hero-description">
-              Join the world's most trusted P2P Bitcoin marketplace.
-              Trade directly with verified users, protected by 
+              Join the world's most trusted P2P Bitcoin &amp; USDT marketplace.
+              Trade directly with verified users, protected by
               industry-leading escrow technology.
             </p>
 
@@ -1080,7 +1080,7 @@ export default function Register({ onLogin }) {
                           You were invited by <span style={{ color: '#fff' }}>@{referrerInfo.username}</span>!
                         </p>
                         <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11, margin: '2px 0 0', fontWeight: 500 }}>
-                          Sign up now and start trading on the world's #1 P2P Bitcoin platform
+                          Sign up now and start trading on the world's #1 P2P Bitcoin &amp; USDT platform
                         </p>
                       </>
                     ) : (
@@ -1089,7 +1089,7 @@ export default function Register({ onLogin }) {
                           You have a referral invitation!
                         </p>
                         <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11, margin: '2px 0 0', fontWeight: 500 }}>
-                          Sign up now and start trading on the world's #1 P2P Bitcoin platform
+                          Sign up now and start trading on the world's #1 P2P Bitcoin &amp; USDT platform
                         </p>
                       </>
                     )}

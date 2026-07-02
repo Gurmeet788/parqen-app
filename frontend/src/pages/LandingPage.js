@@ -168,7 +168,7 @@ export default function LandingPage({ user }) {
               <h1 className={`text-[1.6rem] sm:text-5xl lg:text-6xl font-black leading-[1.1] mb-4 text-white ${heroOn?'anim-up':''}`}
                 style={{opacity:heroOn?1:0,fontFamily:"'Syne',sans-serif",animationDelay:'.1s'}}>
                 The Safest Way to<br/>
-                <span className="grad-text">Buy &amp; Sell Bitcoin</span><br/>
+                <span className="grad-text">Buy &amp; Sell Bitcoin &amp; USDT</span><br/>
                 <span className="text-sm sm:text-xl font-bold" style={{color:'rgba(255,255,255,.65)'}}>
                   Peer-to-Peer · Worldwide
                 </span>
@@ -177,7 +177,7 @@ export default function LandingPage({ user }) {
               {/* sub */}
               <p className={`text-sm md:text-base mb-7 leading-relaxed max-w-lg ${heroOn?'anim-up':''}`}
                 style={{opacity:heroOn?1:0,color:'rgba(255,255,255,.62)',animationDelay:'.18s'}}>
-                Trade Bitcoin directly with verified peers using WeChat Pay, M-Pesa, SEPA, UPI, Bank Transfer
+                Trade Bitcoin &amp; USDT directly with verified peers using WeChat Pay, M-Pesa, SEPA, UPI, Bank Transfer
                 and 100+ local payment methods across 180+ countries. Every trade is escrow-protected.
               </p>
 
@@ -1055,7 +1055,7 @@ export default function LandingPage({ user }) {
               style={{background:'#EF4444',color:'#fff'}}>BETA</span>
           </div>
           <p className="text-xs mb-5" style={{color:'rgba(255,255,255,.45)'}}>
-            The world's most trusted P2P Bitcoin platform · Escrow-protected · 0.5% flat fee
+            The world's most trusted P2P Bitcoin &amp; USDT platform · Escrow-protected · 0.5% flat fee
           </p>
 
           {/* key links */}

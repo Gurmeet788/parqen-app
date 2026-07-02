@@ -562,7 +562,7 @@ export default function Login({ onLogin }) {
               margin: '0 0 40px',
               fontWeight: 400
             }}>
-              Sign in to continue trading Bitcoin peer-to-peer with confidence.
+              Sign in to continue trading Bitcoin &amp; USDT peer-to-peer with confidence.
             </p>
 
             {/* Stats */}
