@@ -273,6 +273,7 @@ function App() {
       <Routes>
         {/* ── TEAM PORTAL — completely standalone, no main chrome ── */}
         <Route path="/team" element={<TeamDashboard user={user} />} />
+        <Route path="/moderator" element={<ModeratorDashboard user={user} />} />
 
         {/* ── ALL OTHER ROUTES — wrapped in main app chrome ── */}
         <Route path="*" element={
@@ -326,7 +327,6 @@ function App() {
               <Route path="/trade-chat/:id" element={user ? <TradeChat user={user} /> : <Navigate to="/login" />} />
               <Route path="/feedback/:tradeId/:userId" element={user ? <Feedback user={user} /> : <Navigate to="/login" />} />
               <Route path="/admin" element={<AdminDashboard user={user} onLogin={login} />} />
-              <Route path="/moderator" element={<ModeratorDashboard user={user} />} />
               <Route path="/escrow/:id" element={user ? <EscrowVerification user={user} /> : <Navigate to="/login" />} />
               <Route path="/ref/:username" element={<RefRedirect />} />
               <Route path="*" element={<Navigate to="/" />} />

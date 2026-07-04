@@ -1280,12 +1280,14 @@ export default function TradeDetail({user}) {
   const showDispute   = isActive&&!isDisputed&&(isBuyer||isSeller);
 
   // ── Cancel eligibility ────────────────────────────────────────────────────
-  // Only the PAYER can cancel. In a regular BTC trade the buyer pays fiat, so
-  // the buyer holds cancel rights. In a gift-card trade the seller sends the
-  // card, so the seller (gift-card sender) holds cancel rights.
-  // The BTC holder NEVER has the right to cancel once a trade is open.
-  const isPayer = isGiftCardTrade ? isSeller : isBuyer;
-  const showCancelBtn = isActive && isPayer && isEscrow; // only before marking paid
+  // Mirrors the backend rule in POST /api/trades/:id/cancel exactly:
+  // - Before payment is confirmed, either party can cancel (nothing has moved yet).
+  // - Once payment is confirmed, only the seller can still cancel (protects the
+  //   seller if the buyer's payment claim turns out to be fake) — the buyer must
+  //   open a dispute instead of unilaterally backing out after claiming to pay.
+  // - This includes DISPUTED trades: either side can withdraw a dispute they no
+  //   longer want to pursue, under the same payment-confirmed rule above.
+  const showCancelBtn = isActive && (isBuyer || isSeller) && (isSeller || !trade?.buyer_confirmed);
 
   // Read receipts: timestamp of the last message the counterparty sent
   const lastCpMsgTime = messages

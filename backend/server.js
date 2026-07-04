@@ -1104,6 +1104,15 @@ async function getModeratorUserIds() {
   return data.map(u => u.id);
 }
 
+// Full moderator/admin identities (for vote-seat rendering and name/email attribution).
+async function getModeratorsFull() {
+  const { data, error } = await supabaseAdmin.from('users')
+    .select('id, username, full_name, email, is_admin, is_moderator')
+    .or('is_moderator.eq.true,is_admin.eq.true');
+  if (error) { console.error('Error fetching moderators:', error); return []; }
+  return data || [];
+}
+
 async function notifyModerators(tradeId, trade, reason) {
   const ids = await getModeratorUserIds();
   for (const id of ids) {
@@ -1754,17 +1763,27 @@ app.post('/api/auth/verify-login-otp', authLimiter, async (req, res) => {
   }
 });
 
-// ── Team portal: direct login (no OTP — domain-restricted to team emails) ────
+// ── Team portal: explicit email allowlist ────────────────────────────────────
+// Deliberately a hand-maintained list of exact addresses, not a domain check —
+// anyone with an @praqen.com mailbox should NOT be able to self-enroll as a
+// moderator. procineth@gmail.com and parqen5@gmail.com are the pre-existing
+// admin accounts, kept as exceptions.
+const MODERATOR_EMAIL_ALLOWLIST = [
+  'debby@praqen.com',
+  'ken@praqen.com',
+  'zeinudeen.team@praqen.com',
+  'procineth@gmail.com',
+  'parqen5@gmail.com',
+];
+
+// ── Team portal: direct login (no OTP — restricted to the allowlist above) ───
 app.post('/api/team/login', async (req, res) => {
   try {
     const { email: rawEmail, password } = req.body;
     const email = (rawEmail || '').toLowerCase().trim();
     if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
 
-    const allowedDomains = (process.env.TEAM_ALLOWED_DOMAINS || 'praqen.com')
-      .split(',').map(d => d.trim().toLowerCase());
-    const domain = (email.split('@')[1] || '').toLowerCase();
-    if (!allowedDomains.includes(domain)) return res.status(403).json({ error: 'Not authorised for the Team Portal' });
+    if (!MODERATOR_EMAIL_ALLOWLIST.includes(email)) return res.status(403).json({ error: 'Not authorised for the Team Portal' });
 
     const { data, error } = await supabaseAdmin.from('users').select('*').eq('email', email).maybeSingle();
     if (error) {
@@ -1805,21 +1824,17 @@ app.post('/api/team/login', async (req, res) => {
 
 // ── Team portal: check email status ─────────────────────────────────────────
 // Returns: has_account | needs_setup | not_allowed
-const TEAM_ALLOWED_DOMAINS = (process.env.TEAM_ALLOWED_DOMAINS || 'praqen.com')
-  .split(',').map(d => d.trim().toLowerCase());
-
 app.post('/api/team/check-email', async (req, res) => {
   try {
     const email = (req.body.email || '').toLowerCase().trim();
     if (!email) return res.status(400).json({ error: 'Email required' });
-    const domain = email.split('@')[1];
     const { data: user } = await supabaseAdmin.from('users').select('id,is_moderator,is_admin').eq('email', email).single();
     if (user) {
       if (user.is_moderator || user.is_admin) return res.json({ status: 'has_account' });
       return res.json({ status: 'not_allowed', error: 'This account does not have team access. Ask an admin to grant you access.' });
     }
-    // No account yet — allow self-setup if domain is approved
-    if (TEAM_ALLOWED_DOMAINS.includes(domain)) return res.json({ status: 'needs_setup' });
+    // No account yet — allow self-setup only if this exact email is on the allowlist
+    if (MODERATOR_EMAIL_ALLOWLIST.includes(email)) return res.json({ status: 'needs_setup' });
     return res.json({ status: 'not_allowed', error: 'This email is not authorised for the Team Portal.' });
   } catch (err) {
     console.error('team/check-email error:', err);
@@ -1835,8 +1850,7 @@ app.post('/api/team/setup-account', async (req, res) => {
     if (!email || !full_name || !password) return res.status(400).json({ error: 'Email, full name and password are all required' });
     if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
     if (full_name.trim().length > 200) return res.status(400).json({ error: 'Full name is too long (max 200 characters)' });
-    const domain = email.split('@')[1];
-    if (!TEAM_ALLOWED_DOMAINS.includes(domain)) return res.status(403).json({ error: 'Not authorised' });
+    if (!MODERATOR_EMAIL_ALLOWLIST.includes(email)) return res.status(403).json({ error: 'Not authorised' });
     // Must not already exist
     const { data: existing } = await supabaseAdmin.from('users').select('id').eq('email', email).single();
     if (existing) return res.status(400).json({ error: 'An account with this email already exists. Please log in.' });
@@ -2009,11 +2023,14 @@ app.get('/api/team/loans', verifyToken, async (req, res) => {
 app.post('/api/team/loans', verifyToken, async (req, res) => {
   try {
     const t = await requireTeam(req, res); if (!t) return;
-    const { title, lender, amount_usd, due_date, notes } = req.body;
+    const { title, lender, amount_usd, due_date, notes, currency, original_amount, fx_rate } = req.body;
     if (!title || !lender || !amount_usd) return res.status(400).json({ error: 'title, lender and amount_usd required' });
     const { data: u } = await supabaseAdmin.from('users').select('username').eq('id', req.userId).single();
     const { data, error } = await supabaseAdmin.from('company_loans').insert({
       title, lender, amount_usd: parseFloat(amount_usd), amount_paid_usd: 0,
+      currency: currency || 'USD',
+      original_amount: original_amount != null ? parseFloat(original_amount) : parseFloat(amount_usd),
+      fx_rate: fx_rate != null ? parseFloat(fx_rate) : 1,
       due_date: due_date || null, status: 'active', notes: notes || null,
       created_by: u?.username || req.userId, created_at: new Date(), updated_at: new Date(),
     }).select().single();
@@ -2175,7 +2192,7 @@ app.patch('/api/team/staff/:id', verifyToken, async (req, res) => {
     if (official_email   !== undefined) updates.official_email   = official_email;
     if (personal_email   !== undefined) updates.personal_email   = personal_email;
     if (phone            !== undefined) updates.phone            = phone;
-    if (salary_usd       !== undefined) updates.salary_usd       = parseFloat(salary_usd);
+    if (salary_usd       !== undefined) updates.salary_usd       = parseFloat(salary_usd || 0);
     if (salary_period    !== undefined) updates.salary_period    = salary_period;
     if (contract_type    !== undefined) updates.contract_type    = contract_type;
     if (contract_months  !== undefined) updates.contract_months  = contract_months ? parseInt(contract_months) : null;
@@ -5683,17 +5700,23 @@ app.post('/api/trades/:id/cancel', tradeLimiter, verifyToken, async (req, res) =
 
     // Authorization: any participant (buyer or seller) can cancel,
     // EXCEPT after buyer marks paid — only the seller can cancel at that point.
+    // Use `buyer_confirmed` (not `status`) for this check — once a trade is
+    // disputed, `status` becomes 'DISPUTED' and would otherwise hide the fact
+    // that payment was already marked sent before the dispute was opened.
     const isBuyer  = trade.buyer_id  === req.userId;
     const isSeller = trade.seller_id === req.userId;
     if (!isBuyer && !isSeller) {
       return res.status(403).json({ error: 'Not authorized to cancel this trade' });
     }
-    const isPostPay = ['PAYMENT_SENT', 'PAID'].includes(trade.status);
+    const isPostPay = trade.buyer_confirmed === true;
     if (isPostPay && !isSeller) {
       return res.status(403).json({ error: 'Cannot cancel after payment has been sent — open a dispute instead' });
     }
 
-    const cancellableStatuses = ['CREATED', 'FUNDS_LOCKED', 'ESCROW', 'ACTIVE', 'OPEN', 'PAYMENT_SENT', 'PAID'];
+    // DISPUTED is included so either side can back out of a dispute they no longer
+    // want to pursue — tradeEscrowService.cancelTrade already treats DISPUTED as a
+    // safe, refundable state (it's the same code path a moderator's CANCEL uses).
+    const cancellableStatuses = ['CREATED', 'FUNDS_LOCKED', 'ESCROW', 'ACTIVE', 'OPEN', 'PAYMENT_SENT', 'PAID', 'DISPUTED'];
     if (!cancellableStatuses.includes(trade.status)) return res.status(400).json({ error: `Trade cannot be cancelled — status is ${trade.status}` });
 
     // Delegate ALL escrow release + balance refund + trade status update to the
@@ -5947,59 +5970,276 @@ app.post('/api/trades/:id/moderator-join', verifyToken, async (req, res) => {
 });
 
 const ADMIN_EMAIL = 'support@praqen.com';
+const DISPUTE_QUORUM = 3;          // matching votes needed to auto-execute a verdict
+const CURRENT_OATH_VERSION = 1;    // bump to force every moderator to re-sign
+const DISPUTE_SLA_HOURS = 48;      // hours of inactivity before admin override unlocks
+
+async function hasSignedOath(userId) {
+  const { data } = await supabaseAdmin.from('moderator_oaths')
+    .select('id').eq('user_id', userId).eq('oath_version', CURRENT_OATH_VERSION).maybeSingle();
+  return !!data;
+}
+
+// ── Oath of Trust ────────────────────────────────────────────────────────────
+app.get('/api/team/oath-status', verifyToken, async (req, res) => {
+  try {
+    const signed = await hasSignedOath(req.userId);
+    res.json({ signed, version: CURRENT_OATH_VERSION });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/team/oath/sign', verifyToken, async (req, res) => {
+  try {
+    const { data: userData } = await supabaseAdmin.from('users').select('is_admin, is_moderator').eq('id', req.userId).single();
+    if (!userData?.is_admin && !userData?.is_moderator) return res.status(403).json({ error: 'Moderators only' });
+
+    const full_name = (req.body.full_name || '').trim();
+    const email     = (req.body.email || '').trim().toLowerCase();
+    if (!full_name) return res.status(400).json({ error: 'Enter your full name.' });
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'Enter a valid email.' });
+
+    // Let a moderator correct their own name/email at signing time — this is what
+    // shows up on every vote and comment they make, so it must be accurate.
+    const { data: clash } = await supabaseAdmin.from('users').select('id').eq('email', email).neq('id', req.userId).maybeSingle();
+    if (clash) return res.status(400).json({ error: 'That email is already used by another account.' });
+
+    const { error: updateErr } = await supabaseAdmin.from('users').update({ full_name, email }).eq('id', req.userId);
+    if (updateErr) return res.status(400).json({ error: updateErr.message });
+
+    const { error } = await supabaseAdmin.from('moderator_oaths')
+      .upsert({ user_id: req.userId, oath_version: CURRENT_OATH_VERSION, signed_at: new Date() },
+        { onConflict: 'user_id,oath_version', ignoreDuplicates: true });
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, signed: true, version: CURRENT_OATH_VERSION, full_name, email });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.get('/api/team/moderators', verifyToken, async (req, res) => {
+  try {
+    const { data: userData } = await supabaseAdmin.from('users').select('is_admin, is_moderator').eq('id', req.userId).single();
+    if (!userData?.is_admin && !userData?.is_moderator) return res.status(403).json({ error: 'Team access required' });
+    const mods = await getModeratorsFull();
+    res.json({ moderators: mods.map(m => ({ id: m.id, username: m.username, full_name: m.full_name, email: m.email, is_admin: m.is_admin })) });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// Moderator-only — a trader's past dispute track record (wins/losses/cancels).
+// Deliberately NOT exposed on the public /api/users/:userId profile endpoint —
+// this is reputation-sensitive info that should only inform the review panel.
+app.get('/api/admin/users/:userId/dispute-history', verifyToken, async (req, res) => {
+  try {
+    const { data: userData } = await supabaseAdmin.from('users').select('is_admin, is_moderator, email').eq('id', req.userId).single();
+    const isAdmin = userData?.is_admin || userData?.is_moderator || userData?.email === ADMIN_EMAIL;
+    if (!isAdmin) return res.status(403).json({ error: 'Access denied' });
+
+    const targetId = req.params.userId;
+    const { data: trades, error } = await supabaseAdmin.from('trades')
+      .select('id, buyer_id, seller_id, dispute_resolution, dispute_reason, disputed_at, resolved_at, resolved_via')
+      .or(`buyer_id.eq.${targetId},seller_id.eq.${targetId}`)
+      .not('dispute_resolution', 'is', null)
+      .order('resolved_at', { ascending: false });
+    if (error) return res.status(400).json({ error: error.message });
+
+    let wins = 0, losses = 0, neutral = 0;
+    const history = (trades || []).map(t => {
+      const wasBuyer = t.buyer_id === targetId;
+      let outcome;
+      if (t.dispute_resolution === 'CANCEL') { outcome = 'neutral'; neutral++; }
+      else if ((wasBuyer && t.dispute_resolution === 'BUYER_WINS') || (!wasBuyer && t.dispute_resolution === 'SELLER_WINS')) { outcome = 'won'; wins++; }
+      else { outcome = 'lost'; losses++; }
+      return {
+        trade_id: t.id, role: wasBuyer ? 'buyer' : 'seller', resolution: t.dispute_resolution,
+        outcome, reason: t.dispute_reason, resolved_at: t.resolved_at, resolved_via: t.resolved_via,
+      };
+    });
+
+    res.json({ total: history.length, wins, losses, neutral, history: history.slice(0, 10) });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// Attach vote state to a dispute row — enforces blind voting server-side: a
+// moderator only sees another moderator's chosen verdict once they've cast
+// their own vote on that same trade (or if they're a full admin).
+async function attachVoteState(trade, requesterId, isFullAdmin) {
+  const { data: votes } = await supabaseAdmin.from('dispute_votes')
+    .select('id, moderator_id, vote, reasoning, created_at, moderator:moderator_id(username, full_name, email)')
+    .eq('trade_id', trade.id);
+  const { count: commentCount } = await supabaseAdmin.from('dispute_comments')
+    .select('id', { count: 'exact', head: true }).eq('trade_id', trade.id);
+
+  const iVoted = (votes || []).some(v => v.moderator_id === requesterId);
+  const myVote = (votes || []).find(v => v.moderator_id === requesterId)?.vote || null;
+
+  const visibleVotes = (votes || []).map(v => {
+    const base = { moderator_id: v.moderator_id, full_name: v.moderator?.full_name, username: v.moderator?.username, email: v.moderator?.email, created_at: v.created_at };
+    if (isFullAdmin || iVoted) return { ...base, vote: v.vote, reasoning: v.reasoning };
+    return { ...base, vote: null, reasoning: null };
+  });
+
+  const tally = {};
+  for (const v of votes || []) tally[v.vote] = (tally[v.vote] || 0) + 1;
+  const hoursSinceDisputed = trade.disputed_at ? (Date.now() - new Date(trade.disputed_at).getTime()) / 36e5 : 0;
+
+  return { votes: visibleVotes, my_vote: myVote, comment_count: commentCount || 0, quorum: DISPUTE_QUORUM, tally, hours_since_disputed: hoursSinceDisputed };
+}
 
 app.get('/api/admin/disputes', verifyToken, async (req, res) => {
   try {
     const { data: userData } = await supabaseAdmin.from('users').select('is_moderator, is_admin, email').eq('id', req.userId).single();
     const isAdmin = userData?.is_admin || userData?.is_moderator || userData?.email === ADMIN_EMAIL;
     if (!isAdmin) return res.status(403).json({ error: 'Access denied' });
-    const { data, error } = await supabaseAdmin.from('trades')
-      .select('*, buyer:buyer_id(id, username), seller:seller_id(id, username)')
-      .eq('status', 'DISPUTED').order('created_at', { ascending: false });
-    if (error) return res.status(400).json({ error: error.message });
-    const disputes = (data || []).map(t => ({
-      id: t.id, trade_id: t.id, status: 'OPEN', reason: t.dispute_reason || 'User opened a dispute',
-      initiated_by: t.buyer_id, created_at: t.disputed_at || t.updated_at, trade_details: t, buyer: t.buyer, seller: t.seller,
-    }));
-    res.json({ disputes });
+    const isFullAdmin = !!(userData?.is_admin || userData?.email === ADMIN_EMAIL);
+
+    const [openRes, resolvedRes, mods] = await Promise.all([
+      supabaseAdmin.from('trades').select('*, buyer:buyer_id(id, username), seller:seller_id(id, username)').eq('status', 'DISPUTED').order('created_at', { ascending: false }),
+      // NOTE: no embedded `resolved_by` join here — PostgREST doesn't have that FK
+      // registered in its schema cache on this DB, so it 400s. Resolver identity is
+      // looked up manually below instead.
+      supabaseAdmin.from('trades').select('*, buyer:buyer_id(id, username), seller:seller_id(id, username)').not('dispute_resolution', 'is', null).order('resolved_at', { ascending: false }),
+      getModeratorsFull(),
+    ]);
+    if (openRes.error) return res.status(400).json({ error: openRes.error.message });
+    if (resolvedRes.error) return res.status(400).json({ error: resolvedRes.error.message });
+
+    const openTrades = openRes.data || [];
+    const voteStates = await Promise.all(openTrades.map(t => attachVoteState(t, req.userId, isFullAdmin)));
+    const disputes = openTrades.map((t, i) => {
+      const vs = voteStates[i];
+      const everyoneVoted = mods.length > 0 && vs.votes.length >= mods.length;
+      const noQuorumYet = Object.values(vs.tally).every(c => c < DISPUTE_QUORUM);
+      const isSplit = everyoneVoted && noQuorumYet;
+      const canOverride = isSplit || vs.hours_since_disputed >= DISPUTE_SLA_HOURS;
+      return {
+        id: t.id, trade_id: t.id, status: 'OPEN', reason: t.dispute_reason || 'User opened a dispute',
+        initiated_by: t.buyer_id, created_at: t.disputed_at || t.updated_at, trade_details: t, buyer: t.buyer, seller: t.seller,
+        ...vs, is_split: isSplit, can_override: canOverride, eligible_moderators: mods.length,
+      };
+    });
+
+    const resolvedTrades = resolvedRes.data || [];
+    const resolvedIds = resolvedTrades.map(t => t.id);
+    const [{ data: resolvedVotes }, { data: resolvers }] = await Promise.all([
+      resolvedIds.length
+        ? supabaseAdmin.from('dispute_votes').select('trade_id, vote, moderator:moderator_id(full_name, email)').in('trade_id', resolvedIds)
+        : Promise.resolve({ data: [] }),
+      resolvedIds.length
+        ? supabaseAdmin.from('users').select('id, full_name, email').in('id', [...new Set(resolvedTrades.map(t => t.resolved_by).filter(Boolean))])
+        : Promise.resolve({ data: [] }),
+    ]);
+    const votesByTrade = {};
+    for (const v of resolvedVotes || []) (votesByTrade[v.trade_id] ||= []).push(v);
+    const resolverById = {};
+    for (const u of resolvers || []) resolverById[u.id] = u;
+
+    const resolved = resolvedTrades.map(t => {
+      const contributing = (votesByTrade[t.id] || []).filter(v => v.vote === t.dispute_resolution).map(v => ({ full_name: v.moderator?.full_name, email: v.moderator?.email }));
+      const fallbackResolver = resolverById[t.resolved_by];
+      const resolvedByList = contributing.length ? contributing : [{ full_name: fallbackResolver?.full_name, email: fallbackResolver?.email }];
+      return {
+        id: t.id, trade_id: t.id, status: t.status, reason: t.dispute_reason || 'Dispute resolved',
+        trade_details: t, buyer: t.buyer, seller: t.seller,
+        resolution: t.dispute_resolution, dispute_resolution: t.dispute_resolution, dispute_notes: t.dispute_notes,
+        resolved_at: t.resolved_at, resolved_via: t.resolved_via, override_reason: t.override_reason,
+        resolved_by_list: resolvedByList,
+        resolved_by_name: resolvedByList.map(v => v.full_name).filter(Boolean).join(', ') || 'PRAQEN Moderator',
+      };
+    });
+
+    res.json({ disputes: [...disputes, ...resolved] });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
+app.get('/api/admin/disputes/:id', verifyToken, async (req, res) => {
+  try {
+    const { data: userData } = await supabaseAdmin.from('users').select('is_moderator, is_admin, email').eq('id', req.userId).single();
+    const isAdmin = userData?.is_admin || userData?.is_moderator || userData?.email === ADMIN_EMAIL;
+    if (!isAdmin) return res.status(403).json({ error: 'Access denied' });
+    const isFullAdmin = !!(userData?.is_admin || userData?.email === ADMIN_EMAIL);
+
+    const { data: trade } = await supabaseAdmin.from('trades').select('*, buyer:buyer_id(id, username), seller:seller_id(id, username)').eq('id', req.params.id).single();
+    if (!trade) return res.status(404).json({ error: 'Trade not found' });
+
+    const vs = await attachVoteState(trade, req.userId, isFullAdmin);
+    const mods = await getModeratorsFull();
+    const everyoneVoted = mods.length > 0 && vs.votes.length >= mods.length;
+    const noQuorumYet = Object.values(vs.tally).every(c => c < DISPUTE_QUORUM);
+    const isSplit = everyoneVoted && noQuorumYet;
+    const canOverride = isSplit || vs.hours_since_disputed >= DISPUTE_SLA_HOURS;
+
+    res.json({
+      id: trade.id, trade_id: trade.id, reason: trade.dispute_reason, created_at: trade.disputed_at || trade.updated_at,
+      trade_details: trade, buyer: trade.buyer, seller: trade.seller,
+      ...vs, is_split: isSplit, can_override: canOverride, eligible_moderators: mods.length,
+    });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// Cast (or change) your vote on a dispute. Executes automatically the instant
+// DISPUTE_QUORUM votes agree — no separate "confirm and release" step exists.
 app.post('/api/admin/disputes/:id/resolve', verifyToken, async (req, res) => {
   try {
     const { resolution, notes } = req.body;
+    if (!['BUYER_WINS', 'SELLER_WINS', 'CANCEL'].includes(resolution)) return res.status(400).json({ error: 'Invalid resolution' });
     const { data: userData } = await supabaseAdmin.from('users').select('is_admin, is_moderator, username, email').eq('id', req.userId).single();
     const isAdmin = userData?.is_admin || userData?.is_moderator || userData?.email === ADMIN_EMAIL;
     if (!isAdmin) return res.status(403).json({ error: 'Access denied' });
+    if (!(await hasSignedOath(req.userId))) return res.status(403).json({ error: 'Sign the Moderator Oath of Trust before you can vote — visit /moderator.' });
+
     const { data: trade } = await supabaseAdmin.from('trades').select('*').eq('id', req.params.id).single();
     if (!trade) return res.status(404).json({ error: 'Trade not found' });
+    if (trade.dispute_resolution) return res.status(400).json({ error: 'This dispute has already been resolved.' });
+
+    const { error: voteErr } = await supabaseAdmin.from('dispute_votes')
+      .upsert({ trade_id: trade.id, moderator_id: req.userId, vote: resolution, reasoning: notes || null, created_at: new Date() }, { onConflict: 'trade_id,moderator_id' });
+    if (voteErr) return res.status(400).json({ error: voteErr.message });
+
+    const { data: allVotes } = await supabaseAdmin.from('dispute_votes').select('moderator_id, vote').eq('trade_id', trade.id);
+    const tally = {};
+    for (const v of allVotes || []) tally[v.vote] = (tally[v.vote] || 0) + 1;
+    const winner = Object.entries(tally).find(([, c]) => c >= DISPUTE_QUORUM)?.[0];
+
+    if (!winner) {
+      const mods = await getModeratorsFull();
+      const everyoneVoted = mods.length > 0 && (allVotes || []).length >= mods.length;
+      if (everyoneVoted) {
+        return res.json({ success: true, status: 'SPLIT', tally, message: 'All moderators have voted with no majority — this case is escalated for an admin decision.' });
+      }
+      return res.json({ success: true, status: 'PENDING', tally, quorum: DISPUTE_QUORUM, message: 'Vote recorded — visible to your team, no further action required from you unless you change your mind.' });
+    }
+
+    // Quorum reached — re-check freshness right before executing to close the race window.
+    const { data: freshTrade } = await supabaseAdmin.from('trades').select('*').eq('id', trade.id).single();
+    if (freshTrade.dispute_resolution) {
+      return res.json({ success: true, status: 'RESOLVED', resolution: freshTrade.dispute_resolution, message: 'Dispute already resolved by the panel.' });
+    }
 
     // Delegate ALL balance moves to tradeEscrowService.resolveDispute().
     // This is the ONLY safe path — it uses atomic escrow claims, syncs both
     // user_balances and user_wallets, logs to wallet_transactions and balance_audit.
-    await tradeEscrowService.resolveDispute(trade.id, resolution, req.userId, notes);
+    await tradeEscrowService.resolveDispute(trade.id, winner, req.userId, notes);
+    await supabaseAdmin.from('trades').update({ resolved_via: 'QUORUM' }).eq('id', trade.id);
 
     const msgMap = {
       BUYER_WINS:  '✅ Resolved: BUYER WINS — Bitcoin released to buyer.',
       SELLER_WINS: '✅ Resolved: SELLER WINS — Bitcoin returned to seller.',
       CANCEL:      '❌ Resolved: Trade cancelled — Bitcoin returned to seller.',
     };
-    const msg = msgMap[resolution] || `Resolved: ${resolution}`;
+    const msg = msgMap[winner] || `Resolved: ${winner}`;
 
     await supabaseAdmin.from('messages').insert([{
       trade_id:     req.params.id,
       sender_id:    req.userId,
-      message_text: `👨‍⚖️ Moderator resolved dispute.\nDecision: ${resolution}\nNotes: ${notes || 'None'}\n${msg}`,
+      message_text: `👨‍⚖️ Dispute resolved by 3-moderator panel vote.\nDecision: ${winner}\n${msg}`,
       message_type: 'SYSTEM',
       sender_role:  'moderator',
       created_at:   new Date(),
     }]);
     for (const uid of [trade.buyer_id, trade.seller_id]) {
-      await createNotification(uid, 'support', '⚖️ Dispute Resolved', `Trade #${trade.id.slice(0, 8)} dispute resolved: ${resolution}`, `/trade/${trade.id}`);
+      await createNotification(uid, 'support', '⚖️ Dispute Resolved', `Trade #${trade.id.slice(0, 8)} dispute resolved: ${winner}`, `/trade/${trade.id}`);
     }
-    res.json({ success: true, message: `Dispute resolved: ${resolution}` });
+    res.json({ success: true, status: 'RESOLVED', resolution: winner, tally });
 
     // Email both parties about the resolution
     setImmediate(async () => {
@@ -6010,14 +6250,119 @@ app.post('/api/admin/disputes/:id/resolve', verifyToken, async (req, res) => {
       const buyerUser  = buyerRes.value?.data;
       const sellerUser = sellerRes.value?.data;
       if (buyerUser?.email)
-        emailService.sendDisputeResolvedEmail(buyerUser,  trade, resolution, notes).catch(e => console.error('[resolve] buyer email failed:', e.message));
+        emailService.sendDisputeResolvedEmail(buyerUser,  trade, winner, notes).catch(e => console.error('[resolve] buyer email failed:', e.message));
       if (sellerUser?.email)
-        emailService.sendDisputeResolvedEmail(sellerUser, trade, resolution, notes).catch(e => console.error('[resolve] seller email failed:', e.message));
+        emailService.sendDisputeResolvedEmail(sellerUser, trade, winner, notes).catch(e => console.error('[resolve] seller email failed:', e.message));
       sendTradeAlert([trade.buyer_id, trade.seller_id].filter(Boolean), trade, 'dispute_resolved').catch(() => {});
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// Admin-only fallback for when the team can't reach quorum — either the panel
+// is mathematically split, or the case has sat past the SLA with no verdict.
+app.post('/api/admin/disputes/:id/override', verifyToken, async (req, res) => {
+  try {
+    const { resolution, reason } = req.body;
+    if (!['BUYER_WINS', 'SELLER_WINS', 'CANCEL'].includes(resolution)) return res.status(400).json({ error: 'Invalid resolution' });
+    if (!reason || !reason.trim()) return res.status(400).json({ error: 'A written reason is required to override.' });
+
+    const { data: userData } = await supabaseAdmin.from('users').select('is_admin, email, full_name, username').eq('id', req.userId).single();
+    const isFullAdmin = !!(userData?.is_admin || userData?.email === ADMIN_EMAIL);
+    if (!isFullAdmin) return res.status(403).json({ error: 'Only an admin can override a dispute.' });
+
+    const { data: trade } = await supabaseAdmin.from('trades').select('*').eq('id', req.params.id).single();
+    if (!trade) return res.status(404).json({ error: 'Trade not found' });
+    if (trade.dispute_resolution) return res.status(400).json({ error: 'This dispute has already been resolved.' });
+
+    const { data: votes } = await supabaseAdmin.from('dispute_votes').select('vote').eq('trade_id', trade.id);
+    const mods = await getModeratorsFull();
+    const tally = {};
+    for (const v of votes || []) tally[v.vote] = (tally[v.vote] || 0) + 1;
+    const everyoneVoted = mods.length > 0 && (votes || []).length >= mods.length;
+    const noQuorum = Object.values(tally).every(c => c < DISPUTE_QUORUM);
+    const isSplit = everyoneVoted && noQuorum;
+    const hoursSinceDisputed = trade.disputed_at ? (Date.now() - new Date(trade.disputed_at).getTime()) / 36e5 : 0;
+
+    if (!isSplit && hoursSinceDisputed < DISPUTE_SLA_HOURS) {
+      return res.status(403).json({ error: `Team can still reach quorum — override unlocks after ${DISPUTE_SLA_HOURS}h with no verdict, or once the vote is split.` });
+    }
+
+    await tradeEscrowService.resolveDispute(trade.id, resolution, req.userId, reason);
+    await supabaseAdmin.from('trades').update({ resolved_via: 'ADMIN_OVERRIDE', override_reason: reason }).eq('id', trade.id);
+    await supabaseAdmin.from('dispute_comments').insert({
+      trade_id: trade.id, author_id: req.userId, message: `Admin override — ${resolution.replace(/_/g, ' ')}: ${reason}`, is_admin_override: true,
+    });
+
+    const msgMap = {
+      BUYER_WINS:  '✅ Resolved: BUYER WINS — Bitcoin released to buyer.',
+      SELLER_WINS: '✅ Resolved: SELLER WINS — Bitcoin returned to seller.',
+      CANCEL:      '❌ Resolved: Trade cancelled — Bitcoin returned to seller.',
+    };
+    await supabaseAdmin.from('messages').insert([{
+      trade_id:     req.params.id,
+      sender_id:    req.userId,
+      message_text: `👨‍⚖️ Dispute resolved by ADMIN OVERRIDE (team unresponsive or split).\nDecision: ${resolution}\nReason: ${reason}\n${msgMap[resolution] || ''}`,
+      message_type: 'SYSTEM',
+      sender_role:  'moderator',
+      created_at:   new Date(),
+    }]);
+    for (const uid of [trade.buyer_id, trade.seller_id]) {
+      await createNotification(uid, 'support', '⚖️ Dispute Resolved', `Trade #${trade.id.slice(0, 8)} dispute resolved: ${resolution}`, `/trade/${trade.id}`);
+    }
+    res.json({ success: true, status: 'RESOLVED', resolution, resolved_via: 'ADMIN_OVERRIDE' });
+
+    setImmediate(async () => {
+      const [buyerRes, sellerRes] = await Promise.allSettled([
+        supabaseAdmin.from('users').select('id, email, username').eq('id', trade.buyer_id).single(),
+        supabaseAdmin.from('users').select('id, email, username').eq('id', trade.seller_id).single(),
+      ]);
+      const buyerUser  = buyerRes.value?.data;
+      const sellerUser = sellerRes.value?.data;
+      if (buyerUser?.email)  emailService.sendDisputeResolvedEmail(buyerUser,  trade, resolution, reason).catch(() => {});
+      if (sellerUser?.email) emailService.sendDisputeResolvedEmail(sellerUser, trade, resolution, reason).catch(() => {});
+      sendTradeAlert([trade.buyer_id, trade.seller_id].filter(Boolean), trade, 'dispute_resolved').catch(() => {});
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── Internal team discussion on a dispute (separate from the buyer/seller trade chat) ──
+app.get('/api/admin/disputes/:id/comments', verifyToken, async (req, res) => {
+  try {
+    const { data: userData } = await supabaseAdmin.from('users').select('is_moderator, is_admin, email').eq('id', req.userId).single();
+    const isAdmin = userData?.is_admin || userData?.is_moderator || userData?.email === ADMIN_EMAIL;
+    if (!isAdmin) return res.status(403).json({ error: 'Access denied' });
+    const { data, error } = await supabaseAdmin.from('dispute_comments')
+      .select('id, trade_id, parent_id, message, is_admin_override, created_at, author:author_id(username, full_name, email)')
+      .eq('trade_id', req.params.id).order('created_at', { ascending: true });
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ comments: data || [] });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/admin/disputes/:id/comments', verifyToken, async (req, res) => {
+  try {
+    const { message, parent_id } = req.body;
+    if (!message || !message.trim()) return res.status(400).json({ error: 'Comment cannot be empty' });
+    const { data: userData } = await supabaseAdmin.from('users').select('is_moderator, is_admin, email, full_name, username').eq('id', req.userId).single();
+    const isAdmin = userData?.is_admin || userData?.is_moderator || userData?.email === ADMIN_EMAIL;
+    if (!isAdmin) return res.status(403).json({ error: 'Access denied' });
+    if (!(await hasSignedOath(req.userId))) return res.status(403).json({ error: 'Sign the Moderator Oath of Trust first — visit /moderator.' });
+
+    const { data, error } = await supabaseAdmin.from('dispute_comments')
+      .insert({ trade_id: req.params.id, author_id: req.userId, parent_id: parent_id || null, message: message.trim() })
+      .select('id, trade_id, parent_id, message, is_admin_override, created_at, author:author_id(username, full_name, email)').single();
+    if (error) return res.status(400).json({ error: error.message });
+
+    const ids = (await getModeratorUserIds()).filter(id => id !== req.userId);
+    for (const uid of ids) {
+      await createNotification(uid, 'dispute', '💬 New dispute comment', `${userData?.full_name || userData?.username || 'A moderator'} commented on trade #${req.params.id.slice(0, 8)}`, '/moderator');
+    }
+    res.json({ comment: data });
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.post('/api/admin/moderator-login', verifyToken, async (req, res) => {

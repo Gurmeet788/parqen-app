@@ -1012,6 +1012,7 @@ class TradeEscrowService {
       .single();
 
     if (!trade) throw new Error('Trade not found');
+    if (trade.dispute_resolution) throw new Error('Dispute already resolved');
 
     if (resolution === 'BUYER_WINS') {
       // Release to buyer — same as normal release

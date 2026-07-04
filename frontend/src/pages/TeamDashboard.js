@@ -1562,7 +1562,7 @@ function StaffSection() {
     setForm({
       full_name: m.full_name || '', role: m.role || '', department: m.department || 'General',
       official_email: m.official_email || '', personal_email: m.personal_email || '',
-      phone: m.phone || '', salary_usd: m.salary_usd || '', salary_period: m.salary_period || 'monthly',
+      phone: m.phone || '', salary_usd: m.salary_usd ?? '', salary_period: m.salary_period || 'monthly',
       contract_type: m.contract_type || 'full-time', contract_months: m.contract_months || '',
       start_date: m.start_date || new Date().toISOString().slice(0, 10),
       status: m.status || 'active', bio: m.bio || '', address: m.address || '',
@@ -2061,6 +2061,17 @@ const EXPENSE_CATEGORIES = [
 ];
 function catMeta(id) { return EXPENSE_CATEGORIES.find(c => c.id === id) || EXPENSE_CATEGORIES[5]; }
 
+const CURRENCIES = [
+  { code: 'USD', label: 'USD — US Dollar' },
+  { code: 'GHS', label: 'GHS — Ghana Cedi' },
+  { code: 'NGN', label: 'NGN — Nigerian Naira' },
+  { code: 'KES', label: 'KES — Kenyan Shilling' },
+  { code: 'ZAR', label: 'ZAR — South African Rand' },
+  { code: 'XOF', label: 'XOF — West African CFA Franc' },
+  { code: 'GBP', label: 'GBP — British Pound' },
+  { code: 'EUR', label: 'EUR — Euro' },
+];
+
 function CompanyBooksSection() {
   const token = localStorage.getItem('team_token') || localStorage.getItem('token');
   const cfg   = { headers: { Authorization: `Bearer ${token}` } };
@@ -2075,8 +2086,10 @@ function CompanyBooksSection() {
 
   // add loan form
   const [showLoanForm, setShowLoanForm]   = useState(false);
-  const [loanForm, setLoanForm]           = useState({ title: '', lender: '', amount_usd: '', due_date: '', notes: '' });
+  const [loanForm, setLoanForm]           = useState({ title: '', lender: '', amount: '', currency: 'USD', due_date: '', notes: '' });
   const [savingLoan, setSavingLoan]       = useState(false);
+  const [fxRates, setFxRates]             = useState({});
+  const [fxLoading, setFxLoading]         = useState(false);
 
   // add expense form
   const [showExpForm, setShowExpForm]     = useState(false);
@@ -2106,16 +2119,36 @@ function CompanyBooksSection() {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
+  // Live fiat exchange rates (base USD) — used to convert local-currency loan amounts to USD
+  useEffect(() => {
+    setFxLoading(true);
+    fetch('https://open.er-api.com/v6/latest/USD')
+      .then(r => r.json())
+      .then(d => { if (d?.result === 'success') setFxRates(d.rates || {}); })
+      .catch(() => {})
+      .finally(() => setFxLoading(false));
+  }, []);
+
   const fmt = (v) => `$${parseFloat(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  // rate = units of `currency` per 1 USD
+  const fxRate    = loanForm.currency === 'USD' ? 1 : (fxRates[loanForm.currency] || null);
+  const loanUsdPreview = fxRate && loanForm.amount ? parseFloat(loanForm.amount) / fxRate : null;
 
   const addLoan = async (e) => {
     e.preventDefault();
     setSavingLoan(true);
     try {
-      await axios.post(`${API_URL}/team/loans`, loanForm, cfg);
+      const rate = loanForm.currency === 'USD' ? 1 : fxRates[loanForm.currency];
+      if (!rate) { toast.error('Exchange rate unavailable — try again in a moment'); setSavingLoan(false); return; }
+      const amount_usd = parseFloat(loanForm.amount || 0) / rate;
+      await axios.post(`${API_URL}/team/loans`, {
+        title: loanForm.title, lender: loanForm.lender, due_date: loanForm.due_date, notes: loanForm.notes,
+        amount_usd, currency: loanForm.currency, original_amount: parseFloat(loanForm.amount || 0), fx_rate: rate,
+      }, cfg);
       toast.success('Loan added');
       setShowLoanForm(false);
-      setLoanForm({ title: '', lender: '', amount_usd: '', due_date: '', notes: '' });
+      setLoanForm({ title: '', lender: '', amount: '', currency: 'USD', due_date: '', notes: '' });
       loadAll();
     } catch (err) { toast.error(err.response?.data?.error || 'Failed to add loan'); }
     finally { setSavingLoan(false); }
@@ -2272,10 +2305,23 @@ function CompanyBooksSection() {
                     className="w-full px-3 py-2 text-xs rounded-xl border outline-none" style={{ borderColor: C.g200 }} />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold mb-1" style={{ color: C.g500 }}>Amount (USD) *</label>
-                  <input required type="number" min="0" step="0.01" value={loanForm.amount_usd} onChange={e => setLoanForm(f => ({ ...f, amount_usd: e.target.value }))}
-                    placeholder="200.00"
-                    className="w-full px-3 py-2 text-xs rounded-xl border outline-none" style={{ borderColor: C.g200 }} />
+                  <label className="block text-[10px] font-bold mb-1" style={{ color: C.g500 }}>Amount *</label>
+                  <div className="flex gap-2">
+                    <input required type="number" min="0" step="0.01" value={loanForm.amount} onChange={e => setLoanForm(f => ({ ...f, amount: e.target.value }))}
+                      placeholder="200.00"
+                      className="flex-1 min-w-0 px-3 py-2 text-xs rounded-xl border outline-none" style={{ borderColor: C.g200 }} />
+                    <select value={loanForm.currency} onChange={e => setLoanForm(f => ({ ...f, currency: e.target.value }))}
+                      className="px-2 py-2 text-xs rounded-xl border outline-none" style={{ borderColor: C.g200 }}>
+                      {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
+                    </select>
+                  </div>
+                  {loanForm.currency !== 'USD' && (
+                    <p className="text-[10px] mt-1 font-semibold" style={{ color: C.g400 }}>
+                      {fxLoading ? 'Fetching exchange rate…'
+                        : loanUsdPreview != null ? `≈ ${fmt(loanUsdPreview)} USD (1 USD = ${fxRate.toLocaleString()} ${loanForm.currency})`
+                        : 'Exchange rate unavailable'}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold mb-1" style={{ color: C.g500 }}>Due Date</label>
@@ -2331,6 +2377,11 @@ function CompanyBooksSection() {
                       <p className="text-xs mt-0.5" style={{ color: C.g400 }}>from <span className="font-bold">{loan.lender}</span>
                         {loan.due_date && <span> · due {new Date(loan.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>}
                       </p>
+                      {loan.currency && loan.currency !== 'USD' && loan.original_amount != null && (
+                        <p className="text-[10px] mt-0.5 font-semibold" style={{ color: C.g400 }}>
+                          Originally {parseFloat(loan.original_amount).toLocaleString()} {loan.currency}
+                        </p>
+                      )}
                       {loan.notes && <p className="text-[10px] mt-1 italic" style={{ color: C.g400 }}>{loan.notes}</p>}
                     </div>
                     <div className="text-right flex-shrink-0">
@@ -3737,14 +3788,19 @@ function DisputesSection({ teamUser }) {
 
   const resolve = async () => {
     if (!notes.trim()) { toast.error('Write decision notes first.'); return; }
-    if (!window.confirm(`Confirm: ${resolution}? This ruling is FINAL.`)) return;
+    if (!window.confirm(`Cast your vote: ${resolution}? This is one vote, not a final ruling — funds only move once enough moderators agree.`)) return;
     setSubmitting(true);
     try {
-      await axios.post(`${API_URL}/admin/disputes/${active.id}/resolve`, {
-        resolution, notes: `${notes}\n\n— ${teamUser?.username} on ${new Date().toLocaleString()}`,
-      }, { headers: authH() });
-      toast.success('Ruling sealed'); setActive(null); load();
-    } catch (e) { toast.error(e.response?.data?.error || 'Failed'); }
+      const r = await axios.post(`${API_URL}/admin/disputes/${active.id}/resolve`, { resolution, notes }, { headers: authH() });
+      const { status, message } = r.data;
+      if (status === 'RESOLVED') { toast.success(`Dispute resolved: ${resolution}`); setActive(null); }
+      else if (status === 'SPLIT') { toast.error(message || 'Vote is split — escalated for admin review.'); }
+      else { toast.success(message || 'Vote recorded.'); }
+      load();
+    } catch (e) {
+      const err = e.response?.data?.error || 'Failed';
+      toast.error(err.includes('Oath') ? 'Sign the Moderator Oath of Trust at /moderator first.' : err);
+    }
     setSubmitting(false);
   };
 
@@ -3927,7 +3983,7 @@ function DisputesSection({ teamUser }) {
                     <button onClick={resolve} disabled={submitting || !notes.trim()}
                       className="w-full py-3 rounded-xl text-sm font-black text-white flex items-center justify-center gap-2 disabled:opacity-40"
                       style={{ backgroundColor: C.purple }}>
-                      {submitting ? <><RefreshCw size={14} className="animate-spin" /> Processing…</> : <><Gavel size={14} /> Seal Ruling</>}
+                      {submitting ? <><RefreshCw size={14} className="animate-spin" /> Processing…</> : <><Gavel size={14} /> Cast Vote</>}
                     </button>
                   </div>
                 )}
