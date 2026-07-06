@@ -5698,24 +5698,38 @@ app.post('/api/trades/:id/cancel', tradeLimiter, verifyToken, async (req, res) =
     const { data: trade, error: fetchError } = await supabaseAdmin.from('trades').select('*').eq('id', req.params.id).single();
     if (fetchError || !trade) return res.status(404).json({ error: 'Trade not found' });
 
-    // Authorization: any participant (buyer or seller) can cancel,
-    // EXCEPT after buyer marks paid — only the seller can cancel at that point.
-    // Use `buyer_confirmed` (not `status`) for this check — once a trade is
-    // disputed, `status` becomes 'DISPUTED' and would otherwise hide the fact
-    // that payment was already marked sent before the dispute was opened.
     const isBuyer  = trade.buyer_id  === req.userId;
     const isSeller = trade.seller_id === req.userId;
     if (!isBuyer && !isSeller) {
       return res.status(403).json({ error: 'Not authorized to cancel this trade' });
     }
-    const isPostPay = trade.buyer_confirmed === true;
-    if (isPostPay && !isSeller) {
-      return res.status(403).json({ error: 'Cannot cancel after payment has been sent — open a dispute instead' });
+
+    if (trade.status === 'DISPUTED') {
+      // Only the person who OPENED the dispute can withdraw/self-cancel it — the
+      // other party can't cancel their way out of a dispute filed against them.
+      // They must wait for the moderator panel/admin override instead.
+      if (trade.disputed_by && trade.disputed_by !== req.userId) {
+        return res.status(403).json({ error: 'Only the person who opened this dispute can cancel it. The moderator team will review and resolve it.' });
+      }
+      if (!trade.disputed_by) {
+        // Legacy dispute opened before we tracked who filed it — nobody can
+        // self-cancel; safest fallback is to require moderator resolution.
+        return res.status(403).json({ error: 'This dispute cannot be self-cancelled — a moderator will resolve it.' });
+      }
+    } else {
+      // Not yet disputed: any participant can cancel, EXCEPT after buyer marks
+      // paid — only the seller can cancel at that point (protects the seller if
+      // a payment claim turns out to be fake; the buyer must open a dispute
+      // instead of unilaterally backing out after claiming to pay).
+      const isPostPay = trade.buyer_confirmed === true;
+      if (isPostPay && !isSeller) {
+        return res.status(403).json({ error: 'Cannot cancel after payment has been sent — open a dispute instead' });
+      }
     }
 
-    // DISPUTED is included so either side can back out of a dispute they no longer
-    // want to pursue — tradeEscrowService.cancelTrade already treats DISPUTED as a
-    // safe, refundable state (it's the same code path a moderator's CANCEL uses).
+    // DISPUTED is included so the disputer can back out of their own dispute —
+    // tradeEscrowService.cancelTrade already treats DISPUTED as a safe, refundable
+    // state (it's the same code path a moderator's CANCEL uses).
     const cancellableStatuses = ['CREATED', 'FUNDS_LOCKED', 'ESCROW', 'ACTIVE', 'OPEN', 'PAYMENT_SENT', 'PAID', 'DISPUTED'];
     if (!cancellableStatuses.includes(trade.status)) return res.status(400).json({ error: `Trade cannot be cancelled — status is ${trade.status}` });
 
@@ -5919,12 +5933,19 @@ app.post('/api/trades/:id/dispute', tradeLimiter, verifyToken, async (req, res) 
     const { reason } = req.body;
     const { data: trade } = await supabaseAdmin.from('trades').select('*').eq('id', req.params.id).single();
     if (!trade) return res.status(404).json({ error: 'Trade not found' });
+    if (trade.buyer_id !== req.userId && trade.seller_id !== req.userId) {
+      return res.status(403).json({ error: 'Not a participant in this trade' });
+    }
     // Clear expires_at so no expiry logic (frontend timer or backend) can ever
     // auto-cancel this trade. Only a moderator can give the final verdict.
+    // `disputed_by` records exactly who opened it — only they can self-cancel
+    // it later (POST /api/trades/:id/cancel); the other side can't unilaterally
+    // cancel their way out of a dispute filed against them.
     const { data, error } = await supabaseAdmin.from('trades')
       .update({
         status: 'DISPUTED',
         disputed_at: new Date(),
+        disputed_by: req.userId,
         dispute_reason: reason || 'User opened a dispute',
         expires_at: null,
       })
@@ -6020,6 +6041,45 @@ app.get('/api/team/moderators', verifyToken, async (req, res) => {
     if (!userData?.is_admin && !userData?.is_moderator) return res.status(403).json({ error: 'Team access required' });
     const mods = await getModeratorsFull();
     res.json({ moderators: mods.map(m => ({ id: m.id, username: m.username, full_name: m.full_name, email: m.email, is_admin: m.is_admin })) });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// Admin-only — who's on the team, and when they last logged into /moderator (or /team).
+app.get('/api/admin/team-activity', verifyToken, async (req, res) => {
+  try {
+    const { data: userData } = await supabaseAdmin.from('users').select('is_admin, email').eq('id', req.userId).single();
+    const isFullAdmin = !!(userData?.is_admin || userData?.email === ADMIN_EMAIL);
+    if (!isFullAdmin) return res.status(403).json({ error: 'Admins only' });
+
+    const { data: mods, error } = await supabaseAdmin.from('users')
+      .select('id, username, full_name, email, is_admin, is_moderator, last_login, last_seen_at, created_at')
+      .or('is_moderator.eq.true,is_admin.eq.true')
+      .order('last_seen_at', { ascending: false, nullsFirst: false });
+    if (error) return res.status(400).json({ error: error.message });
+
+    const ids = (mods || []).map(m => m.id);
+    const { data: oaths } = ids.length
+      ? await supabaseAdmin.from('moderator_oaths').select('user_id, signed_at').in('user_id', ids).eq('oath_version', CURRENT_OATH_VERSION)
+      : { data: [] };
+    const oathByUser = {};
+    for (const o of oaths || []) oathByUser[o.user_id] = o;
+
+    // Votes cast + overrides made — a quick activity signal alongside login times.
+    const { data: votes } = ids.length
+      ? await supabaseAdmin.from('dispute_votes').select('moderator_id').in('moderator_id', ids)
+      : { data: [] };
+    const voteCounts = {};
+    for (const v of votes || []) voteCounts[v.moderator_id] = (voteCounts[v.moderator_id] || 0) + 1;
+
+    const team = (mods || []).map(m => ({
+      id: m.id, username: m.username, full_name: m.full_name, email: m.email,
+      is_admin: m.is_admin, is_moderator: m.is_moderator,
+      last_login: m.last_login, last_seen_at: m.last_seen_at, joined: m.created_at,
+      oath_signed: !!oathByUser[m.id], oath_signed_at: oathByUser[m.id]?.signed_at || null,
+      votes_cast: voteCounts[m.id] || 0,
+    }));
+
+    res.json({ team });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
@@ -6260,8 +6320,9 @@ app.post('/api/admin/disputes/:id/resolve', verifyToken, async (req, res) => {
   }
 });
 
-// Admin-only fallback for when the team can't reach quorum — either the panel
-// is mathematically split, or the case has sat past the SLA with no verdict.
+// Admin-only — full power to resolve any open dispute directly, at any time.
+// Regular moderators still vote toward the 3-vote quorum as normal; this is a
+// parallel fast path reserved for admins only (never regular moderators).
 app.post('/api/admin/disputes/:id/override', verifyToken, async (req, res) => {
   try {
     const { resolution, reason } = req.body;
@@ -6275,19 +6336,6 @@ app.post('/api/admin/disputes/:id/override', verifyToken, async (req, res) => {
     const { data: trade } = await supabaseAdmin.from('trades').select('*').eq('id', req.params.id).single();
     if (!trade) return res.status(404).json({ error: 'Trade not found' });
     if (trade.dispute_resolution) return res.status(400).json({ error: 'This dispute has already been resolved.' });
-
-    const { data: votes } = await supabaseAdmin.from('dispute_votes').select('vote').eq('trade_id', trade.id);
-    const mods = await getModeratorsFull();
-    const tally = {};
-    for (const v of votes || []) tally[v.vote] = (tally[v.vote] || 0) + 1;
-    const everyoneVoted = mods.length > 0 && (votes || []).length >= mods.length;
-    const noQuorum = Object.values(tally).every(c => c < DISPUTE_QUORUM);
-    const isSplit = everyoneVoted && noQuorum;
-    const hoursSinceDisputed = trade.disputed_at ? (Date.now() - new Date(trade.disputed_at).getTime()) / 36e5 : 0;
-
-    if (!isSplit && hoursSinceDisputed < DISPUTE_SLA_HOURS) {
-      return res.status(403).json({ error: `Team can still reach quorum — override unlocks after ${DISPUTE_SLA_HOURS}h with no verdict, or once the vote is split.` });
-    }
 
     await tradeEscrowService.resolveDispute(trade.id, resolution, req.userId, reason);
     await supabaseAdmin.from('trades').update({ resolved_via: 'ADMIN_OVERRIDE', override_reason: reason }).eq('id', trade.id);

@@ -549,7 +549,7 @@ function TeamDiscussion({ tradeId }) {
 // ================================================================
 // DISPUTE REVIEW MODAL
 // ================================================================
-function DisputeModal({ dispute, modName, currentUserId, onClose, onResolved, readOnly = false }) {
+function DisputeModal({ dispute, modName, currentUserId, isAdmin, onClose, onResolved, readOnly = false }) {
   const [activeTab, setActiveTab]         = useState('details');
   const [chatMessages, setChatMessages]   = useState([]);
   const [newMessage, setNewMessage]       = useState('');
@@ -1056,13 +1056,11 @@ function DisputeModal({ dispute, modName, currentUserId, onClose, onResolved, re
                   <VoteSeats moderators={moderators} votes={voteData.votes} currentUserId={currentUserId} />
                 </div>
 
-                {(voteData.is_split || voteData.can_override) && (
+                {voteData.is_split && (
                   <div className="flex items-start gap-2 p-4 rounded-xl border" style={{ backgroundColor:'#FFFBEB', borderColor:'#FDE68A' }}>
                     <Clock size={16} style={{ color:P.gold, flexShrink:0, marginTop:2 }} />
                     <p className="text-sm font-bold" style={{ color:'#92400E' }}>
-                      {voteData.is_split
-                        ? 'The panel is tied with no majority — this case is escalated for an admin decision.'
-                        : `This case has been open ${Math.round(voteData.hours_since_disputed)}h with no verdict — an admin can now step in.`}
+                      The panel is tied with no majority — this case is escalated for an admin decision.
                     </p>
                   </div>
                 )}
@@ -1102,11 +1100,11 @@ function DisputeModal({ dispute, modName, currentUserId, onClose, onResolved, re
                   <p className="text-sm font-bold text-blue-700">Your vote alone does not resolve this case. Escrow only moves once {voteData.quorum || 3} moderators agree on the same outcome.</p>
                 </div>
 
-                {/* Admin override — only surfaced to full admins, only once the team is split or past SLA */}
-                {voteData.can_override && (
+                {/* Admin override — full power, available anytime, admins only */}
+                {isAdmin && (
                   <div className="p-4 rounded-2xl border-2" style={{ backgroundColor:'#FFFBEB', borderColor:P.gold }}>
                     <h3 className="font-black mb-1 flex items-center gap-2" style={{ color:'#92400E' }}><Stamp size={16} /> Admin Override</h3>
-                    <p className="text-xs font-semibold mb-3" style={{ color:'#92400E' }}>Only visible to admins. Requires a written reason — logged to the team discussion thread.</p>
+                    <p className="text-xs font-semibold mb-3" style={{ color:'#92400E' }}>You can resolve this case directly at any time. Requires a written reason — logged to the team discussion thread.</p>
                     <textarea value={overrideReason} onChange={e => setOverrideReason(e.target.value)} rows={2}
                       placeholder="Required: why are you overriding? (e.g. team unresponsive, evidence reviewed independently)…"
                       className="w-full px-3 py-2 border-2 rounded-xl text-sm outline-none resize-none mb-3" style={{ borderColor:'#FDE68A' }} />
@@ -1515,6 +1513,7 @@ export default function ModeratorDashboard({ user }) {
           dispute={activeDispute}
           modName={modName}
           currentUserId={user?.id}
+          isAdmin={!!(user?.is_admin || user?.email === ADMIN_EMAIL)}
           readOnly={false}
           onClose={() => setActiveDispute(null)}
           onResolved={() => { setActiveDispute(null); loadAll(); }}
@@ -1527,6 +1526,7 @@ export default function ModeratorDashboard({ user }) {
           dispute={viewDispute}
           modName={modName}
           currentUserId={user?.id}
+          isAdmin={!!(user?.is_admin || user?.email === ADMIN_EMAIL)}
           readOnly={true}
           onClose={() => setViewDispute(null)}
           onResolved={() => {}}

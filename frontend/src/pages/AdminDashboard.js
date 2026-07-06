@@ -9,7 +9,7 @@ import {
   ChevronRight, Search, X, Menu, Lock, Bitcoin,
   ThumbsUp, ThumbsDown, Star, Activity,
   Mail, Phone, UserPlus, MessageSquare, MessageCircle, Maximize2,
-  ChevronUp, Lightbulb, Send, ExternalLink,
+  ChevronUp, Lightbulb, Send, ExternalLink, Shield,
 } from 'lucide-react';
 
 // ─── Suggestion constants (shared with SuggestionsPanel) ─────
@@ -944,14 +944,19 @@ function DisputesSection() {
 
   const resolve = async () => {
     if (!selected) return;
-    if (!window.confirm(`Resolve this dispute with: ${resolution}?`)) return;
+    if (!window.confirm(`Cast your vote: ${resolution}? This is one vote — escrow only moves once enough moderators agree, or via admin override.`)) return;
     setSub(true);
     try {
-      await axios.post(`${API_URL}/admin/disputes/${selected.id}/resolve`, { resolution, notes }, { headers: authH() });
-      toast.success(`Dispute resolved: ${resolution}`);
-      setSelected(null); setNotes('');
+      const r = await axios.post(`${API_URL}/admin/disputes/${selected.id}/resolve`, { resolution, notes }, { headers: authH() });
+      const { status, message } = r.data;
+      if (status === 'RESOLVED') { toast.success(`Dispute resolved: ${resolution}`); setSelected(null); setNotes(''); }
+      else if (status === 'SPLIT') { toast.error(message || 'Vote is split — escalated for admin review.'); }
+      else { toast.success(message || 'Vote recorded.'); }
       load();
-    } catch (e) { toast.error(e.response?.data?.error || 'Failed to resolve'); }
+    } catch (e) {
+      const err = e.response?.data?.error || 'Failed to resolve';
+      toast.error(err.includes('Oath') ? 'Sign the Moderator Oath of Trust at /moderator first.' : err);
+    }
     finally { setSub(false); }
   };
 
@@ -1024,10 +1029,85 @@ function DisputesSection() {
               <button onClick={resolve} disabled={submitting}
                 className="w-full py-3 rounded-xl text-sm font-black transition"
                 style={{ backgroundColor: submitting ? C.g200 : C.forest, color: submitting ? C.g400 : '#fff' }}>
-                {submitting ? 'Resolving…' : '⚖️ Confirm Resolution'}
+                {submitting ? 'Casting vote…' : '⚖️ Cast Vote'}
               </button>
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ================================================================
+// TEAM ACTIVITY — who's on the moderator team, and when they last logged in
+// ================================================================
+function TeamActivitySection() {
+  const [team, setTeam]       = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await axios.get(`${API_URL}/admin/team-activity`, { headers: authH() });
+      setTeam(r.data.team || []);
+    } catch { toast.error('Failed to load team activity'); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); const iv = setInterval(load, 30000); return () => clearInterval(iv); }, []);
+
+  const isOnline = ts => ts && (Date.now() - new Date(ts).getTime()) < 5 * 60 * 1000;
+
+  return (
+    <div className="space-y-4">
+      <SectionHead title={`Team (${team.length})`} sub="Everyone with moderator or admin access, and when they last logged in"
+        action={<button onClick={load} className="p-2 rounded-xl border" style={{ borderColor: C.g200 }}><RefreshCw size={14} style={{ color: C.g500 }} /></button>} />
+
+      {loading ? <Spin /> : team.length === 0 ? <Empty icon="🛡️" text="No team members yet" /> : (
+        <div className="grid md:grid-cols-2 gap-4">
+          {team.map(m => {
+            const online = isOnline(m.last_seen_at);
+            return (
+              <div key={m.id} className="bg-white rounded-2xl border p-4" style={{ borderColor: C.g200 }}>
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 relative" style={{ backgroundColor: C.forest + '15' }}>
+                      <Shield size={17} style={{ color: C.forest }} />
+                      <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white"
+                        style={{ backgroundColor: online ? '#10B981' : C.g400 }} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-black truncate" style={{ color: C.g800 }}>{m.full_name || m.username}</p>
+                      <p className="text-xs truncate" style={{ color: C.g500 }}>{m.email}</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                    {m.is_admin && <Pill label="ADMIN" color="#B45309" bg="#FFFBEB" />}
+                    <Pill label={online ? 'ONLINE' : 'OFFLINE'} color={online ? '#166534' : C.g500} bg={online ? '#F0FDF4' : C.g100} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="p-2 rounded-lg" style={{ backgroundColor: C.g50 }}>
+                    <p className="font-semibold" style={{ color: C.g400 }}>Last active</p>
+                    <p className="font-bold mt-0.5" style={{ color: C.g700 }}>{m.last_seen_at ? fmtAge(m.last_seen_at) : '—'}</p>
+                  </div>
+                  <div className="p-2 rounded-lg" style={{ backgroundColor: C.g50 }}>
+                    <p className="font-semibold" style={{ color: C.g400 }}>Last login</p>
+                    <p className="font-bold mt-0.5" style={{ color: C.g700 }}>{m.last_login ? fmtAge(m.last_login) : '—'}</p>
+                  </div>
+                  <div className="p-2 rounded-lg" style={{ backgroundColor: C.g50 }}>
+                    <p className="font-semibold" style={{ color: C.g400 }}>Oath of Trust</p>
+                    <p className="font-bold mt-0.5" style={{ color: m.oath_signed ? '#166534' : '#B91C1C' }}>{m.oath_signed ? 'Signed ✓' : 'Not signed'}</p>
+                  </div>
+                  <div className="p-2 rounded-lg" style={{ backgroundColor: C.g50 }}>
+                    <p className="font-semibold" style={{ color: C.g400 }}>Votes cast</p>
+                    <p className="font-bold mt-0.5" style={{ color: C.g700 }}>{m.votes_cast}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -3713,6 +3793,7 @@ const NAV = [
   { id:'newusers',     label:'New Users',     icon:UserPlus        },
   { id:'trades',       label:'Trades',        icon:ArrowLeftRight  },
   { id:'disputes',     label:'Disputes',      icon:AlertTriangle   },
+  { id:'team',         label:'Team',          icon:Shield          },
   { id:'phone-verif',  label:'Phone Verif.',  icon:Phone           },
   { id:'kyc',          label:'KYC Review',    icon:ShieldCheck     },
   { id:'finance',      label:'Finance',       icon:DollarSign      },
@@ -3772,6 +3853,7 @@ export default function AdminDashboard({ user: appUser, onLogin }) {
     newusers:    <NewUsersSection />,
     trades:      <TradesSection />,
     disputes:    <DisputesSection />,
+    team:        <TeamActivitySection />,
     'phone-verif': <PhoneVerifSection />,
     kyc:         <KycSection />,
     finance:     <FinanceSection />,

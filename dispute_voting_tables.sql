@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS moderator_oaths (
 
 ALTER TABLE trades ADD COLUMN IF NOT EXISTS resolved_via    TEXT;  -- 'QUORUM' | 'ADMIN_OVERRIDE'
 ALTER TABLE trades ADD COLUMN IF NOT EXISTS override_reason TEXT;
+ALTER TABLE trades ADD COLUMN IF NOT EXISTS disputed_by     UUID REFERENCES users(id) ON DELETE SET NULL; -- who opened the dispute
 
 CREATE INDEX IF NOT EXISTS dispute_votes_trade_idx    ON dispute_votes(trade_id);
 CREATE INDEX IF NOT EXISTS dispute_comments_trade_idx ON dispute_comments(trade_id);

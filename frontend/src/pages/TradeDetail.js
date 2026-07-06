@@ -257,14 +257,14 @@ function CancelModal({onClose,onConfirm,submitting}) {
             <AlertTriangle size={20} style={{color:C.danger}}/>
           </div>
           <div>
-            <p style={{fontWeight:900,fontSize:15,color:'#1E293B',margin:0}}>Cancel Trade?</p>
-            <p style={{fontSize:12,color:C.g500,margin:0,marginTop:2}}>Escrow returns to seller</p>
+            <p style={{fontWeight:900,fontSize:16,color:C.danger,margin:0}}>Cancel Trade?</p>
+            <p style={{fontSize:12,color:'#B45309',margin:0,marginTop:2,fontWeight:700}}>🔒 Escrow BTC returns to the seller</p>
           </div>
         </div>
 
         {/* Body */}
         <div style={{padding:'16px 20px 20px'}}>
-          <p style={{fontSize:12,color:C.g600,marginBottom:8,fontWeight:600}}>Reason for cancelling:</p>
+          <p style={{fontSize:12.5,color:'#1E293B',marginBottom:8,fontWeight:800}}>📝 Reason for cancelling <span style={{color:C.danger}}>*</span></p>
           <textarea
             value={reason}
             onChange={e=>setReason(e.target.value)}
@@ -275,9 +275,12 @@ function CancelModal({onClose,onConfirm,submitting}) {
               padding:'10px 12px',fontSize:13,
               border:`2px solid ${reason.trim()?C.danger:C.g200}`,
               borderRadius:12,outline:'none',resize:'none',
-              fontFamily:'inherit',color:'#1E293B',
+              fontFamily:'inherit',color:'#1E293B',fontWeight:600,
             }}
           />
+          <p style={{fontSize:11,color:C.g500,marginTop:6,fontWeight:600}}>
+            This will be shown to the other party and logged on the trade.
+          </p>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginTop:14}}>
             <button onClick={onClose} disabled={submitting}
               style={{
@@ -1281,13 +1284,18 @@ export default function TradeDetail({user}) {
 
   // ── Cancel eligibility ────────────────────────────────────────────────────
   // Mirrors the backend rule in POST /api/trades/:id/cancel exactly:
-  // - Before payment is confirmed, either party can cancel (nothing has moved yet).
-  // - Once payment is confirmed, only the seller can still cancel (protects the
+  // - While DISPUTED: ONLY the person who opened the dispute can cancel it — the
+  //   other side can't cancel their way out of a dispute filed against them, and
+  //   legacy disputes with no recorded opener can't be self-cancelled by anyone.
+  // - Otherwise (not yet disputed): either party can cancel before payment is
+  //   confirmed; once confirmed, only the seller can still cancel (protects the
   //   seller if the buyer's payment claim turns out to be fake) — the buyer must
   //   open a dispute instead of unilaterally backing out after claiming to pay.
-  // - This includes DISPUTED trades: either side can withdraw a dispute they no
-  //   longer want to pursue, under the same payment-confirmed rule above.
-  const showCancelBtn = isActive && (isBuyer || isSeller) && (isSeller || !trade?.buyer_confirmed);
+  const showCancelBtn = isActive && (isBuyer || isSeller) && (
+    isDisputed
+      ? !!trade?.disputed_by && String(trade.disputed_by) === String(user?.id)
+      : (isSeller || !trade?.buyer_confirmed)
+  );
 
   // Read receipts: timestamp of the last message the counterparty sent
   const lastCpMsgTime = messages
