@@ -1494,11 +1494,14 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
 
     // ── Seed balance rows — both tables must exist before any trade ───────
     await Promise.all([
-      supabaseAdmin.from('user_balances').insert([{ user_id: newUser.id, balance_btc: 0, balance_usd: 0 }])
-        .catch(() => {}),
-      supabaseAdmin.from('wallets').insert({
-        user_id: newUser.id, balance_btc: 0, locked_balance_btc: 0, updated_at: new Date().toISOString(),
-      }).catch(() => {}), // ignore duplicate if row already exists
+      Promise.resolve(
+        supabaseAdmin.from('user_balances').insert([{ user_id: newUser.id, balance_btc: 0, balance_usd: 0 }])
+      ).catch(() => {}),
+      Promise.resolve(
+        supabaseAdmin.from('wallets').insert({
+          user_id: newUser.id, balance_btc: 0, locked_balance_btc: 0, updated_at: new Date().toISOString(),
+        })
+      ).catch(() => {}), // ignore duplicate if row already exists
     ]);
 
     // ── Generate 6-digit verification code & save to DB (email users only) ──
@@ -1538,8 +1541,10 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     // ── BACKGROUND WORK (runs after response is sent) ──────────────────────
     // 1. Welcome bonus — step 1 (registered, awaiting verification), 30-day window
     const bonusExpires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-    supabaseAdmin.from('users').update({ bonus_step: 1, bonus_expires_at: bonusExpires })
-      .eq('id', newUser.id).catch(() => {});
+    Promise.resolve(
+      supabaseAdmin.from('users').update({ bonus_step: 1, bonus_expires_at: bonusExpires })
+        .eq('id', newUser.id)
+    ).catch(() => {});
 
     // 2. Detect and save country from IP (fire and forget)
     detectAndSaveCountry(newUser.id, req).catch(() => {});
@@ -2951,10 +2956,12 @@ app.post('/api/auth/send-verification', otpLimiter, async (req, res) => {
 
     // Store in memory AND database so server restarts don't lose the code
     verificationCodes.set(email, { code, expiresAt });
-    await supabaseAdmin.from('users').update({
-      verification_code:         code,
-      verification_code_expires: new Date(expiresAt).toISOString(),
-    }).eq('email', email).throwOnError().catch(() => {}); // non-fatal if user not created yet
+    await Promise.resolve(
+      supabaseAdmin.from('users').update({
+        verification_code:         code,
+        verification_code_expires: new Date(expiresAt).toISOString(),
+      }).eq('email', email).throwOnError()
+    ).catch(() => {}); // non-fatal if user not created yet
 
     let emailSent = false;
     let emailError = null;
@@ -3340,9 +3347,11 @@ app.post('/api/users/submit-phone', verifyToken, async (req, res) => {
     if (currentUser?.phone) {
       if (currentUser.phone === e164) {
         // Idempotent: same number already saved — ensure request row exists and return success
-        await supabaseAdmin.from('phone_verification_requests').upsert(
-          { user_id: req.userId, phone: e164, status: currentUser.is_phone_verified ? 'approved' : 'pending' },
-          { onConflict: 'user_id', ignoreDuplicates: true }
+        await Promise.resolve(
+          supabaseAdmin.from('phone_verification_requests').upsert(
+            { user_id: req.userId, phone: e164, status: currentUser.is_phone_verified ? 'approved' : 'pending' },
+            { onConflict: 'user_id', ignoreDuplicates: true }
+          )
         ).catch(() => {});
         return res.json({ success: true });
       }
@@ -3602,10 +3611,12 @@ app.post('/api/auth/resend-code', async (req, res) => {
     const expiresAt = Date.now() + 10 * 60 * 1000;
 
     verificationCodes.set(email, { code, expiresAt, userId: user.id });
-    await supabaseAdmin.from('users').update({
-      verification_code: code,
-      verification_code_expires: new Date(expiresAt).toISOString(),
-    }).eq('email', email).catch(() => {});
+    await Promise.resolve(
+      supabaseAdmin.from('users').update({
+        verification_code: code,
+        verification_code_expires: new Date(expiresAt).toISOString(),
+      }).eq('email', email)
+    ).catch(() => {});
 
     let emailSent = false;
     try {
@@ -6766,14 +6777,16 @@ app.post('/api/referral/withdraw', verifyToken, async (req, res) => {
     if (updErr) throw updErr;
 
     // Audit trail
-    await supabaseAdmin.from('wallet_transactions').insert({
-      user_id:    req.userId,
-      type:       'REFERRAL_WITHDRAWAL',
-      amount_btc: totalEarnings,
-      status:     'CONFIRMED',
-      notes:      `Referral earnings withdrawal — ₿${totalEarnings.toFixed(8)} from ${ids.length} commission(s)`,
-      created_at: new Date().toISOString(),
-    }).catch(() => {});
+    await Promise.resolve(
+      supabaseAdmin.from('wallet_transactions').insert({
+        user_id:    req.userId,
+        type:       'REFERRAL_WITHDRAWAL',
+        amount_btc: totalEarnings,
+        status:     'CONFIRMED',
+        notes:      `Referral earnings withdrawal — ₿${totalEarnings.toFixed(8)} from ${ids.length} commission(s)`,
+        created_at: new Date().toISOString(),
+      })
+    ).catch(() => {});
 
     res.json({ success: true, amountBtc: totalEarnings, message: `₿ ${totalEarnings.toFixed(8)} added to your wallet!` });
   } catch (error) {
@@ -6990,14 +7003,16 @@ app.post('/api/referral-messages/:userId', verifyToken, async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     // Notify recipient
-    await supabaseAdmin.from('notifications').insert({
-      user_id: recipientId,
-      type: 'referral_message',
-      title: 'New message',
-      message: message.trim().slice(0, 100),
-      is_read: false,
-      created_at: new Date(),
-    }).catch(() => {});
+    await Promise.resolve(
+      supabaseAdmin.from('notifications').insert({
+        user_id: recipientId,
+        type: 'referral_message',
+        title: 'New message',
+        message: message.trim().slice(0, 100),
+        is_read: false,
+        created_at: new Date(),
+      })
+    ).catch(() => {});
 
     res.json({ message: msg });
   } catch (e) {
@@ -7839,9 +7854,11 @@ app.put('/api/admin/users/:id/verify-phone', verifyToken, async (req, res) => {
     const { data, error } = await supabaseAdmin.from('users').update({ is_phone_verified: true, phone_verified: true, updated_at: new Date() }).eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
     // Update request row if it exists
-    await supabaseAdmin.from('phone_verification_requests')
-      .update({ status: 'approved', reviewed_at: new Date().toISOString(), reviewed_by: req.userId })
-      .eq('user_id', req.params.id).catch(() => {});
+    await Promise.resolve(
+      supabaseAdmin.from('phone_verification_requests')
+        .update({ status: 'approved', reviewed_at: new Date().toISOString(), reviewed_by: req.userId })
+        .eq('user_id', req.params.id)
+    ).catch(() => {});
     await createNotification(req.params.id, 'system', '📱 Phone Number Verified!', 'Great news! Your phone number has been verified by our team. Your trade limit has been upgraded. You can now continue trading.', '/settings?tab=verification');
     sendSystemAlert(req.params.id, '📱 Phone Verified!', 'Your phone number has been verified. Trade limits upgraded!', 'https://praqen.com/settings?tab=verification').catch(() => {});
     res.json({ success: true, user: data });
@@ -7941,10 +7958,12 @@ app.put('/api/admin/phone-verifications/:id/reject', verifyToken, async (req, re
     if (reqErr) return res.status(400).json({ error: reqErr.message });
 
     // Clear the phone from users table so they can re-submit
-    await supabaseAdmin
-      .from('users')
-      .update({ phone: null, updated_at: new Date().toISOString() })
-      .eq('id', request.user_id).catch(() => {});
+    await Promise.resolve(
+      supabaseAdmin
+        .from('users')
+        .update({ phone: null, updated_at: new Date().toISOString() })
+        .eq('id', request.user_id)
+    ).catch(() => {});
 
     // Notify the user
     await createNotification(request.user_id, 'system', '📱 Phone Verification Failed',
@@ -8016,8 +8035,10 @@ app.post('/api/admin/phone/approve', verifyToken, async (req, res) => {
       const { data: pvr } = await supabaseAdmin
         .from('phone_verification_requests').select('phone').eq('user_id', userId).single();
       if (pvr?.phone) {
-        await supabaseAdmin.from('users')
-          .update({ phone: pvr.phone }).eq('id', userId).catch(() => {});
+        await Promise.resolve(
+          supabaseAdmin.from('users')
+            .update({ phone: pvr.phone }).eq('id', userId)
+        ).catch(() => {});
         console.log(`[phone/approve] recovered missing phone ${pvr.phone} for user ${userId.slice(0,8)}`);
       }
     }
@@ -8032,9 +8053,11 @@ app.post('/api/admin/phone/approve', verifyToken, async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     // Also mark any pending request row as approved
-    await supabaseAdmin.from('phone_verification_requests')
-      .update({ status: 'approved', reviewed_at: new Date().toISOString(), reviewed_by: req.userId })
-      .eq('user_id', userId).catch(() => {});
+    await Promise.resolve(
+      supabaseAdmin.from('phone_verification_requests')
+        .update({ status: 'approved', reviewed_at: new Date().toISOString(), reviewed_by: req.userId })
+        .eq('user_id', userId)
+    ).catch(() => {});
 
     await createNotification(userId, 'system', '📱 Phone Number Verified!',
       'Your phone number has been verified by our team. Your trade limits have been upgraded!',
@@ -8066,9 +8089,11 @@ app.post('/api/admin/phone/reject', verifyToken, async (req, res) => {
       .eq('id', userId);
     if (error) return res.status(400).json({ error: error.message });
 
-    await supabaseAdmin.from('phone_verification_requests')
-      .update({ status: 'rejected', reviewed_at: new Date().toISOString(), reviewed_by: req.userId, rejection_reason: reason })
-      .eq('user_id', userId).catch(() => {});
+    await Promise.resolve(
+      supabaseAdmin.from('phone_verification_requests')
+        .update({ status: 'rejected', reviewed_at: new Date().toISOString(), reviewed_by: req.userId, rejection_reason: reason })
+        .eq('user_id', userId)
+    ).catch(() => {});
 
     await createNotification(userId, 'system', '📱 Phone Verification Failed',
       `Your phone number (${phone}) could not be verified. Reason: ${reason}. Please submit a valid number.`,
