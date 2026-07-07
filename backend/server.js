@@ -9826,27 +9826,34 @@ app.listen(PORT, () => {
   // Backfill missing country codes for existing users using phone/KYC data
   backfillCountriesFromPhone().catch(err => console.error('[startup] backfillCountries:', err.message));
 
-  // ── Real-time deposit detection via mempool.space WebSocket ─────────────
-  // Detects deposits within 1-3 seconds of entering mempool, credits on confirmation
-  realtimeDepositService.start().catch(err =>
-    console.error('[RealtimeDeposit] Startup error:', err.message)
-  );
+  // ── Live mainnet services — only run against production ─────────────────
+  // Guards deposit monitor, sweep service, and balance checks from firing
+  // against the real Supabase DB / hot wallet during local development.
+  if (process.env.NODE_ENV === 'production' || process.env.START_SERVICES === 'true') {
+    // Real-time deposit detection via mempool.space WebSocket
+    // Detects deposits within 1-3 seconds of entering mempool, credits on confirmation
+    realtimeDepositService.start().catch(err =>
+      console.error('[RealtimeDeposit] Startup error:', err.message)
+    );
 
-  // 5-minute scanner kept as safety net (catches anything WebSocket misses on reconnect)
-  depositMonitor.start();
-  console.log('🔍 Deposit monitor: MAINNET — polls every 5 min | SMS + Email alerts enabled');
+    // 5-minute scanner kept as safety net (catches anything WebSocket misses on reconnect)
+    depositMonitor.start();
+    console.log('🔍 Deposit monitor: MAINNET — polls every 5 min | SMS + Email alerts enabled');
 
-  // USDT TRC-20 deposit monitor — scans all Tron addresses every 15 min
-  usdtDepositMonitor.start();
-  console.log('🔍 USDT Deposit monitor: MAINNET (Tron) — polls every 15 min | Email + Push alerts enabled');
+    // USDT TRC-20 deposit monitor — scans all Tron addresses every 15 min
+    usdtDepositMonitor.start();
+    console.log('🔍 USDT Deposit monitor: MAINNET (Tron) — polls every 15 min | Email + Push alerts enabled');
 
-  // ── Deposit sweeper — moves confirmed deposits to hot wallet ─────────────
-  // Runs 2 min after startup then every 30 min. Silent — never affects user balances.
-  sweepService.start();
-  console.log(`🧹 Sweep service: MAINNET — hot wallet ${hdWalletService.getHotWalletAddress()}`);
+    // ── Deposit sweeper — moves confirmed deposits to hot wallet ───────────
+    // Runs 2 min after startup then every 30 min. Silent — never affects user balances.
+    sweepService.start();
+    console.log(`🧹 Sweep service: MAINNET — hot wallet ${hdWalletService.getHotWalletAddress()}`);
 
-  // ── Daily balance integrity check ─────────────────────────────────────────
-  balanceIntegrity.start();
+    // ── Daily balance integrity check ───────────────────────────────────────
+    balanceIntegrity.start();
+  } else {
+    console.log('⏸  Live mainnet services (deposit monitor, sweep, balance integrity) skipped — NODE_ENV is not "production"');
+  }
 
   // ── Auto-cancel expired trades every 60 seconds ───────────────────────────
   const _runExpiredTrades = async () => {

@@ -41,8 +41,10 @@ class HDWalletService {
       throw new Error('❌ MNEMONIC is invalid — check your .env file');
     }
 
-    // MAINNET ONLY — no testnet fallback
-    this.network      = bitcoin.networks.bitcoin;
+    // Defaults to mainnet; set HD_NETWORK=testnet in .env for local/dev use
+    this.network      = process.env.HD_NETWORK === 'testnet'
+      ? bitcoin.networks.testnet
+      : bitcoin.networks.bitcoin;
     this.apiBase      = 'https://mempool.space/api';
     this.apiFallbacks = ['https://blockstream.info/api', 'https://mempool.emzy.de/api'];
 
