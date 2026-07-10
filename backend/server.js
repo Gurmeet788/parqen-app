@@ -1493,13 +1493,28 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     const newUser = data[0];
 
     // ── Seed balance rows — both tables must exist before any trade ───────
-    await Promise.all([
-      supabaseAdmin.from('user_balances').insert([{ user_id: newUser.id, balance_btc: 0, balance_usd: 0 }])
-        .catch(() => {}),
-      supabaseAdmin.from('wallets').insert({
-        user_id: newUser.id, balance_btc: 0, locked_balance_btc: 0, updated_at: new Date().toISOString(),
-      }).catch(() => {}), // ignore duplicate if row already exists
-    ]);
+    const [balanceResult, walletResult] = await Promise.all([
+    supabaseAdmin
+      .from('user_balances')
+      .insert([{ user_id: newUser.id, balance_btc: 0, balance_usd: 0 }]),
+
+    supabaseAdmin
+      .from('wallets')
+      .insert({
+        user_id: newUser.id,
+        balance_btc: 0,
+        locked_balance_btc: 0,
+        updated_at: new Date().toISOString(),
+      }),
+  ]);
+
+  if (balanceResult.error && !balanceResult.error.message.includes('duplicate')) {
+    throw balanceResult.error;
+  }
+
+  if (walletResult.error && !walletResult.error.message.includes('duplicate')) {
+    throw walletResult.error;
+  }
 
     // ── Generate 6-digit verification code & save to DB (email users only) ──
     let emailVerifyCode = null;
