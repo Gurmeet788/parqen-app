@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import { Shield, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react';
@@ -16,13 +16,14 @@ const C = {
 export default function ResetPassword() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   
-  const email = location.state?.email;
-  const resetToken = location.state?.token;
+  const email = location.state?.email || searchParams.get('email');
+  const resetToken = location.state?.token || searchParams.get('token');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -105,7 +106,7 @@ export default function ResetPassword() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter new password"
                 className="w-full pl-10 pr-12 py-3 border-2 rounded-xl focus:outline-none"
-                style={{ borderColor: password ? C.green : C.gray[200] }}
+                style={{ borderColor: password ? C.green : '#E2E8F0' }}
               />
               <button
                 type="button"
@@ -129,7 +130,7 @@ export default function ResetPassword() {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Confirm new password"
                 className="w-full pl-10 pr-12 py-3 border-2 rounded-xl focus:outline-none"
-                style={{ borderColor: confirmPassword ? C.green : C.gray[200] }}
+                style={{ borderColor: confirmPassword ? C.green : '#E2E8F0' }}
               />
             </div>
           </div>
