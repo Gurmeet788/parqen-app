@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import SEO from '../components/SEO';
 import axios from 'axios';
@@ -9,6 +9,9 @@ import {
   Home, Gift, LogIn, Bitcoin, Star, Zap, Globe,
   Users, CircleDollarSign
 } from 'lucide-react';
+
+// Rest of the imports/constants unchanged ...
+
 
 const C = {
   forest: '#1B4332', green: '#2D6A4F', mint: '#40916C',
@@ -137,6 +140,59 @@ export default function Login({ onLogin }) {
     return true;
   };
 
+  const handleGoogleResponse = useCallback(async (response) => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await axios.post(`${API_URL}/auth/google`, {
+        credential: response.credential,
+      });
+      if (res.data.success && res.data.token) {
+        onLogin(res.data.user, res.data.token);
+        navigate('/buy-bitcoin');
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || 'Google login failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, [onLogin, navigate]);
+
+  const googleInitialized = useRef(false);
+
+  // Initialize Google Identity Services once on mount
+  useEffect(() => {
+    /* global google */
+    if (window.google?.accounts && !googleInitialized.current) {
+      try {
+        window.google.accounts.id.initialize({
+          client_id: process.env.REACT_APP_GOOGLE_CLIENT_ID || '',
+          callback: handleGoogleResponse,
+        });
+        googleInitialized.current = true;
+      } catch (err) {
+        console.error('Google Sign-In initialization failed:', err);
+      }
+    }
+  }, [handleGoogleResponse]);
+
+  // Render the Google button only when the choose step is active
+  useEffect(() => {
+    if (step === 'choose' && window.google?.accounts) {
+      const container = document.getElementById('googleBtnLogin');
+      if (container) {
+        try {
+          container.innerHTML = '';
+          window.google.accounts.id.renderButton(container, {
+            theme: 'outline', size: 'large', width: '380', text: 'continue_with',
+          });
+        } catch (err) {
+          console.error('Google Sign-In render failed:', err);
+        }
+      }
+    }
+  }, [step]);
+
   const handleEmailLogin = async e => {
     e?.preventDefault(); setError('');
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError('Enter a valid email address'); return; }
@@ -228,9 +284,6 @@ export default function Login({ onLogin }) {
     ...inputStyle(filled, error),
     paddingRight: 46,
   });
-
-  // Import additional icons needed
-  const { Users, CircleDollarSign } = require('lucide-react');
 
   return (
     <>
@@ -669,9 +722,18 @@ export default function Login({ onLogin }) {
                   </div>
                 )}
 
-                {/* CHOOSE STEP */}
                 {step === 'choose' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {/* Google OAuth Button */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: '4px 0 8px' }}>
+                      <div id="googleBtnLogin" style={{ minHeight: 40 }}></div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ flex: 1, height: 1, background: '#E2E8F0' }}></div>
+                        <span style={{ fontSize: 11, color: '#94A3B8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Or continue with</span>
+                        <div style={{ flex: 1, height: 1, background: '#E2E8F0' }}></div>
+                      </div>
+                    </div>
+
                     {/* Email Method */}
                     <button className="method-card" onClick={() => go('email')}>
                       <div className="method-icon" style={{ background: 'linear-gradient(135deg, #2D6A4F, #40916C)' }}>
