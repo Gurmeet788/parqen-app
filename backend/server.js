@@ -4194,15 +4194,33 @@ app.post('/api/users/:userId/view-profile', async (req, res) => {
 app.get('/api/user/balance', verifyToken, async (req, res) => {
   try {
     const [{ data, error }, btcPrice] = await Promise.all([
-      supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', req.userId).single(),
+      supabaseAdmin
+        .from('user_balances')
+        .select('balance_btc')
+        .eq('user_id', req.userId)
+        .maybeSingle(),
       getCurrentBTCPrice().catch(() => 88000),
     ]);
-    if (error && error.code === 'PGRST116') {
-      await supabaseAdmin.from('user_balances').insert([{ user_id: req.userId, balance_btc: 0, balance_usd: 0 }]);
+
+    if (error && error.code !== 'PGRST116') {
+      console.error(`[/api/user/balance] lookup failed for user=${req.userId.slice(0,8)}:`, error.message);
+    }
+
+    const row = data;
+    if (!row) {
+      const { error: insertErr } = await supabaseAdmin
+        .from('user_balances')
+        .upsert({ user_id: req.userId, balance_btc: 0, balance_usd: 0, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+
+      if (insertErr) {
+        console.error(`[/api/user/balance] failed to initialize balance for user=${req.userId.slice(0,8)}:`, insertErr.message);
+        return res.json({ balance_btc: 0, balance_usd: 0, btc_price: btcPrice });
+      }
+
       return res.json({ balance_btc: 0, balance_usd: 0, btc_price: btcPrice });
     }
-    if (error) return res.status(400).json({ error: error.message });
-    const balBtc = parseFloat(data?.balance_btc || 0);
+
+    const balBtc = parseFloat(row.balance_btc || 0);
     const balUsd = parseFloat((balBtc * btcPrice).toFixed(2));
     console.log(`[/api/user/balance] user=${req.userId.slice(0,8)} btc=${balBtc} price=${btcPrice} usd=${balUsd}`);
     res.json({ balance_btc: balBtc, balance_usd: balUsd, btc_price: btcPrice });
