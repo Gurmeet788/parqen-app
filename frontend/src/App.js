@@ -268,7 +268,11 @@ function App() {
   return (
     <HelmetProvider>
     <RatesProvider>
-    <Router>
+    <Router
+        future={{
+          v7_startTransition: true,
+        }}
+      >
       <Suspense fallback={<PageLoader />}>
       <Routes>
         {/* ── TEAM PORTAL — completely standalone, no main chrome ── */}
