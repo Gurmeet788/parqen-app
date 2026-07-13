@@ -366,6 +366,36 @@ async function detectAndSaveCountry(userId, req, phoneNumber) {
   } catch (_) { /* geo lookup failure never breaks login */ }
 }
 
+app.get('/api/geo/location', async (req, res) => {
+  try {
+    const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+      || req.headers['x-real-ip']
+      || req.socket?.remoteAddress
+      || '';
+
+    if (!ip || ip === '::1' || ip.startsWith('127.') || ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('::ffff:')) {
+      return res.json({ country_code: null, country: null, city: null, currency: null, source: 'local' });
+    }
+
+    const geoRes = await fetch(`https://ipapi.co/${ip}/json/`, { signal: AbortSignal.timeout(4000) });
+    const geo = await geoRes.json();
+
+    if (!geo?.country_code || geo.error) {
+      return res.json({ country_code: null, country: null, city: null, currency: null, source: 'lookup-failed' });
+    }
+
+    res.json({
+      country_code: String(geo.country_code || '').toUpperCase(),
+      country: geo.country_name || null,
+      city: geo.city || null,
+      currency: geo.currency || null,
+      source: 'ipapi',
+    });
+  } catch (error) {
+    res.json({ country_code: null, country: null, city: null, currency: null, source: 'error' });
+  }
+});
+
 // ── Phone rate limiting (anti-abuse for OTP / phone verification) ────────────
 const phoneRateLimits = new Map();
 
@@ -4534,17 +4564,16 @@ app.get('/api/listings', async (req, res) => {
           : Promise.resolve({ data: [] }),
       ]);
       if (usersResult.error || !usersResult.data || usersResult.data.length === 0) {
+        if (usersResult.error) console.error('[/api/listings] Users query FAILED:', usersResult.error.message, '| code:', usersResult.error.code, '— returning partial listings');
+        else console.warn('[/api/listings] Users query returned 0 rows for', sellerIdSet.length, 'seller IDs. Returning partial listings.');
         const stale = getCachedStale(cacheKey);
-        if (stale) {
-          if (usersResult.error) console.error('[/api/listings] Users query FAILED:', usersResult.error.message, '— serving stale cache');
-          else console.warn('[/api/listings] Users query returned 0 rows — serving stale cache');
+        if (stale && stale.length > 0) {
+          console.warn('[/api/listings] Serving stale cache while user hydration is unavailable');
           return res.json({ listings: stale, stale: true });
         }
-        if (usersResult.error) console.error('[/api/listings] Users query FAILED:', usersResult.error.message, '| code:', usersResult.error.code);
-        else console.warn('[/api/listings] Users query returned 0 rows for', sellerIdSet.length, 'seller IDs. Timed out or RLS blocking. Returning 503.');
-        return res.status(503).json({ error: 'Could not load seller profiles. Please retry in a moment.' });
+      } else {
+        (usersResult.data || []).forEach(u => { userMap[u.id] = u; });
       }
-      (usersResult.data || []).forEach(u => { userMap[u.id] = u; });
       walletRows = walletsResult.data || [];
     }
 

@@ -2209,7 +2209,7 @@ export default function BuyBitcoin({ user }) {
     }
 
     // 2. Fallback: IP-based detection for guests
-    fetch("https://ipapi.co/json/")
+    fetch(`${API_URL}/geo/location`)
       .then((r) => r.json())
       .then((data) => {
         if (data?.country_code) {
@@ -2217,9 +2217,7 @@ export default function BuyBitcoin({ user }) {
           const matched = COUNTRIES.find((c) => c.code === cc);
           if (matched && matched.code !== "ALL") {
             setSelCountry(matched);
-            const cur = CURRENCIES.find(
-              (c) => c.code === (data.currency || matched.currency),
-            );
+            const cur = CURRENCIES.find((c) => c.code === (data.currency || matched.currency));
             if (cur) setSelCurrency(cur);
           }
         }
@@ -2364,7 +2362,7 @@ export default function BuyBitcoin({ user }) {
     }
     const geoController = new AbortController();
     const geoTimeout = setTimeout(() => geoController.abort(), 3000);
-    fetch("https://ipapi.co/json/", { signal: geoController.signal })
+    fetch(`${API_URL}/geo/location`, { signal: geoController.signal })
       .then((r) => r.json())
       .then((data) => {
         const countryCode = (data.country_code || "").toUpperCase();

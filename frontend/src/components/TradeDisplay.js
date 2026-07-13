@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_URL } from '../App';
 
 const TradeDisplay = ({
   usdAmount = 100,
@@ -51,7 +52,7 @@ const TradeDisplay = ({
         }
 
         // Otherwise detect from IP
-        const res = await fetch('https://ipapi.co/json/');
+        const res = await fetch(`${API_URL}/geo/location`);
         const data = await res.json();
 
         const forexRes = await fetch('https://api.exchangerate-api.com/v4/latest/USD');

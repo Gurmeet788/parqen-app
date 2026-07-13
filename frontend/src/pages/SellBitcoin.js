@@ -2160,7 +2160,7 @@ export default function SellBitcoin({ user }) {
     }
 
     // 2. Fallback: IP-based detection for guests
-    fetch("https://ipapi.co/json/")
+    fetch(`${API_URL}/geo/location`)
       .then((r) => r.json())
       .then((data) => {
         if (data?.country_code) {
