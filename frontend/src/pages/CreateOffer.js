@@ -1239,11 +1239,21 @@ export default function CreateOffer() {
                               {selectedPay.cat}
                             </p>
                           </div>
-                          <button onClick={e => { e.stopPropagation(); setPayMethod(''); }}
-                            className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={e => { e.stopPropagation(); setPayMethod(''); }}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setPayMethod('');
+                              }
+                            }}
+                            className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 cursor-pointer"
                             style={{ backgroundColor: C.g100 }}>
                             <X size={13} style={{ color: C.g400 }} />
-                          </button>
+                          </span>
                         </>
                       ) : (
                         <>
