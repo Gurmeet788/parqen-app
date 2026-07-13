@@ -187,14 +187,41 @@ router.get('/wallet', verifyToken, async (req, res) => {
         await autoHealOrphanedEscrows(userId);
 
         // ── SINGLE SOURCE OF TRUTH: wallets table only ──────────────────────────
-        const [{ data: walletRow, error: walletErr }, liveBtcPrice] = await Promise.all([
+        const [{ data: walletRowData, error: walletErr }, liveBtcPrice] = await Promise.all([
             supabaseAdmin.from('wallets').select('balance_btc, locked_balance_btc').eq('user_id', userId).single(),
             getLiveBtcPrice(),
         ]);
+        let walletRow = walletRowData;
 
         if (walletErr || !walletRow) {
-            console.error(`[Wallet] No wallet row for user ${userId}:`, walletErr?.message);
-            return res.status(404).json({ error: 'Wallet not found for this user' });
+            console.warn(`[Wallet] Missing wallet row for user ${userId} — creating zero-balance record`);
+
+            const { error: createErr } = await supabaseAdmin
+                .from('wallets')
+                .upsert({
+                    user_id: userId,
+                    balance_btc: 0,
+                    locked_balance_btc: 0,
+                    updated_at: new Date().toISOString(),
+                }, { onConflict: 'user_id' });
+
+            if (createErr) {
+                console.error(`[Wallet] Failed to create wallet row for user ${userId}:`, createErr.message);
+                return res.status(500).json({ error: 'Failed to initialize wallet for this user' });
+            }
+
+            const { data: createdWallet, error: refetchErr } = await supabaseAdmin
+                .from('wallets')
+                .select('balance_btc, locked_balance_btc')
+                .eq('user_id', userId)
+                .single();
+
+            if (refetchErr || !createdWallet) {
+                console.error(`[Wallet] Wallet row still unavailable for user ${userId}:`, refetchErr?.message);
+                return res.status(500).json({ error: 'Failed to load wallet for this user' });
+            }
+
+            walletRow = createdWallet;
         }
 
         const available_btc = parseFloat(walletRow.balance_btc || 0);
