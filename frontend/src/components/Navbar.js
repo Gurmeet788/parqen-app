@@ -138,7 +138,7 @@ export default function Navbar({ user, onLogout }) {
 
   // ── Desktop Nav Links ───────────────────────────────────────────────────────
   const DesktopNavLinks = () => (
-    <div className="hidden md:flex items-center gap-3 flex-1 justify-center">
+    <div className="hidden xl:flex items-center gap-2 flex-1 justify-center">
 
       {/* Dashboard */}
       <Link to="/dashboard"
@@ -266,7 +266,7 @@ export default function Navbar({ user, onLogout }) {
       paddingTop: 'env(safe-area-inset-top, 0px)',
       paddingLeft: 'env(safe-area-inset-left, 0px)',
       paddingRight: 'env(safe-area-inset-right, 0px)',
-    }}>      <div className="max-w-[1280px] mx-auto px-4 md:px-8">
+    }}>      <div className="max-w-[1400px] mx-auto px-4 lg:px-6 xl:px-8">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 64, gap: 12 }}>
           <Link to="/" style={{ textDecoration: 'none', flexShrink: 0 }}>
             <span style={{ fontSize: 22, fontWeight: 900, letterSpacing: '-0.5px' }}>
@@ -303,7 +303,7 @@ export default function Navbar({ user, onLogout }) {
       paddingTop: 'env(safe-area-inset-top, 0px)',
       paddingLeft: 'env(safe-area-inset-left, 0px)',
       paddingRight: 'env(safe-area-inset-right, 0px)',
-    }}>      <div className="max-w-[1400px] mx-auto px-4 md:px-10">
+    }}>      <div className="max-w-[1600px] mx-auto px-4 lg:px-6 xl:px-10">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 64, gap: 12 }}>
 
           {/* Logo */}

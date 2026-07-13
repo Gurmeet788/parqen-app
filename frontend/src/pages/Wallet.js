@@ -1958,7 +1958,7 @@ function UsdtInternalTransferModal({ balance, onClose, onTransfer }) {
                   <span className="text-xl font-bold text-white/70">USDT</span>
                 </div>
                 <p className="text-sm font-bold" style={{ color: 'rgba(255,255,255,0.55)' }}>≈ ${usdVal} USD</p>
-                <div className="flex items-center justify-center gap-1.5 mt-3 px-3 py-1.5 rounded-full inline-flex mx-auto"
+                <div className="items-center justify-center gap-1.5 mt-3 px-3 py-1.5 rounded-full inline-flex mx-auto"
                   style={{ background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.22)' }}>
                   <span className="text-xs font-black text-white">→</span>
                   <span className="text-xs font-bold text-white/80">{recipient.displayName}</span>
