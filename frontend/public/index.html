@@ -207,20 +207,39 @@
     <!-- ── OneSignal Web Push ────────────────────────────────────────────── -->
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
     <script>
-      window.OneSignalDeferred = window.OneSignalDeferred || [];
-      OneSignalDeferred.push(async function(OneSignal) {
-        await OneSignal.init({
-          appId: "5fc11b99-516c-4178-8443-b06c08865b99",
-          notifyButton: { enable: false },
-          allowLocalhostAsSecureOrigin: true,
-        });
-        // Expose globally so helpers can access it synchronously
-        window.OneSignal = OneSignal;
-        // Signal that init is complete — helpers waiting on this event will unblock
-        window.dispatchEvent(new CustomEvent('onesignal:ready'));
-        console.log('OneSignal initialized! ✅  App:', OneSignal);
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+
+  OneSignalDeferred.push(async function (OneSignal) {
+    try {
+      const isLocalhost =
+        window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1";
+
+      // Skip OneSignal on localhost
+      if (isLocalhost) {
+        console.log("⚠️ OneSignal skipped on localhost.");
+        return;
+      }
+
+      await OneSignal.init({
+        appId: "5fc11b99-516c-4178-8443-b06c08865b99",
+        notifyButton: {
+          enable: false,
+        },
       });
-    </script>
+
+      // Expose globally
+      window.OneSignal = OneSignal;
+
+      // Notify the app that OneSignal is ready
+      window.dispatchEvent(new CustomEvent("onesignal:ready"));
+
+      console.log("✅ OneSignal initialized successfully!");
+    } catch (error) {
+      console.error("❌ OneSignal initialization failed:", error);
+    }
+  });
+</script>
 
     <!-- ── Splash Screen Styles ──────────────────────────────────────────── -->
     <style>
