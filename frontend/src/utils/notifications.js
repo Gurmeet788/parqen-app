@@ -63,20 +63,40 @@ export async function requestNotificationPermission() {
 // OneSignal v16 uses OneSignal.login(externalId) to set external_id server-side.
 // This must be called on every page load (login + session restore) so the
 // backend can target users by external_id.
+// Link the logged-in user's ID to their push subscription.
 export async function identifyUser(userId) {
   if (!userId) return;
+
   try {
     const OS = await waitForOS(6000);
+
     if (!OS) {
-      console.warn('[Push] identifyUser: OneSignal not ready — push ID not linked for', userId);
+      console.warn("[Push] OneSignal not ready.");
       return;
     }
-    // login() is the v16 documented API — it makes a server-side call to
-    // associate this browser's subscription with the given external_id.
+
+    // Don't try to login on localhost
+    if (
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1"
+    ) {
+      console.log("[Push] Skipping OneSignal login on localhost.");
+      return;
+    }
+
+    // Ensure push subscription exists
+    const subscribed = await OS.User.PushSubscription.optedIn;
+
+    if (!subscribed) {
+      console.warn("[Push] User is not subscribed to push notifications.");
+      return;
+    }
+
     await OS.login(String(userId));
-    console.log('[Push] identifyUser linked external_id:', userId);
-  } catch (e) {
-    console.error('[Push] identifyUser failed for', userId, ':', e?.message || e);
+
+    console.log("[Push] Linked external_id:", userId);
+  } catch (err) {
+    console.error("[Push] identifyUser failed:", err);
   }
 }
 
