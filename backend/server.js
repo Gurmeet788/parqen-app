@@ -4902,8 +4902,10 @@ app.get('/api/listings', async (req, res) => {
     ]);
     if (listErr) {
       console.error('[/api/listings] Listing query error:', listErr.message, '| code:', listErr.code);
-      // Return empty array so the marketplace doesn't crash — client will retry
-      return res.json({ listings: [], stale: false, error: listErr.message });
+      // An error is not an empty marketplace.  Returning 200 + [] makes the client
+      // render "No buyers found" and can cause that false result to be cached.
+      // Return a retryable status instead, so callers keep their current offers and retry.
+      return res.status(503).json({ error: 'Marketplace is temporarily unavailable. Please try again in a moment.' });
     }
     if (_listingsTimedOut || rawListings === null) {
       const stale = getCachedStale(cacheKey);

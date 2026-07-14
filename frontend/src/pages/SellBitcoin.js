@@ -1072,7 +1072,6 @@ export default function SellBitcoin({user}) {
           if (buyOffers.length > 0) {
             setOffers(buyOffers);
             setLoading(false);
-            return;
           }
         }
       } catch {}
@@ -1083,12 +1082,12 @@ export default function SellBitcoin({user}) {
       const res = await axios.get(`${API_URL}/listings`, { timeout: 20000 });
       const all = (res.data.listings||[]).map(l=>({...l, users:Array.isArray(l.users)?l.users[0]:l.users}));
       const data = all.filter(l=>l.listing_type==='BUY'||l.listing_type==='BUY_BITCOIN');
-      if (data.length > 0) {
-        setOffers(data);
+      // A successful response is authoritative, including a genuinely empty result.
+      // The backend uses 503 for query failures, so an empty state is never inferred
+      // from a failed database request.
+      setOffers(data);
+      if (all.length > 0) {
         try { localStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() })); } catch {}
-      } else if (!offers.length) {
-        // Truly empty marketplace — show empty state but don't cache
-        setOffers([]);
       }
     } catch (err) {
       // 503 = DB temporarily down; longer retry delay so we don't spam the server

@@ -464,6 +464,9 @@ export default function CreateOffer() {
       });
 
       if (r.data.success || r.data.offer) {
+        // The destination market must not reuse the previous five-minute snapshot.
+        // It needs to fetch the offer that was just created.
+        try { localStorage.removeItem('praqen_market_all'); } catch {}
         toast.success('🎉 Offer published successfully!');
         if (offerType === 'sell') navigate('/buy-bitcoin');
         else if (offerType === 'buy') navigate('/sell-bitcoin');
