@@ -596,24 +596,25 @@ export default function CreateOffer() {
     setDupOfferWarning(null);
     try {
       const payload = {
-        offerType,
+        type:                offerType,
         country,
-        currency: currencyCode,
-        paymentMethod: isGC ? null : payMethod,
-        giftCard: isGC ? {
-          brand: gcBrand,
-          cardType: gcCardType,
-          values: gcCardValues,
-          currencies: gcCurrencies,
-        } : null,
-        pricingType,
-        margin: pricingType === 'market' ? margin : null,
-        fixedPrice: pricingType === 'fixed' ? parseFloat(fixedPrice) : null,
-        minLimit: !isGC && minLimit ? parseFloat(minLimit) : null,
-        maxLimit: !isGC && maxLimit ? parseFloat(maxLimit) : null,
-        timeLimit,
-        instructions,
-        terms,
+        currency:            currencyCode,
+        currency_symbol:     currencySymbol,
+        payment_method:      isGC ? 'Gift Card' : payMethod,
+        gift_card_brand:     isGC ? gcBrand : null,
+        card_type:           isGC ? gcCardType : null,
+        card_values:         isGC ? gcCardValues : null,
+        gift_card_currencies: isGC ? gcCurrencies : null,
+        pricing_type:        pricingType,
+        margin:              pricingType === 'market' ? margin : null,
+        bitcoin_price:       pricingType === 'fixed' && fixedPrice ? parseFloat(fixedPrice) : btcLocal,
+        min_limit_local:     !isGC && minLimit ? parseFloat(minLimit) : (isGC ? gcMinVal : null),
+        max_limit_local:     !isGC && maxLimit ? parseFloat(maxLimit) : (isGC ? Math.max(...gcCardValues, gcMinVal) : null),
+        min_limit_usd:       !isGC && minLimit ? minUSDVal : null,
+        max_limit_usd:       !isGC && maxLimit ? parseFloat(maxLimit) / localRate : null,
+        time_limit:          timeLimit,
+        trade_instructions:  instructions,
+        listing_terms:       terms,
       };
 
       await axios.post(`${API_URL}/offers`, payload, { withCredentials: true });
@@ -625,7 +626,7 @@ export default function CreateOffer() {
       if (status === 409 && data?.id) {
         setDupOfferWarning({ status: data.status || 'ACTIVE', id: data.id });
       } else {
-        toast.error(data?.message || 'Failed to publish offer. Please try again.');
+        toast.error(data?.error || data?.message || 'Failed to publish offer. Please try again.');
       }
     } finally {
       setSubmitting(false);
