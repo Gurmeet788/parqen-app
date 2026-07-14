@@ -2217,7 +2217,9 @@ export default function BuyBitcoin({ user }) {
           const matched = COUNTRIES.find((c) => c.code === cc);
           if (matched && matched.code !== "ALL") {
             setSelCountry(matched);
-            const cur = CURRENCIES.find((c) => c.code === (data.currency || matched.currency));
+            const cur = CURRENCIES.find(
+              (c) => c.code === (data.currency || matched.currency),
+            );
             if (cur) setSelCurrency(cur);
           }
         }
@@ -3185,87 +3187,87 @@ export default function BuyBitcoin({ user }) {
             </div>
           </div>
 
-<div className="flex items-center gap-2">
-  <span
-    className="text-xs font-black flex-shrink-0"
-    style={{ color: C.g500 }}
-  >
-    Sort:
-  </span>
+          <div className="flex items-center gap-2">
+            <span
+              className="text-xs font-black flex-shrink-0"
+              style={{ color: C.g500 }}
+            >
+              Sort:
+            </span>
 
-  <select
-    value={sortBy}
-    onChange={(e) => setSortBy(e.target.value)}
-    className="flex-shrink-0 px-2 py-2 font-bold cursor-pointer border-2 rounded-xl focus:outline-none"
-    style={{
-      borderColor: sortBy !== "rate_low" ? C.forest : C.g200,
-      color: C.g800,
-      fontSize: "13px",
-      width: "105px",
-    }}
-  >
-    <option value="rate_low">Best Rate</option>
-    <option value="rating">Top Rated</option>
-    <option value="trades">Most Trades</option>
-  </select>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="flex-shrink-0 px-2 py-2 font-bold cursor-pointer border-2 rounded-xl focus:outline-none"
+              style={{
+                borderColor: sortBy !== "rate_low" ? C.forest : C.g200,
+                color: C.g800,
+                fontSize: "13px",
+                width: "105px",
+              }}
+            >
+              <option value="rate_low">Best Rate</option>
+              <option value="rating">Top Rated</option>
+              <option value="trades">Most Trades</option>
+            </select>
 
-  <div
-    className={`flex-1 min-w-0 flex items-center border-2 rounded-xl overflow-hidden transition-colors duration-200 ${
-      traderSearch.trim() ? "border-green-700" : "border-gray-200"
-    }`}
-  >
-    <input
-      type="text"
-      placeholder="Search seller…"
-      value={traderSearch}
-      onChange={(e) => setTraderSearch(e.target.value)}
-      className="flex-1 min-w-0 px-2.5 py-2 font-bold focus:outline-none bg-transparent"
-      style={{ color: C.g800, fontSize: "16px" }}
-    />
+            <div
+              className={`flex-1 min-w-0 flex items-center border-2 rounded-xl overflow-hidden transition-colors duration-200 ${
+                traderSearch.trim() ? "border-green-700" : "border-gray-200"
+              }`}
+            >
+              <input
+                type="text"
+                placeholder="Search seller…"
+                value={traderSearch}
+                onChange={(e) => setTraderSearch(e.target.value)}
+                className="flex-1 min-w-0 px-2.5 py-2 font-bold focus:outline-none bg-transparent"
+                style={{ color: C.g800, fontSize: "16px" }}
+              />
 
-    {traderSearch.trim() && (
-      <button
-        onClick={() => setTraderSearch("")}
-        className="px-2 flex-shrink-0"
-        style={{ color: C.g400 }}
-      >
-        <X size={12} />
-      </button>
-    )}
-  </div>
+              {traderSearch.trim() && (
+                <button
+                  onClick={() => setTraderSearch("")}
+                  className="px-2 flex-shrink-0"
+                  style={{ color: C.g400 }}
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
 
-  <button
-    onClick={() => handleCreateOffer()}
-    className="flex-shrink-0 flex items-center gap-1 px-2.5 py-2 rounded-xl text-white font-black text-xs transition hover:opacity-90 active:scale-[0.97]"
-    style={{ backgroundColor: C.forest, whiteSpace: "nowrap" }}
-  >
-    <PlusCircle size={12} /> Create
-  </button>
+            <button
+              onClick={() => handleCreateOffer()}
+              className="flex-shrink-0 flex items-center gap-1 px-2.5 py-2 rounded-xl text-white font-black text-xs transition hover:opacity-90 active:scale-[0.97]"
+              style={{ backgroundColor: C.forest, whiteSpace: "nowrap" }}
+            >
+              <PlusCircle size={12} /> Create
+            </button>
 
-  {hasFilters && (
-    <button
-      onClick={() => {
-        setBuyAmt("");
-        setSelPayment("all");
-        setSelCountry(COUNTRIES[0]);
-        setSelCurrency(CURRENCIES[0]);
-        setSortBy("rate_low");
-        setPaymentSearch("");
-        setTraderSearch("");
-        setCurrencySearch("");
-        setCountrySearch("");
-      }}
-      className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-xl text-xs font-black border-2 transition"
-      style={{
-        borderColor: C.danger,
-        color: C.danger,
-        backgroundColor: "#FEF2F2",
-      }}
-    >
-      ✕
-    </button>
-  )}
-</div>
+            {hasFilters && (
+              <button
+                onClick={() => {
+                  setBuyAmt("");
+                  setSelPayment("all");
+                  setSelCountry(COUNTRIES[0]);
+                  setSelCurrency(CURRENCIES[0]);
+                  setSortBy("rate_low");
+                  setPaymentSearch("");
+                  setTraderSearch("");
+                  setCurrencySearch("");
+                  setCountrySearch("");
+                }}
+                className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-xl text-xs font-black border-2 transition"
+                style={{
+                  borderColor: C.danger,
+                  color: C.danger,
+                  backgroundColor: "#FEF2F2",
+                }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

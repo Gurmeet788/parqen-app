@@ -2580,26 +2580,26 @@ export default function SellBitcoin({ user }) {
                 >
                   {sym}
                 </span>
-               <input
-  type="number"
-  min="0"
-  placeholder="e.g. 500"
-  value={sellAmt}
-  onChange={(e) => setSellAmt(e.target.value)}
-  onFocus={(e) => {
-    e.target.style.borderColor = C.sell;
-  }}
-  onBlur={(e) => {
-    e.target.style.borderColor = sellAmt ? C.sell : C.g200;
-  }}
-  className="w-full pl-6 pr-7 py-2.5 rounded-xl border-2 font-black focus:outline-none focus:ring-0"
-  style={{
-    borderColor: sellAmt ? C.sell : C.g200,
-    color: C.g800,
-    backgroundColor: sellAmt ? `${C.sell}08` : "transparent",
-    fontSize: "16px",
-  }}
-/>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="e.g. 500"
+                  value={sellAmt}
+                  onChange={(e) => setSellAmt(e.target.value)}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = C.sell;
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = sellAmt ? C.sell : C.g200;
+                  }}
+                  className="w-full pl-6 pr-7 py-2.5 rounded-xl border-2 font-black focus:outline-none focus:ring-0"
+                  style={{
+                    borderColor: sellAmt ? C.sell : C.g200,
+                    color: C.g800,
+                    backgroundColor: sellAmt ? `${C.sell}08` : "transparent",
+                    fontSize: "16px",
+                  }}
+                />
                 {sellAmt && (
                   <button
                     onClick={() => setSellAmt("")}
