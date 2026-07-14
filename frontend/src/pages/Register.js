@@ -21,6 +21,7 @@ const C = {
 };
 
 const PHONE_CODES = [
+  { flag: '🇵🇰', code: '+92',  name: 'Pakistan' },
   { flag: '🇬🇭', code: '+233', name: 'Ghana' },
   { flag: '🇳🇬', code: '+234', name: 'Nigeria' },
   { flag: '🇰🇪', code: '+254', name: 'Kenya' },
@@ -220,6 +221,49 @@ export default function Register({ onLogin }) {
     return () => clearInterval(interval);
   }, []);
 
+  const handleGoogleResponse = async (response) => {
+    setLoading(true);
+    setGlobalError('');
+    try {
+      const res = await axios.post(`${API_URL}/auth/google`, {
+        credential: response.credential,
+        referralCode: referralCode || undefined,
+      });
+      if (res.data.success && res.data.token) {
+        localStorage.setItem('token', res.data.token);
+        localStorage.removeItem('referralCode');
+        onLogin(res.data.user, res.data.token);
+        navigate('/buy-bitcoin');
+      }
+    } catch (err) {
+      if (!err.response) {
+        setGlobalError('Cannot reach the server. Please check your internet connection and try again.');
+      } else {
+        setGlobalError(err.response.data?.error || 'Google registration failed. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    /* global google */
+    if (window.google && window.google.accounts) {
+      try {
+        window.google.accounts.id.initialize({
+          client_id: process.env.REACT_APP_GOOGLE_CLIENT_ID || '',
+          callback: handleGoogleResponse,
+        });
+        window.google.accounts.id.renderButton(
+          document.getElementById('googleBtnRegister'),
+          { theme: 'outline', size: 'large', width: '100%', text: 'continue_with' }
+        );
+      } catch (err) {
+        console.error('Google Sign-In initialization failed:', err);
+      }
+    }
+  }, [mode, step]);
+
   const contact = method === 'email' ? email : `${phoneCode.code}${phone}`;
 
   const validateContact = () => {
@@ -318,8 +362,13 @@ export default function Register({ onLogin }) {
         localStorage.setItem('token', res.data.token);
         localStorage.removeItem('referralCode');
         onLogin(res.data.user, res.data.token);
-        setStep(4);
-        setTimeout(() => navigate('/buy-bitcoin'), 1800);
+        if (method === 'email' && email) {
+          // Email users go to dedicated verification page
+          navigate(`/verify-email?email=${encodeURIComponent(email)}`);
+        } else {
+          setStep(4);
+          setTimeout(() => navigate('/buy-bitcoin'), 1800);
+        }
       }
     } catch (err) {
       if (!err.response) {
@@ -1136,6 +1185,16 @@ export default function Register({ onLogin }) {
                         <Smartphone size={14} />
                         Phone
                       </button>
+                    </div>
+
+                    {/* Google OAuth Button */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: '6px 0 10px' }}>
+                      <div id="googleBtnRegister" style={{ minHeight: 40 }}></div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ flex: 1, height: 1, background: '#E2E8F0' }}></div>
+                        <span style={{ fontSize: 11, color: '#94A3B8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Or register with</span>
+                        <div style={{ flex: 1, height: 1, background: '#E2E8F0' }}></div>
+                      </div>
                     </div>
 
                     {/* Email or Phone */}

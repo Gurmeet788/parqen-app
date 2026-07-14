@@ -16,6 +16,7 @@ const { createClient } = require('@supabase/supabase-js');
 const bcrypt     = require('bcryptjs');
 const jwt        = require('jsonwebtoken');
 const crypto     = require('crypto');
+const axios      = require('axios');
 const nodemailer = require('nodemailer');
 const { Resend } = require('resend');
 const resendClient = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
@@ -186,6 +187,7 @@ app.use(helmet({
   contentSecurityPolicy:      false, // pure API server, no HTML pages served
   crossOriginEmbedderPolicy:  false, // allow API calls from the frontend
   crossOriginResourcePolicy:  false, // allow cross-origin fetch from browser
+  crossOriginOpenerPolicy:    { policy: 'same-origin-allow-popups' }, // allow Google Sign-In popup postMessage
 }));
 
 // CORS — only allow requests from our own frontend domain
@@ -526,7 +528,6 @@ async function notifyUserSMS(userId, message) {
     const { data: user, error: dbErr } = await supabaseAdmin.from('users').select('phone').eq('id', userId).single();
     if (dbErr) { console.error(`[SMS] DB lookup failed for ${userId}:`, dbErr.message); return; }
     if (!user?.phone) { console.warn(`[SMS] No phone on file for user ${userId} — skipping`); return; }
-    if (!TWILIO_ENABLED) { console.error('[SMS] Twilio not configured'); return; }
     const phone = user.phone.startsWith('+') ? user.phone : `+${user.phone}`;
     await sendSmsOtp(phone, `[PRAQEN ⚡] ${message}`);
     console.log(`📱 SMS sent to user ${userId} (${phone})`);
@@ -1415,6 +1416,218 @@ app.get('/api/auth/referrer', async (req, res) => {
   }
 });
 
+app.post('/api/auth/google', authLimiter, async (req, res) => {
+  try {
+    const { credential, referralCode } = req.body;
+    if (!credential) {
+      return res.status(400).json({ error: 'Google credential is required' });
+    }
+
+    // 1. Verify Google ID token via Google Tokeninfo API
+    let payload;
+    try {
+      const response = await axios.get(`https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`);
+      payload = response.data;
+    } catch (err) {
+      console.error('[Google Auth] Token verification failed:', err.message);
+      return res.status(401).json({ error: 'Invalid Google credential token' });
+    }
+
+    const { email, name, picture, aud } = payload;
+
+    // Verify audience if client ID is configured
+    const clientID = process.env.GOOGLE_CLIENT_ID;
+    if (clientID && aud !== clientID) {
+      console.error('[Google Auth] Client ID mismatch:', aud, 'vs', clientID);
+      return res.status(401).json({ error: 'Token audience mismatch' });
+    }
+
+    if (!email) {
+      return res.status(400).json({ error: 'Google token did not provide an email address' });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // 2. Lookup existing user
+    let { data: existingUser, error: findError } = await supabaseAdmin
+      .from('users')
+      .select('*')
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+
+    if (findError) {
+      console.error('[Google Auth] DB lookup error:', findError);
+      return res.status(500).json({ error: 'Database error' });
+    }
+
+    let userToAuth;
+
+    if (existingUser) {
+      userToAuth = existingUser;
+
+      // Update email verification status if not verified
+      if (!existingUser.is_email_verified || !existingUser.email_verified) {
+        const { data: updatedUser } = await supabaseAdmin
+          .from('users')
+          .update({ is_email_verified: true, email_verified: true })
+          .eq('id', existingUser.id)
+          .select()
+          .single();
+        if (updatedUser) {
+          userToAuth = updatedUser;
+        }
+      }
+    } else {
+      // 3. New user registration
+      let baseUsername = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '');
+      if (baseUsername.length < 3) baseUsername = 'user';
+      let username = baseUsername;
+      
+      const { data: uCheck } = await supabaseAdmin
+        .from('users')
+        .select('id')
+        .eq('username', username)
+        .maybeSingle();
+
+      if (uCheck) {
+        username = `${baseUsername}_${Math.floor(1000 + Math.random() * 9000)}`;
+      }
+
+      const passwordHash = await bcrypt.hash(crypto.randomUUID(), 10);
+      const referralCodeValue = await generateUniqueReferralCode(username);
+
+      // Referral lookup
+      let referrerId = null;
+      if (referralCode) {
+        const normalizedRef = referralCode.toLowerCase().trim();
+        const { data: referrer } = await supabaseAdmin
+          .from('users')
+          .select('id')
+          .eq('referral_code', normalizedRef)
+          .maybeSingle();
+        if (referrer) {
+          referrerId = referrer.id;
+        }
+      }
+
+      const { data: insertData, error: insertError } = await supabaseAdmin
+        .from('users')
+        .insert([{
+          email:                  normalizedEmail,
+          phone:                  null,
+          password_hash:          passwordHash,
+          username:               username,
+          full_name:              name || username,
+          bitcoin_wallet_address: null,
+          is_email_verified:      true,
+          email_verified:         true,
+          average_rating:         0,
+          total_trades:           0,
+          completion_rate:        100,
+          account_status:         'ACTIVE',
+          created_at:             new Date(),
+          avatar_url:             picture || null,
+          is_admin:               false,
+          is_moderator:           false,
+          referred_by:            referrerId,
+          referral_code:          referralCodeValue,
+          badge:                  'BEGINNER',
+        }])
+        .select();
+
+      if (insertError) {
+        console.error('[Google Auth] User insertion failed:', insertError);
+        return res.status(500).json({ error: 'Failed to create user account' });
+      }
+
+      const newUser = insertData[0];
+      userToAuth = newUser;
+
+      // Seed balance rows
+      await Promise.all([
+        supabaseAdmin.from('user_balances').insert([{ user_id: newUser.id, balance_btc: 0, balance_usd: 0 }]).then(null, () => {}),
+        supabaseAdmin.from('wallets').insert({ user_id: newUser.id, balance_btc: 0, locked_balance_btc: 0, updated_at: new Date().toISOString() }).then(null, () => {}),
+      ]);
+
+      // Background tasks
+      const bonusExpires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      supabaseAdmin.from('users').update({ bonus_step: 1, bonus_expires_at: bonusExpires })
+        .eq('id', newUser.id).then(null, () => {});
+
+      detectAndSaveCountry(newUser.id, req).catch(() => {});
+
+      emailService.sendWelcomeEmail({ id: newUser.id, email: normalizedEmail, username })
+        .catch(e => console.error('[Google Auth] Welcome email failed:', e.message));
+
+      // Provision HD wallet address
+      Promise.resolve().then(async () => {
+        try {
+          const hdAddrData = hdWalletService.generateUserAddress(newUser.id);
+          await supabaseAdmin.from('users').update({
+            bitcoin_wallet_address: hdAddrData.address,
+            updated_at: new Date().toISOString(),
+          }).eq('id', newUser.id);
+          await supabaseAdmin.from('user_wallets').upsert({
+            user_id:     newUser.id,
+            btc_address:  hdAddrData.address,
+            network:     'mainnet',
+            balance_btc:  0,
+            created_at:  new Date().toISOString(),
+          });
+          console.log(`[Google Auth] HD wallet generated for ${newUser.username}: ${hdAddrData.address}`);
+          realtimeDepositService.subscribeAddress(newUser.id, hdAddrData.address);
+        } catch (e) {
+          console.error('[Google Auth] HD wallet generation failed:', e.message);
+        }
+      });
+
+      // Increment referrer referral count
+      if (referrerId) {
+        (async () => {
+          try {
+            const { data: ref } = await supabaseAdmin.from('users').select('total_referrals').eq('id', referrerId).single();
+            const newCount = (ref?.total_referrals || 0) + 1;
+            await supabaseAdmin.from('users').update({ total_referrals: newCount }).eq('id', referrerId);
+            notifyUserReferral(referrerId, newUser.username).catch(() => {});
+          } catch (refErr) {
+            console.error('[Google Auth] Referrer update failed:', refErr.message);
+          }
+        })();
+      }
+    }
+
+    // 5. Sign JWT
+    const token = jwt.sign(
+      { userId: userToAuth.id, email: userToAuth.email },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      success: true,
+      token,
+      user: {
+        id:                     userToAuth.id,
+        email:                  userToAuth.email,
+        username:               userToAuth.username,
+        full_name:              userToAuth.full_name,
+        average_rating:         userToAuth.average_rating || 0,
+        total_trades:           userToAuth.total_trades || 0,
+        avatar_url:             userToAuth.avatar_url || null,
+        is_admin:               userToAuth.is_admin || false,
+        is_moderator:           userToAuth.is_moderator || false,
+        referral_code:          userToAuth.referral_code,
+        bitcoin_wallet_address: userToAuth.bitcoin_wallet_address || null,
+      },
+      message: 'Logged in successfully with Google'
+    });
+
+  } catch (err) {
+    console.error('Google login route error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
     const { email, phone, password, username, fullName, referralCode } = req.body;
@@ -1494,14 +1707,11 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
 
     // ── Seed balance rows — both tables must exist before any trade ───────
     await Promise.all([
-      Promise.resolve(
-        supabaseAdmin.from('user_balances').insert([{ user_id: newUser.id, balance_btc: 0, balance_usd: 0 }])
-      ).catch(() => {}),
-      Promise.resolve(
-        supabaseAdmin.from('wallets').insert({
-          user_id: newUser.id, balance_btc: 0, locked_balance_btc: 0, updated_at: new Date().toISOString(),
-        })
-      ).catch(() => {}), // ignore duplicate if row already exists
+      supabaseAdmin.from('user_balances').insert([{ user_id: newUser.id, balance_btc: 0, balance_usd: 0 }])
+        .then(null, () => {}),
+      supabaseAdmin.from('wallets').insert({
+        user_id: newUser.id, balance_btc: 0, locked_balance_btc: 0, updated_at: new Date().toISOString(),
+      }).then(null, () => {}), // ignore duplicate if row already exists
     ]);
 
     // ── Generate 6-digit verification code & save to DB (email users only) ──
@@ -1513,6 +1723,16 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
         verification_code:         emailVerifyCode,
         verification_code_expires: new Date(Date.now() + 10 * 60 * 1000),
       }).eq('id', newUser.id);
+    }
+
+    let phoneOtpCode = null;
+    let phoneE164    = null;
+    if (phone) {
+      phoneE164    = phone.trim().startsWith('+') ? phone.trim() : `+${phone.trim().replace(/^0+/, '')}`;
+      phoneOtpCode = Math.floor(100000 + Math.random() * 900000).toString();
+      // Same in-memory store used by /api/auth/verify-otp and
+      // /api/users/verify-phone-otp, so verification works via either endpoint.
+      otpStore.set(phoneE164, { otp: phoneOtpCode, expires: Date.now() + 10 * 60 * 1000 });
     }
 
     // ── Sign JWT ───────────────────────────────────────────────────────────
@@ -1541,10 +1761,8 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     // ── BACKGROUND WORK (runs after response is sent) ──────────────────────
     // 1. Welcome bonus — step 1 (registered, awaiting verification), 30-day window
     const bonusExpires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-    Promise.resolve(
-      supabaseAdmin.from('users').update({ bonus_step: 1, bonus_expires_at: bonusExpires })
-        .eq('id', newUser.id)
-    ).catch(() => {});
+    supabaseAdmin.from('users').update({ bonus_step: 1, bonus_expires_at: bonusExpires })
+      .eq('id', newUser.id).then(null, () => {});
 
     // 2. Detect and save country from IP (fire and forget)
     detectAndSaveCountry(newUser.id, req).catch(() => {});
@@ -1555,6 +1773,14 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
         .catch(e => console.error('[Register] Verification email failed:', e.message));
       emailService.sendWelcomeEmail({ id: newUser.id, email, username })
         .catch(e => console.error('[Register] Welcome email failed:', e.message));
+    }
+
+    if (phone && phoneOtpCode && phoneE164) {
+      sendSmsOtp(phoneE164, `Your PRAQEN verification code is: ${phoneOtpCode}. Valid 10 min. Do not share.`)
+        .then(() => console.log(`[Register] SMS OTP sent to ${phoneE164}`))
+        .catch(e => console.error('[Register] SMS OTP send failed:', e.message));
+      storeOtp(phoneE164, phoneOtpCode)
+        .catch(e => console.warn('[Register] SMS OTP DB backup failed:', e.message));
     }
 
     // 2. Generate HD wallet address for this user
@@ -1765,6 +1991,189 @@ app.post('/api/auth/verify-login-otp', authLimiter, async (req, res) => {
   } catch (err) {
     console.error('[verify-login-otp] error:', err);
     res.status(500).json({ error: 'Verification failed. Please try again.' });
+  }
+});
+
+
+// ── Password Reset Email Template ────────────────────────────────────────────
+function buildPasswordResetEmailHtml(resetUrl) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PRAQEN Password Reset</title></head>
+<body style="margin:0;padding:0;background:#F0FAF5;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0FAF5;padding:32px 0;">
+    <tr><td align="center">
+      <table width="520" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(27,67,50,0.10);">
+        <tr><td style="background:linear-gradient(135deg,#1B4332 0%,#2D6A4F 100%);padding:32px 40px;text-align:center;">
+          <div style="display:inline-block;width:56px;height:56px;background:#F4A422;border-radius:14px;line-height:56px;font-size:28px;font-weight:900;color:#1B4332;font-family:Georgia,serif;text-align:center;">P</div>
+          <p style="margin:12px 0 0;color:#ffffff;font-size:20px;font-weight:800;letter-spacing:3px;font-family:Georgia,serif;">PRAQEN</p>
+          <p style="margin:4px 0 0;color:rgba(255,255,255,0.65);font-size:12px;letter-spacing:1px;">Password Reset Request</p>
+        </td></tr>
+        <tr><td style="padding:40px 40px 32px;text-align:center;">
+          <p style="margin:0 0 8px;font-size:16px;font-weight:600;color:#334155;">Reset Your Password</p>
+          <p style="margin:0 0 24px;font-size:13px;color:#64748B;line-height:1.6;">We received a request to reset the password for your PRAQEN account. Click the button below to set a new password. This link expires in <strong>1 hour</strong>.</p>
+          <a href="${resetUrl}" style="display:inline-block;background:linear-gradient(135deg,#1B4332,#2D6A4F);color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;padding:14px 36px;border-radius:10px;letter-spacing:0.5px;">Reset Password →</a>
+          <p style="margin:24px 0 8px;font-size:12px;color:#94A3B8;">If you didn't request this, you can safely ignore this email.</p>
+          <p style="margin:0;font-size:12px;color:#94A3B8;">Never share this link with anyone — PRAQEN will never ask for it.</p>
+        </td></tr>
+        <tr><td style="padding:0 40px 24px;">
+          <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:10px;padding:14px 18px;text-align:center;">
+            <p style="margin:0;font-size:12px;font-weight:700;color:#92400E;">⚠️ Always trade within PRAQEN — never outside our platform</p>
+          </div>
+        </td></tr>
+        <tr><td style="background:#F8FAFC;padding:20px 40px;text-align:center;border-top:1px solid #E2E8F0;">
+          <p style="margin:0 0 4px;font-size:12px;color:#94A3B8;">Need help? Contact us at <a href="mailto:support@praqen.com" style="color:#2D6A4F;font-weight:700;">support@praqen.com</a></p>
+          <p style="margin:0;font-size:11px;color:#CBD5E1;">© 2025 PRAQEN · The World's Most Trusted P2P Bitcoin Marketplace</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+// ── Send password reset email (reuses same working emailService pipeline as welcome/verification emails) ──
+async function sendPasswordResetEmail(email, resetUrl) {
+  const html = buildPasswordResetEmailHtml(resetUrl);
+  const subject = 'PRAQEN - Password Reset Request';
+  console.log(`📧 Sending password reset to ${email}`);
+
+  // Use emailService.sendEmail() — Brevo SMTP (primary) → Resend (fallback),
+  // same pipeline that successfully sends welcome/verification emails.
+  // emailService.js logs the actual error from each provider attempt.
+  const result = await emailService.sendEmail({
+    to: email,
+    subject,
+    html,
+    type: 'password_reset',
+    metadata: { reset_requested_at: new Date().toISOString() },
+  });
+
+  if (result.success) {
+    console.log(`✅ Password reset email sent via emailService to ${email} (${result.messageId})`);
+    return true;
+  }
+
+  // result.error contains the actual error from Brevo SMTP or Resend fallback
+  console.error('[sendPasswordResetEmail] emailService returned failure:', {
+    error: result.error,
+    providerChain: 'Brevo SMTP → Resend fallback',
+  });
+  throw new Error(`Email delivery failed: ${result.error || 'Unknown error'}`);
+}
+
+// ── Forgot Password: generate reset token & email link ────────────────────────
+app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const { data: user } = await supabaseAdmin
+      .from('users')
+      .select('id, email')
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+
+    if (!user) {
+      console.log(`[forgot-password] No account for ${normalizedEmail}`);
+      return res.json({ success: true, message: 'If an account exists with that email, a reset link has been sent.' });
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const tokenExpires = new Date(Date.now() + 60 * 60 * 1000);
+
+    const { error: updateError } = await supabaseAdmin
+      .from('users')
+      .update({
+        reset_password_token: resetToken,
+        reset_password_expires: tokenExpires.toISOString(),
+      })
+      .eq('id', user.id);
+
+    if (updateError) {
+      console.error('[forgot-password] DB update error:', updateError.message);
+      return res.status(500).json({ error: 'Failed to process request. Please try again.' });
+    }
+
+    const frontendUrl = (process.env.FRONTEND_URL || 'https://praqen.com').split(',')[0].trim();
+    const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}&email=${encodeURIComponent(normalizedEmail)}`;
+
+    sendPasswordResetEmail(normalizedEmail, resetUrl)
+      .then(() => console.log(`[forgot-password] Reset email sent to ${normalizedEmail}`))
+      .catch(e => console.error('[forgot-password] Email send failed:', e.message));
+
+    return res.json({ success: true, message: 'If an account exists with that email, a reset link has been sent.' });
+
+  } catch (err) {
+    console.error('[forgot-password] error:', err.message);
+    res.status(500).json({ error: 'Failed to process request. Please try again.' });
+  }
+});
+
+// ── Reset Password: validate token & update password ──────────────────────────
+app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
+  try {
+    const { email, newPassword, token } = req.body;
+
+    if (!email || !newPassword || !token) {
+      return res.status(400).json({ error: 'Email, new password, and reset token are required' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const { data: user, error: fetchError } = await supabaseAdmin
+      .from('users')
+      .select('id, email, reset_password_token, reset_password_expires, password_hash')
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+
+    if (fetchError || !user) {
+      console.error('[reset-password] DB fetch error:', fetchError?.message);
+      return res.status(400).json({ error: 'Invalid or expired reset link' });
+    }
+
+    if (!user.reset_password_token) {
+      return res.status(400).json({ error: 'No password reset has been requested for this account' });
+    }
+
+    if (user.reset_password_token !== token) {
+      return res.status(400).json({ error: 'Invalid or expired reset link' });
+    }
+
+    const expiresAt = new Date(user.reset_password_expires).getTime();
+    if (Date.now() > expiresAt) {
+      return res.status(400).json({ error: 'Reset link has expired. Please request a new one.' });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+
+    const { error: updateError } = await supabaseAdmin
+      .from('users')
+      .update({
+        password_hash: passwordHash,
+        reset_password_token: null,
+        reset_password_expires: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', user.id);
+
+    if (updateError) {
+      console.error('[reset-password] DB update error:', updateError.message);
+      return res.status(500).json({ error: 'Failed to reset password. Please try again.' });
+    }
+
+    console.log(`✅ Password reset successful for ${normalizedEmail}`);
+    return res.json({ success: true, message: 'Password has been reset successfully. You can now log in with your new password.' });
+
+  } catch (err) {
+    console.error('[reset-password] error:', err.message);
+    res.status(500).json({ error: 'Failed to reset password. Please try again.' });
   }
 });
 
@@ -2019,7 +2428,10 @@ app.get('/api/team/loans', verifyToken, async (req, res) => {
   try {
     const t = await requireTeam(req, res); if (!t) return;
     const { data, error } = await supabaseAdmin.from('company_loans').select('*').order('created_at', { ascending: false });
-    if (error) return res.status(400).json({ error: error.message });
+    if (error) {
+      console.error('[GET /api/team/loans] DB error:', error.message, '| code:', error.code);
+      return res.json({ loans: [], totalOwed: '0.00', error: error.message });
+    };
     const totalOwed = (data || []).filter(l => l.status !== 'paid').reduce((s, l) => s + parseFloat(l.amount_usd || 0) - parseFloat(l.amount_paid_usd || 0), 0);
     res.json({ loans: data || [], totalOwed: totalOwed.toFixed(2) });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -2648,6 +3060,7 @@ app.get('/api/auth/twilio-check', verifyToken, async (req, res) => {
       twilio_token_set: !!token,
     });
   } catch (e) {
+    console.error('[GET /api/auth/twilio-check] error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -2956,12 +3369,10 @@ app.post('/api/auth/send-verification', otpLimiter, async (req, res) => {
 
     // Store in memory AND database so server restarts don't lose the code
     verificationCodes.set(email, { code, expiresAt });
-    await Promise.resolve(
-      supabaseAdmin.from('users').update({
-        verification_code:         code,
-        verification_code_expires: new Date(expiresAt).toISOString(),
-      }).eq('email', email).throwOnError()
-    ).catch(() => {}); // non-fatal if user not created yet
+    await supabaseAdmin.from('users').update({
+      verification_code:         code,
+      verification_code_expires: new Date(expiresAt).toISOString(),
+    }).eq('email', email).throwOnError().then(null, () => {}); // non-fatal if user not created yet
 
     let emailSent = false;
     let emailError = null;
@@ -3347,12 +3758,10 @@ app.post('/api/users/submit-phone', verifyToken, async (req, res) => {
     if (currentUser?.phone) {
       if (currentUser.phone === e164) {
         // Idempotent: same number already saved — ensure request row exists and return success
-        await Promise.resolve(
-          supabaseAdmin.from('phone_verification_requests').upsert(
-            { user_id: req.userId, phone: e164, status: currentUser.is_phone_verified ? 'approved' : 'pending' },
-            { onConflict: 'user_id', ignoreDuplicates: true }
-          )
-        ).catch(() => {});
+        await supabaseAdmin.from('phone_verification_requests').upsert(
+          { user_id: req.userId, phone: e164, status: currentUser.is_phone_verified ? 'approved' : 'pending' },
+          { onConflict: 'user_id', ignoreDuplicates: true }
+        ).then(null, () => {});
         return res.json({ success: true });
       }
       return res.status(400).json({ error: 'A phone number has already been submitted for your account. It cannot be changed while under review.' });
@@ -3611,12 +4020,10 @@ app.post('/api/auth/resend-code', async (req, res) => {
     const expiresAt = Date.now() + 10 * 60 * 1000;
 
     verificationCodes.set(email, { code, expiresAt, userId: user.id });
-    await Promise.resolve(
-      supabaseAdmin.from('users').update({
-        verification_code: code,
-        verification_code_expires: new Date(expiresAt).toISOString(),
-      }).eq('email', email)
-    ).catch(() => {});
+    await supabaseAdmin.from('users').update({
+      verification_code: code,
+      verification_code_expires: new Date(expiresAt).toISOString(),
+    }).eq('email', email).then(null, () => {});
 
     let emailSent = false;
     try {
@@ -3761,7 +4168,14 @@ app.get('/api/bonus/status', verifyToken, async (req, res) => {
     const { data, error } = await supabaseAdmin.from('users')
       .select('bonus_step, bonus_expires_at, bonus_unlocked_at')
       .eq('id', req.userId).single();
-    if (error || !data) return res.status(404).json({ error: 'User not found' });
+    if (error && error.code === 'PGRST116') {
+      // User not in bonus programme — return default bonus state
+      return res.json({ step: 0, bonus_expires_at: null, bonus_unlocked_at: null, expired: true, ms_remaining: 0, btc_price: 88000, locked_btc: 0, unlocked_btc: 0 });
+    }
+    if (error) {
+      console.error('[GET /api/bonus/status] DB error:', error.message, '| code:', error.code);
+      return res.json({ step: 0, bonus_expires_at: null, bonus_unlocked_at: null, expired: true, ms_remaining: 0, btc_price: 88000, locked_btc: 0, unlocked_btc: 0 });
+    }
 
     const now = new Date();
     const expires = data.bonus_expires_at ? new Date(data.bonus_expires_at) : null;
@@ -3791,18 +4205,28 @@ app.get('/api/bonus/status', verifyToken, async (req, res) => {
       unlocked_btc: step === 3 ? bonusBtcTotal  : 0,
     });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error('[GET /api/bonus/status] error:', e.message);
+    res.json({ step: 0, bonus_expires_at: null, bonus_unlocked_at: null, expired: true, ms_remaining: 0, btc_price: 88000, locked_btc: 0, unlocked_btc: 0 });
   }
 });
 
 app.get('/api/users/profile', verifyToken, async (req, res) => {
   try {
     // Core columns — confirmed to exist in every PRAQEN DB schema
-    const { data, error } = await supabaseAdmin.from('users')
-      .select('id, email, username, full_name, bio, location, website, phone, avatar_url, average_rating, total_trades, completion_rate, created_at, is_admin, is_moderator, is_id_verified, is_email_verified, is_phone_verified, total_feedback_count, positive_feedback, negative_feedback, last_login, last_seen_at, badge, country')
+    const coreCols = 'id, email, username, full_name, bio, location, website, phone, avatar_url, average_rating, total_trades, completion_rate, created_at, is_admin, is_moderator, is_id_verified, is_email_verified, is_phone_verified, total_feedback_count, positive_feedback, negative_feedback, last_login, last_seen_at, badge, country';
+    let { data, error } = await supabaseAdmin.from('users')
+      .select(coreCols)
       .eq('id', req.userId).single();
+    // Fallback if a column doesn't exist in the DB (e.g. is_phone_verified, badge, country)
+    if (error && (error.code === '42703' || (error.message && error.message.includes('does not exist')))) {
+      const essential = 'id, email, username, full_name, avatar_url, average_rating, total_trades, completion_rate, created_at, is_admin, is_moderator, is_id_verified, is_email_verified, total_feedback_count, positive_feedback, negative_feedback, last_login';
+      console.warn('[GET /api/users/profile] Column missing — falling back to essentials:', error.message);
+      const fallback = await supabaseAdmin.from('users').select(essential).eq('id', req.userId).single();
+      if (fallback.error) { error = fallback.error; data = null; }
+      else { data = fallback.data; error = null; Object.assign(data, { is_phone_verified: false, bio: null, location: null, website: null, phone: null, last_seen_at: null, badge: null, country: null }); }
+    }
     if (error) {
-      console.error('[GET /api/users/profile] DB error:', error.message);
+      console.error('[GET /api/users/profile] DB error:', error.message, '| code:', error.code || 'N/A');
       return res.status(500).json({ error: 'Could not load your profile. Please try again.' });
     }
     if (!data) return res.status(404).json({ error: 'Profile not found.' });
@@ -4189,24 +4613,23 @@ app.post('/api/users/:userId/view-profile', async (req, res) => {
 
 app.get('/api/user/balance', verifyToken, async (req, res) => {
   try {
-    const [{ data, error }, btcPrice] = await Promise.all([
-      supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', req.userId).single(),
+    const [btcPrice, { data, error }] = await Promise.all([
       getCurrentBTCPrice().catch(() => 88000),
+      supabaseAdmin.from('wallets').select('balance_btc').eq('user_id', req.userId).maybeSingle(),
     ]);
-    if (error && error.code === 'PGRST116') {
-      await supabaseAdmin.from('user_balances').insert([{ user_id: req.userId, balance_btc: 0, balance_usd: 0 }]);
-      return res.json({ balance_btc: 0, balance_usd: 0, btc_price: btcPrice });
+    if (error) {
+      console.error('[GET /api/user/balance] DB error:', error.message, '| code:', error.code);
+      return res.json({ balance_btc: 0, balance_usd: 0, btc_price: btcPrice || 88000 });
     }
-    if (error) return res.status(400).json({ error: error.message });
     const balBtc = parseFloat(data?.balance_btc || 0);
     const balUsd = parseFloat((balBtc * btcPrice).toFixed(2));
     console.log(`[/api/user/balance] user=${req.userId.slice(0,8)} btc=${balBtc} price=${btcPrice} usd=${balUsd}`);
     res.json({ balance_btc: balBtc, balance_usd: balUsd, btc_price: btcPrice });
   } catch (error) {
+    console.error('[GET /api/user/balance] error:', error.message);
     res.json({ balance_btc: 0, balance_usd: 0, btc_price: 88000 });
   }
 });
-
 // DEV ENDPOINT DISABLED — manual balance injection is not allowed in production.
 // All BTC balances must come from real on-chain deposits monitored by depositMonitor.js.
 app.post('/api/user/add-balance', verifyToken, (req, res) => {
@@ -4477,7 +4900,11 @@ app.get('/api/listings', async (req, res) => {
       listingsQ,
       new Promise(resolve => setTimeout(() => { _listingsTimedOut = true; resolve({ data: null, error: null }); }, 8000)),
     ]);
-    if (listErr) return res.status(400).json({ error: listErr.message });
+    if (listErr) {
+      console.error('[/api/listings] Listing query error:', listErr.message, '| code:', listErr.code);
+      // Return empty array so the marketplace doesn't crash — client will retry
+      return res.json({ listings: [], stale: false, error: listErr.message });
+    }
     if (_listingsTimedOut || rawListings === null) {
       const stale = getCachedStale(cacheKey);
       if (stale) {
@@ -5494,6 +5921,8 @@ app.post('/api/trades', verifyToken, async (req, res) => {
           { actor_id: sellerId, direction: 'buy', trade_id: tradeUUID, payment_method: pmDisp }),
         sendTradeAlert(sellerId, trade[0], 'new_trade').catch(() => {}),
         sendTradeAlert(buyerId,  trade[0], 'new_trade').catch(() => {}),
+        notifyUserSMS(sellerId, `PRAQEN: New trade request — ${btcDisp} (${localDisp}) via ${pmDisp}. Open the app to respond.`).catch(() => {}),
+        notifyUserSMS(buyerId,  `PRAQEN: Trade started — ${btcDisp} (${localDisp}) via ${pmDisp}. Funds locked in escrow.`).catch(() => {}),
       ]);
     } catch (notifyErr) {
       console.error('[Trade Open] Pre-escrow notification failed:', notifyErr.message);
@@ -5694,6 +6123,8 @@ app.post('/api/trades/:id/release', tradeLimiter, verifyToken, async (req, res) 
           if (sellerRelUser?.email)
             emailService.sendTradeConfirmationEmail(sellerRelUser, releasedTrade, 'seller')
               .catch(e => console.error('[release] seller email:', e.message));
+          notifyUserSMS(releasedTrade.buyer_id,  `PRAQEN: Trade complete! ₿${parseFloat(releasedTrade.amount_btc || 0).toFixed(8)} has been released to your wallet.`).catch(() => {});
+          notifyUserSMS(releasedTrade.seller_id, `PRAQEN: Trade complete! Payment confirmed and Bitcoin released successfully.`).catch(() => {});
         } catch (e) { console.error('[release] Background notify failed:', e.message); }
       });
     }
@@ -5786,6 +6217,8 @@ app.post('/api/trades/:id/cancel', tradeLimiter, verifyToken, async (req, res) =
         if (sellerCancelUser?.email)
           emailService.sendTradeCancelledEmail(sellerCancelUser, trade, reason)
             .catch(e => console.error('[cancel] seller email:', e.message));
+        notifyUserSMS(trade.buyer_id,  `PRAQEN: Your trade was cancelled${reason ? ` — ${reason}` : ''}. Any locked BTC has been refunded.`).catch(() => {});
+        notifyUserSMS(trade.seller_id, `PRAQEN: Your trade was cancelled${reason ? ` — ${reason}` : ''}. Any locked BTC has been refunded.`).catch(() => {});
       } catch (e) { console.error('[cancel] Background notify failed:', e.message); }
     });
   } catch (error) {
@@ -6777,16 +7210,14 @@ app.post('/api/referral/withdraw', verifyToken, async (req, res) => {
     if (updErr) throw updErr;
 
     // Audit trail
-    await Promise.resolve(
-      supabaseAdmin.from('wallet_transactions').insert({
-        user_id:    req.userId,
-        type:       'REFERRAL_WITHDRAWAL',
-        amount_btc: totalEarnings,
-        status:     'CONFIRMED',
-        notes:      `Referral earnings withdrawal — ₿${totalEarnings.toFixed(8)} from ${ids.length} commission(s)`,
-        created_at: new Date().toISOString(),
-      })
-    ).catch(() => {});
+    await supabaseAdmin.from('wallet_transactions').insert({
+      user_id:    req.userId,
+      type:       'REFERRAL_WITHDRAWAL',
+      amount_btc: totalEarnings,
+      status:     'CONFIRMED',
+      notes:      `Referral earnings withdrawal — ₿${totalEarnings.toFixed(8)} from ${ids.length} commission(s)`,
+      created_at: new Date().toISOString(),
+    }).then(null, () => {});
 
     res.json({ success: true, amountBtc: totalEarnings, message: `₿ ${totalEarnings.toFixed(8)} added to your wallet!` });
   } catch (error) {
@@ -7003,16 +7434,14 @@ app.post('/api/referral-messages/:userId', verifyToken, async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     // Notify recipient
-    await Promise.resolve(
-      supabaseAdmin.from('notifications').insert({
-        user_id: recipientId,
-        type: 'referral_message',
-        title: 'New message',
-        message: message.trim().slice(0, 100),
-        is_read: false,
-        created_at: new Date(),
-      })
-    ).catch(() => {});
+    await supabaseAdmin.from('notifications').insert({
+      user_id: recipientId,
+      type: 'referral_message',
+      title: 'New message',
+      message: message.trim().slice(0, 100),
+      is_read: false,
+      created_at: new Date(),
+    }).then(null, () => {});
 
     res.json({ message: msg });
   } catch (e) {
@@ -7854,11 +8283,9 @@ app.put('/api/admin/users/:id/verify-phone', verifyToken, async (req, res) => {
     const { data, error } = await supabaseAdmin.from('users').update({ is_phone_verified: true, phone_verified: true, updated_at: new Date() }).eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
     // Update request row if it exists
-    await Promise.resolve(
-      supabaseAdmin.from('phone_verification_requests')
-        .update({ status: 'approved', reviewed_at: new Date().toISOString(), reviewed_by: req.userId })
-        .eq('user_id', req.params.id)
-    ).catch(() => {});
+    await supabaseAdmin.from('phone_verification_requests')
+      .update({ status: 'approved', reviewed_at: new Date().toISOString(), reviewed_by: req.userId })
+      .eq('user_id', req.params.id).then(null, () => {});
     await createNotification(req.params.id, 'system', '📱 Phone Number Verified!', 'Great news! Your phone number has been verified by our team. Your trade limit has been upgraded. You can now continue trading.', '/settings?tab=verification');
     sendSystemAlert(req.params.id, '📱 Phone Verified!', 'Your phone number has been verified. Trade limits upgraded!', 'https://praqen.com/settings?tab=verification').catch(() => {});
     res.json({ success: true, user: data });
@@ -7958,12 +8385,10 @@ app.put('/api/admin/phone-verifications/:id/reject', verifyToken, async (req, re
     if (reqErr) return res.status(400).json({ error: reqErr.message });
 
     // Clear the phone from users table so they can re-submit
-    await Promise.resolve(
-      supabaseAdmin
-        .from('users')
-        .update({ phone: null, updated_at: new Date().toISOString() })
-        .eq('id', request.user_id)
-    ).catch(() => {});
+    await supabaseAdmin
+      .from('users')
+      .update({ phone: null, updated_at: new Date().toISOString() })
+      .eq('id', request.user_id).then(null, () => {});
 
     // Notify the user
     await createNotification(request.user_id, 'system', '📱 Phone Verification Failed',
@@ -8035,10 +8460,8 @@ app.post('/api/admin/phone/approve', verifyToken, async (req, res) => {
       const { data: pvr } = await supabaseAdmin
         .from('phone_verification_requests').select('phone').eq('user_id', userId).single();
       if (pvr?.phone) {
-        await Promise.resolve(
-          supabaseAdmin.from('users')
-            .update({ phone: pvr.phone }).eq('id', userId)
-        ).catch(() => {});
+        await supabaseAdmin.from('users')
+          .update({ phone: pvr.phone }).eq('id', userId).then(null, () => {});
         console.log(`[phone/approve] recovered missing phone ${pvr.phone} for user ${userId.slice(0,8)}`);
       }
     }
@@ -8053,11 +8476,9 @@ app.post('/api/admin/phone/approve', verifyToken, async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     // Also mark any pending request row as approved
-    await Promise.resolve(
-      supabaseAdmin.from('phone_verification_requests')
-        .update({ status: 'approved', reviewed_at: new Date().toISOString(), reviewed_by: req.userId })
-        .eq('user_id', userId)
-    ).catch(() => {});
+    await supabaseAdmin.from('phone_verification_requests')
+      .update({ status: 'approved', reviewed_at: new Date().toISOString(), reviewed_by: req.userId })
+      .eq('user_id', userId).then(null, () => {});
 
     await createNotification(userId, 'system', '📱 Phone Number Verified!',
       'Your phone number has been verified by our team. Your trade limits have been upgraded!',
@@ -8089,11 +8510,9 @@ app.post('/api/admin/phone/reject', verifyToken, async (req, res) => {
       .eq('id', userId);
     if (error) return res.status(400).json({ error: error.message });
 
-    await Promise.resolve(
-      supabaseAdmin.from('phone_verification_requests')
-        .update({ status: 'rejected', reviewed_at: new Date().toISOString(), reviewed_by: req.userId, rejection_reason: reason })
-        .eq('user_id', userId)
-    ).catch(() => {});
+    await supabaseAdmin.from('phone_verification_requests')
+      .update({ status: 'rejected', reviewed_at: new Date().toISOString(), reviewed_by: req.userId, rejection_reason: reason })
+      .eq('user_id', userId).then(null, () => {});
 
     await createNotification(userId, 'system', '📱 Phone Verification Failed',
       `Your phone number (${phone}) could not be verified. Reason: ${reason}. Please submit a valid number.`,
@@ -8605,7 +9024,15 @@ app.get('/api/wallet', verifyToken, async (req, res) => {
   try {
     const { data: user, error: userError } = await supabaseAdmin.from('users')
       .select('id, username, coinbase_wallet_id, bitcoin_wallet_address, coinbase_wallet_address, wallet_created_at').eq('id', req.userId).single();
-    if (userError || !user) return res.status(404).json({ error: 'User not found' });
+    if (userError && userError.code === 'PGRST116') {
+      // User not found in DB — genuine 404
+      return res.status(404).json({ error: 'User not found' });
+    }
+    if (userError) {
+      // Transient DB error — log and return safe default wallet state
+      console.error('[GET /api/wallet] DB error:', userError.message, '| code:', userError.code);
+      return res.json({ success: true, wallet: { address: null, walletId: null, created_at: null, balance_btc: 0, locked_balance_btc: 0, balance_usd: 0, has_address: false }, transactions: [] });
+    }
     const [{ data: balance }, { data: balanceUsd }] = await Promise.all([
       supabaseAdmin.from('wallets').select('balance_btc, locked_balance_btc').eq('user_id', req.userId).maybeSingle(),
       supabaseAdmin.from('user_balances').select('balance_usd').eq('user_id', req.userId).maybeSingle(),
@@ -8631,7 +9058,8 @@ app.get('/api/wallet', verifyToken, async (req, res) => {
       transactions: (recentTrades || []).map(t => ({ id: t.id, amount_btc: parseFloat(t.amount_btc || 0), amount_usd: parseFloat(t.amount_usd || 0), type: 'trade_completion', status: t.status, date: t.completed_at || t.created_at })),
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('[GET /api/wallet] Catch error:', error.message);
+    res.json({ success: true, wallet: { address: null, walletId: null, created_at: null, balance_btc: 0, locked_balance_btc: 0, balance_usd: 0, has_address: false }, transactions: [] });
   }
 });
 
@@ -9395,7 +9823,7 @@ app.post('/api/wallet/usdt/send', verifyToken, async (req, res) => {
       action:     '/wallet',
       is_read:    false,
       created_at: new Date().toISOString(),
-    }).catch(() => {});
+    }).then(null, () => {});
 
     console.log(`[USDT Send] ₮${sendAmount} → ${toAddress} | fee ${feeLabel} | user: ${req.userId.slice(0, 8)} | txid: ${txResult.txid}`);
 
@@ -9814,7 +10242,7 @@ app.post('/api/admin/hot-wallet/collect-fees', verifyToken, async (req, res) => 
       tx_hash:     result.txid,
       notes:       `Admin fee collection → ${toAddress.slice(0, 16)}… by ${req.userId.slice(0, 8)}`,
       created_at:  new Date().toISOString(),
-    }).catch(() => {});
+    }).then(null, () => {});
 
     res.json({ success: true, ...result });
   } catch (e) {
