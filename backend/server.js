@@ -5438,7 +5438,14 @@ app.post('/api/offers', verifyToken, async (req, res) => {
       return res.status(400).json({ error: 'Missing offer type (type or listing_type)' });
     }
 
-    if (!payment_method) {
+    // Determine listing type early — gift card offers don't have a
+    // traditional payment_method (the "payment" is the gift card code
+    // itself), so the check below must not apply to them.
+    const offerTypeMap = { 'sell': 'SELL', 'buy': 'BUY', 'gc_buy': 'BUY_GIFT_CARD' };
+    const mappedType = offerTypeMap[type] || listing_type || 'SELL';
+    const isGiftCard = mappedType === 'BUY_GIFT_CARD' || mappedType === 'SELL_GIFT_CARD';
+
+    if (!isGiftCard && !payment_method) {
       return res.status(400).json({ error: 'Missing payment_method' });
     }
 
@@ -5469,11 +5476,7 @@ app.post('/api/offers', verifyToken, async (req, res) => {
       });
     }
 
-    // Determine listing type
-    const offerTypeMap = { 'sell': 'SELL', 'buy': 'BUY', 'gc_buy': 'BUY_GIFT_CARD' };
-    const mappedType = offerTypeMap[type] || listing_type || 'SELL';
     const verifCount = [hasEmail, hasPhone, hasKyc].filter(Boolean).length;
-    const isGiftCard = mappedType === 'BUY_GIFT_CARD' || mappedType === 'SELL_GIFT_CARD';
 
     // Enforce $10 USD minimum trade limit for non-gift-card offers
     if (!isGiftCard && parseFloat(min_limit_usd || 0) < 10) {
