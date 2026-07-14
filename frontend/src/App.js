@@ -52,6 +52,7 @@ const SellGiftCardMarketplace = lazy(() => import('./pages/SellGiftCardMarketpla
 const VerifyOTP             = lazy(() => import('./pages/VerifyOTP'));
 const ResetPassword         = lazy(() => import('./pages/ResetPassword'));
 const EmailConfirmation     = lazy(() => import('./pages/EmailConfirmation'));
+const CheckEmail            = lazy(() => import('./pages/CheckEmail'));
 
 function PageLoader() {
   return (
@@ -310,6 +311,7 @@ function App() {
               <Route path="/verify-otp" element={<VerifyOTP onLogin={login} />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/auth/confirm" element={<EmailConfirmation />} />
+              <Route path="/verify-email" element={<CheckEmail onLogin={login} />} />
               <Route path="/sell-gift-card" element={<SellGiftCardMarketplace user={user} />} />
               <Route path="/buy-bitcoin" element={<BuyBitcoin user={user} />} />
               <Route path="/sell-bitcoin" element={<SellBitcoin user={user} />} />

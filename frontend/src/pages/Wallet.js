@@ -10,7 +10,7 @@ import {
   ChevronRight, ChevronDown, X, Wallet, Users, Search,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
-
+import { QRCodeSVG } from 'qrcode.react';
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 const C = {
@@ -489,7 +489,11 @@ function ReceiveModal({ address, network, onClose, onGenerate, checking, onCheck
           {address ? (
             <>
               <p className="text-xs text-gray-500">Send BTC to your unique address. Credited after 1 confirmation (~10 min).</p>
-
+            <div className="flex justify-center py-2">
+  <div className="p-3 rounded-xl border" style={{ borderColor: C.g200, backgroundColor: '#fff' }}>
+    <QRCodeSVG value={address} size={160} level="M" />
+  </div>
+</div>
               <div>
                 <label className="block text-xs font-bold mb-1.5 text-gray-600">Your Bitcoin Address</label>
                 <div className="p-3 rounded-xl border font-mono text-xs break-all"
@@ -2236,7 +2240,11 @@ function UsdtReceiveModal({ address, onClose, checking, scanCooldown, onCheckDep
 
         <div className="p-5 space-y-4">
           <p className="text-xs text-gray-500">Send USDT (TRC-20) to your Tron address. Credited after network confirmation.</p>
-
+          <div className="flex justify-center py-2">
+  <div className="p-3 rounded-xl border" style={{ borderColor: C.g200, backgroundColor: '#fff' }}>
+    <QRCodeSVG value={address} size={160} level="M" />
+  </div>
+</div>
           <div>
             <label className="block text-xs font-bold mb-1.5 text-gray-600">Your Tron (USDT-TRC20) Address</label>
             <div className="p-3 rounded-xl border font-mono text-xs break-all"
