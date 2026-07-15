@@ -15,6 +15,7 @@ import { toast } from 'react-toastify';
 import CountryFlag, { resolveCode } from '../components/CountryFlag';
 import { TRUST_MAP, deriveBadge } from '../lib/badge';
 import ActiveTradeCard from '../components/ActiveTradeCard';
+import OfferCardUI from '../components/OfferCard';
 import PRQFooter from '../components/PRQFooter';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
@@ -326,182 +327,41 @@ function OfferCard({listing, btcPriceUSD, onViewSeller, onBuy, liked, onToggleLi
   const ft = featuredType ? FEATURED[featuredType] : null;
 
   return (
-    <div className="rounded-2xl overflow-hidden transition-all w-full"
-      style={{
-        background: ft?.bgGradient || (ft ? ft.bg : '#fff'),
-        border: ft ? `2.5px solid ${ft.border}` : `1px solid ${C.g200}`,
-        boxShadow: ft ? `0 0 0 3px ${ft.glow}, 0 10px 36px ${ft.glow}` : 'none',
-        animation: ft?.pulse ? 'featuredPulse 2.5s ease-in-out infinite' : undefined,
-      }}>
-      {ft && (
-        <div style={{position:'relative', overflow:'hidden'}}>
-          <div className="flex items-center justify-center gap-2"
-            style={{
-              background: ft.ribbon,
-              padding: ft.pulse ? '10px 16px' : '8px 16px',
-            }}>
-            <span style={{
-              fontSize: ft.pulse ? 12 : 11,
-              fontWeight: 900,
-              letterSpacing: '0.12em',
-              color: '#fff',
-              textShadow: '0 1px 6px rgba(0,0,0,0.45)',
-              whiteSpace: 'nowrap',
-            }}>
-              {ft.tag}
-            </span>
-          </div>
-          {ft.pulse && (
-            <div style={{
-              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-              background: 'linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.30) 50%,transparent 100%)',
-              animation: 'shimmer 2.4s linear infinite',
-              pointerEvents: 'none',
-            }}/>
-          )}
-        </div>
-      )}
-      <div className="px-4 pt-4 pb-2">
-        <div className="flex items-start gap-3">
-          <div className="relative flex-shrink-0">
-            <button onClick={onViewSeller}>
-              <Avatar user={u} size={48} radius="rounded-xl"/>
-            </button>
-            {seen.online && (
-              <span className="absolute -bottom-0.5 -right-0.5">
-                <span className="absolute inline-flex w-3.5 h-3.5 rounded-full animate-ping"
-                  style={{backgroundColor:C.online, opacity:0.6}}/>
-                <span className="relative inline-flex w-3.5 h-3.5 rounded-full border-2 border-white"
-                  style={{backgroundColor:C.online}}/>
-              </span>
-            )}
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <CountryFlag
-                countryCode={u?.country_code || u?.country || u?.location || null}
-                className="w-4 h-3 rounded-sm flex-shrink-0"/>
-              <button onClick={onViewSeller}
-                className="font-black text-sm hover:underline leading-tight truncate"
-                style={{color:C.g800, maxWidth:'130px'}}>
-                {getDisplayName(u) || 'Seller'}
-              </button>
-              {isVerified(u) && <BadgeCheck size={14} style={{color:'#3B82F6', flexShrink:0}}/>}
-              {u.country && (
-                <span className="text-xs font-semibold flex-shrink-0" style={{color:C.g500}}>
-                  · {resolveCode(u.country)?.toUpperCase() || u.country}
-                </span>
-              )}
-              <span className={`inline-flex items-center gap-px font-medium px-1 py-0 rounded-full border flex-shrink-0 ${badge.animate ? 'shadow-md' : ''}`}
-                style={{background:badge.bg, borderColor:badge.borderColor, fontSize:'8px', boxShadow: badge.glow ? `0 0 8px ${badge.glow}` : undefined}}>
-                <span style={{color:badge.iconColor||badge.textColor}}>{badge.icon}</span>
-                <span style={{color:badge.textColor}}>{badge.label}</span>
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between mt-1.5 gap-1">
-              <div className="flex items-center gap-1.5">
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md font-bold"
-                  style={{backgroundColor:'rgba(22,163,74,0.10)', color:'#16A34A', fontSize:'11px'}}>
-                  <ThumbsUp size={10} strokeWidth={2.5}/>{fmt(pos)}
-                </span>
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md font-bold"
-                  style={{backgroundColor:'rgba(239,68,68,0.08)', color:'#EF4444', fontSize:'11px'}}>
-                  <ThumbsDown size={10} strokeWidth={2.5}/>{fmt(neg)}
-                </span>
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-bold"
-                  style={{backgroundColor:C.g100, color:C.g600}}>
-                  <Repeat2 size={9} strokeWidth={2.5}/>{fmt(trades)} trades
-                </span>
-                {seen.online ? (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-bold"
-                    style={{backgroundColor:'#F0FDF4', color:C.online}}>
-                    <span className="relative flex w-1.5 h-1.5 flex-shrink-0">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{backgroundColor:C.online}}/>
-                      <span className="relative inline-flex rounded-full w-1.5 h-1.5" style={{backgroundColor:C.online}}/>
-                    </span>
-                    Active
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium"
-                    style={{backgroundColor:C.g100, color:C.g400}}>
-                    <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{backgroundColor:C.g300}}/>
-                    {seen.label}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-2.5">
-          <span className="inline-flex flex-col px-2.5 py-1.5 rounded-lg"
-            style={{backgroundColor: ft ? `${ft.border}18` : C.g100}}>
-            <span className="text-xs font-normal leading-tight" style={{color: ft ? ft.labelColor : C.g400}}>Seller accepts:</span>
-            <span className="text-xs font-black leading-tight tracking-wide" style={{color: ft ? ft.labelColor : C.g700}}>{pmLabel.toUpperCase()}</span>
-          </span>
-        </div>
-      </div>
-
-      <div style={{height:1, backgroundColor: ft ? ft.divider : C.g100}}/>
-
-      <div className="px-4 py-3 grid grid-cols-2 gap-2">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{color: ft ? ft.labelColor : C.g500}}>YOU PAY</p>
-          <p className="text-lg font-bold leading-tight truncate" style={{color:C.g800}}>
-            {sym}{fmt(examplePay, 2)}
-          </p>
-          <p className="text-xs font-semibold mt-0.5" style={{color:C.g400}}>{cur}</p>
-        </div>
-        <div className="border-l pl-3" style={{borderColor: ft ? ft.divider : C.g100}}>
-          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{color: ft ? ft.labelColor : C.g500}}>YOU RECEIVE</p>
-          <p className="text-lg font-bold leading-tight truncate" style={{color:C.gold}}>
-            ₿{fBtc(btcReceived)}
-          </p>
-          <p className="text-xs font-semibold mt-0.5" style={{color:C.g500}}>≈ {sym}{fmt(fiatEquiv, 2)} {cur}</p>
-          <span className="inline-block mt-1.5 font-semibold px-2 py-0.5 rounded"
-            style={{backgroundColor:marginBg, color:'#fff', fontSize:'10px', letterSpacing:'0.01em'}}>
-            {marginLabel}
-          </span>
-        </div>
-      </div>
-
-      <div className="px-4 pb-2">
-        <p className="text-xs font-semibold" style={{color:C.g600}}>
-          Rate: {sym}{fmt(rateLocal)}/BTC
-        </p>
-      </div>
-
-      {(minLocal > 0 || maxLocal > 0) && (
-        <div className="px-4 pb-2">
-          <p className="text-xs font-bold" style={{color:C.g600}}>
-            Available LIMIT {cur} {fmt(minLocal)} – {fmt(maxLocal)}
-          </p>
-        </div>
-      )}
-
-      <div className="px-4 pb-4 flex items-center gap-2">
-        <button onClick={onViewSeller}
-          className="w-10 h-11 rounded-xl border flex items-center justify-center flex-shrink-0 transition"
-          style={{
-            borderColor: ft ? ft.border : C.g200,
-            backgroundColor: ft ? `${ft.border}12` : 'transparent',
-          }}>
-          <Info size={15} style={{color: ft ? ft.border : C.g400}}/>
-        </button>
-        <button onClick={onBuy}
-          className="flex-1 h-11 rounded-xl text-white font-black text-base flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition"
-          style={{
-            background: ft ? ft.btnGradient : C.forest,
-            boxShadow: ft ? ft.btnShadow : undefined,
-          }}>
-          BUY BTC <ArrowRight size={15}/>
-        </button>
-      </div>
-    </div>
+    <OfferCardUI
+      type="buy"
+      user={{
+        username: getDisplayName(u) || 'Seller',
+        char: (getDisplayName(u) || 'Seller').charAt(0).toUpperCase(),
+        country: u?.country_code || u?.country || u?.location || null,
+        isVerified: isVerified(u),
+        positive: fmt(pos),
+        negative: fmt(neg),
+        trades: fmt(trades),
+        online: seen.online,
+        lastSeenStr: seen.label,
+        badge: badge
+      }}
+      paymentMethod={pmLabel}
+      featuredType={featuredType}
+      pricing={{
+        cur,
+        sym,
+        examplePay: fmt(examplePay, 2),
+        btcReceived: fBtc(btcReceived),
+        fiatEquiv: fmt(fiatEquiv, 2),
+        marginLabel,
+        marginBg,
+        rateLocal: fmt(rateLocal),
+        minLimit: minLocal ? fmt(minLocal) : null,
+        maxLimit: maxLocal ? fmt(maxLocal) : null
+      }}
+      actions={{
+        onViewUser: onViewSeller,
+        onAction: onBuy,
+        liked,
+        onToggleLike
+      }}
+    />
   );
 }
 
@@ -1059,20 +919,24 @@ export default function BuyBitcoin({user}) {
     }
 
     // 2. Fallback: IP-based detection for guests
-    fetch('https://ipapi.co/json/')
-      .then(r => r.json())
-      .then(data => {
-        if (data?.country_code) {
-          const cc = data.country_code.toUpperCase();
-          const matched = COUNTRIES.find(c => c.code === cc);
-          if (matched && matched.code !== 'ALL') {
-            setSelCountry(matched);
-            const cur = CURRENCIES.find(c => c.code === (data.currency || matched.currency));
-            if (cur) setSelCurrency(cur);
+    try {
+      fetch('https://ipapi.co/json/')
+        .then(r => r.json())
+        .then(data => {
+          if (data?.country_code) {
+            const cc = data.country_code.toUpperCase();
+            const matched = COUNTRIES.find(c => c.code === cc);
+            if (matched && matched.code !== 'ALL') {
+              setSelCountry(matched);
+              const cur = CURRENCIES.find(c => c.code === (data.currency || matched.currency));
+              if (cur) setSelCurrency(cur);
+            }
           }
-        }
-      })
-      .catch(() => {});
+        })
+        .catch(() => {});
+    } catch (e) {
+      console.warn('IP detection blocked by extension:', e);
+    }
   }, []);
 
   const loadListings = async (attempt = 1, force = false) => {
@@ -1176,17 +1040,23 @@ export default function BuyBitcoin({user}) {
       return;
     }
     const geoController = new AbortController();
-    const geoTimeout = setTimeout(() => geoController.abort(), 3000);
-    fetch('https://ipapi.co/json/', { signal: geoController.signal })
-      .then(r => r.json())
-      .then(data => {
-        const countryCode = (data.country_code || '').toUpperCase();
-        sessionStorage.setItem('praqen_geo', JSON.stringify({ countryCode }));
-        const match = COUNTRIES.find(c => c.code === countryCode);
-        if (match && match.code !== 'ALL') setSelCountry(match);
-      })
-      .catch(() => {})
-      .finally(() => clearTimeout(geoTimeout));
+    try {
+      fetch('https://ipapi.co/json/', { signal: geoController.signal })
+        .then(r => r.json())
+        .then(data => {
+          const countryCode = (data.country_code || '').toUpperCase();
+          sessionStorage.setItem('praqen_geo', JSON.stringify({ countryCode }));
+          const match = COUNTRIES.find(c => c.code === countryCode);
+          if (match && match.code !== 'ALL') setSelCountry(match);
+        })
+        .catch(e => {
+          if (e.name === 'AbortError') return;
+        });
+    } catch (e) {
+      console.warn('IP detection blocked by extension:', e);
+    }
+
+    return () => geoController.abort();
   }, []);
 
   useEffect(() => {

@@ -15,6 +15,7 @@ import { toast } from 'react-toastify';
 import CountryFlag, { resolveCode } from '../components/CountryFlag';
 import { TRUST_MAP, deriveBadge } from '../lib/badge';
 import ActiveTradeCard from '../components/ActiveTradeCard';
+import OfferCardUI from '../components/OfferCard';
 import PRQFooter from '../components/PRQFooter';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
@@ -307,174 +308,39 @@ function OfferCard({listing, btcPriceUSD, onViewBuyer, onSell, featuredType, liv
   const ft = featuredType ? FEATURED[featuredType] : null;
 
   return (
-    <div className="rounded-2xl overflow-hidden transition-all w-full"
-      style={{
-        background:  ft?.bgGradient || '#fff',
-        border:      ft ? `2.5px solid ${ft.border}` : `1px solid ${C.g200}`,
-        boxShadow:   ft ? `0 0 0 3px ${ft.glow}, 0 10px 36px ${ft.glow}` : 'none',
-        animation:   ft?.pulse ? 'hotOfferPulse 2.5s ease-in-out infinite' : undefined,
-      }}>
-
-      {/* ─ Featured ribbon ───────────────────────────────────── */}
-      {ft && (
-        <div style={{position:'relative', overflow:'hidden', height:28, background:ft.ribbon, display:'flex', alignItems:'center', justifyContent:'center'}}>
-          <div style={{position:'absolute',inset:0,overflow:'hidden'}}>
-            <div style={{position:'absolute',top:0,left:0,width:'60%',height:'100%',background:'linear-gradient(90deg,transparent,rgba(255,255,255,0.18),transparent)',animation:'shimmer 2.2s ease-in-out infinite'}}/>
-          </div>
-          <span style={{position:'relative',zIndex:1,fontSize:10,fontWeight:900,letterSpacing:'0.08em',color:'#fff',textShadow:'0 1px 4px rgba(0,0,0,0.35)',textTransform:'uppercase'}}>
-            {ft.tag}
-          </span>
-        </div>
-      )}
-
-      {/* ─ Header ────────────────────────────────────────────── */}
-      <div className="px-4 pt-4 pb-2">
-        <div className="flex items-start gap-3">
-
-          <div className="relative flex-shrink-0">
-            <button onClick={onViewBuyer}>
-              <Avatar user={u} size={48} radius="rounded-xl"/>
-            </button>
-            {seen.online && (
-              <span className="absolute -bottom-0.5 -right-0.5">
-                <span className="absolute inline-flex w-3.5 h-3.5 rounded-full animate-ping"
-                  style={{backgroundColor:C.online, opacity:0.6}}/>
-                <span className="relative inline-flex w-3.5 h-3.5 rounded-full border-2 border-white"
-                  style={{backgroundColor:C.online}}/>
-              </span>
-            )}
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <CountryFlag
-                countryCode={u?.country_code || u?.country || u?.location || null}
-                className="w-4 h-3 rounded-sm flex-shrink-0"/>
-              <button onClick={onViewBuyer}
-                className="font-black text-sm hover:underline leading-tight truncate"
-                style={{color:C.g800, maxWidth:'130px'}}>
-                {getDisplayName(u) || 'Buyer'}
-              </button>
-              {isVerified(u) && <BadgeCheck size={14} style={{color:'#3B82F6', flexShrink:0}}/>}
-              {u.country && (
-                <span className="text-xs font-semibold flex-shrink-0" style={{color:C.g500}}>
-                  · {resolveCode(u.country)?.toUpperCase() || u.country}
-                </span>
-              )}
-              <span className={`inline-flex items-center gap-px font-medium px-1 py-0 rounded-full border flex-shrink-0 ${badge.animate ? 'shadow-md' : ''}`}
-                style={{background:badge.bg, borderColor:badge.borderColor, fontSize:'8px', boxShadow: badge.glow ? `0 0 8px ${badge.glow}` : undefined}}>
-                <span style={{color:badge.iconColor||badge.textColor}}>{badge.icon}</span>
-                <span style={{color:badge.textColor}}>{badge.label}</span>
-              </span>
-            </div>
-
-            {/* Stats row — feedback left, trades + status right */}
-            <div className="flex items-start justify-between mt-1.5">
-              <div className="flex items-center gap-1.5">
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-bold"
-                  style={{backgroundColor:'#DCFCE7', color:'#16A34A'}}>
-                  <ThumbsUp size={9} strokeWidth={2.5}/>{fmt(pos)}
-                </span>
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-bold"
-                  style={{backgroundColor:'#FEE2E2', color:'#DC2626'}}>
-                  <ThumbsDown size={9} strokeWidth={2.5}/>{fmt(neg)}
-                </span>
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-bold"
-                  style={{backgroundColor:C.g100, color:C.g600}}>
-                  <Repeat2 size={9} strokeWidth={2.5}/>{fmt(trades)} trades
-                </span>
-                {seen.online ? (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-bold"
-                    style={{backgroundColor:'#F0FDF4', color:C.online}}>
-                    <span className="relative flex w-1.5 h-1.5 flex-shrink-0">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{backgroundColor:C.online}}/>
-                      <span className="relative inline-flex rounded-full w-1.5 h-1.5" style={{backgroundColor:C.online}}/>
-                    </span>
-                    Active
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium"
-                    style={{backgroundColor:C.g100, color:C.g400}}>
-                    <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{backgroundColor:C.g300}}/>
-                    {seen.label}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Payment method */}
-        <div className="mt-2.5">
-          <span className="inline-flex flex-col px-2.5 py-1.5 rounded-lg"
-            style={{backgroundColor:C.g100}}>
-            <span className="text-xs font-normal leading-tight" style={{color:C.g400}}>Buyer pays via:</span>
-            <span className="text-xs font-black leading-tight tracking-wide" style={{color:C.g700}}>{pmLabel.toUpperCase()}</span>
-          </span>
-        </div>
-      </div>
-
-      {/* ─ Divider ───────────────────────────────────────────── */}
-      <div style={{height:1, backgroundColor:C.g100}}/>
-
-      {/* ─ You Send / You Receive ────────────────────────────── */}
-      <div className="px-4 py-3 grid grid-cols-2 gap-2">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{color:C.g500}}>YOU SEND</p>
-          <p className="font-bold leading-tight" style={{color:C.gold, fontSize: exampleBtc < 0.001 ? '13px' : '17px'}}>
-            ₿{fBtc(exampleBtc)}
-          </p>
-          {/* Market value of the BTC sent — strips out buyer's margin so it differs from YOU RECEIVE */}
-          <p className="text-xs font-semibold mt-0.5" style={{color:C.g600}}>
-            {sym}{fmt(parseFloat((exampleBtc * btcPriceUSD * usdRate).toFixed(2)))} {cur}
-          </p>
-          <p className="text-xs font-semibold mt-0" style={{color:C.g400}}>Bitcoin</p>
-        </div>
-        <div className="border-l pl-3" style={{borderColor:C.g100}}>
-          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{color:C.g500}}>YOU RECEIVE</p>
-          <p className="text-lg font-bold leading-tight truncate" style={{color:C.g800}}>
-            {sym}{fmt(exampleRecv)} {cur}
-          </p>
-          <p className="text-xs font-semibold mt-0.5" style={{color:C.g400}}>Cash payment</p>
-          <span className="inline-block mt-1.5 font-semibold px-2 py-0.5 rounded"
-            style={{backgroundColor:marginBg, color:'#fff', fontSize:'10px'}}>
-            {marginLabel}
-          </span>
-        </div>
-      </div>
-
-      {/* ─ Rate + margin ─────────────────────────────────────── */}
-      <div className="px-4 pb-2">
-        <p className="text-xs font-semibold" style={{color:C.g600}}>
-          Rate: {sym}{fmt(rateLocal)}/BTC
-        </p>
-      </div>
-
-      {/* ─ Limit row ─────────────────────────────────────────── */}
-      {(minLocal > 0 || maxLocal > 0) && (
-        <div className="px-4 pb-2">
-          <p className="text-xs font-bold" style={{color:C.g600}}>
-            Available LIMIT {cur} {fmt(minLocal)} – {fmt(maxLocal)}
-          </p>
-        </div>
-      )}
-
-      {/* ─ Actions ───────────────────────────────────────────── */}
-      <div className="px-4 pb-4 flex items-center gap-2">
-        <button onClick={onViewBuyer}
-          className="w-10 h-11 rounded-xl border flex items-center justify-center flex-shrink-0 hover:bg-gray-50 transition"
-          style={{borderColor:C.g200}}>
-          <Info size={15} style={{color:C.g400}}/>
-        </button>
-        <button onClick={onSell}
-          className="flex-1 h-11 rounded-xl text-white font-black text-base flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition"
-          style={ft ? {background:ft.btnGradient, boxShadow:ft.btnShadow} : {backgroundColor:C.sell}}>
-          SELL BTC <ArrowRight size={15}/>
-        </button>
-      </div>
-    </div>
+    <OfferCardUI
+      type="sell"
+      user={{
+        username: getDisplayName(u) || 'Buyer',
+        char: (getDisplayName(u) || 'Buyer').charAt(0).toUpperCase(),
+        country: u?.country_code || u?.country || u?.location || null,
+        isVerified: isVerified(u),
+        positive: fmt(pos),
+        negative: fmt(neg),
+        trades: fmt(trades),
+        online: seen.online,
+        lastSeenStr: seen.label,
+        badge: badge
+      }}
+      paymentMethod={pmLabel}
+      featuredType={featuredType}
+      pricing={{
+        cur,
+        sym,
+        examplePay: fmt(exampleRecv, 2),
+        btcReceived: fBtc(exampleBtc),
+        fiatEquiv: fmt(parseFloat((exampleBtc * btcPriceUSD * usdRate).toFixed(2)), 2),
+        marginLabel,
+        marginBg,
+        rateLocal: fmt(rateLocal),
+        minLimit: minLocal ? fmt(minLocal) : null,
+        maxLimit: maxLocal ? fmt(maxLocal) : null
+      }}
+      actions={{
+        onViewUser: onViewBuyer,
+        onAction: onSell
+      }}
+    />
   );
 }
 

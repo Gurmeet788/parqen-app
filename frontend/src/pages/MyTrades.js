@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -8,7 +8,7 @@ import {
   Filter, Search, DollarSign, X, Bell, ChevronRight, SlidersHorizontal,
   ArrowUpDown, Calendar, ChevronDown
 } from 'lucide-react';
-
+import CompletedTradeCard from '../components/CompletedTradeCard';
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 const C = {
@@ -247,66 +247,24 @@ function TradeCard({trade, userId}) {
     ? `${lsym}${lamount.toLocaleString()} ${lcur}`
     : `$${trade.amount_usd?.toLocaleString()||'0'} USD`;
 
-  return(
-    <Link to={`/trade/${trade.id}`}
-      className="block bg-white rounded-2xl overflow-hidden hover:shadow-md transition-all"
-      style={{border:`${active?2:1}px solid ${active?typeColor:C.g200}`}}>
-
-      {/* Header strip */}
-      <div className="flex items-center justify-between px-4 py-2.5"
-        style={{backgroundColor:active?`${typeColor}10`:C.g50}}>
-        <span className="font-black text-xs px-3 py-1 rounded-full text-white"
-          style={{backgroundColor:typeColor}}>
-          {typeLabel}
-        </span>
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold px-2 py-0.5 rounded-full"
-            style={{backgroundColor:st.bg,color:st.color}}>{st.short}</span>
-          <span className="text-xs font-mono" style={{color:C.g400}}>
-            #{String(trade.id||'').slice(0,8).toUpperCase()}
-          </span>
-        </div>
-      </div>
-
-      {/* Details */}
-      <div className="px-4 py-3 space-y-2.5">
-        <div className="flex justify-between items-center">
-          <span className="text-xs font-bold uppercase" style={{color:C.g500}}>
-            👤 {isBuyer?'Seller':'Buyer'}
-          </span>
-          <span className="font-bold text-sm" style={{color:C.forest}}>
-            {cpFlag} {cp?.username||'—'}
-          </span>
-        </div>
-        <div className="flex justify-between items-center">
-          <span className="text-xs font-bold uppercase" style={{color:C.g500}}>💳 Payment</span>
-          <span className="text-sm font-medium" style={{color:C.g700}}>{trade.payment_method||'—'}</span>
-        </div>
-        <div className="flex justify-between items-center">
-          <span className="text-xs font-bold uppercase" style={{color:C.g500}}>
-            💵 {isBuyer?'You Pay':'Buyer Pays'}
-          </span>
-          <span className="font-black text-sm" style={{color:C.forest}}>{payDisplay}</span>
-        </div>
-        <div className="flex justify-between items-center">
-          <span className="text-xs font-bold uppercase" style={{color:C.g500}}>🔒 BTC Escrow</span>
-          <span className="font-black text-sm" style={{color:C.amber}}>₿{btcAmt.toFixed(8)}</span>
-        </div>
-        <div className="flex justify-between items-center pt-1 border-t" style={{borderColor:C.g100}}>
-          <span className="text-xs font-bold uppercase" style={{color:C.g500}}>✅ You Receive</span>
-          <span className="font-black text-sm" style={{color:isBuyer?C.success:typeColor}}>
-            {isBuyer ? `₿${btcNet.toFixed(8)}` : payDisplay}
-          </span>
-        </div>
-      </div>
-
-      <div className="px-4 pb-3 flex items-center justify-between">
-        <span className="text-xs" style={{color:C.g400}}>{fmtAge(trade.created_at)}</span>
-        <span className="text-xs font-bold flex items-center gap-1" style={{color:typeColor}}>
-          View Trade <ChevronRight size={11}/>
-        </span>
-      </div>
-    </Link>
+  return (
+    <CompletedTradeCard
+      tradeId={trade.id}
+      isBuyer={isBuyer}
+      status={{ bg: st.bg, color: st.color, short: st.short }}
+      typeLabel={typeLabel}
+      typeColor={typeColor}
+      isActive={active}
+      counterparty={{
+        name: cp?.username || '—',
+        flag: cpFlag
+      }}
+      paymentMethod={trade.payment_method || '—'}
+      payDisplay={payDisplay}
+      btcEscrow={`₿${btcAmt.toFixed(8)}`}
+      youReceive={isBuyer ? `₿${btcNet.toFixed(8)}` : payDisplay}
+      ageStr={fmtAge(trade.created_at)}
+    />
   );
 }
 
