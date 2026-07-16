@@ -9,7 +9,7 @@ import {
   Smartphone, Building2, CreditCard, Mail,
   Copy, UserPlus, Share2,
 } from 'lucide-react';
-
+import { copyToClipboard } from '../utils/clipboard';
 /* ─── palette ─────────────────────────────────────────────────────────── */
 const C = {
   forest:'#1B4332', green:'#2D6A4F', mint:'#40916C', sage:'#52B788',
@@ -783,9 +783,8 @@ export default function LandingPage({ user }) {
                       <button
                         onClick={() => {
                           const link = `https://praqen.com/signup?ref=${user.referral_code || ''}`;
-                          navigator.clipboard.writeText(link);
-                          setCopied(true);
-                          setTimeout(() => setCopied(false), 2200);
+                          copyToClipboard(link, 'Referral link copied!')
+                            .then((ok) => { if (ok) { setCopied(true); setTimeout(() => setCopied(false), 2200); } });
                         }}
                         className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-black text-xs flex-shrink-0 transition"
                         style={{background:copied?C.mint:C.gold,color:copied?'#fff':C.forest}}>

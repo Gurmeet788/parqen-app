@@ -82,7 +82,7 @@ export default function Navbar({ user, onLogout }) {
 
       // Fetch BTC + USDT in parallel
       const [btcRes, usdtRes] = await Promise.all([
-        axios.get(`${API_URL}/hd-wallet/wallet`, { headers }),
+        axios.get(`${API_URL}/hd-wallet/wallet`, { headers }).catch(() => ({ data: { success: true, balance_btc: 0, available_btc: 0, locked_btc: 0 } })),
         axios.get(`${API_URL}/wallet/usdt`, { headers }).catch(() => ({ data: {} })),
       ]);
 
