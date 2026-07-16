@@ -5023,7 +5023,7 @@ app.get('/api/listings', async (req, res) => {
 
     // Step 1: fetch listings only (no join) — fast
     let listingsQ = supabaseAdmin.from('listings').select(
-      'id, seller_id, listing_type, gift_card_brand, status, bitcoin_price, margin, pricing_type, currency, currency_symbol, country, country_name, payment_method, payment_methods, amount_usd, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local, time_limit, trade_instructions, listing_terms, description, created_at, card_values, card_type, face_value'
+      'id, seller_id, listing_type, asset, gift_card_brand, status, bitcoin_price, margin, pricing_type, currency, currency_symbol, country, country_name, payment_method, payment_methods, amount_usd, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local, time_limit, trade_instructions, listing_terms, description, created_at, card_values, card_type, face_value'
     ).eq('status', 'ACTIVE').order('created_at', { ascending: false }).limit(200);
     if (brand)    listingsQ = listingsQ.ilike('gift_card_brand', `%${brand}%`);
     if (minPrice) listingsQ = listingsQ.gte('bitcoin_price', parseFloat(minPrice));
@@ -5067,7 +5067,7 @@ app.get('/api/listings', async (req, res) => {
         ]),
         btcSellerIds.length > 0
           ? Promise.race([
-              supabaseAdmin.from('wallets').select('user_id, balance_btc').in('user_id', btcSellerIds),
+              supabaseAdmin.from('wallets').select('user_id, balance_btc, balance_usdt').in('user_id', btcSellerIds),
               new Promise(resolve => setTimeout(() => resolve({ data: [] }), 4000)),
             ])
           : Promise.resolve({ data: [] }),
@@ -5093,14 +5093,21 @@ app.get('/api/listings', async (req, res) => {
 
     if (balanceCheckedListings.length > 0) {
       const balMap = {};
-      (walletRows || []).forEach(w => { balMap[w.user_id] = parseFloat(w.balance_btc || 0); });
+      const usdtBalMap = {};
+      (walletRows || []).forEach(w => {
+        balMap[w.user_id] = parseFloat(w.balance_btc || 0);
+        usdtBalMap[w.user_id] = parseFloat(w.balance_usdt || 0);
+      });
+      // 1 USDT ≈ $1 — no external price lookup needed
+      const balanceUsdFor = (l) => (l.asset === 'USDT')
+        ? (usdtBalMap[l.seller_id] || 0)
+        : (balMap[l.seller_id] || 0) * (parseFloat(l.bitcoin_price) || 88000);
 
       // For SELL offers: cap displayed limits to seller's actual balance
       listings = listings.map(l => {
         if (l.listing_type !== 'SELL' && l.listing_type !== 'SELL_BITCOIN') return l;
         const sellerBtc    = balMap[l.seller_id] || 0;
-        const btcPriceVal  = parseFloat(l.bitcoin_price) || 88000;
-        const balanceUsd   = sellerBtc * btcPriceVal;
+        const balanceUsd   = balanceUsdFor(l);
         const origMaxUsd   = parseFloat(l.max_limit_usd || 0);
         const origMaxLocal = parseFloat(l.max_limit_local || 0);
 
@@ -5113,19 +5120,18 @@ app.get('/api/listings', async (req, res) => {
         return {
           ...l,
           seller_balance_btc: sellerBtc,
+          seller_balance_usdt: usdtBalMap[l.seller_id] || 0,
           effective_max_usd:  cappedMaxUsd,
           max_limit_usd:      cappedMaxUsd,
           max_limit_local:    cappedMaxLocal,
         };
       });
 
-      // Hide BTC-required offers where seller has < $10 OR can't fulfil the minimum trade amount
+      // Hide BTC/USDT-required offers where seller has < $10 OR can't fulfil the minimum trade amount
       const toPauseIds = [];
       listings = listings.filter(l => {
         if (!btcRequiredTypes.includes(l.listing_type)) return true;
-        const sellerBtc   = balMap[l.seller_id] || 0;
-        const btcPriceVal = parseFloat(l.bitcoin_price) || 88000;
-        const balanceUsd  = sellerBtc * btcPriceVal;
+        const balanceUsd  = balanceUsdFor(l);
         const minUsd      = parseFloat(l.min_limit_usd || 0);
 
         const tooLow    = balanceUsd < 10;
@@ -5258,7 +5264,7 @@ app.put('/api/listings/:id', verifyToken, async (req, res) => {
     const { id } = req.params;
     const { margin, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local,
             payment_method, trade_instructions, listing_terms, time_limit, status } = req.body;
-    const { data: listing, error: findError } = await supabaseAdmin.from('listings').select('seller_id, listing_type').eq('id', id).single();
+    const { data: listing, error: findError } = await supabaseAdmin.from('listings').select('seller_id, listing_type, asset').eq('id', id).single();
     if (findError || !listing) return res.status(404).json({ error: 'Listing not found' });
     if (listing.seller_id !== req.userId) return res.status(403).json({ error: 'You can only edit your own listings' });
     if (min_limit_usd !== undefined && parseFloat(min_limit_usd) < 10) {
@@ -5269,8 +5275,10 @@ app.put('/api/listings/:id', verifyToken, async (req, res) => {
       const isSellListing = ['SELL', 'SELL_BITCOIN'].includes((listing.listing_type || '').toUpperCase());
       if (isSellListing) {
         const { data: sellerWallet } = await supabaseAdmin
-          .from('wallets').select('balance_btc').eq('user_id', req.userId).maybeSingle();
-        const sellerBalUsd = parseFloat(sellerWallet?.balance_btc || 0) * 88000;
+          .from('wallets').select('balance_btc, balance_usdt').eq('user_id', req.userId).maybeSingle();
+        const sellerBalUsd = listing.asset === 'USDT'
+          ? parseFloat(sellerWallet?.balance_usdt || 0) // 1 USDT ≈ $1
+          : parseFloat(sellerWallet?.balance_btc || 0) * 88000;
         if (parseFloat(max_limit_usd) > sellerBalUsd && sellerBalUsd > 0) {
           return res.status(400).json({
             error: `Maximum trade limit ($${parseFloat(max_limit_usd).toFixed(0)}) exceeds your wallet balance ($${sellerBalUsd.toFixed(0)}). Please top up or lower the maximum.`,
@@ -5383,13 +5391,14 @@ app.patch('/api/listings/:id/status', verifyToken, async (req, res) => {
 // GET all active offers for the market — reads from listings (canonical table)
 app.get('/api/offers', async (req, res) => {
   try {
-    const { type, country, limit = 100 } = req.query;
-    const cacheKey = `offers|${type||'all'}|${country||'all'}|${limit}`;
+    const { type, country, asset, limit = 100 } = req.query;
+    const cacheKey = `offers|${type||'all'}|${country||'all'}|${asset||'all'}|${limit}`;
     const hit = getCached(cacheKey);
     if (hit) return res.json({ success: true, offers: hit });
 
     const typeMap = { sell: 'SELL', sell_bitcoin: 'SELL_BITCOIN', buy: 'BUY', buy_bitcoin: 'BUY_BITCOIN', gc_buy: 'BUY_GIFT_CARD', gc_sell: 'SELL_GIFT_CARD' };
     const listingTypeFilter = type ? (typeMap[type.toLowerCase()] || type.toUpperCase()) : null;
+    const assetFilter = asset ? asset.toUpperCase() : null;
 
     let query = supabaseAdmin
       .from('listings')
@@ -5398,6 +5407,7 @@ app.get('/api/offers', async (req, res) => {
 
     if (listingTypeFilter) query = query.eq('listing_type', listingTypeFilter);
     if (country) query = query.eq('country', country);
+    if (assetFilter) query = query.eq('asset', assetFilter);
 
     const { data: listings, error } = await query
       .order('created_at', { ascending: false })
@@ -5430,24 +5440,31 @@ app.get('/api/offers', async (req, res) => {
       country: u.country || null,
     }]));
 
-    // Fetch BTC balances for SELL offer owners so we can hide low-balance offers
+    // Fetch balances for SELL offer owners so we can hide low-balance offers
     const sellSellerIds = [...new Set(
       (listings || [])
         .filter(l => l.listing_type === 'SELL' || l.listing_type === 'SELL_BITCOIN')
         .map(l => l.seller_id)
     )];
     let balMap = {};
+    let usdtBalMap = {};
     if (sellSellerIds.length > 0) {
       const { data: walBals } = await supabaseAdmin
-        .from('wallets').select('user_id, balance_btc').in('user_id', sellSellerIds);
-      (walBals || []).forEach(b => { balMap[b.user_id] = parseFloat(b.balance_btc || 0); });
+        .from('wallets').select('user_id, balance_btc, balance_usdt').in('user_id', sellSellerIds);
+      (walBals || []).forEach(b => {
+        balMap[b.user_id] = parseFloat(b.balance_btc || 0);
+        usdtBalMap[b.user_id] = parseFloat(b.balance_usdt || 0);
+      });
     }
 
     const offers = (listings || [])
       .filter(l => {
-        // Hide SELL offers where seller has < $10 BTC — offer stays ACTIVE in DB
-        // and reappears automatically once they top up their wallet.
+        // Hide SELL offers where seller has < $10 worth of the offer's asset — offer stays
+        // ACTIVE in DB and reappears automatically once they top up their wallet.
         if (l.listing_type !== 'SELL' && l.listing_type !== 'SELL_BITCOIN') return true;
+        if ((l.asset || 'BTC') === 'USDT') {
+          return (usdtBalMap[l.seller_id] || 0) >= 10; // 1 USDT ≈ $1
+        }
         const sellerBtc   = balMap[l.seller_id] || 0;
         const btcPriceVal = parseFloat(l.bitcoin_price) || 88000;
         return sellerBtc * btcPriceVal >= 10;
@@ -5457,6 +5474,7 @@ app.get('/api/offers', async (req, res) => {
         type: (l.listing_type || '').toLowerCase(),
         user_id: l.seller_id,
         seller_balance_btc: balMap[l.seller_id] || undefined,
+        seller_balance_usdt: usdtBalMap[l.seller_id] || undefined,
         users: userMap[l.seller_id] || null,
       }));
 
@@ -5562,10 +5580,12 @@ app.post('/api/offers', verifyToken, async (req, res) => {
       description,
       card_values,
       card_type,
-      gift_card_currencies
+      gift_card_currencies,
+      asset
     } = req.body;
 
     const userId = req.userId;
+    const offerAsset = asset === 'USDT' ? 'USDT' : 'BTC';
 
     // Validation: check required fields
     if (!type && !listing_type) {
@@ -5622,11 +5642,13 @@ app.post('/api/offers', verifyToken, async (req, res) => {
     const cur = currency || 'USD';
     const curSym = currency_symbol || (cur === 'GHS' ? '₵' : cur === 'NGN' ? '₦' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : '$');
 
-    // For SELL offers: max_limit_usd must not exceed the seller's BTC wallet balance
+    // For SELL offers: max_limit_usd must not exceed the seller's wallet balance for the chosen asset
     if ((mappedType === 'SELL' || mappedType === 'SELL_BITCOIN') && max_limit_usd) {
       const { data: sellerWallet } = await supabaseAdmin
-        .from('wallets').select('balance_btc').eq('user_id', userId).maybeSingle();
-      const sellerBalUsd = parseFloat(sellerWallet?.balance_btc || 0) * 88000; // approximate BTC price for cap
+        .from('wallets').select('balance_btc, balance_usdt').eq('user_id', userId).maybeSingle();
+      const sellerBalUsd = offerAsset === 'USDT'
+        ? parseFloat(sellerWallet?.balance_usdt || 0) // 1 USDT ≈ $1
+        : parseFloat(sellerWallet?.balance_btc || 0) * 88000; // approximate BTC price for cap
       if (parseFloat(max_limit_usd) > sellerBalUsd && sellerBalUsd > 0) {
         return res.status(400).json({
           error: `Maximum trade limit ($${parseFloat(max_limit_usd).toFixed(0)}) exceeds your wallet balance ($${sellerBalUsd.toFixed(0)}). Please top up or lower the maximum.`,
@@ -5634,7 +5656,7 @@ app.post('/api/offers', verifyToken, async (req, res) => {
       }
     }
 
-    // Block duplicate active offers: same payment method + same currency + same type (skip gift cards)
+    // Block duplicate active offers: same payment method + same currency + same asset + same type (skip gift cards)
     if (mappedType !== 'BUY_GIFT_CARD') {
       const { data: dupCheck2 } = await supabaseAdmin
         .from('listings')
@@ -5643,11 +5665,12 @@ app.post('/api/offers', verifyToken, async (req, res) => {
         .eq('payment_method', payment_method)
         .eq('listing_type', mappedType)
         .eq('currency', currency || 'USD')
+        .eq('asset', offerAsset)
         .eq('status', 'ACTIVE')
         .limit(1);
       if (dupCheck2 && dupCheck2.length > 0) {
         return res.status(400).json({
-          error: `You already have an active ${mappedType} offer for ${payment_method} in ${currency || 'USD'}. Edit it from your Dashboard instead.`,
+          error: `You already have an active ${offerAsset} ${mappedType} offer for ${payment_method} in ${currency || 'USD'}. Edit it from your Dashboard instead.`,
         });
       }
     }
@@ -5658,6 +5681,7 @@ app.post('/api/offers', verifyToken, async (req, res) => {
       .insert({
         seller_id:           userId,
         listing_type:        mappedType,
+        asset:               offerAsset,
         gift_card_brand:     gift_card_brand || brandDefault,
         status:              'ACTIVE',
         bitcoin_price:       bitcoin_price || 88000,

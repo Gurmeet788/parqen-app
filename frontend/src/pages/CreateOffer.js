@@ -663,7 +663,14 @@ export default function CreateOffer() {
 
       await axios.post(`${API_URL}/offers`, payload, { withCredentials: true });
       toast.success('Offer published!');
-      navigate('/dashboard');
+      // A "sell" offer (I have the asset) is found by buyers on the Buy page, and
+      // vice versa — route to wherever this offer will actually show up.
+      const destination = isGC
+        ? '/gift-cards'
+        : asset === 'USDT'
+          ? (offerType === 'sell' ? '/buy-usdt' : '/sell-usdt')
+          : (offerType === 'sell' ? '/buy-bitcoin' : '/sell-bitcoin');
+      navigate(destination);
     } catch (err) {
       const status = err?.response?.status;
       const data = err?.response?.data;

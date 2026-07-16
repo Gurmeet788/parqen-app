@@ -942,7 +942,7 @@ export default function SellBitcoin({user}) {
   // Use cached data only if it actually contains user profile data — null users = bad cache
   const _hasUsers  = (data) => Array.isArray(data) && data.some(l => l.users && (l.users.id || l.users.username));
   const _cacheAll  = () => { try { const c=JSON.parse(localStorage.getItem('praqen_market_all')||'null'); if(!c||Date.now()-c.ts>1800000||!_hasUsers(c.data)) return null; return c?.data||null; } catch { return null; } };
-  const _buyNow    = () => { const a=_cacheAll(); return a?a.filter(l=>l.listing_type==='BUY'||l.listing_type==='BUY_BITCOIN'):[]; };
+  const _buyNow    = () => { const a=_cacheAll(); return a?a.filter(l=>(l.asset||'BTC')==='BTC'&&(l.listing_type==='BUY'||l.listing_type==='BUY_BITCOIN')):[]; };
   const [offers,       setOffers]       = useState(()=>_buyNow());
   const [loading,      setLoading]      = useState(()=>_buyNow().length===0);
   const [loadError,    setLoadError]    = useState(false);
@@ -1068,7 +1068,7 @@ export default function SellBitcoin({user}) {
       try {
         const c = JSON.parse(localStorage.getItem('praqen_market_all') || 'null');
         if (c && Date.now() - c.ts < 300000 && _hasUsers(c.data)) {
-          const buyOffers = (c.data || []).filter(l => l.listing_type === 'BUY' || l.listing_type === 'BUY_BITCOIN');
+          const buyOffers = (c.data || []).filter(l => (l.asset || 'BTC') === 'BTC' && (l.listing_type === 'BUY' || l.listing_type === 'BUY_BITCOIN'));
           if (buyOffers.length > 0) {
             setOffers(buyOffers);
             setLoading(false);
@@ -1082,7 +1082,7 @@ export default function SellBitcoin({user}) {
     try {
       const res = await axios.get(`${API_URL}/listings`, { timeout: 20000 });
       const all = (res.data.listings||[]).map(l=>({...l, users:Array.isArray(l.users)?l.users[0]:l.users}));
-      const data = all.filter(l=>l.listing_type==='BUY'||l.listing_type==='BUY_BITCOIN');
+      const data = all.filter(l=>(l.asset||'BTC')==='BTC'&&(l.listing_type==='BUY'||l.listing_type==='BUY_BITCOIN'));
       if (data.length > 0) {
         setOffers(data);
         try { localStorage.setItem('praqen_market_all', JSON.stringify({ data: all, ts: Date.now() })); } catch {}
