@@ -316,9 +316,9 @@ const BTC_STEPS = [
 
 // ── Offer type options (Step 1) ───────────────────────────────────────────────
 const OFFER_TYPES = [
-  { id: 'sell', title: 'Sell Bitcoin', desc: 'Buyers pay you, you release BTC from your wallet.', icon: ArrowUpRight },
-  { id: 'buy', title: 'Buy Bitcoin', desc: 'You pay sellers to receive BTC into your wallet.', icon: ArrowDownRight },
-  { id: 'gc_buy', title: 'Buy Bitcoin with Gift Card', desc: 'Sellers send you a gift card, you send them BTC.', icon: Gift },
+  { id: 'sell',   title: (a) => `Sell ${a}`,   desc: (a) => `Buyers pay you, you release ${a} from your wallet.`, icon: ArrowUpRight },
+  { id: 'buy',    title: (a) => `Buy ${a}`,    desc: (a) => `You pay sellers to receive ${a} into your wallet.`, icon: ArrowDownRight },
+  { id: 'gc_buy', title: (a) => `Buy ${a} with Gift Card`, desc: (a) => `Sellers send you a gift card, you send them ${a}.`, icon: Gift },
 ];
 
 // ── Reusable premium searchable select ────────────────────────────────────
@@ -485,9 +485,11 @@ export default function CreateOffer() {
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [dupOfferWarning, setDupOfferWarning] = useState(null); // { status, id }
+  const [asset, setAsset] = useState('BTC');   // 'BTC' | 'USDT'
   const [btcPrice, setBtcPrice] = useState(68000);
+  const [usdtPrice, setUsdtPrice] = useState(1);
   const [loadingPrice, setLoadingPrice] = useState(true);
-  const [walletBal, setWalletBal] = useState({ btc: 0, usd: 0 });
+  const [walletBal, setWalletBal] = useState({ btc: 0, usdt: 0, usd: 0 });
 
   // Step 1
   const [offerType, setOfferType] = useState('sell'); // sell | buy | gc_buy
@@ -515,7 +517,7 @@ export default function CreateOffer() {
   const [margin, setMargin] = useState(5);
   const [fixedPrice, setFixedPrice] = useState('');
 
-  // Step 4 – Limits (BTC only)
+  // Step 4 – Limits
   const [minLimit, setMinLimit] = useState('');
   const [maxLimit, setMaxLimit] = useState('');
   const [timeLimit, setTimeLimit] = useState(30);
@@ -535,18 +537,59 @@ export default function CreateOffer() {
     }
   }, [contextBtcUsd]);
 
+  // USDT price is always ~$1 — no waiting needed
+  useEffect(() => {
+    if (asset === 'USDT') setLoadingPrice(false);
+  }, [asset]);
+
+  // Fetch real wallet balances on mount
+  useEffect(() => {
+    const fetchWalletBalance = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        const btcRes = await axios.get(`${API_URL}/hd-wallet/wallet`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        let usdtBal = 0;
+        try {
+          const usdtRes = await axios.get(`${API_URL}/wallet/usdt`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          usdtBal = parseFloat(usdtRes.data?.balance_usdt || 0);
+        } catch { /* USDT wallet fetch is best-effort — user may not have a TRON address yet */ }
+        setWalletBal({
+          btc:  parseFloat(btcRes.data?.balance_btc || 0),
+          usdt: usdtBal,
+          usd:  parseFloat(btcRes.data?.balance_usd || 0),
+        });
+      } catch (err) {
+        console.error('Failed to fetch wallet balance:', err);
+        // Keep default zero state on failure — do not crash the form
+      }
+    };
+    fetchWalletBalance();
+  }, []);
+
+  // Asset helpers
+  const assetLabel = asset;
+  const assetSymbol = asset === 'BTC' ? '₿' : '₮';
+  const assetDecimals = asset === 'BTC' ? 6 : 2;
+  const assetPriceUsd = asset === 'BTC' ? btcPrice : (usdtPrice || 1);
+
   // Derived values
   const curr = COUNTRIES.find(c => c.code === country);
   const localRate = USD_RATES[currencyCode] || 1;
-  const btcLocal = btcPrice * localRate;
+  const assetLocal = assetPriceUsd * localRate;
   const effectiveRate = pricingType === 'fixed' && fixedPrice
     ? parseFloat(fixedPrice)
-    : btcLocal * (1 + margin / 100);
+    : assetLocal * (1 + margin / 100);
   const sym = currencySymbol || '$';
   const cur = currencyCode || 'USD';
 
   const isSellSide = offerType === 'sell';
-  const walletCapacityLocal = walletBal.btc * btcLocal;
+  const walletKey = asset.toLowerCase();
+  const walletCapacityLocal = (walletBal[walletKey] || 0) * assetLocal;
   const maxExceedsWallet = isSellSide && !!maxLimit && walletCapacityLocal > 0 && parseFloat(maxLimit) > walletCapacityLocal;
   const minUSDVal = minLimit ? parseFloat(minLimit) / localRate : 0;
   const gcMinVal = gcCardValues.length ? Math.min(...gcCardValues) : 0;
@@ -606,8 +649,9 @@ export default function CreateOffer() {
         card_values:         isGC ? gcCardValues : null,
         gift_card_currencies: isGC ? gcCurrencies : null,
         pricing_type:        pricingType,
+        asset,
         margin:              pricingType === 'market' ? margin : null,
-        bitcoin_price:       pricingType === 'fixed' && fixedPrice ? parseFloat(fixedPrice) : btcLocal,
+        bitcoin_price:       pricingType === 'fixed' && fixedPrice ? parseFloat(fixedPrice) : assetLocal,
         min_limit_local:     !isGC && minLimit ? parseFloat(minLimit) : (isGC ? gcMinVal : null),
         max_limit_local:     !isGC && maxLimit ? parseFloat(maxLimit) : (isGC ? Math.max(...gcCardValues, gcMinVal) : null),
         min_limit_usd:       !isGC && minLimit ? minUSDVal : null,
@@ -712,12 +756,12 @@ export default function CreateOffer() {
       <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
         <span className="text-xs font-bold px-2 py-1 rounded-full"
           style={{ backgroundColor: `${C.green}15`, color: C.green }}>
-          {OFFER_TYPES.find(o => o.id === offerType)?.title}
+          {OFFER_TYPES.find(o => o.id === offerType)?.title(assetLabel)}
         </span>
         <span className="text-xs" style={{ color: C.g400 }}>{curr ? `${curr.flag} ${curr.name}` : '—'}</span>
       </div>
       <p className="text-lg font-black" style={{ color: C.forest, wordBreak: 'break-all' }}>
-        {sym}{fmt(effectiveRate, 0)} {cur}/BTC
+        {sym}{fmt(effectiveRate, 0)} {cur}/{assetLabel}
       </p>
       <p className="text-xs mt-1" style={{ color: C.g500 }}>
         {isGC
@@ -770,6 +814,39 @@ export default function CreateOffer() {
                 <h2 className="text-xl font-bold mb-0.5" style={{ color: C.forest }}>What do you want to do?</h2>
                 <p className="text-xs" style={{ color: C.g500 }}>Choose the type of offer you're creating.</p>
               </div>
+              {/* ── Asset selector ── */}
+              <div>
+                <label className="block text-sm font-bold mb-2" style={{ color: C.g700 }}>
+                  Coin <span style={{ color: C.danger }}>*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { val: 'BTC', label: 'Bitcoin (BTC)', icon: Bitcoin },
+                    { val: 'USDT', label: 'Tether (USDT)', icon: Banknote },
+                  ].map(({ val, label, icon: CoinIcon }) => (
+                    <button key={val} onClick={() => setAsset(val)}
+                      disabled={step > 1}
+                      className={`w-full p-3.5 rounded-2xl border-2 transition-all flex items-center gap-3 ${step > 1 ? 'opacity-60 cursor-not-allowed' : ''}`}
+                      style={{
+                        borderColor: asset === val ? C.green : C.g200,
+                        backgroundColor: asset === val ? `${C.green}08` : C.white,
+                        width: '100%', boxSizing: 'border-box',
+                      }}>
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: asset === val ? C.green : C.g100 }}>
+                        {val === 'BTC' ? (
+                          <CoinIcon size={18} style={{ color: asset === val ? C.white : C.g500 }} />
+                        ) : (
+                          <span className="text-sm font-black" style={{ color: asset === val ? C.white : C.g500 }}>₮</span>
+                        )}
+                      </div>
+                      <p className="font-bold text-sm flex-1" style={{ color: C.forest }}>{label}</p>
+                      {asset === val && <Check size={16} style={{ color: C.green, flexShrink: 0 }} />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="space-y-2">
                 {OFFER_TYPES.map(({ id, title, desc, icon: Icon }) => (
                   <button
@@ -787,8 +864,8 @@ export default function CreateOffer() {
                       <Icon size={18} style={{ color: offerType === id ? C.white : C.g500 }} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-sm" style={{ color: C.forest }}>{title}</p>
-                      <p className="text-xs" style={{ color: C.g500 }}>{desc}</p>
+                      <p className="font-bold text-sm" style={{ color: C.forest }}>{title(assetLabel)}</p>
+                      <p className="text-xs" style={{ color: C.g500 }}>{desc(assetLabel)}</p>
                     </div>
                     {offerType === id && <Check size={16} style={{ color: C.green, flexShrink: 0 }} />}
                   </button>
@@ -920,9 +997,9 @@ export default function CreateOffer() {
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <p className="text-xs" style={{ color: C.g400 }}>BTC equiv.</p>
+                      <p className="text-xs" style={{ color: C.g400 }}>{assetLabel} equiv.</p>
                       <p className="text-xs font-bold" style={{ color: C.forest }}>
-                        ₿{(gcMinVal / btcPrice).toFixed(6)}
+                        {assetSymbol}{(gcMinVal / assetPriceUsd).toFixed(assetDecimals)}
                       </p>
                       <p className="text-xs" style={{ color: C.g400 }}>at min ${gcMinVal}</p>
                     </div>
@@ -1194,7 +1271,7 @@ export default function CreateOffer() {
             <div className="space-y-5">
               <div>
                 <h2 className="text-xl font-bold mb-0.5" style={{ color: C.forest }}>
-                  {isGC ? 'Set BTC Rate' : 'Set Your Bitcoin Rate'}
+                  {isGC ? `Set ${assetLabel} Rate` : `Set Your ${assetLabel} Rate`}
                 </h2>
                 <p className="text-xs" style={{ color: C.g500 }}>
                   Control your price. Higher margin = more profit per trade.
@@ -1208,13 +1285,13 @@ export default function CreateOffer() {
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <p className="text-xs text-white/60 mb-0.5">Live Market Price</p>
                     <p className="text-xl font-bold" style={{ wordBreak: 'break-all' }}>
-                      {loadingPrice ? '…' : `${sym}${fmt(btcLocal, 0)}`}
+                      {loadingPrice ? '…' : `${sym}${fmt(assetLocal, 0)}`}
                     </p>
-                    <p className="text-xs text-white/50 mt-0.5">{cur}/BTC · auto-refresh</p>
+                    <p className="text-xs text-white/50 mt-0.5">{cur}/{assetLabel} · auto-refresh</p>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className="text-xs text-white/60 mb-0.5">USD</p>
-                    <p className="text-base font-bold">${fmt(btcPrice, 0)}</p>
+                    <p className="text-base font-bold">{asset === 'BTC' ? `$${fmt(btcPrice, 0)}` : '$1.00'}</p>
                     <button onClick={() => setLoadingPrice(true)}
                       className="mt-1 text-xs text-white/40 flex items-center gap-1 ml-auto hover:text-white/70">
                       <RefreshCw size={9} /> Refresh
@@ -1228,8 +1305,8 @@ export default function CreateOffer() {
                 <label className="block text-sm font-bold mb-2" style={{ color: C.g700 }}>Rate Type</label>
                 <div className="grid grid-cols-1 gap-2">
                   {[
-                    { val: 'market', icon: TrendingUp, title: 'Market Rate', desc: 'Auto-adjusts with BTC price. Always competitive.' },
-                    { val: 'fixed', icon: Tag, title: 'Fixed Rate', desc: 'You lock a price. Stays constant even if BTC moves.' },
+                    { val: 'market', icon: TrendingUp, title: 'Market Rate', desc: 'Auto-adjusts with market price. Always competitive.' },
+                    { val: 'fixed', icon: Tag, title: 'Fixed Rate', desc: 'You lock a price. Stays constant even if the market moves.' },
                   ].map(({ val, icon: Icon, title, desc }) => (
                     <button key={val} onClick={() => setPricingType(val)}
                       className="p-3 rounded-xl text-left border-2 transition-all"
@@ -1360,7 +1437,7 @@ export default function CreateOffer() {
                           <div className="px-4 py-3 space-y-2.5">
                             {[
                               { n: '1', label: offerType === 'sell' ? 'Buyer pays you' : 'You pay seller', val: `$${fmt(exampleCash, 0)}`, color: C.g800 },
-                              { n: '2', label: offerType === 'sell' ? 'Buyer gets BTC worth' : 'You get BTC worth', val: `$${fmt(buyerGetsUSD, 2)}`, color: C.mint },
+                              { n: '2', label: offerType === 'sell' ? `Buyer gets ${assetLabel} worth` : `You get ${assetLabel} worth`, val: `$${fmt(buyerGetsUSD, 2)}`, color: C.mint },
                             ].map(({ n, label, val, color }) => (
                               <div key={n} className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2 min-w-0">
@@ -1417,7 +1494,7 @@ export default function CreateOffer() {
                             <div className="text-right flex-shrink-0">
                               <p className="text-xs" style={{ color: C.g400 }}>Market</p>
                               <p className="text-xs font-semibold" style={{ color: C.g500 }}>
-                                {sym}{fmt(btcLocal, 0)} {cur}
+                                {sym}{fmt(assetLocal, 0)} {cur}
                               </p>
                             </div>
                           </div>
@@ -1432,24 +1509,24 @@ export default function CreateOffer() {
               {pricingType === 'fixed' && (
                 <div>
                   <label className="block text-sm font-bold mb-1.5" style={{ color: C.g700 }}>
-                    Fixed Price ({cur} per BTC)
+                    Fixed Price ({cur} per {assetLabel})
                   </label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-sm" style={{ color: C.g500 }}>{sym}</span>
                     <input type="number" value={fixedPrice} onChange={e => setFixedPrice(e.target.value)}
-                      placeholder={fmt(btcLocal, 0)}
+                      placeholder={fmt(assetLocal, 0)}
                       className="w-full pl-10 pr-24 py-3.5 border-2 rounded-xl text-sm font-bold focus:outline-none"
                       style={{ borderColor: fixedPrice ? C.green : C.g200, color: C.forest }} />
                     <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold" style={{ color: C.g400 }}>
-                      {cur}/BTC
+                      {cur}/{assetLabel}
                     </span>
                   </div>
-                  {fixedPrice && btcLocal > 0 && (
+                  {fixedPrice && assetLocal > 0 && (
                     <p className="text-xs mt-1.5 font-semibold flex items-center gap-1.5"
-                      style={{ color: parseFloat(fixedPrice) >= btcLocal ? C.success : C.danger }}>
-                      {parseFloat(fixedPrice) >= btcLocal
-                        ? <><CheckCircle size={13} /> +{((parseFloat(fixedPrice) / btcLocal - 1) * 100).toFixed(1)}% above market</>
-                        : <><AlertTriangle size={13} /> −{((1 - parseFloat(fixedPrice) / btcLocal) * 100).toFixed(1)}% below market</>}
+                      style={{ color: parseFloat(fixedPrice) >= assetLocal ? C.success : C.danger }}>
+                      {parseFloat(fixedPrice) >= assetLocal
+                        ? <><CheckCircle size={13} /> +{((parseFloat(fixedPrice) / assetLocal - 1) * 100).toFixed(1)}% above market</>
+                        : <><AlertTriangle size={13} /> −{((1 - parseFloat(fixedPrice) / assetLocal) * 100).toFixed(1)}% below market</>}
                     </p>
                   )}
                 </div>
@@ -1480,11 +1557,11 @@ export default function CreateOffer() {
                       <div>
                         <p className="text-xs font-bold uppercase tracking-wide"
                           style={{ color: walletCapacityLocal > 0 ? C.forest : '#92400E' }}>
-                          BTC Wallet
+                          {assetLabel} Wallet
                         </p>
                         <p className="text-xs font-bold"
                           style={{ color: walletCapacityLocal > 0 ? C.forest : '#B45309' }}>
-                          ₿{walletBal.btc.toFixed(6)} ≈ ${fmt(walletBal.btc * btcPrice, 0)} USD
+                          {assetSymbol}{(walletBal[walletKey] || 0).toFixed(assetDecimals)} ≈ ${fmt((walletBal[walletKey] || 0) * assetPriceUsd, 0)} USD
                         </p>
                         {cur !== 'USD' && walletCapacityLocal > 0 && (
                           <p className="text-xs font-semibold" style={{ color: C.g500 }}>
@@ -1511,7 +1588,7 @@ export default function CreateOffer() {
                   style={{ backgroundColor: '#F0FDF4', borderColor: '#A7F3D0' }}>
                   <span className="text-sm flex-shrink-0">💡</span>
                   <p className="text-xs font-semibold" style={{ color: C.forest }}>
-                    No wallet balance needed. You're setting how much BTC you want to buy — sellers will fill your order. Set any limits you like.
+                    No wallet balance needed. You're setting how much {assetLabel} you want to buy — sellers will fill your order. Set any limits you like.
                   </p>
                 </div>
               )}
@@ -1562,7 +1639,7 @@ export default function CreateOffer() {
                         </div>
                         {val && effectiveRate > 0 && (
                           <p className="text-xs mt-0.5 font-semibold" style={{ color: hasError ? C.danger : C.g400 }}>
-                            ≈ ₿{(parseFloat(val) / effectiveRate).toFixed(6)}
+                            ≈ {assetSymbol}{(parseFloat(val) / effectiveRate).toFixed(assetDecimals)}
                             <span className="ml-1">(${fmt(parseFloat(val) / localRate, 0)} USD)</span>
                           </p>
                         )}
@@ -1609,7 +1686,7 @@ export default function CreateOffer() {
                     {[
                       { label: 'Range', val: `${sym}${fmt(parseFloat(minLimit))} – ${sym}${fmt(parseFloat(maxLimit))} ${cur}` },
                       { label: 'USD', val: `$${fmt(parseFloat(minLimit) / localRate, 0)} – $${fmt(parseFloat(maxLimit) / localRate, 0)}` },
-                      { label: 'Rate', val: `${sym}${fmt(effectiveRate, 0)} ${cur}/BTC` },
+                      { label: 'Rate', val: `${sym}${fmt(effectiveRate, 0)} ${cur}/${assetLabel}` },
                     ].map(({ label, val }) => (
                       <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                         <span className="text-xs" style={{ color: C.g500, flexShrink: 0 }}>{label}</span>
@@ -1712,7 +1789,7 @@ export default function CreateOffer() {
                       { label: 'Country', val: curr ? `${curr.flag} ${curr.name}` : '—' },
                       { label: 'Currency', val: curr ? `${curr.symbol} ${curr.currency}` : '—' },
                       { label: 'Payment', val: selectedPay?.name || '—' },
-                      { label: 'Rate', val: curr ? `${sym}${fmt(effectiveRate, 0)} ${cur}/BTC` : '—' },
+                      { label: 'Rate', val: curr ? `${sym}${fmt(effectiveRate, 0)} ${cur}/${assetLabel}` : '—' },
                       { label: 'Margin', val: pricingType === 'market' ? `${margin > 0 ? '+' : ''}${margin}%` : 'Fixed' },
                       ...(!isGC ? [
                         {
