@@ -1,8 +1,9 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRates } from '../contexts/RatesContext';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'react-toastify';
+import { copyToClipboard } from '../utils/clipboard';
 import {
   Edit, Trash2, Eye, Plus, RefreshCw, Bitcoin,
   Clock, CheckCircle, Shield, Activity,
@@ -331,9 +332,8 @@ function OfferCard({ listing, onEdit, onDelete, onToggle, walletBtc }) {
   };
 
   const copyLink = () => {
-    navigator.clipboard.writeText(shareUrl(listing.id))
-      .then(() => { setCopied(true); toast.success('Link copied!'); setTimeout(()=>setCopied(false),2000); })
-      .catch(() => toast.error('Could not copy link'));
+    copyToClipboard(shareUrl(listing.id), 'Link copied!')
+      .then((ok) => { if (ok) { setCopied(true); setTimeout(()=>setCopied(false),2000); } });
   };
 
   const marginDisplay = margin === 0 ? 'Market' : margin > 0 ? `+${margin}%` : `${margin}%`;

@@ -1,17 +1,48 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useParams, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams, useNavigate } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
 import { RatesProvider } from './contexts/RatesContext';
 import axios from 'axios';
 import { identifyUser, unidentifyUser } from './utils/notifications';
-import { ToastContainer, toast } from 'react-toastify';
+import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import CustomToastContainer from './components/CustomToastContainer';
 import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
 import WelcomeModal from './components/WelcomeModal';
 import WelcomeBonusModal from './components/WelcomeBonusModal';
 import SuggestionsPanel from './components/SuggestionsPanel';
 import { NotificationPrompt, AndroidInstallBanner, IOSInstallGuide } from './components/PushSetup';
+
+// Monkeypatch react-toastify's toast object globally to redirect to CustomToastContainer
+const customToast = (message, options) => {
+  window.dispatchEvent(new CustomEvent('custom-toast', { detail: { message, type: 'default', options } }));
+  return options?.toastId || Math.random().toString();
+};
+customToast.success = (message, options) => {
+  window.dispatchEvent(new CustomEvent('custom-toast', { detail: { message, type: 'success', options } }));
+  return options?.toastId || Math.random().toString();
+};
+customToast.error = (message, options) => {
+  window.dispatchEvent(new CustomEvent('custom-toast', { detail: { message, type: 'error', options } }));
+  return options?.toastId || Math.random().toString();
+};
+customToast.info = (message, options) => {
+  window.dispatchEvent(new CustomEvent('custom-toast', { detail: { message, type: 'info', options } }));
+  return options?.toastId || Math.random().toString();
+};
+customToast.warn = (message, options) => {
+  window.dispatchEvent(new CustomEvent('custom-toast', { detail: { message, type: 'warning', options } }));
+  return options?.toastId || Math.random().toString();
+};
+customToast.warning = customToast.warn;
+customToast.dismiss = (id) => {
+  window.dispatchEvent(new CustomEvent('custom-toast-dismiss', { detail: { id } }));
+};
+customToast.isActive = () => false;
+customToast.update = () => {};
+customToast.onChange = () => () => {};
+Object.assign(toast, customToast);
 
 // Silence all non-error console output in production
 if (process.env.NODE_ENV === 'production') {
@@ -24,7 +55,6 @@ if (process.env.NODE_ENV === 'production') {
 
 // Lazy-loaded pages — each becomes its own JS chunk
 const GiftCardMarketplace   = lazy(() => import('./pages/GiftCardMarketplace'));
-const Home                  = lazy(() => import('./pages/Home'));
 const LandingPage           = lazy(() => import('./pages/LandingPage'));
 const Register              = lazy(() => import('./pages/Register'));
 const Login                 = lazy(() => import('./pages/Login'));
@@ -127,6 +157,8 @@ function App() {
     }
   }, [token]);
 
+  // Toast dismissal is handled natively by ToastContainer's closeOnClick prop
+
   // Cleanup: remove any bad market cache (empty array or all-null users) so cards
   // always have avatar/flag/feedback data on the next load.
   useEffect(() => {
@@ -180,6 +212,7 @@ function App() {
 
     window.addEventListener('userUpdated', handleUserUpdated);
     return () => window.removeEventListener('userUpdated', handleUserUpdated);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   // Show welcome bonus modal first, then the tour — each fires once per user
@@ -270,6 +303,7 @@ function App() {
     <HelmetProvider>
     <RatesProvider>
     <Router>
+      <CustomToastContainer />
       <Suspense fallback={<PageLoader />}>
       <Routes>
         {/* ── TEAM PORTAL — completely standalone, no main chrome ── */}
@@ -336,18 +370,6 @@ function App() {
 
             <BottomNav user={user} />
             <SuggestionsPanel user={user} />
-            <ToastContainer
-              position="top-right"
-              autoClose={4500}
-              hideProgressBar={false}
-              newestOnTop
-              closeOnClick
-              pauseOnFocusLoss
-              draggable={false}
-              pauseOnHover
-              theme="light"
-              limit={4}
-            />
           </AppShell>
         } />
       </Routes>
