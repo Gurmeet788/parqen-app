@@ -200,7 +200,6 @@ const getLastSeen = (u) => {
   if (s<86400) { const h=~~(s/3600); return {label:`${h} ${h===1?'hr':'hrs'} ago`, online:false}; }
   const dy=~~(s/86400); return {label:`${dy} ${dy===1?'day':'days'} ago`, online:false};
 };
-// TODO: backend will provide asset:'USDT' field on /listings response for USDT-specific pricing
 const getRateUSD = (l, usdtPrice) => {
   if (l.pricing_type==='fixed') { const s=parseFloat(l.bitcoin_price||0); if(s>0.01) return s; }
   return (usdtPrice || 1) * (1 + parseFloat(l.margin||0)/100);
@@ -512,6 +511,7 @@ function ProfileModal({seller, listing, onClose, onTrade, usdtPriceUSD}) {
   const [freshSeller, setFreshSeller] = useState(null);
   const { rates: USD_RATES } = useRates();
 
+  // Fetch full profile (with verification fields) on open — l.users join omits them
   const sellerId = getUser(seller)?.id;
   useEffect(() => {
     if (!sellerId) return;
@@ -530,10 +530,8 @@ function ProfileModal({seller, listing, onClose, onTrade, usdtPriceUSD}) {
   const sym    = listing?.currency_symbol || CUR_SYM[cur] || '₵';
   const usdRate   = USD_RATES[cur] || 1;
   const rateLocal = getRateUSD(listing || {}, usdtPriceUSD || 1) * usdRate;
-  const minLocal = listing?.min_limit_local || (listing?.min_limit_usd ? listing?.min_limit_usd*usdRate : 100*usdRate);
-  const maxLocal = listing?.max_limit_local || (listing?.max_limit_usd ? listing?.max_limit_usd*usdRate : 1000*usdRate);
-  const pmLabel = listing?.payment_method || 'Payment';
 
+  // Proper verification — only use the dedicated verified flags, never raw phone/email presence
   const phoneOk = !!(u.is_phone_verified || u.phone_verified);
   const emailOk = !!(u.is_email_verified || u.email_verified);
   const kycOk   = !!(u.is_id_verified || u.kyc_verified);
@@ -548,7 +546,10 @@ function ProfileModal({seller, listing, onClose, onTrade, usdtPriceUSD}) {
   const payMins  = parseFloat(u.avg_payment_time || u.avg_response_time || u.avg_reply_minutes || 0);
   const avgPayDisplay = payMins > 0 ? (() => { const m=Math.floor(payMins),s=Math.round((payMins-m)*60); return s>0?`${m}m ${s}s`:m>0?`${m}m`:`${s}s`; })() : '—';
   const locCC    = ccCode ? ccCode.toUpperCase() : '';
+  const CC_NAME  = {GH:'Ghana',NG:'Nigeria',KE:'Kenya',ZA:'S. Africa',UG:'Uganda',TZ:'Tanzania',RW:'Rwanda',CM:'Cameroon',SN:'Senegal',ML:'Mali',CI:"Côte d'Ivoire",CD:'DR Congo',ZM:'Zambia',MZ:'Mozambique',ZW:'Zimbabwe',BF:'Burkina Faso',BJ:'Benin',TG:'Togo',NE:'Niger',ET:'Ethiopia',EG:'Egypt',MA:'Morocco',DZ:'Algeria',AO:'Angola',US:'USA',GB:'UK',DE:'Germany',FR:'France',IT:'Italy',ES:'Spain',NL:'Netherlands',SE:'Sweden',NO:'Norway',PL:'Poland',UA:'Ukraine',TR:'Turkey',VN:'Vietnam',TH:'Thailand',ID:'Indonesia',PH:'Philippines',MY:'Malaysia',SG:'Singapore',IN:'India',CN:'China',JP:'Japan',KR:'S. Korea',PK:'Pakistan',BD:'Bangladesh',SA:'Saudi Arabia',AE:'UAE',QA:'Qatar',BR:'Brazil',MX:'Mexico',CO:'Colombia',AR:'Argentina',CA:'Canada',AU:'Australia',NZ:'New Zealand'};
+  const countryName = (u.country && u.country.length > 2) ? u.country : (CC_NAME[locCC] || u.location || (locCC || '—'));
 
+  // Load real reviews when feedback tab is opened
   useEffect(() => {
     if (tab !== 'feedback' || !u.id || reviews.length) return;
     setRvLoad(true);
@@ -581,10 +582,12 @@ function ProfileModal({seller, listing, onClose, onTrade, usdtPriceUSD}) {
         }}>
         <style>{`@keyframes slideUp{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}`}</style>
 
+        {/* ── DRAG HANDLE (mobile) ── */}
         <div className="flex justify-center pt-2.5 pb-1 flex-shrink-0 sm:hidden">
           <div className="w-10 h-1 rounded-full" style={{backgroundColor:C.g200}}/>
         </div>
 
+        {/* ── HEADER ── */}
         <div className="relative px-4 pt-3 pb-4 flex-shrink-0"
           style={{background:`linear-gradient(135deg,${C.forest} 0%,${C.mint} 100%)`}}>
 
@@ -603,6 +606,7 @@ function ProfileModal({seller, listing, onClose, onTrade, usdtPriceUSD}) {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
                 <Link to={u?.id ? `/profile/${u.id}` : '#'}
+                  onClick={() => { if (!u?.id) return; const tk = localStorage.getItem('token'); axios.post(`${API_URL}/users/${u.id}/view-profile`, {}, tk ? { headers: { Authorization: `Bearer ${tk}` } } : {}).catch(()=>{}); }}
                   className="font-black text-white text-base leading-tight truncate"
                   style={{textDecoration:'none', borderBottom:'1.5px solid rgba(255,255,255,0.4)', paddingBottom:'1px'}}>
                   {getDisplayName(u) || 'User'}
@@ -625,6 +629,7 @@ function ProfileModal({seller, listing, onClose, onTrade, usdtPriceUSD}) {
             </div>
           </div>
 
+          {/* ── STATS 2×2 GRID ── */}
           <div className="grid grid-cols-2 gap-2">
             <div className="flex items-center gap-2 rounded-xl px-3 py-2.5"
               style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
@@ -640,7 +645,7 @@ function ProfileModal({seller, listing, onClose, onTrade, usdtPriceUSD}) {
               style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
               <CountryFlag countryCode={ccCode} className="w-5 h-3.5 rounded-sm flex-shrink-0"/>
               <div className="min-w-0">
-                <p className="text-white font-black text-xs leading-tight truncate">{u.country_name || u.country || locCC}</p>
+                <p className="text-white font-black text-xs leading-tight truncate">{countryName}</p>
                 <p className="text-white/50 text-xs leading-tight">Location</p>
               </div>
             </div>
@@ -662,8 +667,10 @@ function ProfileModal({seller, listing, onClose, onTrade, usdtPriceUSD}) {
             </div>
           </div>
 
+          {/* ── VIEW FULL PROFILE LINK ── */}
           {u?.id && (
             <Link to={`/profile/${u.id}`}
+              onClick={() => { const tk = localStorage.getItem('token'); axios.post(`${API_URL}/users/${u.id}/view-profile`, {}, tk ? { headers: { Authorization: `Bearer ${tk}` } } : {}).catch(()=>{}); }}
               className="mt-3 flex items-center justify-center gap-1.5 w-full py-2 rounded-xl text-xs font-bold transition hover:bg-white/20 active:scale-95"
               style={{
                 color:'rgba(255,255,255,0.9)',
@@ -679,6 +686,7 @@ function ProfileModal({seller, listing, onClose, onTrade, usdtPriceUSD}) {
           )}
         </div>
 
+        {/* ── TABS ── */}
         <div className="flex border-b flex-shrink-0 overflow-x-auto" style={{borderColor:C.g200}}>
           {TABS.map(({id, label}) => (
             <button key={id} onClick={() => setTab(id)}
@@ -693,7 +701,10 @@ function ProfileModal({seller, listing, onClose, onTrade, usdtPriceUSD}) {
           ))}
         </div>
 
+        {/* ── TAB CONTENT ── */}
         <div className="flex-1 overflow-y-auto p-4" style={{WebkitOverflowScrolling:'touch', minHeight:0}}>
+
+          {/* OVERVIEW */}
           {tab==='overview' && (
             <div className="space-y-3">
               <div className="grid grid-cols-3 gap-2">
@@ -710,6 +721,7 @@ function ProfileModal({seller, listing, onClose, onTrade, usdtPriceUSD}) {
                   </div>
                 ))}
               </div>
+
               <div className="flex gap-2">
                 <div className="flex-1 flex items-center gap-2 rounded-xl px-3 py-2.5"
                   style={{backgroundColor:'#F0FDF4', border:'1px solid #86EFAC'}}>
@@ -728,18 +740,151 @@ function ProfileModal({seller, listing, onClose, onTrade, usdtPriceUSD}) {
                   </div>
                 </div>
               </div>
+
+              {/* Verification badges */}
+              <div className="rounded-xl overflow-hidden" style={{border:`1px solid ${C.g200}`}}>
+                <p className="text-xs font-black px-3 py-2 uppercase tracking-wider"
+                  style={{color:C.g500, backgroundColor:C.g50}}>Verification</p>
+                {[
+                  {label:'Phone Number', ok:phoneOk,  icon:'📱'},
+                  {label:'Email Address',ok:emailOk,  icon:'📧'},
+                  {label:'ID / KYC',     ok:kycOk,    icon:'🪪'},
+                ].map(({label,ok,icon}) => (
+                  <div key={label} className="flex items-center justify-between px-3 py-2.5 border-t"
+                    style={{borderColor:C.g100}}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">{icon}</span>
+                      <span className="text-xs font-semibold" style={{color:C.g700}}>{label}</span>
+                    </div>
+                    <span className={`text-xs font-black px-2.5 py-1 rounded-full`}
+                      style={{
+                        backgroundColor: ok ? '#F0FDF4' : '#FEF2F2',
+                        color: ok ? '#16A34A' : '#DC2626',
+                      }}>
+                      {ok ? '✓ Verified' : '✗ Not verified'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Bio */}
+              {u.bio && (
+                <div className="rounded-xl p-3" style={{backgroundColor:C.g50, border:`1px solid ${C.g200}`}}>
+                  <p className="text-xs font-bold mb-1" style={{color:C.g500}}>About</p>
+                  <p className="text-xs leading-relaxed" style={{color:C.g700}}>{u.bio}</p>
+                </div>
+              )}
+
+              {/* Extra info */}
+              <div className="rounded-xl overflow-hidden" style={{border:`1px solid ${C.g200}`}}>
+                {[
+                  avgReply ? {label:'Avg. Response', value:`~${Math.round(avgReply)} min`} : null,
+                  {label:'Country', value: (() => {
+                    const cc = (u.country||'').slice(0,2).toUpperCase();
+                    if (!cc) return '—';
+                    const flag = cc.replace(/./g,c=>String.fromCodePoint(0x1F1E0+c.charCodeAt(0)-65));
+                    return `${flag} ${u.country || cc}`;
+                  })()},
+                  {label:'Member since', value: u.created_at ? new Date(u.created_at).toLocaleDateString('en-US',{month:'short',year:'numeric'}) : '—'},
+                ].filter(Boolean).map(({label,value}) => (
+                  <div key={label} className="flex items-center justify-between px-3 py-2.5 border-b last:border-0"
+                    style={{borderColor:C.g100}}>
+                    <span className="text-xs font-semibold" style={{color:C.g500}}>{label}</span>
+                    <span className="text-xs font-black" style={{color:C.g800}}>{value}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
+          {/* FEEDBACK / REVIEWS */}
           {tab==='feedback' && (
-            <div className="text-center py-8">
-              <p className="text-3xl mb-2">💬</p>
-              <p className="font-bold text-sm" style={{color:C.g700}}>
-                {rvLoad ? 'Loading reviews...' : reviews.length === 0 ? 'No reviews yet' : `${reviews.length} reviews`}
-              </p>
+            <div className="space-y-3">
+              <div className="flex gap-2 p-3 rounded-xl"
+                style={{backgroundColor:C.mist, border:`1px solid ${C.g200}`}}>
+                <div className="text-center px-3">
+                  <p className="text-2xl font-black" style={{color:C.forest}}>{rating.toFixed(1)}</p>
+                  <p className="text-xs" style={{color:C.g400}}>Rating</p>
+                </div>
+                <div className="w-px" style={{backgroundColor:C.g200}}/>
+                <div className="flex-1 flex items-center gap-3 px-2">
+                  <div className="text-center flex-1">
+                    <p className="font-black text-sm" style={{color:'#16A34A'}}>{fmt(pos)}</p>
+                    <p className="text-xs" style={{color:C.g400}}>👍 Positive</p>
+                  </div>
+                  <div className="text-center flex-1">
+                    <p className="font-black text-sm" style={{color:'#DC2626'}}>{fmt(neg)}</p>
+                    <p className="text-xs" style={{color:C.g400}}>👎 Negative</p>
+                  </div>
+                  <div className="text-center flex-1">
+                    <p className="font-black text-sm" style={{color:C.forest}}>{trust}%</p>
+                    <p className="text-xs" style={{color:C.g400}}>Trust</p>
+                  </div>
+                </div>
+              </div>
+
+              {rvLoad ? (
+                <div className="space-y-2">
+                  {[1,2,3].map(i=>(
+                    <div key={i} className="rounded-xl p-3 border animate-pulse" style={{borderColor:C.g200}}>
+                      <div className="flex gap-2 mb-2">
+                        <div className="w-7 h-7 rounded-full" style={{backgroundColor:C.g200}}/>
+                        <div className="flex-1 space-y-1.5">
+                          <div className="h-2.5 rounded w-1/3" style={{backgroundColor:C.g200}}/>
+                          <div className="h-2 rounded w-1/4" style={{backgroundColor:C.g100}}/>
+                        </div>
+                      </div>
+                      <div className="h-2.5 rounded w-4/5" style={{backgroundColor:C.g100}}/>
+                    </div>
+                  ))}
+                </div>
+              ) : reviews.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-3xl mb-2">💬</p>
+                  <p className="font-bold text-sm" style={{color:C.g700}}>No reviews yet</p>
+                  <p className="text-xs mt-1" style={{color:C.g400}}>Be the first to trade with this seller</p>
+                </div>
+              ) : (
+                reviews.slice(0, 20).map((rv, i) => {
+                  const isPos = rv.rating >= 4;
+                  const ago = rv.created_at ? (() => {
+                    const s = (Date.now()-new Date(rv.created_at))/1000;
+                    if(s<3600) return `${~~(s/60)}m ago`;
+                    if(s<86400) return `${~~(s/3600)}h ago`;
+                    return `${~~(s/86400)}d ago`;
+                  })() : '';
+                  return (
+                    <div key={i} className="rounded-xl border p-3"
+                      style={{
+                        borderColor: isPos ? '#86EFAC' : '#FCA5A5',
+                        backgroundColor: isPos ? '#F0FDF4' : '#FEF2F2',
+                      }}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-black text-white flex-shrink-0"
+                            style={{backgroundColor: isPos ? '#16A34A' : '#DC2626'}}>
+                            {isPos ? '👍' : '👎'}
+                          </div>
+                          <span className="text-xs font-black" style={{color: isPos ? '#166534' : '#991B1B'}}>
+                            {rv.reviewer?.username || 'Anonymous'}
+                          </span>
+                        </div>
+                        <span className="text-xs" style={{color:C.g400}}>{ago}</span>
+                      </div>
+                      {rv.comment && (
+                        <p className="text-xs leading-relaxed pl-8"
+                          style={{color: isPos ? '#14532D' : '#7F1D1D'}}>
+                          "{rv.comment}"
+                        </p>
+                      )}
+                    </div>
+                  );
+                })
+              )}
             </div>
           )}
 
+          {/* TRADE RULES */}
           {tab==='rules' && (
             <div className="space-y-3">
               <div className="p-3.5 rounded-xl text-sm leading-relaxed whitespace-pre-wrap"
@@ -764,66 +909,49 @@ function ProfileModal({seller, listing, onClose, onTrade, usdtPriceUSD}) {
             </div>
           )}
 
+          {/* OFFER DETAILS */}
           {tab==='offer' && (
-            <div className="space-y-3">
-              <div className="rounded-xl p-3" style={{backgroundColor:C.mist, border:`1px solid ${C.g200}`}}>
-                <p className="text-xs font-bold mb-1.5" style={{color:C.g500}}>Offer Summary</p>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold" style={{color:C.g500}}>Amount</span>
-                    <span className="text-xs font-black" style={{color:C.g800}}>
-                      {sym}{fmt(minLocal, 2)} – {sym}{fmt(maxLocal, 2)} {cur}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold" style={{color:C.g500}}>Rate</span>
-                    <span className="text-xs font-black" style={{color:C.forest}}>
-                      {sym}{fmt(rateLocal)}/USDT
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold" style={{color:C.g500}}>Payment</span>
-                    <span className="text-xs font-black" style={{color:C.g800}}>{pmLabel}</span>
-                  </div>
+            <div className="rounded-xl overflow-hidden" style={{border:`1px solid ${C.g200}`}}>
+              {[
+                {label:'Payment Method', value:listing?.payment_method||'—'},
+                {label:'Rate / USDT',    value:`${sym}${fmt(rateLocal,2)} ${cur}`},
+                {label:'Margin',         value:margin===0?'At market':margin>0?`+${margin}% above market`:`${margin}% below market`},
+                {label:'Trade Limits',   value:listing?.min_limit_local && listing?.max_limit_local
+                  ? `${sym}${fmt(listing.min_limit_local)} – ${sym}${fmt(listing.max_limit_local)} ${cur}`
+                  : `$${listing?.min_limit_usd||10} – $${listing?.max_limit_usd||1000} USD`},
+                {label:'Time Limit',     value:`${listing?.time_limit||30} minutes`},
+                {label:'Country',        value: (() => {
+                  const raw = listing?.country_name || u.country || '';
+                  if (!raw) return '—';
+                  const cc = raw.slice(0,2).toUpperCase();
+                  const flag = cc.replace(/./g,c=>String.fromCodePoint(0x1F1E0+c.charCodeAt(0)-65));
+                  return `${flag} ${raw}`;
+                })()},
+              ].map(({label,value}) => (
+                <div key={label} className="flex items-center justify-between px-3.5 py-3 border-b last:border-0"
+                  style={{borderColor:C.g100}}>
+                  <span className="text-xs font-semibold" style={{color:C.g500}}>{label}</span>
+                  <span className="text-xs font-black text-right ml-4" style={{color:C.g800, maxWidth:'60%'}}>{value}</span>
                 </div>
-              </div>
+              ))}
             </div>
           )}
         </div>
 
-        <div className="p-4 pt-2 flex-shrink-0">
+        {/* ── FOOTER ACTIONS ── */}
+        <div className="p-4 flex gap-3 flex-shrink-0 border-t" style={{borderColor:C.g200}}>
+          <button onClick={onClose}
+            className="flex-1 py-3 rounded-2xl border text-sm font-bold hover:bg-gray-50 transition"
+            style={{borderColor:C.g200, color:C.g600}}>
+            Close
+          </button>
           <button onClick={onTrade}
-            className="w-full py-3 rounded-2xl text-white text-sm font-black flex items-center justify-center gap-2 shadow-md hover:opacity-90 active:scale-[0.98] transition"
+            className="flex-1 py-3 rounded-2xl text-white text-sm font-black flex items-center justify-center gap-2 shadow-md"
             style={{backgroundColor:C.forest}}>
-            <Bitcoin size={15}/> BUY USDT
+            <span className="font-black">₮</span> Buy USDT
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ── RateBar (header gradient banner with BTC price) ───────────────────────────
-function RateBar({usdtPrice, btcPriceUsd}) {
-  return (
-    <div className="p-4 sm:p-6 rounded-2xl text-white relative overflow-hidden"
-      style={{
-        background: `linear-gradient(135deg,${C.forest} 0%,${C.mint} 100%)`,
-      }}>
-      <div className="flex items-center justify-between flex-wrap gap-2 relative z-10">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wider opacity-70">USDT Market</p>
-          <p className="text-2xl sm:text-3xl font-black mt-1">Buy USDT</p>
-        </div>
-        <div className="text-right">
-          <p className="text-xs font-bold uppercase tracking-wider opacity-70">1 USDT</p>
-          <p className="text-xl sm:text-2xl font-black mt-1">≈ ${(usdtPrice || 1).toFixed(2)}</p>
-        </div>
-      </div>
-      <div className="absolute -right-8 -bottom-8 w-40 h-40 rounded-full opacity-10"
-        style={{backgroundColor:'#fff'}}/>
-      <div className="absolute -right-12 -bottom-12 w-48 h-48 rounded-full opacity-5"
-        style={{backgroundColor:'#fff'}}/>
     </div>
   );
 }
@@ -834,7 +962,6 @@ function RateBar({usdtPrice, btcPriceUsd}) {
 export default function BuyUSDT({user}) {
   const navigate = useNavigate();
   const { rates: USD_RATES, btcUsd: contextBtcUsd } = useRates();
-  // TODO: backend will provide asset:'USDT' field on /listings response
   // Using cached data filtered to USDT only
   const _cacheAll = () => {
     try {
@@ -874,6 +1001,7 @@ export default function BuyUSDT({user}) {
   const paymentRef  = useRef(null);
 
   const userBtcBalance = parseFloat(user?.btc_balance || 0);
+  const [userUsdtBalance, setUserUsdtBalance] = useState(0);
   // USDT is pegged ~$1, but we use contextBtcUsd for BTC reference display
   const usdtPrice = 1;
   const btcPrice  = contextBtcUsd || 68000;
@@ -921,8 +1049,6 @@ export default function BuyUSDT({user}) {
         setLastSynced(new Date());
       }
       setLoading(false);
-      // TODO: backend USDT data — when asset:'USDT' field is present on listings, 
-      // this filter will correctly show USDT offers and the empty state when none exist.
     } catch (err) {
       if (attempt < 3) {
         setRetrying(true);
@@ -970,8 +1096,8 @@ export default function BuyUSDT({user}) {
     if (uids.length === 0) return;
     const fetchStatus = async () => {
       try {
-        const r = await axios.post(`${API_URL}/users/batch-status`, { userIds: uids }, { timeout: 8000 });
-        if (r.data?.statuses) setLiveStatus(r.data.statuses);
+        const r = await axios.get(`${API_URL}/users/online-status?ids=${uids.join(',')}`, { timeout: 8000 });
+        if (r.data?.status) setLiveStatus(r.data.status);
       } catch {}
     };
     fetchStatus();
@@ -998,6 +1124,51 @@ export default function BuyUSDT({user}) {
       axios.post(`${API_URL}/users/heartbeat`, {}, { headers: h }).catch(() => {}),
       fetchTrades(),
     ]);
+  }, []);
+
+  // ── Own USDT balance — drives the low-balance seller reminder banner ──────
+  useEffect(() => {
+    const tk = localStorage.getItem('token');
+    if (!tk) return;
+    axios.get(`${API_URL}/wallet/usdt`, { headers: { Authorization: `Bearer ${tk}` } })
+      .then(r => setUserUsdtBalance(parseFloat(r.data?.balance_usdt || 0)))
+      .catch(() => {});
+  }, []);
+
+  // ── Auto-detect country + currency on first load ───────────────────────────
+  useEffect(() => {
+    const applyCountry = (cc) => {
+      const code = (cc || '').toUpperCase().slice(0, 2);
+      const matched = COUNTRIES.find(c => c.code === code);
+      if (!matched || matched.code === 'ALL') return false;
+      setSelCountry(matched);
+      const curMatch = CURRENCIES.find(c => c.code === matched.currency);
+      if (curMatch) setSelCurrency(curMatch);
+      return true;
+    };
+    if (user) {
+      const cc = user.country_code || (user.country?.length <= 3 ? user.country : null) || '';
+      if (applyCountry(cc)) return;
+    }
+    const detected = sessionStorage.getItem('praqen_geo');
+    if (detected) {
+      try {
+        const { countryCode } = JSON.parse(detected);
+        applyCountry(countryCode);
+      } catch {}
+      return;
+    }
+    const geoController = new AbortController();
+    const geoTimeout = setTimeout(() => geoController.abort(), 3000);
+    fetch('https://ipapi.co/json/', { signal: geoController.signal })
+      .then(r => r.json())
+      .then(data => {
+        const countryCode = (data.country_code || '').toUpperCase();
+        sessionStorage.setItem('praqen_geo', JSON.stringify({ countryCode }));
+        applyCountry(countryCode);
+      })
+      .catch(() => {})
+      .finally(() => clearTimeout(geoTimeout));
   }, []);
 
   const handleTradeExpire = (id) => setActiveTrades(prev => prev.filter(t =>
@@ -1055,218 +1226,284 @@ export default function BuyUSDT({user}) {
     }
   };
 
+  const cur = selCurrency.code;
+  const sym = selCurrency.symbol;
+  const usdRate = USD_RATES[cur] || 1;
+
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div style={{backgroundColor:'#F8FAFC', minHeight:'100vh', fontFamily:"'DM Sans', sans-serif"}}>
+    <div className="min-h-screen flex flex-col"
+      style={{backgroundColor:C.g100, fontFamily:"'DM Sans',sans-serif"}}>
       <SEO
         title="Buy USDT with Local Currency | PRAQEN P2P Marketplace"
         description="Buy USDT (Tether) from verified sellers using mobile money, bank transfer, and more on PRAQEN's peer-to-peer marketplace."
         url="/buy-usdt"
       />
 
-      <div className="max-w-[1280px] mx-auto px-4 py-6 md:px-8">
+      {/* ══ 1. RATE BAR ════════════════════════════════════════ */}
+      <div style={{backgroundColor:C.forest}} className="w-full flex-shrink-0">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-2.5">
+          <div className="flex items-center justify-between gap-3">
 
-        {/* ── 0. RATE BAR ── */}
-        <RateBar usdtPrice={usdtPrice} btcPriceUsd={btcPrice} />
+            <div className="flex-1 min-w-0">
+              <p className="text-base sm:text-xl md:text-3xl font-black text-white leading-tight mb-1.5">
+                Buy USDT with{' '}
+                <span style={{color:C.gold}}>
+                  {selPayment==='all' ? 'Local Currency' : (selPmInfo?.label || 'Mobile Money')}
+                </span>
+              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-semibold" style={{color:'rgba(255,255,255,0.5)'}}>
+                  1 USDT ≈ <span className="font-black" style={{color:'rgba(255,255,255,0.9)'}}>${fmt(usdtPrice,2)} USD</span>
+                </span>
+                <span style={{color:'rgba(255,255,255,0.2)', fontSize:10}}>|</span>
+                <span className="text-xs font-semibold" style={{color:'rgba(255,255,255,0.5)'}}>
+                  1 USD = <span className="font-black" style={{color:'rgba(255,255,255,0.75)'}}>
+                    {cur==='USD' ? `₵${fmt(USD_RATES['GHS']||1,2)} GHS` : `${sym}${fmt(usdRate,2)} ${cur}`}
+                  </span>
+                </span>
+              </div>
+            </div>
 
-        {/* ── 1. TAB NAVIGATION ── */}
-        <div className="flex w-full mt-6">
+            <button onClick={loadListings}
+              className="w-9 h-9 rounded-xl flex items-center justify-center transition hover:bg-white/20 flex-shrink-0"
+              style={{backgroundColor:'rgba(255,255,255,0.1)'}}>
+              <RefreshCw size={15} className={`text-white ${loading?'animate-spin':''}`}/>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ══ 2. TAB NAVIGATION ══════════════════════════════════ */}
+      <div className="bg-white border-b sticky z-30 flex-shrink-0" style={{top:'var(--navbar-h)',borderColor:C.g200}}>
+        <div className="flex w-full">
           {[
-            {label:'Buy USDT',  path:'/buy-usdt',   active:true,  color:'#1B4332'},
-            {label:'Sell',      path:'/sell-usdt',  active:false, color:'#D97706'},
+            {label:'Buy USDT',  path:'/buy-usdt',    active:true,  color:'#1B4332'},
+            {label:'Sell',      path:'/sell-usdt',   active:false, color:'#D97706'},
             {label:'Buy BTC',   path:'/buy-bitcoin', active:false, color:'#1B4332'},
             {label:'Gift Cards', path:'/gift-cards', active:false, color:'#0D9488'},
           ].map(tab=>(
             <Link key={tab.path} to={tab.path}
-              className="flex-1 flex items-center justify-center py-2.5 text-sm font-black transition-all"
+              className="flex-1 text-center py-3 text-xs font-black border-b-2 transition-all"
               style={{
-                borderBottom: tab.active ? `3px solid ${tab.color}` : `3px solid transparent`,
-                color: tab.active ? tab.color : '#94A3B8',
-                background: tab.active ? `${tab.color}06` : 'transparent',
-                textDecoration: 'none',
+                borderColor:     tab.active ? tab.color : 'transparent',
+                color:           tab.active ? tab.color : C.g400,
+                backgroundColor: tab.active ? tab.color+'18' : 'transparent',
               }}>
               {tab.label}
             </Link>
           ))}
         </div>
+      </div>
 
-        {/* ── 2. FILTER BAR ── */}
-        <div className="mt-4 p-4 rounded-2xl bg-white border"
-          style={{borderColor:C.g200, boxShadow:'0 2px 12px rgba(0,0,0,0.04)'}}>
+      {/* Low-balance reminder — shown to logged-in sellers whose USDT is below $10 */}
+      {user && userUsdtBalance < 10 && (
+        <div className="flex-shrink-0 px-3 pt-3">
+          <div className="max-w-7xl mx-auto rounded-2xl p-4 flex items-start gap-3"
+            style={{backgroundColor:'#FFFBEB', border:'1.5px solid #FCD34D'}}>
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{backgroundColor:'#FEF3C7'}}>
+              <Wallet size={16} style={{color:'#D97706'}}/>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-black" style={{color:'#92400E'}}>Keep your wallet funded to stay active</p>
+              <p className="text-xs mt-0.5 leading-relaxed" style={{color:'#B45309'}}>
+                Your USDT wallet must have at least <strong>$10</strong> for your sell offer to appear in the Buy USDT market.
+                Current balance: <strong>${userUsdtBalance.toFixed(2)}</strong>.
+                Top up now to activate your offer.
+              </p>
+            </div>
+            <button
+              onClick={()=>navigate('/wallet')}
+              className="flex-shrink-0 px-3 py-2 rounded-xl text-xs font-black text-white"
+              style={{backgroundColor:'#D97706'}}>
+              Top Up
+            </button>
+          </div>
+        </div>
+      )}
 
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Amount input */}
-            <div className="relative flex-1 min-w-[120px]">
-              <input type="number" placeholder="Amount"
-                value={buyAmt} onChange={e=>setBuyAmt(e.target.value)}
-                className="w-full px-3 py-2 text-sm font-bold border-2 rounded-xl focus:outline-none"
-                style={{borderColor:buyAmt?C.forest:C.g200, color:C.g800}}/>
+      {/* ══ 3. FILTER BAR ══════════════════════════════════════ */}
+      <div className="bg-white border-b flex-shrink-0" style={{borderColor:C.g200}}>
+        <div className="max-w-7xl mx-auto px-3 py-3 space-y-2">
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+
+            <div>
+              <p className="text-xs font-black mb-1 tracking-wide" style={{color:C.g500}}>AMOUNT</p>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-black pointer-events-none select-none"
+                  style={{color:buyAmt?C.forest:C.g400}}>{sym}</span>
+                <input
+                  type="number" min="0" placeholder="e.g. 50"
+                  value={buyAmt}
+                  onChange={e=>setBuyAmt(e.target.value)}
+                  className="w-full pl-6 pr-7 py-2.5 rounded-xl border-2 font-black focus:outline-none"
+                  style={{borderColor:buyAmt?C.forest:C.g200, color:C.g800, backgroundColor:buyAmt?`${C.forest}08`:'transparent', fontSize:'16px'}}
+                />
+                {buyAmt&&(
+                  <button onClick={()=>setBuyAmt('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center rounded-full"
+                    style={{backgroundColor:C.g200}}>
+                    <X size={9} style={{color:C.g600}}/>
+                  </button>
+                )}
+              </div>
             </div>
 
-            {/* Currency */}
             <div className="relative" ref={currencyRef}>
-              <button onClick={()=>setShowCurrency(!showCurrency)}
-                className="flex items-center gap-1 px-3 py-2 text-sm font-bold border-2 rounded-xl transition"
-                style={{borderColor:showCurrency?C.forest:C.g200, color:C.g800, backgroundColor:showCurrency?'#F0FAF5':'#fff'}}>
-                {selCurrency.symbol} {selCurrency.code}
-                <ChevronDown size={12} style={{transform:showCurrency?'rotate(180deg)':'none', transition:'0.2s'}}/>
+              <p className="text-xs font-black mb-1 tracking-wide" style={{color:C.g500}}>CURRENCY</p>
+              <button
+                onClick={()=>{setShowCurrency(!showCurrency);setShowCountry(false);setShowPayment(false);}}
+                className="w-full flex items-center gap-1.5 px-2.5 py-2.5 rounded-xl border-2 font-bold transition"
+                style={{
+                  borderColor:     selCurrency.code!=='USD' ? C.forest : C.g200,
+                  color:           selCurrency.code!=='USD' ? C.forest : C.g600,
+                  backgroundColor: selCurrency.code!=='USD' ? `${C.forest}08` : 'transparent',
+                }}>
+                <span className="text-xs font-black flex-shrink-0">{selCurrency.symbol}</span>
+                <span className="text-xs font-black flex-1 text-left truncate">{selCurrency.code}</span>
+                <ChevronDown size={11} className={`transition-transform flex-shrink-0 ${showCurrency?'rotate-180':''}`}
+                  style={{color:selCurrency.code!=='USD' ? C.forest : C.g400}}/>
               </button>
               {showCurrency && (
-                <div className="absolute top-full mt-1 left-0 bg-white border rounded-xl shadow-lg z-30"
-                  style={{width:220, borderColor:C.g200, maxHeight:260, overflow:'auto'}}>
-                  <div className="p-2">
+                <div className="absolute top-full right-0 mt-1.5 bg-white rounded-2xl shadow-2xl z-50 border overflow-hidden"
+                  style={{borderColor:C.g100,minWidth:'220px',maxWidth:'calc(100vw - 24px)'}}>
+                  <div className="p-2 border-b sticky top-0 bg-white" style={{borderColor:C.g100}}>
                     <input type="text" placeholder="🔍  Search currency…"
-                      value={currencySearch} onChange={e=>setCurrencySearch(e.target.value)} autoFocus
+                      value={currencySearch} onChange={e=>setCurrencySearch(e.target.value)}
+                      autoFocus
                       className="w-full px-3 py-1.5 font-semibold rounded-xl border focus:outline-none"
-                      style={{borderColor:C.g200}}/>
+                      style={{borderColor:C.g200,color:C.g800,fontSize:'16px'}}/>
                   </div>
-                  {CURRENCIES.filter(c=>!currencySearch||c.code.toLowerCase().includes(currencySearch.toLowerCase())||c.name.toLowerCase().includes(currencySearch.toLowerCase())).map(c=>(
-                    <button key={c.code} onClick={()=>{setSelCurrency(c);setShowCurrency(false);setCurrencySearch('');}}
-                      className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-gray-50 border-b last:border-0 transition"
-                      style={{borderColor:C.g50,backgroundColor:selCurrency.code===c.code?`${C.forest}08`:'transparent'}}>
-                      <span className="text-base">{c.symbol}</span>
-                      <span className="text-xs font-semibold" style={{color:C.g700}}>{c.code} – {c.name}</span>
-                    </button>
-                  ))}
+                  <div className="overflow-y-auto max-h-56">
+                    {CURRENCIES.filter(c=>!currencySearch||c.code.toLowerCase().includes(currencySearch.toLowerCase())||c.name.toLowerCase().includes(currencySearch.toLowerCase())).map(c=>(
+                      <button key={c.code} onClick={()=>{setSelCurrency(c);setShowCurrency(false);setCurrencySearch('');}}
+                        className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-gray-50 border-b last:border-0 transition"
+                        style={{borderColor:C.g50,backgroundColor:selCurrency.code===c.code?`${C.forest}08`:'transparent'}}>
+                        <span className="text-sm font-black flex-shrink-0 w-8 text-center" style={{color:C.g700}}>{c.symbol}</span>
+                        <div className="flex-1 text-left min-w-0">
+                          <p className="font-bold text-xs" style={{color:C.g800}}>{c.code}</p>
+                          <p className="text-xs truncate" style={{color:C.g400}}>{c.name}</p>
+                        </div>
+                        {selCurrency.code===c.code&&<CheckCircle size={11} style={{color:C.green,flexShrink:0}}/>}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* Country */}
-            <div className="relative" ref={countryRef}>
-              <button onClick={()=>setShowCountry(!showCountry)}
-                className="flex items-center gap-1 px-3 py-2 text-sm font-bold border-2 rounded-xl transition"
-                style={{borderColor:showCountry?C.forest:C.g200, color:C.g800, backgroundColor:showCountry?'#F0FAF5':'#fff'}}>
-                {selCountry.flag} {selCountry.code==='ALL'?'All':selCountry.code}
-                <ChevronDown size={12} style={{transform:showCountry?'rotate(180deg)':'none', transition:'0.2s'}}/>
-              </button>
-              {showCountry && (
-                <div className="absolute top-full mt-1 left-0 bg-white border rounded-xl shadow-lg z-30"
-                  style={{width:240, borderColor:C.g200, maxHeight:280, overflow:'auto'}}>
-                  <div className="p-2">
-                    <input type="text" placeholder="🔍  Search country…"
-                      value={countrySearch} onChange={e=>setCountrySearch(e.target.value)} autoFocus
-                      className="w-full px-3 py-1.5 font-semibold rounded-xl border focus:outline-none"
-                      style={{borderColor:C.g200}}/>
-                  </div>
-                  {(() => {
-                    const filteredCountries = COUNTRIES.filter(c => !countrySearch || c.name.toLowerCase().includes(countrySearch.toLowerCase()) || c.code.toLowerCase().includes(countrySearch.toLowerCase()));
-                    const regions = [...new Set(filteredCountries.map(c => c.region).filter(Boolean))];
-                    const result = [];
-                    if (countrySearch) {
-                      filteredCountries.forEach(c => {
-                        result.push(
-                          <button key={c.code} onClick={()=>{setSelCountry(c);setShowCountry(false);setCountrySearch('');if(c.currency){const matched=CURRENCIES.find(cur=>cur.code===c.currency);if(matched)setSelCurrency(matched);}}}
-                            className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-gray-50 border-b last:border-0 transition"
-                            style={{borderColor:C.g50,backgroundColor:selCountry.code===c.code?`${C.forest}08`:'transparent'}}>
-                            <span className="text-base">{c.flag}</span>
-                            <span className="text-xs font-semibold" style={{color:C.g700}}>{c.name}</span>
-                          </button>
-                        );
-                      });
-                    } else {
-                      regions.forEach(reg => {
-                        const regColor = COUNTRY_REGIONS[reg];
-                        result.push(
-                          <div key={`reg-${reg}`} className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider"
-                            style={{color:regColor, backgroundColor:C.g50}}>{reg}</div>
-                        );
-                        filteredCountries.filter(c => c.region === reg).forEach(c => {
-                          result.push(
-                            <button key={c.code} onClick={()=>{setSelCountry(c);setShowCountry(false);setCountrySearch('');if(c.currency){const matched=CURRENCIES.find(cur=>cur.code===c.currency);if(matched)setSelCurrency(matched);}}}
-                              className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-gray-50 border-b last:border-0 transition"
-                              style={{borderColor:C.g50,backgroundColor:selCountry.code===c.code?`${C.forest}08`:'transparent'}}>
-                              <span className="text-base">{c.flag}</span>
-                              <span className="text-xs font-semibold" style={{color:C.g700}}>{c.name}</span>
-                            </button>
-                          );
-                        });
-                      });
-                      filteredCountries.filter(c => !c.region).forEach(c => {
-                        result.push(
-                          <button key={c.code} onClick={()=>{setSelCountry(c);setShowCountry(false);setCountrySearch('');if(c.currency){const matched=CURRENCIES.find(cur=>cur.code===c.currency);if(matched)setSelCurrency(matched);}}}
-                            className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-gray-50 border-b last:border-0 transition"
-                            style={{borderColor:C.g50,backgroundColor:selCountry.code===c.code?`${C.forest}08`:'transparent'}}>
-                            <span className="text-base">{c.flag}</span>
-                            <span className="text-xs font-semibold" style={{color:C.g700}}>{c.name}</span>
-                          </button>
-                        );
-                      });
-                    }
-                    return result;
-                  })()}
-                </div>
-              )}
-            </div>
-
-            {/* Payment method */}
             <div className="relative" ref={paymentRef}>
-              <button onClick={()=>setShowPayment(!showPayment)}
-                className="flex items-center gap-1 px-3 py-2 text-sm font-bold border-2 rounded-xl transition"
-                style={{borderColor:showPayment||selPayment!=='all'?C.forest:C.g200, color:C.g800, backgroundColor:showPayment?'#F0FAF5':'#fff'}}>
-                {selPmInfo?.icon||'💳'} {selPayment==='all'?'Payment':selPmInfo?.label}
-                <ChevronDown size={12} style={{transform:showPayment?'rotate(180deg)':'none', transition:'0.2s'}}/>
+              <p className="text-xs font-black mb-1 tracking-wide" style={{color:C.g500}}>PAYMENT</p>
+              <button
+                onClick={()=>{setShowPayment(!showPayment);setShowCurrency(false);setShowCountry(false);}}
+                className="w-full flex items-center gap-1.5 px-2.5 py-2.5 rounded-xl border-2 font-bold transition"
+                style={{
+                  borderColor:     selPayment!=='all' ? C.forest : C.g200,
+                  color:           selPayment!=='all' ? C.forest : C.g600,
+                  backgroundColor: selPayment!=='all' ? `${C.forest}08` : 'transparent',
+                }}>
+                <span className="text-sm leading-none flex-shrink-0">{selPmInfo?.icon||'💳'}</span>
+                <span className="text-xs font-black truncate flex-1 text-left">
+                  {selPayment==='all' ? 'All Methods' : (selPmInfo?.label||'All Methods')}
+                </span>
+                <ChevronDown size={11} className={`transition-transform flex-shrink-0 ${showPayment?'rotate-180':''}`}
+                  style={{color:selPayment!=='all' ? C.forest : C.g400}}/>
               </button>
               {showPayment && (
-                <div className="absolute top-full mt-1 right-0 bg-white border rounded-xl shadow-lg z-30"
-                  style={{width:260, borderColor:C.g200, maxHeight:320, overflow:'auto'}}>
-                  <div className="p-2">
+                <div className="absolute top-full left-0 mt-1.5 bg-white rounded-2xl shadow-2xl z-50 border overflow-hidden"
+                  style={{borderColor:C.g100,minWidth:'220px',maxWidth:'calc(100vw - 24px)'}}>
+                  <div className="p-2 border-b sticky top-0 bg-white" style={{borderColor:C.g100}}>
                     <input type="text" placeholder="🔍  Search payment…"
-                      value={paymentSearch} onChange={e=>setPaymentSearch(e.target.value)} autoFocus
+                      value={paymentSearch} onChange={e=>setPaymentSearch(e.target.value)}
+                      autoFocus
                       className="w-full px-3 py-1.5 font-semibold rounded-xl border focus:outline-none"
-                      style={{borderColor:C.g200}}/>
+                      style={{borderColor:C.g200,color:C.g800,fontSize:'16px'}}/>
                   </div>
+                  <div className="overflow-y-auto max-h-56">
                   {(() => {
-                    const cats = selPayment !== 'all' ? [] : [...new Set(PAYMENT_OPTIONS.map(p => p.cat).filter(Boolean))];
-                    const filteredPMs = PAYMENT_OPTIONS.filter(p => p.value==='all'||!paymentSearch||p.label.toLowerCase().includes(paymentSearch.toLowerCase()));
-                    const result = [];
-                    if (paymentSearch) {
-                      filteredPMs.forEach(p => {
-                        result.push(
-                          <button key={p.value} onClick={()=>{setSelPayment(p.value);setShowPayment(false);setPaymentSearch('');}}
-                            className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-gray-50 border-b last:border-0 transition"
-                            style={{borderColor:C.g50,backgroundColor:selPayment===p.value?`${C.forest}08`:'transparent'}}>
-                            <span>{p.icon}</span>
-                            <span className="text-xs font-semibold" style={{color:C.g700}}>{p.label}</span>
-                          </button>
-                        );
-                      });
-                    } else {
-                      filteredPMs.filter(p => p.value==='all').forEach(p => {
-                        result.push(
-                          <button key={p.value} onClick={()=>{setSelPayment(p.value);setShowPayment(false);setPaymentSearch('');}}
-                            className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-gray-50 border-b last:border-0 transition"
-                            style={{borderColor:C.g50,backgroundColor:selPayment===p.value?`${C.forest}08`:'transparent'}}>
-                            <span>{p.icon}</span>
-                            <span className="text-xs font-semibold" style={{color:C.g700}}>{p.label}</span>
-                          </button>
-                        );
-                      });
-                      cats.forEach(cat => {
-                        const catColor = PM_CAT_COLORS[cat];
-                        result.push(
-                          <div key={`cat-${cat}`} className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider"
-                            style={{color:catColor, backgroundColor:C.g50}}>{cat}</div>
-                        );
-                        filteredPMs.filter(p => p.cat === cat).forEach(p => {
-                          result.push(
-                            <button key={p.value} onClick={()=>{setSelPayment(p.value);setShowPayment(false);setPaymentSearch('');}}
-                              className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-gray-50 border-b last:border-0 transition"
-                              style={{borderColor:C.g50,backgroundColor:selPayment===p.value?`${C.forest}08`:'transparent'}}>
-                              <span>{p.icon}</span>
-                              <span className="text-xs font-semibold" style={{color:C.g700}}>{p.label}</span>
-                            </button>
-                          );
-                        });
-                      });
-                    }
-                    return result;
+                    const q = paymentSearch.toLowerCase();
+                    let lastCat = null;
+                    return PAYMENT_OPTIONS.filter(p=>!q||p.label.toLowerCase().includes(q)||p.value.toLowerCase().includes(q)).map(p => {
+                      const catHeader = !q && p.cat && p.cat !== lastCat ? (lastCat = p.cat, (
+                        <div key={`h-${p.cat}`} className="px-3 py-1" style={{backgroundColor:'#F8FAFC'}}>
+                          <span className="text-xs font-black uppercase tracking-wider" style={{color:PM_CAT_COLORS[p.cat]||C.g500}}>{p.cat}</span>
+                        </div>
+                      )) : (lastCat = p.cat || lastCat, null);
+                      return [catHeader, (
+                        <button key={p.value} onClick={()=>{setSelPayment(p.value);setShowPayment(false);setPaymentSearch('');}}
+                          className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 transition"
+                          style={{backgroundColor:selPayment===p.value?`${C.forest}08`:'transparent'}}>
+                          <span className="text-sm flex-shrink-0">{p.icon}</span>
+                          <span className="flex-1 text-left font-semibold text-xs leading-tight" style={{color:C.g800}}>{p.label}</span>
+                          {selPayment===p.value && <CheckCircle size={11} style={{color:C.green,flexShrink:0}}/>}
+                        </button>
+                      )];
+                    });
                   })()}
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* Sort */}
+            <div className="relative" ref={countryRef}>
+              <p className="text-xs font-black mb-1 tracking-wide" style={{color:C.g500}}>COUNTRY</p>
+              <button
+                onClick={()=>{setShowCountry(!showCountry);setShowCurrency(false);setShowPayment(false);}}
+                className="w-full flex items-center gap-1.5 px-2.5 py-2.5 rounded-xl border-2 font-bold transition"
+                style={{
+                  borderColor:     selCountry.code!=='ALL' ? C.forest : C.g200,
+                  color:           selCountry.code!=='ALL' ? C.forest : C.g600,
+                  backgroundColor: selCountry.code!=='ALL' ? `${C.forest}08` : 'transparent',
+                }}>
+                <span className="text-sm leading-none flex-shrink-0">{selCountry.flag}</span>
+                <span className="text-xs font-black truncate flex-1 text-left">{selCountry.name}</span>
+                <ChevronDown size={11} className={`transition-transform flex-shrink-0 ${showCountry?'rotate-180':''}`}
+                  style={{color:selCountry.code!=='ALL' ? C.forest : C.g400}}/>
+              </button>
+              {showCountry && (
+                <div className="absolute top-full right-0 mt-1.5 bg-white rounded-2xl shadow-2xl z-50 border overflow-hidden"
+                  style={{borderColor:C.g100,minWidth:'240px',maxWidth:'calc(100vw - 24px)'}}>
+                  <div className="p-2 border-b sticky top-0 bg-white" style={{borderColor:C.g100}}>
+                    <input type="text" placeholder="🔍  Search country…"
+                      value={countrySearch} onChange={e=>setCountrySearch(e.target.value)}
+                      autoFocus
+                      className="w-full px-3 py-1.5 font-semibold rounded-xl border focus:outline-none"
+                      style={{borderColor:C.g200,color:C.g800,fontSize:'16px'}}/>
+                  </div>
+                  <div className="overflow-y-auto max-h-60">
+                    {(() => {
+                      const q = countrySearch.toLowerCase();
+                      const filteredC = COUNTRIES.filter(c=>!q||c.name.toLowerCase().includes(q));
+                      let lastReg = null;
+                      return filteredC.map(c=>{
+                        const regHdr = !q && c.region && c.region!==lastReg
+                          ? (lastReg=c.region, <div key={`r-${c.region}`} className="px-3 py-1" style={{backgroundColor:'#F8FAFC'}}>
+                              <span className="text-xs font-black uppercase tracking-wider" style={{color:COUNTRY_REGIONS[c.region]||C.g500}}>{c.region}</span>
+                            </div>)
+                          : (c.region&&(lastReg=c.region), null);
+                        return [regHdr,
+                          <button key={c.code} onClick={()=>{setSelCountry(c);setShowCountry(false);setCountrySearch('');if(c.currency){const matched=CURRENCIES.find(curr=>curr.code===c.currency);if(matched)setSelCurrency(matched);}}}
+                            className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-gray-50 border-b last:border-0 transition"
+                            style={{borderColor:C.g50,backgroundColor:selCountry.code===c.code?`${C.forest}08`:'transparent'}}>
+                            <span className="text-base flex-shrink-0">{c.flag}</span>
+                            <div className="flex-1 text-left min-w-0">
+                              <p className="font-bold text-xs truncate" style={{color:C.g800}}>{c.name}</p>
+                              {c.currency&&<p className="text-xs" style={{color:C.g400}}>{c.symbol} {c.currency}</p>}
+                            </div>
+                            {selCountry.code===c.code&&<CheckCircle size={11} style={{color:C.green,flexShrink:0}}/>}
+                          </button>
+                        ];
+                      });
+                    })()}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
             <span className="text-xs font-black flex-shrink-0" style={{color:C.g500}}>Sort:</span>
             <select value={sortBy} onChange={e=>setSortBy(e.target.value)}
               className="flex-shrink-0 px-2 py-2 font-bold border-2 rounded-xl focus:outline-none"
@@ -1274,196 +1511,204 @@ export default function BuyUSDT({user}) {
               <option value="rate_low">Rate: Low</option>
               <option value="rate_high">Rate: High</option>
             </select>
-
-            {/* Create Offer button */}
+            <div className="flex-1 min-w-0 flex items-center border-2 rounded-xl overflow-hidden"
+              style={{borderColor:traderSearch.trim()?C.forest:C.g200}}>
+              <input
+                type="text"
+                placeholder="Search seller…"
+                value={traderSearch}
+                onChange={e=>setTraderSearch(e.target.value)}
+                className="flex-1 min-w-0 px-2.5 py-2 font-bold focus:outline-none bg-transparent"
+                style={{color:C.g800, fontSize:'16px'}}/>
+              {traderSearch.trim()&&(
+                <button onClick={()=>setTraderSearch('')} className="px-2 flex-shrink-0" style={{color:C.g400}}>
+                  <X size={12}/>
+                </button>
+              )}
+            </div>
             <button onClick={()=>handleCreateOffer()}
               className="flex-shrink-0 flex items-center gap-1 px-2.5 py-2 rounded-xl text-white font-black text-xs transition hover:opacity-90 active:scale-[0.97]"
               style={{backgroundColor:C.forest, whiteSpace:'nowrap'}}>
-              <PlusCircle size={12}/> Create Offer
+              <PlusCircle size={12}/> Create
             </button>
-
-            {/* Clear filters */}
             {hasFilters && (
               <button onClick={()=>{setBuyAmt('');setSelPayment('all');setSelCountry(COUNTRIES[0]);setSelCurrency(CURRENCIES[0]);setSortBy('rate_low');setPaymentSearch('');setTraderSearch('');setCurrencySearch('');setCountrySearch('');}}
                 className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-xl text-xs font-black border-2 transition"
                 style={{borderColor:C.danger, color:C.danger, backgroundColor:'#FEF2F2'}}>
-                <X size={12}/>
+                ✕
               </button>
             )}
-          </div>
-
-          {/* Trader search */}
-          <div className="mt-3">
-            <input placeholder="🔍  Search seller by name…"
-              value={traderSearch} onChange={e=>setTraderSearch(e.target.value)}
-              className="w-full px-3 py-2 text-sm font-semibold border-2 rounded-xl focus:outline-none"
-              style={{borderColor:traderSearch?C.forest:C.g200}}/>
-          </div>
-        </div>
-
-        {/* ── 3. STATUS / RESULTS ── */}
-        <div className="mt-4">
-
-          {/* ── Inline active trade cards ── */}
-          {activeTrades.length > 0 && (
-            <div className="px-3 mb-2 max-w-7xl mx-auto w-full">
-              {activeTrades.slice(0, showAllTrades ? activeTrades.length : 3).map(trade => (
-                <ActiveTradeCard key={trade.id} trade={trade} pageColor="#1B4332" onExpire={handleTradeExpire} />
-              ))}
-              {activeTrades.length > 3 && (
-                <button onClick={() => setShowAllTrades(p => !p)}
-                  className="w-full text-xs font-semibold py-1.5 rounded-xl border mb-1"
-                  style={{color:'#92400E', borderColor:'#F59E0B', backgroundColor:'#FFFBEB'}}>
-                  {showAllTrades ? 'Show less ▲' : `Show all (${activeTrades.length}) ▼`}
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Loading */}
-          {loading && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[1,2,3,4,5,6].map(i=>(
-                <div key={i} className="rounded-2xl border p-4 animate-pulse" style={{borderColor:C.g200}}>
-                  <div className="flex gap-3 mb-4">
-                    <div className="w-12 h-12 rounded-xl" style={{backgroundColor:C.g200}}/>
-                    <div className="flex-1 space-y-2">
-                      <div className="h-3 rounded w-2/3" style={{backgroundColor:C.g200}}/>
-                      <div className="h-2.5 rounded w-1/3" style={{backgroundColor:C.g100}}/>
-                    </div>
-                  </div>
-                  <div className="h-2.5 rounded w-full mb-2" style={{backgroundColor:C.g100}}/>
-                  <div className="h-2.5 rounded w-4/5" style={{backgroundColor:C.g100}}/>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Error state */}
-          {loadError && !loading && (
-            <div className="text-center py-16 px-4">
-              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4"
-                style={{backgroundColor:'#FEF2F2'}}>
-                <AlertTriangle size={28} style={{color:C.danger}}/>
-              </div>
-              <p className="font-black text-base mb-1" style={{color:C.g800}}>Connection issue</p>
-              <p className="text-sm mb-4" style={{color:C.g400}}>Server may be busy. Please try again.</p>
-              <button onClick={()=>{ setLoading(true); loadListings(1, true); }}
-                className="px-6 py-2.5 rounded-xl text-white text-sm font-black hover:opacity-90 transition flex items-center gap-2 mx-auto"
-                style={{backgroundColor:C.forest}}>
-                <RefreshCw size={14}/> Try Again
-              </button>
-            </div>
-          )}
-
-          {/* Retrying banner */}
-          {retrying && !loadError && (
-            <div className="flex items-center gap-2 p-3 rounded-xl mb-4"
-              style={{backgroundColor:'#FFFBEB', border:'1px solid #FDE68A'}}>
-              <RefreshCw size={13} className="animate-spin" style={{color:C.warn}}/>
-              <span className="text-xs font-bold" style={{color:'#92400E'}}>
-                Server is warming up — retrying...
-              </span>
-            </div>
-          )}
-
-          {/* Empty state */}
-          {!loading && !loadError && sorted.length === 0 && (
-            <div className="text-center py-16 px-4">
-              <p className="text-5xl mb-4">🔍</p>
-              <p className="font-black text-base mb-1" style={{color:C.g800}}>No USDT offers found</p>
-              <p className="text-sm" style={{color:C.g400}}>
-                {/* TODO: once backend sends USDT listings with asset:'USDT', this will show real offers */}
-                No USDT listings yet. Create the first offer or adjust your filters.
-              </p>
-              <button onClick={()=>handleCreateOffer()}
-                className="mt-4 px-6 py-2.5 rounded-xl text-white text-sm font-black hover:opacity-90 transition"
-                style={{backgroundColor:C.forest}}>
-                + Create USDT Offer
-              </button>
-            </div>
-          )}
-
-          {/* Offer grid */}
-          {!loading && !loadError && sorted.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {sorted.map(l => (
-                <OfferCard key={l.id}
-                  listing={l}
-                  usdtPriceUSD={usdtPrice}
-                  onViewSeller={()=>setModal({type:'profile', seller:l.users, listing:l})}
-                  onBuy={()=>handleBuy(l.id)}
-                  liked={liked.has(l.id)}
-                  onToggleLike={()=>setLiked(prev=>{
-                    const next = new Set(prev);
-                    if (next.has(l.id)) next.delete(l.id); else next.add(l.id);
-                    return next;
-                  })}
-                  featuredType={null}
-                  liveSeenAt={liveStatus[getUser(l.users)?.id]}
-                  userBuyAmt={buyAmt}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Last synced */}
-          {lastSynced && (
-            <div className="flex items-center justify-between mt-4 mb-2">
-              <p className="text-xs" style={{color:C.g400}}>
-                Updated {lastSynced.toLocaleTimeString()}
-              </p>
-              <button onClick={handleRefresh} disabled={isRefreshing}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition hover:bg-gray-50"
-                style={{borderColor:C.g200, color:C.g600}}>
-                <RefreshCw size={12} className={isRefreshing?'animate-spin':''}/>
-                {isRefreshing ? 'Refreshing…' : 'Refresh'}
-              </button>
-            </div>
-          )}
-
-          {/* ── 4. AFFILIATE SECTION ── */}
-          <div className="mt-8 rounded-2xl overflow-hidden border"
-            style={{borderColor:C.g200, background:'#FFFBEB'}}>
-            <div className="p-5 sm:p-7">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-                  style={{backgroundColor:'#FEF3C7'}}>
-                  <span className="text-sm font-black" style={{color:'#F59E0B'}}>₮</span>
-                </div>
-                <div>
-                  <div style={{display:'flex',alignItems:'center',gap:5}}>
-                    <span style={{fontSize:9,fontWeight:800,color:'#F59E0B',background:'#FEF3C7',border:'1px solid #FDE68A',borderRadius:4,padding:'1px 6px',letterSpacing:0.4,textTransform:'uppercase'}}>₮ USDT Affiliate</span>
-                    <span style={{fontSize:9,fontWeight:700,color:'#10B981',background:'#ECFDF5',border:'1px solid #A7F3D0',borderRadius:4,padding:'1px 5px',display:'flex',alignItems:'center',gap:3}}>
-                      <span style={{width:5,height:5,borderRadius:'50%',background:'#10B981',display:'inline-block'}}/>LIVE
-                    </span>
-                  </div>
-                  <p style={{margin:'2px 0 0',fontSize:13,fontWeight:800,color:'#92400E',lineHeight:1.2}}>
-                    Earn USDT on every referral trade
-                  </p>
-                </div>
-              </div>
-              <p style={{margin:0,fontSize:12,color:'#B45309',lineHeight:1.4}}>
-                Share your referral link and earn a percentage of every trade your referrals make. Your earnings are paid in USDT.
-              </p>
-            </div>
-          </div>
-
-          {/* ── 5. FOOTER ── */}
-          <div className="mt-8">
-            <PRQFooter/>
           </div>
 
         </div>
       </div>
 
+      {/* ── Inline active trade cards ── */}
+      {activeTrades.length > 0 && (
+        <div className="px-3 mb-2 max-w-7xl mx-auto w-full">
+          {activeTrades.slice(0, showAllTrades ? activeTrades.length : 3).map(trade => (
+            <ActiveTradeCard key={trade.id} trade={trade} pageColor="#1B4332" onExpire={handleTradeExpire} />
+          ))}
+          {activeTrades.length > 3 && (
+            <button onClick={() => setShowAllTrades(p => !p)}
+              className="w-full text-xs font-semibold py-1.5 rounded-xl border mb-1"
+              style={{color:'#92400E', borderColor:'#F59E0B', backgroundColor:'#FFFBEB'}}>
+              {showAllTrades ? 'Show less ▲' : `Show all (${activeTrades.length}) ▼`}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ══ 4. OFFER GRID ══════════════════════════════════════ */}
+      <div className="max-w-7xl mx-auto w-full px-3 pt-2 pb-3 space-y-3">
+
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          {(() => {
+            const onlineCount = sorted.filter(l => {
+              const seen = liveStatus[l.users?.id] || l.users?.last_seen_at;
+              return seen && (Date.now() - new Date(seen)) < 5 * 60 * 1000;
+            }).length;
+            return (
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full animate-pulse flex-shrink-0"
+                    style={{backgroundColor:C.online, boxShadow:`0 0 0 3px ${C.online}30`}}/>
+                  <span className="text-xs font-black" style={{color:C.online}}>{onlineCount} online</span>
+                </div>
+                <span style={{color:C.g300, fontSize:10}}>·</span>
+                <span className="text-xs font-semibold" style={{color:C.g500}}>
+                  <span className="font-black" style={{color:C.g800}}>{sorted.length}</span> active offer{sorted.length!==1?'s':''}
+                  {selCountry.code!=='ALL' ? ` in ${selCountry.flag} ${selCountry.name}` : ''}
+                </span>
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* Loading */}
+        {(loading && !listings.length) || retrying ? (
+          <div className="bg-white rounded-2xl border p-8 text-center" style={{borderColor:C.g200}}>
+            <p className="text-5xl mb-3">⏳</p>
+            <p className="font-black text-base mb-1" style={{color:C.g800}}>
+              {retrying ? 'Waking up server…' : 'Loading offers…'}
+            </p>
+            <p className="text-sm" style={{color:C.g400}}>
+              {retrying ? 'Our server is starting up, this takes a few seconds' : 'Fetching the latest offers for you'}
+            </p>
+            <div className="flex justify-center mt-4">
+              <div className="w-8 h-8 border-4 rounded-full animate-spin" style={{borderColor:`${C.forest}40`, borderTopColor:'transparent'}}/>
+            </div>
+          </div>
+        ) : loadError && !listings.length ? (
+          <div className="bg-white rounded-2xl border p-8 text-center" style={{borderColor:C.g200}}>
+            <p className="text-5xl mb-3">📡</p>
+            <p className="font-black text-base mb-1" style={{color:C.g800}}>Couldn't load offers</p>
+            <p className="text-sm mb-4" style={{color:C.g400}}>Server may be busy. Please try again.</p>
+            <button onClick={()=>{ setLoading(true); loadListings(1, true); }}
+              className="px-6 py-2.5 rounded-xl text-white text-sm font-black hover:opacity-90 transition flex items-center gap-2 mx-auto"
+              style={{backgroundColor:C.forest}}>
+              <RefreshCw size={14}/> Try Again
+            </button>
+          </div>
+        ) : sorted.length === 0 ? (
+          <div className="bg-white rounded-2xl border p-6 sm:p-10 text-center" style={{borderColor:C.g200}}>
+            <p className="text-5xl mb-4">🔍</p>
+            <p className="font-black text-base mb-1" style={{color:C.g800}}>No USDT offers found</p>
+            <p className="text-sm" style={{color:C.g400}}>No USDT listings yet. Create the first offer or adjust your filters.</p>
+            <button onClick={()=>handleCreateOffer()}
+              className="mt-4 px-6 py-2.5 rounded-xl text-white text-sm font-black hover:opacity-90 transition"
+              style={{backgroundColor:C.forest}}>
+              + Create USDT Offer
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 w-full">
+            {sorted.map(l=>(
+              <div key={l.id} className="w-full">
+                <OfferCard
+                  listing={l}
+                  usdtPriceUSD={usdtPrice}
+                  userBuyAmt={buyAmt}
+                  featuredType={null}
+                  liveSeenAt={liveStatus[getUser(l.users)?.id] || null}
+                  onViewSeller={()=>{
+                    setModal({type:'profile', seller:l.users, listing:l});
+                    const tk = localStorage.getItem('token');
+                    axios.post(`${API_URL}/offers/${l.id}/view`, {}, tk ? { headers: { Authorization: `Bearer ${tk}` } } : {}).catch(()=>{});
+                  }}
+                  onBuy={()=>handleBuy(l.id)}
+                  liked={liked.has(l.id)}
+                  onToggleLike={()=>setLiked(prev=>{
+                    const n=new Set(prev);
+                    n.has(l.id) ? n.delete(l.id) : n.add(l.id);
+                    return n;
+                  })}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Last synced */}
+        {lastSynced && (
+          <div className="flex items-center justify-between">
+            <p className="text-xs" style={{color:C.g400}}>Updated {lastSynced.toLocaleTimeString()}</p>
+            <button onClick={handleRefresh} disabled={isRefreshing}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition hover:bg-gray-50"
+              style={{borderColor:C.g200, color:C.g600}}>
+              <RefreshCw size={12} className={isRefreshing?'animate-spin':''}/>
+              {isRefreshing ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
+        )}
+
+        {/* ── Trade Safety Banner ── */}
+        <div style={{display:'flex',alignItems:'center',gap:8,padding:'9px 12px',borderRadius:10,background:'linear-gradient(135deg,#FFFBEB,#FEF9EE)',border:'1px solid #FDE68A',boxShadow:'0 1px 4px rgba(217,119,6,0.08)'}}>
+          <div style={{width:26,height:26,borderRadius:7,background:'#FEF3C7',border:'1px solid #FDE68A',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+            <AlertTriangle size={12} style={{color:'#D97706'}}/>
+          </div>
+          <div>
+            <p style={{margin:0,fontSize:10,fontWeight:900,color:'#92400E',lineHeight:1.3}}>Trade Safely</p>
+            <p style={{margin:0,fontSize:9,color:'#B45309',fontWeight:500,lineHeight:1.4,marginTop:1}}>Never send payment outside an active trade. All trades are escrow-protected.</p>
+          </div>
+        </div>
+
+        {/* ── USDT AFFILIATE SECTION ── */}
+        <div className="rounded-2xl overflow-hidden border" style={{borderColor:C.g200, background:'#FFFBEB'}}>
+          <div className="p-5 sm:p-7">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{backgroundColor:'#FEF3C7'}}>
+                <span className="text-sm font-black" style={{color:'#F59E0B'}}>₮</span>
+              </div>
+              <div>
+                <div style={{display:'flex',alignItems:'center',gap:5}}>
+                  <span style={{fontSize:9,fontWeight:800,color:'#F59E0B',background:'#FEF3C7',border:'1px solid #FDE68A',borderRadius:4,padding:'1px 6px',letterSpacing:0.4,textTransform:'uppercase'}}>₮ USDT Affiliate</span>
+                  <span style={{fontSize:9,fontWeight:700,color:'#10B981',background:'#ECFDF5',border:'1px solid #A7F3D0',borderRadius:4,padding:'1px 5px',display:'flex',alignItems:'center',gap:3}}>
+                    <span style={{width:5,height:5,borderRadius:'50%',background:'#10B981',display:'inline-block'}}/>LIVE
+                  </span>
+                </div>
+                <p style={{margin:'2px 0 0',fontSize:13,fontWeight:800,color:'#92400E',lineHeight:1.2}}>
+                  Earn USDT on every referral trade
+                </p>
+              </div>
+            </div>
+            <p style={{margin:0,fontSize:12,color:'#B45309',lineHeight:1.4}}>
+              Share your referral link and earn a percentage of every trade your referrals make. Your earnings are paid in USDT.
+            </p>
+          </div>
+        </div>
+
+      </div>
+
+      <PRQFooter/>
+
       {modal && (
         <ProfileModal
           seller={modal.seller}
           listing={modal.listing}
+          usdtPriceUSD={usdtPrice}
           onClose={()=>setModal(null)}
           onTrade={()=>handleBuy(modal.listing?.id)}
-          usdtPriceUSD={usdtPrice}
         />
       )}
     </div>

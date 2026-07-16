@@ -1,6 +1,7 @@
 // services/offerStatusService.js
 // Keeps offer visibility in sync with seller wallet balances.
-//   - SELL / SELL_BITCOIN / BUY_GIFT_CARD → creator must hold >= $10 BTC
+//   - SELL / SELL_BITCOIN / BUY_GIFT_CARD → creator must hold >= $10 of the offer's asset
+//     (BTC for BUY_GIFT_CARD and BTC-asset offers, USDT for USDT-asset offers)
 //   - Runs at startup and every 10 minutes via the interval in server.js
 
 require('dotenv').config();
@@ -19,20 +20,22 @@ const BTC_PRICE_APPROX = 88000; // used only when listing has no bitcoin_price s
 async function updateOfferStatus(userId) {
   try {
     const { data: wallet } = await supabaseAdmin
-      .from('wallets').select('balance_btc').eq('user_id', userId).maybeSingle();
-    const balUsd = parseFloat(wallet?.balance_btc || 0) * BTC_PRICE_APPROX;
+      .from('wallets').select('balance_btc, balance_usdt').eq('user_id', userId).maybeSingle();
+    const btcBalUsd  = parseFloat(wallet?.balance_btc || 0) * BTC_PRICE_APPROX;
+    const usdtBalUsd = parseFloat(wallet?.balance_usdt || 0); // 1 USDT ≈ $1
 
     const { data: offers } = await supabaseAdmin
       .from('listings')
-      .select('id, status, listing_type')
+      .select('id, status, listing_type, asset')
       .eq('seller_id', userId)
       .in('listing_type', BTC_REQUIRED_TYPES)
       .in('status', ['ACTIVE', 'PAUSED']);
 
     if (!offers || offers.length === 0) return { paused: 0, reactivated: 0 };
 
-    const toPause      = offers.filter(o => o.status === 'ACTIVE'  && balUsd < MIN_USD).map(o => o.id);
-    const toReactivate = offers.filter(o => o.status === 'PAUSED'  && balUsd >= MIN_USD).map(o => o.id);
+    const balUsdFor = (o) => (o.asset === 'USDT' ? usdtBalUsd : btcBalUsd);
+    const toPause      = offers.filter(o => o.status === 'ACTIVE'  && balUsdFor(o) < MIN_USD).map(o => o.id);
+    const toReactivate = offers.filter(o => o.status === 'PAUSED'  && balUsdFor(o) >= MIN_USD).map(o => o.id);
 
     if (toPause.length > 0) {
       await supabaseAdmin.from('listings')
@@ -60,10 +63,10 @@ async function updateOfferStatus(userId) {
  */
 async function syncAllOfferStatuses() {
   try {
-    // Fetch all ACTIVE and PAUSED BTC-required listings (include limits for cap logic)
+    // Fetch all ACTIVE and PAUSED BTC/USDT-required listings (include limits for cap logic)
     const { data: listings, error } = await supabaseAdmin
       .from('listings')
-      .select('id, seller_id, status, listing_type, bitcoin_price, min_limit_usd, max_limit_usd, max_limit_local')
+      .select('id, seller_id, status, listing_type, asset, bitcoin_price, min_limit_usd, max_limit_usd, max_limit_local')
       .in('listing_type', BTC_REQUIRED_TYPES)
       .in('status', ['ACTIVE', 'PAUSED']);
 
@@ -76,17 +79,24 @@ async function syncAllOfferStatuses() {
     // Fetch wallet balances for all unique sellers
     const sellerIds = [...new Set(listings.map(l => l.seller_id))];
     const { data: wallets } = await supabaseAdmin
-      .from('wallets').select('user_id, balance_btc').in('user_id', sellerIds);
+      .from('wallets').select('user_id, balance_btc, balance_usdt').in('user_id', sellerIds);
 
     const balMap = {};
-    (wallets || []).forEach(w => { balMap[w.user_id] = parseFloat(w.balance_btc || 0); });
+    const usdtBalMap = {};
+    (wallets || []).forEach(w => {
+      balMap[w.user_id] = parseFloat(w.balance_btc || 0);
+      usdtBalMap[w.user_id] = parseFloat(w.balance_usdt || 0);
+    });
 
     const toPause      = [];
     const toReactivate = [];
 
     for (const listing of listings) {
+      const isUsdt    = listing.asset === 'USDT';
       const btcPrice  = parseFloat(listing.bitcoin_price) || BTC_PRICE_APPROX;
-      const balUsd    = (balMap[listing.seller_id] || 0) * btcPrice;
+      const balUsd    = isUsdt
+        ? (usdtBalMap[listing.seller_id] || 0) // 1 USDT ≈ $1
+        : (balMap[listing.seller_id] || 0) * btcPrice;
       const minUsd    = parseFloat(listing.min_limit_usd || 0);
       const maxUsd    = parseFloat(listing.max_limit_usd || 0);
       const maxLocal  = parseFloat(listing.max_limit_local || 0);
