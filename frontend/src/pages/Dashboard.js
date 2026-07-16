@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import BonusBanner from '../components/BonusBanner';
 import axios from 'axios';
@@ -14,6 +14,7 @@ import {
   Download, Trophy
 } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { copyToClipboard } from '../utils/clipboard';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
@@ -282,10 +283,8 @@ function AffiliateSection({ user, profile, earnings, referralData, btcPrice, onW
   const lastEarning = earnings[0]?.commission_btc||0;
 
   const copy = () => {
-    navigator.clipboard.writeText(referralLink);
-    setCopied(true);
-    toast.success('Referral link copied! Share it to earn BTC 🚀');
-    setTimeout(()=>setCopied(false),2500);
+    copyToClipboard(referralLink, 'Referral link copied! Share it to earn BTC 🚀')
+      .then((ok) => { if (ok) setCopied(true); setTimeout(()=>setCopied(false),2500); });
   };
 
   const SHARE_LINKS = [
@@ -1386,8 +1385,7 @@ export default function Dashboard({ user }) {
                   <button
                     onClick={()=>{
                       const link = `https://praqen.com/signup?ref=${displayUser?.referral_code||profile?.referral_code||''}`;
-                      navigator.clipboard.writeText(link);
-                      toast.success('Referral link copied!');
+                      copyToClipboard(link, 'Referral link copied!');
                     }}
                     className="flex items-center gap-1.5 px-3 py-2 rounded-xl font-black text-xs flex-shrink-0"
                     style={{backgroundColor:'#F4A422', color:'#1B4332'}}>
