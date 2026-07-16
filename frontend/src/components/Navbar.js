@@ -133,7 +133,7 @@ export default function Navbar({ user, onLogout }) {
   const handleLogout = () => { onLogout(); navigate('/login'); };
 
   const isActive       = (path) => location.pathname === path;
-  const isMarketActive = ['/buy-bitcoin', '/sell-bitcoin'].some(p => location.pathname.startsWith(p));
+  const isMarketActive = ['/buy-bitcoin', '/sell-bitcoin', '/buy-usdt', '/sell-usdt'].some(p => location.pathname.startsWith(p));
   const isGiftActive   = location.pathname.startsWith('/gift-cards');
 
   // ── Desktop Nav Links ───────────────────────────────────────────────────────
@@ -194,12 +194,34 @@ export default function Navbar({ user, onLogout }) {
               </div>
             </Link>
             <Link to="/sell-bitcoin" onClick={() => setMarketDrop(false)}
-              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', textDecoration: 'none', background: isActive('/sell-bitcoin') ? C.mist : '#fff', transition: 'background 0.15s' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', textDecoration: 'none', borderBottom: `1px solid ${C.g100}`, background: isActive('/sell-bitcoin') ? C.mist : '#fff', transition: 'background 0.15s' }}>
               <div style={{ width: 34, height: 34, borderRadius: 10, background: '#FEF9C3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <Tag size={16} color={C.goldDark} />
               </div>
               <div>
                 <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: C.g800 }}>Sell Bitcoin</p>
+                <p style={{ margin: 0, fontSize: 10, color: C.g400 }}>Get paid in local currency</p>
+              </div>
+            </Link>
+            {/* USDT divider */}
+            <div style={{ height: 1, background: C.g100, margin: '0 12px' }} />
+            <Link to="/buy-usdt" onClick={() => setMarketDrop(false)}
+              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', textDecoration: 'none', borderBottom: `1px solid ${C.g100}`, background: isActive('/buy-usdt') ? C.mist : '#fff', transition: 'background 0.15s' }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: '#D1FAE5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <span style={{ fontSize: 14, fontWeight: 900, color: '#0D9488' }}>₮</span>
+              </div>
+              <div>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: C.g800 }}>Buy USDT</p>
+                <p style={{ margin: 0, fontSize: 10, color: C.g400 }}>Pay with local currency</p>
+              </div>
+            </Link>
+            <Link to="/sell-usdt" onClick={() => setMarketDrop(false)}
+              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', textDecoration: 'none', background: isActive('/sell-usdt') ? C.mist : '#fff', transition: 'background 0.15s' }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: '#FEF9C3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <span style={{ fontSize: 14, fontWeight: 900, color: C.goldDark }}>₮</span>
+              </div>
+              <div>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: C.g800 }}>Sell USDT</p>
                 <p style={{ margin: 0, fontSize: 10, color: C.g400 }}>Get paid in local currency</p>
               </div>
             </Link>
