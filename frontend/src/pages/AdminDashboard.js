@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
+import { copyToClipboard } from '../utils/clipboard';
 import {
   LayoutDashboard, Users, ArrowLeftRight, ArrowUpRight, AlertTriangle,
   ShieldCheck, DollarSign, List, Megaphone, LogOut,
@@ -1661,9 +1662,8 @@ function PlatformWalletsCard() {
   useEffect(() => { fetchWallets(); }, []);
 
   const copy = (text, key) => {
-    navigator.clipboard.writeText(text);
-    setCopied(key);
-    setTimeout(() => setCopied(''), 2000);
+    copyToClipboard(text, 'Copied!')
+      .then((ok) => { if (ok) setCopied(key); setTimeout(() => setCopied(''), 2000); });
   };
 
   const toUsd = (btc) => btcPrice > 0
