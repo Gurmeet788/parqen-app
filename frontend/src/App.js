@@ -78,6 +78,8 @@ const Feedback              = lazy(() => import('./pages/Feedback'));
 const TradeChat             = lazy(() => import('./pages/TradeChat'));
 const BuyBitcoin            = lazy(() => import('./pages/BuyBitcoin'));
 const SellBitcoin           = lazy(() => import('./pages/SellBitcoin'));
+const BuyUSDT               = lazy(() => import('./pages/BuyUSDT'));
+const SellUSDT              = lazy(() => import('./pages/SellUSDT'));
 const SellGiftCardMarketplace = lazy(() => import('./pages/SellGiftCardMarketplace'));
 const VerifyOTP             = lazy(() => import('./pages/VerifyOTP'));
 const ResetPassword         = lazy(() => import('./pages/ResetPassword'));
@@ -349,6 +351,8 @@ function App() {
               <Route path="/sell-gift-card" element={<SellGiftCardMarketplace user={user} />} />
               <Route path="/buy-bitcoin" element={<BuyBitcoin user={user} />} />
               <Route path="/sell-bitcoin" element={<SellBitcoin user={user} />} />
+              <Route path="/buy-usdt" element={<BuyUSDT user={user} />} />
+              <Route path="/sell-usdt" element={<SellUSDT user={user} />} />
               <Route path="/dashboard" element={user ? <Dashboard user={user} /> : <Navigate to="/login" />} />
               <Route path="/wallet" element={user ? <WalletPage user={user} /> : <Navigate to="/login" />} />
               <Route path="/settings" element={user ? <Settings user={user} setUser={setUser} /> : <Navigate to="/login" />} />
