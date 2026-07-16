@@ -5,6 +5,11 @@ import {
   MessageCircle, X, Send, RefreshCw, ChevronLeft,
   Lightbulb, CheckCircle, User, Bot, Headphones,
   Ticket, ArrowRight, Shield, Clock,
+  Coins, Banknote, ArrowLeftRight, CreditCard, Settings,
+  Wallet, BadgeCheck, HelpCircle, Zap, TrendingUp, Bug,
+  Hand, Smile, Check, Search, Tag,
+  Paperclip, FileText, AlertTriangle, Star, Upload, Trash2,
+  Flag, AlertCircle, AlertOctagon, Image, Lock,
 } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
@@ -15,32 +20,93 @@ const authH = () => {
 
 // ── Topics ────────────────────────────────────────────────────────────────────
 const TOPICS = [
-  { id: 'buy',     label: 'Buy Bitcoin',       emoji: '🟠', cat: 'general',  color: '#1B4332', bg: '#F0FDF4',
+  { id: 'buy',     label: 'Buy Bitcoin',       icon: Coins,          cat: 'general',  color: '#1B4332', bg: '#F0FDF4',
     hint: 'Browse offers, start a trade, payment help' },
-  { id: 'sell',    label: 'Sell Bitcoin',       emoji: '💰', cat: 'general',  color: '#D97706', bg: '#FFFBEB',
+  { id: 'sell',    label: 'Sell Bitcoin',       icon: Banknote,       cat: 'general',  color: '#D97706', bg: '#FFFBEB',
     hint: 'Create listings, find buyers, pricing help' },
-  { id: 'trade',   label: 'Trade Issue',        emoji: '🔄', cat: 'trade',    color: '#7C3AED', bg: '#F5F3FF',
+  { id: 'trade',   label: 'Trade Issue',        icon: ArrowLeftRight, cat: 'trade',    color: '#7C3AED', bg: '#F5F3FF',
     hint: 'Stuck trade, dispute, escrow problem' },
-  { id: 'payment', label: 'Payment Problem',    emoji: '💳', cat: 'payment',  color: '#0D9488', bg: '#F0FDFA',
+  { id: 'payment', label: 'Payment Problem',    icon: CreditCard,     cat: 'payment',  color: '#0D9488', bg: '#F0FDFA',
     hint: 'MoMo, bank transfer, payment failed' },
-  { id: 'account', label: 'My Account',         emoji: '👤', cat: 'account',  color: '#2563EB', bg: '#EFF6FF',
+  { id: 'account', label: 'My Account',         icon: Settings,       cat: 'account',  color: '#BE185D', bg: '#FDF2F8',
     hint: 'Login, password, profile settings' },
-  { id: 'wallet',  label: 'Wallet / Balance',   emoji: '👛', cat: 'general',  color: '#EA580C', bg: '#FFF7ED',
+  { id: 'wallet',  label: 'Wallet / Balance',   icon: Wallet,         cat: 'general',  color: '#EA580C', bg: '#FFF7ED',
     hint: 'Deposit, withdraw, balance mismatch' },
-  { id: 'kyc',     label: 'Verification / KYC', emoji: '🪪', cat: 'account',  color: '#6D28D9', bg: '#F5F3FF',
+  { id: 'kyc',     label: 'Verification / KYC', icon: BadgeCheck,     cat: 'account',  color: '#6D28D9', bg: '#F5F3FF',
     hint: 'ID upload, KYC review, limits' },
-  { id: 'other',   label: 'Something else',     emoji: '💬', cat: 'other',    color: '#475569', bg: '#F8FAFC',
+  { id: 'other',   label: 'Something else',     icon: HelpCircle,     cat: 'other',    color: '#475569', bg: '#F8FAFC',
     hint: 'Any other question or request' },
 ];
 
 // ── Suggestion categories ─────────────────────────────────────────────────────
 const SUG_CATS = [
-  { id: 'feature',     label: 'Feature Request', emoji: '💡' },
-  { id: 'improvement', label: 'Improvement',      emoji: '⚡' },
-  { id: 'trading',     label: 'Trading Tip',      emoji: '📈' },
-  { id: 'bug',         label: 'Bug Report',       emoji: '🐛' },
-  { id: 'other',       label: 'Other',            emoji: '💬' },
+  { id: 'feature',     label: 'Feature Request', icon: Lightbulb },
+  { id: 'improvement', label: 'Improvement',      icon: Zap },
+  { id: 'trading',     label: 'Trading Tip',      icon: TrendingUp },
+  { id: 'bug',         label: 'Bug Report',       icon: Bug },
+  { id: 'other',       label: 'Other',            icon: HelpCircle },
 ];
+
+// ── FAQ articles per topic (self-serve deflection) ───────────────────────────
+const FAQ_BY_TOPIC = {
+  buy: [
+    { q: 'How do I find a seller?', a: 'Go to **Buy Bitcoin** and browse offers by country/payment method. Filter using the search bar at the top.' },
+    { q: 'How does escrow protect me?', a: 'The seller locks BTC in escrow before you pay. You only release it after confirming payment in **My Trades**.' },
+    { q: 'What payment methods are accepted?', a: 'MoMo (MTN, Vodafone, AirtelTigo), bank transfers, and gift cards — varies by seller offer.' },
+  ],
+  sell: [
+    { q: 'How do I create a listing?', a: 'Go to **Sell Bitcoin** and set your price, margin, payment methods, and limits. Your wallet must have at least $10 in BTC.' },
+    { q: 'How is pricing calculated?', a: 'Set a **fixed price** or a **margin** above/below the market rate. The price updates automatically with BTC.' },
+    { q: 'When do I lock escrow?', a: 'When a buyer opens a trade, you\'ll be prompted to lock the exact BTC amount into escrow before they pay.' },
+  ],
+  trade: [
+    { q: 'How do I raise a dispute?', a: 'Open the trade in **My Trades** and tap **Raise Dispute**. A moderator will review within 24 hours.' },
+    { q: 'Why is my trade stuck?', a: 'Check if payment has been sent/received. If the buyer hasn\'t paid yet, you can cancel after the time limit expires.' },
+    { q: 'What happens if someone scams me?', a: 'Raise a dispute immediately. Our moderators review all evidence. Never release escrow without confirming payment.' },
+  ],
+  payment: [
+    { q: 'Payment not showing up?', a: 'MoMo payments usually arrive within 5 min. Bank transfers can take up to 2 hours. Keep your receipt as proof.' },
+    { q: 'Can I change payment method?', a: 'Only the payment method listed on the offer is valid. Sending via a different method may delay the trade.' },
+    { q: 'What if I sent to the wrong number?', a: 'Contact your payment provider immediately. Let the seller know and attach the receipt to your ticket for evidence.' },
+  ],
+  account: [
+    { q: 'Forgot your password?', a: 'Tap **Forgot Password** on the login page. A reset link will be sent to your email within a few minutes.' },
+    { q: 'How do I verify my ID?', a: 'Go to **Settings → Verification** and upload your government ID. Verification unlocks higher trade limits.' },
+    { q: 'Can I change my email/phone?', a: 'Go to **Settings** to update your profile info. You\'ll need to verify the new contact before it\'s saved.' },
+  ],
+  wallet: [
+    { q: 'How do I deposit BTC?', a: 'Go to **Wallet** and tap **Deposit**. Copy your PRAQEN wallet address and send BTC from any external wallet.' },
+    { q: 'How do I withdraw BTC?', a: 'Go to **Wallet** → **Withdraw**, enter an external BTC address and the amount. A small network fee applies.' },
+    { q: 'Why is my balance locked?', a: 'Locked balance is BTC held in active trade escrow. It\'s released when the trade completes or is cancelled.' },
+  ],
+  kyc: [
+    { q: 'What documents are accepted?', a: 'Government-issued ID (passport, driver\'s license, national ID). Upload clear photos in **Settings → Verification**.' },
+    { q: 'How long does KYC review take?', a: 'Most verifications are reviewed within 24 hours. You\'ll get a notification once approved.' },
+    { q: 'Is KYC required to trade?', a: 'Basic trading is available without KYC. Higher limits and certain payment methods require verification.' },
+  ],
+  other: [
+    { q: 'How do I contact support?', a: 'You\'re in the right place! Create a ticket below and our team will get back to you within 24 hours.' },
+    { q: 'Is my data secure?', a: 'Absolutely. All data is encrypted in transit and at rest. We never share your personal information.' },
+    { q: 'Can I delete my account?', a: 'Contact support and we\'ll help you close your account and withdraw any remaining balance.' },
+  ],
+};
+
+// ── Priority options ─────────────────────────────────────────────────────────
+const PRIORITIES = [
+  { id: 'low',     label: 'Low',        desc: 'General question or minor issue',                     icon: Flag,       color: '#64748B', bg: '#F1F5F9' },
+  { id: 'normal',  label: 'Normal',     desc: 'Standard support request',                            icon: AlertCircle, color: '#D97706', bg: '#FFFBEB' },
+  { id: 'urgent',  label: 'Urgent',     desc: 'Funds stuck, suspected fraud, or critical issue',     icon: AlertOctagon, color: '#DC2626', bg: '#FEF2F2' },
+];
+
+// ── Response time estimates per priority ──────────────────────────────────────
+const RESPONSE_TIMES = {
+  low:    { eta: '~24–48 hours', color: '#64748B' },
+  normal: { eta: '~12–24 hours', color: '#D97706' },
+  urgent: { eta: '~2–4 hours',   color: '#DC2626' },
+};
+
+// ── FAQ keywords for urgent priority auto-detect ─────────────────────────────
+const URGENT_KEYWORDS = ['stuck','scam','fraud','urgent','emergency','lost','stolen','dispute','locked out','hack','unauthor','missing fund','not paid','no show','ghost'];
 
 // ── Markdown-lite renderer ────────────────────────────────────────────────────
 function Msg({ text }) {
@@ -80,28 +146,51 @@ function Typing() {
 }
 
 // ── Step indicator ────────────────────────────────────────────────────────────
-function StepBar({ step, total }) {
+function StepBar({ step, total, labels }) {
+  const showLabels = total <= 5;
   return (
-    <div className="flex items-center gap-1.5 justify-center py-1">
-      {Array.from({ length: total }).map((_, i) => (
-        <div key={i}
-          className="rounded-full transition-all duration-300"
-          style={{
-            height: 4,
-            width: i + 1 === step ? 20 : 8,
-            backgroundColor: i + 1 <= step ? '#1B4332' : '#E2E8F0',
-          }} />
-      ))}
-      <span className="text-[10px] font-bold ml-1" style={{ color: '#94A3B8' }}>
-        Step {step} of {total}
-      </span>
+    <div className="flex flex-col items-center gap-1.5 py-2 px-4">
+      <div className="flex items-center gap-1.5 w-full justify-center">
+        {Array.from({ length: total }).map((_, i) => (
+          <div key={i} className="flex items-center gap-0" style={{ flex: i === step - 1 && showLabels ? 1 : 0 }}>
+            <div
+              className="rounded-full transition-all duration-300 flex-shrink-0"
+              style={{
+                height: 5,
+                width: i + 1 === step ? 24 : i + 1 < step ? 10 : 8,
+                backgroundColor: i + 1 <= step ? '#1B4332' : '#E2E8F0',
+                opacity: i + 1 < step ? 0.5 : 1,
+              }} />
+            {i < total - 1 && (
+              <div style={{
+                height: 2, flex: 1, minWidth: 6,
+                backgroundColor: i + 1 < step ? '#1B4332' : '#E2E8F0',
+                opacity: i + 1 < step ? 0.3 : 1,
+                borderRadius: 1,
+              }} />
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center justify-between w-full max-w-[300px]">
+        <span className="text-[9px] font-bold" style={{ color: '#94A3B8' }}>
+          Step {step} of {total}
+        </span>
+        {labels && labels[step - 1] && (
+          <span className="text-[9px] font-bold" style={{ color: '#1B4332' }}>
+            {labels[step - 1]}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function SuggestionsPanel({ user }) {
-  // mode: 'home' | 'topic-selected' | 'ticket-form' | 'ticket-created' | 'chat' | 'suggest'
+  // mode: 'home' | 'topic-selected' | 'ticket-form' | 'ticket-priority'
+  //       | 'ticket-attachments' | 'ticket-review' | 'submitting'
+  //       | 'ticket-created' | 'chat' | 'suggest'
   const [open, setOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
   useEffect(() => {
@@ -112,10 +201,20 @@ export default function SuggestionsPanel({ user }) {
   const [mode, setMode] = useState('home');
   const [topic, setTopic] = useState(null);
 
-  // ── Ticket form ───────────────────────────────────────────────────────────
+  // ── Multi-step ticket form state ──────────────────────────────────────────
   const [subject, setSubject]     = useState('');
   const [msgBody, setMsgBody]     = useState('');
-  const [creating, setCreating]   = useState(false);
+  const [tradeRef, setTradeRef]   = useState('');
+  const [priority, setPriority]   = useState('normal');
+  const [attachments, setAttachments] = useState([]); // { name, size, preview, data }
+  const [submitting, setSubmitting] = useState(false);
+  const [showFaq, setShowFaq]     = useState(true);
+  const [duplicateWarn, setDuplicateWarn] = useState(null);
+  const [showDuplicateConfirm, setShowDuplicateConfirm] = useState(false);
+
+  // ── Satisfaction rating ───────────────────────────────────────────────────
+  const [satisfactionRating, setSatisfactionRating] = useState(0);
+  const [satisfactionSubmitted, setSatisfactionSubmitted] = useState(false);
 
   // ── Chat ──────────────────────────────────────────────────────────────────
   const [ticket, setTicket]       = useState(null);
@@ -127,6 +226,8 @@ export default function SuggestionsPanel({ user }) {
   const pollRef  = useRef(null);
   const chatRef  = useRef(null);
   const inputRef = useRef(null);
+  const detailsRef = useRef(null);
+  const msgSeqRef = useRef(0); // global monotonically increasing sequence for message ordering
 
   // ── Suggestion form ───────────────────────────────────────────────────────
   const [sugTitle, setSugTitle] = useState('');
@@ -134,6 +235,9 @@ export default function SuggestionsPanel({ user }) {
   const [sugCat,   setSugCat]   = useState('feature');
   const [sugPosting, setSugPost]= useState(false);
   const [sugDone,  setSugDone]  = useState(false);
+
+  // ── User's open tickets (for duplicate check) ─────────────────────────────
+  const [openTickets, setOpenTickets] = useState([]);
 
   // Scroll chat to bottom
   useEffect(() => {
@@ -158,15 +262,32 @@ export default function SuggestionsPanel({ user }) {
     }
   }, [mode]);
 
+  // ── Auto-detect priority from message body ────────────────────────────────
+  useEffect(() => {
+    if (msgBody) {
+      const q = msgBody.toLowerCase();
+      const isUrgent = URGENT_KEYWORDS.some(kw => q.includes(kw));
+      if (isUrgent) setPriority('urgent');
+    }
+  }, [msgBody]);
+
   // ── Navigation helpers ────────────────────────────────────────────────────
   const goHome = () => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     setMode('home');
     setTopic(null);
     setTicket(null);
-    setSubject(''); setMsgBody('');
+    setSubject(''); setMsgBody(''); setTradeRef('');
+    setPriority('normal');
+    setAttachments([]);
     setChatMsgs([]); setAiMsgs([]);
+    msgSeqRef.current = 0;
     setReplyText('');
+    setShowFaq(true);
+    setShowDuplicateConfirm(false);
+    setDuplicateWarn(null);
+    setSatisfactionRating(0);
+    setSatisfactionSubmitted(false);
   };
 
   const openPanel = () => {
@@ -174,18 +295,40 @@ export default function SuggestionsPanel({ user }) {
     setOpen(o => !o);
   };
 
-  // Step 1 → 2: pick topic
+  // Step 1: pick topic
   const pickTopic = (t) => {
     setTopic(t);
     setSubject(`Help with ${t.label}`);
     setMsgBody('');
+    setTradeRef('');
+    setPriority('normal');
+    setAttachments([]);
+    setShowFaq(true);
     setMode('topic-selected');
   };
 
-  // Step 2 → 3: go to ticket form
+  // Step 2: go to details form (skip FAQ or after "still need help")
   const goToForm = () => {
+    setShowFaq(false);
     setMode('ticket-form');
-    setTimeout(() => inputRef.current?.focus(), 150);
+    setTimeout(() => detailsRef.current?.focus(), 150);
+  };
+
+  // Step 3: go to priority selection
+  const goToPriority = () => {
+    if (!msgBody.trim()) return toast.error('Please describe your issue first');
+    if (msgBody.trim().length < 10) return toast.error('Please add a bit more detail (at least 10 characters)');
+    setMode('ticket-priority');
+  };
+
+  // Step 4: go to attachments
+  const goToAttachments = () => {
+    setMode('ticket-attachments');
+  };
+
+  // Step 5: go to review
+  const goToReview = () => {
+    setMode('ticket-review');
   };
 
   // ── Poll for new messages ─────────────────────────────────────────────────
@@ -195,14 +338,27 @@ export default function SuggestionsPanel({ user }) {
       try {
         const r = await axios.get(`${API_URL}/support/tickets/${ticketId}/messages`, { headers: authH() });
         const incoming = r.data.messages || [];
-        setChatMsgs(prev => incoming.length !== prev.length ? incoming : prev);
+        setChatMsgs(prev => {
+          if (incoming.length <= prev.length) return prev;
+          // Only stamp _seq on NEW messages — preserve existing _seq values
+          const newMsgs = incoming.slice(prev.length).map(m => ({
+            ...m,
+            _seq: msgSeqRef.current++,
+          }));
+          return [...prev, ...newMsgs];
+        });
+        // Also refresh ticket to get updated status
+        if (incoming.length > 0) {
+          const tRes = await axios.get(`${API_URL}/support/tickets`, { headers: authH() });
+          const tickets = tRes.data.tickets || [];
+          const updated = tickets.find(t => t.id === ticketId);
+          if (updated) setTicket(prev => ({ ...prev, ...updated }));
+        }
       } catch {}
     }, 5000);
   }, []);
 
   // ── Build conversation history for the AI ────────────────────────────────
-  // Interleaves user ticket messages with previous AI replies so the AI
-  // never repeats itself and understands the full conversation context.
   const buildHistory = (currentAiMsgs, currentChatMsgs) => {
     const history = [];
     const userMsgs = currentChatMsgs.filter(m => m.sender_type === 'user');
@@ -218,21 +374,24 @@ export default function SuggestionsPanel({ user }) {
   };
 
   // ── Support-mode smart fallback (no API needed) ───────────────────────────
+  // Answers factual questions from a knowledge base first. Generic escalation
+  // replies reserved strictly for API failure OR genuine duplicate-response detection.
   const supportFallback = (message, currentAiMsgs) => {
     const q = (message || '').toLowerCase().trim();
     const turn = currentAiMsgs.length;
     const name = user?.username ? `, ${user.username}` : '';
 
-    // Greeting detection — always respond with a welcome, never topic info
+    // ── Greeting detection ──
     if (/^(hey|hi|hello|good\s*(morning|afternoon|evening)|howdy|yo|hiya|sup)\b/.test(q)) {
       const greetings = [
-        `Hi${name}! 👋 I'm Alex from PRAQEN support. I'm looking at your ticket right now — how can I help you?`,
+        `Hi${name}! I'm Alex from PRAQEN support. I'm looking at your ticket right now — how can I help you?`,
         `Hey${name}! Great to have you here. Your ticket is open and the team is on it. What would you like to update?`,
         `Hello${name}! I'm reviewing your case right now. What can I help you with?`,
       ];
       return greetings[turn % greetings.length];
     }
 
+    // ── Acknowledgment / closure ──
     if (/thank|thanks|okay|ok\b|great|perfect|got it|cool|nice/.test(q)) {
       const pool = [
         'Happy to help! Let me know if anything else comes up.',
@@ -242,6 +401,7 @@ export default function SuggestionsPanel({ user }) {
       return pool[turn % pool.length];
     }
 
+    // ── Wait time / status check ──
     if (/wait|how long|still|not yet|update|any news/.test(q)) {
       const pool = [
         'I completely understand the wait can be frustrating. The team is actively on your case — do you have any updates from your side?',
@@ -251,7 +411,45 @@ export default function SuggestionsPanel({ user }) {
       return pool[turn % pool.length];
     }
 
-    if (/paid|sent|payment|transferred|deposit|momo|bank/.test(q)) {
+    // ── Factual Q&A: knowledge base — answer directly, never escalate ──
+    // IMPORTANT: This block MUST come before the payment-reporting branch
+    // so informational "how do I..." questions get factual answers first.
+    if (/forgot password|reset password|change password|forgot my password/.test(q)) {
+      return 'No worries! To reset your password, go to the login page and tap **Forgot Password**. A reset link will be sent to your email within a few minutes. Check your spam folder if you don\'t see it.';
+    }
+    if (/how.*(buy|purchase)|how.*start.*trade|find.*seller/.test(q)) {
+      return 'To **buy Bitcoin**, go to the **Buy BTC** page and browse seller offers filtered by country and payment method. Click **BUY BTC** on any offer to start a trade. The seller locks Bitcoin in escrow before you send payment. Once the seller confirms receipt, they release the BTC to your wallet.';
+    }
+    if (/how.*(sell|create.*listing|make.*offer)/.test(q)) {
+      return 'To **sell Bitcoin**, go to **Sell BTC** and create a listing with your price, payment methods and limits. Your wallet needs at least $10 in BTC for the listing to appear. When a buyer opens a trade, you lock the exact BTC amount in escrow until they pay.';
+    }
+    if (/how.*(wallet|deposit|withdraw|fund|address)/.test(q)) {
+      return 'Your BTC wallet is in the **Wallet** section. To deposit, copy your PRAQEN BTC address (or scan the QR code) and send from any external wallet. To withdraw, go to **Withdraw**, enter an external BTC address and the amount. A small network fee applies.';
+    }
+    if (/how.*(pay|payment|send.*money|make.*payment)/.test(q)) {
+      return 'Payments are made directly between you and the other trader using the method shown in the offer (MoMo, bank transfer, etc.). Always confirm you\'ve received payment before releasing escrow. Keep your receipt as proof.';
+    }
+    if (/kyc|verif|verify.*id|identity|upload.*id|document/.test(q)) {
+      return 'To verify your identity, go to **Settings → Verification** and upload a clear photo of your government-issued ID (passport, driver\'s license, or national ID). Most verifications are reviewed within 24 hours. KYC unlocks higher trade limits and builds trust.';
+    }
+    if (/gift card|marketplace|amazon.*card|itunes.*card|steam.*card/.test(q)) {
+      return 'PRAQEN has a **Gift Card Marketplace** where you can buy and sell gift cards (Amazon, iTunes, Steam, Google Play and many more) for Bitcoin. Just list your card or browse available ones in the marketplace section.';
+    }
+    if (/fee|cost|charge|commission|price.*fee/.test(q)) {
+      return 'PRAQEN charges **0.5%** on completed trades only — deducted from the Bitcoin amount. There are no fees for listing offers or depositing BTC. Withdrawal fees depend on current Bitcoin network congestion.';
+    }
+    if (/referral|invite|earn.*friend|share.*link|commission.*invite/.test(q)) {
+      return 'Your unique referral code is in your profile page. Share your referral link with friends — when they sign up and complete trades, you earn a commission. The more you refer, the more you earn!';
+    }
+    if (/lock.*balance|balance.*lock|escrow.*balance|why.*(lock|hold)/.test(q)) {
+      return 'Locked balance is Bitcoin held in escrow for an active trade. It releases automatically back to your wallet when the trade completes or is cancelled. Check **My Trades** to see your active trades.';
+    }
+    if (/cancel.*trade|time.*limit|expire/.test(q)) {
+      return 'Each trade has a time limit set by the seller. If the buyer doesn\'t complete payment within that time, the seller can cancel and the escrow is returned. Buyers can also request a cancellation from the seller.';
+    }
+
+    // ── User reporting a payment update (not asking how to pay) ──
+    if (/^(i )?(just )?(paid|sent|transferred|made.*payment)\b|payment.*(sent|made|done|confirmed)/.test(q)) {
       const pool = [
         'Thanks for the update — I\'ve noted the payment details on your ticket. Has the other party confirmed receipt yet?',
         'Got it, payment noted. Please keep your receipt handy. Has anything changed since you sent it?',
@@ -260,31 +458,23 @@ export default function SuggestionsPanel({ user }) {
       return pool[turn % pool.length];
     }
 
+    // ── Dispute / problem → escalate (not a knowledge question) ──
     if (/dispute|scam|fraud|problem|stuck|issue|wrong|error|fail/.test(q)) {
       const pool = [
-        'I\'ve flagged this as urgent on your ticket. If you haven\'t already, go to **My Trades → Raise Dispute** to protect the escrow. Can you describe what happened?',
-        'On it — I\'ve escalated this. The team will investigate. Can you share any screenshots or trade IDs?',
-        'Understood, this has been marked urgent. Our team is reviewing it now. Any additional info will help us move faster.',
+        'If you\'re having a problem with a trade, go to **My Trades**, open the trade, and tap **Raise Dispute**. A moderator will review and help resolve it within 24 hours. Never release escrow without confirming payment.',
+        'I\'ve flagged this for the team. In the meantime, please go to **My Trades → Raise Dispute** to protect the escrow. Can you share a trade ID or any screenshots?',
+        'On it — I\'ve escalated this. Please raise a dispute on the trade page if you haven\'t already. Any additional info will help us resolve it quickly.',
       ];
       return pool[turn % pool.length];
     }
 
-    if (/trade|escrow|sell|buy|btc|bitcoin/.test(q)) {
-      const pool = [
-        'I hear you — I\'ve added that to your ticket. The team is working on it. Do you need anything else right now?',
-        'Noted on the trade details. I\'ll make sure the team sees this. Is there a trade ID or reference I should attach?',
-        'Thanks for the info. Your ticket has been updated and the team is reviewing it. Anything else?',
-      ];
-      return pool[turn % pool.length];
-    }
-
-    // Generic by turn count — vary so it never repeats
+    // ── Generic fallback — only for unrecognised queries, not answerable questions ──
     const generic = [
-      `Got it${name}! I\'m reviewing your ticket now. Can you tell me more about what\'s happening?`,
+      `Thanks for reaching out${name}! I'm reviewing your ticket now. Can you tell me more about what's happening?`,
       'Noted — I\'ve updated your ticket with that. Our team is working on it. Anything else to add?',
       'Thanks for that. I\'ve passed it to the team. Is there anything urgent you need right now?',
       'Understood — the team is on your case. Do you have any new updates I should note?',
-      'I hear you. I\'ve flagged this for the team. Can you share any extra details that might help?',
+      'I hear you. I\'ve noted this on your ticket. Anything else I can help with?',
     ];
     return generic[turn % generic.length];
   };
@@ -309,32 +499,102 @@ export default function SuggestionsPanel({ user }) {
       const data = await res.json();
       const replyText = data.reply?.trim() || '';
 
+      const seq = msgSeqRef.current++;
       setAiMsgs(prev => {
-        // If server returned the same text as a previous reply, use smart fallback
         const isDuplicate = replyText && prev.some(m => m.text.trim() === replyText);
         const finalText = isDuplicate || !replyText
           ? supportFallback(message, prev)
           : replyText;
-        return [...prev, { role: 'ai', text: finalText }];
+        return [...prev, { role: 'ai', text: finalText, _seq: seq }];
       });
     } catch {
-      setAiMsgs(prev => [...prev, { role: 'ai', text: supportFallback(message, prev) }]);
+      const seq = msgSeqRef.current++;
+      setAiMsgs(prev => [...prev, { role: 'ai', text: supportFallback(message, prev), _seq: seq }]);
     } finally {
       setAiLoad(false);
       setTimeout(() => inputRef.current?.focus(), 200);
     }
   };
 
-  // ── Create ticket (Step 3 submit) ─────────────────────────────────────────
-  const createTicket = async () => {
-    if (!msgBody.trim()) return toast.error('Please describe your issue first');
+  // ── Convert file to base64 ────────────────────────────────────────────────
+  const fileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // ── Check for duplicate tickets ──────────────────────────────────────────
+  const checkDuplicateTickets = async () => {
+    try {
+      const r = await axios.get(`${API_URL}/support/tickets`, {
+        headers: authH(),
+        timeout: 8000, // 8-second timeout — never hang indefinitely
+      });
+      const allTickets = r.data.tickets || [];
+      const openOnes = allTickets.filter(t => t.status !== 'closed' && t.status !== 'resolved');
+      setOpenTickets(openOnes);
+
+      // Check for subject/message keyword overlap
+      const bodyWords = new Set(msgBody.toLowerCase().split(/\s+/).filter(w => w.length > 3));
+      const similar = openOnes.filter(t => {
+        const ticketWords = (t.subject + ' ' + (t.description || '')).toLowerCase();
+        let overlap = 0;
+        for (const w of bodyWords) { if (ticketWords.includes(w)) overlap++; }
+        return overlap >= 2;
+      });
+
+      if (similar.length > 0) {
+        setDuplicateWarn(similar[0]);
+        return true; // has similar open ticket
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  };
+
+  // ── Create ticket (fires AFTER review confirmation) ──────────────────────
+  const submitTicket = async () => {
     if (!user) return toast.info('Please log in to create a support ticket');
-    setCreating(true);
+    // Prevent double-submission immediately
+    if (submitting) return;
+    setSubmitting(true);
+
+    // Duplicate check with explicit loading state
+    if (!showDuplicateConfirm) {
+      const hasDuplicate = await checkDuplicateTickets();
+      if (hasDuplicate) {
+        setShowDuplicateConfirm(true);
+        setSubmitting(false); // ← reset so button stays clickable
+        return;
+      }
+    }
+
+    // Simulate processing delay (600-900ms) to feel like real work
+    await new Promise(resolve => setTimeout(resolve, 600 + Math.random() * 300));
+
+    // Convert attachments to base64
+    const attachmentData = [];
+    for (const att of attachments) {
+      if (att.file) {
+        try {
+          const b64 = await fileToBase64(att.file);
+          attachmentData.push({ name: att.name, size: att.size, data: b64, type: att.file.type });
+        } catch {}
+      }
+    }
+
     try {
       const r = await axios.post(`${API_URL}/support/tickets`, {
         subject: subject.trim() || `Help with ${topic?.label || 'General'}`,
         category: topic?.cat || 'general',
         message: msgBody.trim(),
+        priority: priority,
+        trade_reference: tradeRef?.trim() || undefined,
+        attachments: attachmentData.length > 0 ? attachmentData : undefined,
       }, { headers: authH() });
 
       const newTicket = r.data.ticket;
@@ -342,18 +602,18 @@ export default function SuggestionsPanel({ user }) {
 
       const msgsRes = await axios.get(`${API_URL}/support/tickets/${newTicket.id}/messages`, { headers: authH() });
       const initialMsgs = msgsRes.data.messages || [];
-      setChatMsgs(initialMsgs);
+      // Stamp each message with a global sequence number for deterministic ordering
+      const seqdMsgs = initialMsgs.map((m, i) => ({ ...m, _seq: i }));
+      msgSeqRef.current = initialMsgs.length;
+      setChatMsgs(seqdMsgs);
       setAiMsgs([]);
 
-      // Show success screen first
       setMode('ticket-created');
       startPolling(newTicket.id);
-      // Pass empty history — this is the very first AI reply
-      fetchAI(msgBody.trim(), topic, [], initialMsgs);
+      fetchAI(msgBody.trim(), topic, [], seqdMsgs);
     } catch (e) {
+      setSubmitting(false);
       toast.error(e.response?.data?.error || 'Failed to create ticket. Please try again.');
-    } finally {
-      setCreating(false);
     }
   };
 
@@ -365,15 +625,30 @@ export default function SuggestionsPanel({ user }) {
     setReplyText('');
     try {
       const r = await axios.post(`${API_URL}/support/tickets/${ticket.id}/messages`, { message: text }, { headers: authH() });
-      const updatedChatMsgs = [...chatMsgs, r.data.message];
+      const newMsg = { ...r.data.message, _seq: msgSeqRef.current++ };
+      const updatedChatMsgs = [...chatMsgs, newMsg];
       setChatMsgs(updatedChatMsgs);
-      // Pass full history so AI never repeats itself
       fetchAI(text, topic, aiMsgs, updatedChatMsgs);
     } catch (e) {
       setReplyText(text);
       toast.error(e.response?.data?.error || 'Failed to send. Please try again.');
     } finally {
       setReplying(false);
+    }
+  };
+
+  // ── Submit satisfaction rating ────────────────────────────────────────────
+  const submitSatisfaction = async (rating) => {
+    setSatisfactionRating(rating);
+    setSatisfactionSubmitted(true);
+    try {
+      await axios.post(`${API_URL}/support/tickets/${ticket?.id}/feedback`, {
+        rating,
+        ticket_id: ticket?.id,
+      }, { headers: authH() });
+      toast.success('Thanks for your feedback!');
+    } catch {
+      // silently fail — rating is optional
     }
   };
 
@@ -392,18 +667,168 @@ export default function SuggestionsPanel({ user }) {
     } finally { setSugPost(false); }
   };
 
+  // ── Add attachment ────────────────────────────────────────────────────────
+  const addAttachment = (file) => {
+    const preview = URL.createObjectURL(file);
+    setAttachments(prev => [...prev, {
+      name: file.name,
+      size: file.size,
+      preview,
+      file,
+      type: file.type,
+    }]);
+  };
+
+  const removeAttachment = (index) => {
+    setAttachments(prev => {
+      const item = prev[index];
+      if (item?.preview) URL.revokeObjectURL(item.preview);
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / 1048576).toFixed(1)} MB`;
+  };
+
   // ── Header config per mode ────────────────────────────────────────────────
+  const TopicIcon = topic?.icon || MessageCircle;
+  const stepLabels = ['Topic', 'Details', 'Priority', 'Attachments', 'Review'];
+  const totalSteps = 5;
+
+  const getHeaderStep = (m) => {
+    switch (m) {
+      case 'topic-selected':      return [1, totalSteps];
+      case 'ticket-form':         return [2, totalSteps];
+      case 'ticket-priority':     return [3, totalSteps];
+      case 'ticket-attachments':  return [4, totalSteps];
+      case 'ticket-review':       return [5, totalSteps];
+      default:                    return null;
+    }
+  };
+
+  const getHeaderSub = (m) => {
+    const s = getHeaderStep(m);
+    if (!s) return '';
+    const label = stepLabels[s[0] - 1] || '';
+    return `Step ${s[0]} of ${s[1]} — ${label}`;
+  };
+
   const headerCfg = {
-    'home':           { title: 'PRAQEN Support',         sub: 'How can we help you today?',                        icon: <MessageCircle size={18} color="white" />,  step: null },
-    'topic-selected': { title: topic?.label || 'Support', sub: 'Step 1 of 2 — Review your topic',                  icon: <span style={{fontSize:16}}>{topic?.emoji}</span>, step: [1,2] },
-    'ticket-form':    { title: 'Describe Your Issue',     sub: 'Step 2 of 2 — Tell us what\'s happening',          icon: <Ticket size={18} color="white" />,            step: [2,2] },
-    'ticket-created': { title: 'Ticket Created!',         sub: `Ticket #${ticket?.id?.slice(0,8).toUpperCase() || '…'}`, icon: <CheckCircle size={18} color="white" />, step: null },
-    'chat':           { title: 'Live Support Chat',       sub: ticket ? `Ticket #${ticket.id.slice(0,8).toUpperCase()} · Open` : '…', icon: <Headphones size={18} color="white" />, step: null },
-    'suggest':        { title: 'Drop a Suggestion',       sub: 'We read every single one',                          icon: <Lightbulb size={18} color="white" />,         step: null },
+    'home':              { title: 'PRAQEN Support',         sub: 'How can we help you today?',                                        icon: <MessageCircle size={18} color="white" />,  step: null },
+    'topic-selected':    { title: topic?.label || 'Support', sub: getHeaderSub('topic-selected'),                                      icon: <TopicIcon size={16} color="white" />,       step: getHeaderStep('topic-selected') },
+    'ticket-form':       { title: 'Describe Your Issue',     sub: getHeaderSub('ticket-form'),                                         icon: <FileText size={18} color="white" />,          step: getHeaderStep('ticket-form') },
+    'ticket-priority':   { title: 'Set Priority',            sub: getHeaderSub('ticket-priority'),                                     icon: <Flag size={18} color="white" />,              step: getHeaderStep('ticket-priority') },
+    'ticket-attachments':{ title: 'Add Evidence (Optional)',  sub: getHeaderSub('ticket-attachments'),                                  icon: <Paperclip size={18} color="white" />,        step: getHeaderStep('ticket-attachments') },
+    'ticket-review':     { title: 'Review & Confirm',         sub: getHeaderSub('ticket-review'),                                      icon: <CheckCircle size={18} color="white" />,       step: getHeaderStep('ticket-review') },
+    'submitting':        { title: 'Submitting Your Ticket…',  sub: 'Please wait while we process your request',                         icon: <RefreshCw size={18} color="white" />,        step: null },
+    'ticket-created':    { title: 'Ticket Created!',         sub: `Ticket #${ticket?.id?.slice(0,8).toUpperCase() || '…'}`,           icon: <CheckCircle size={18} color="white" />,      step: null },
+    'chat':              { title: 'Live Support Chat',       sub: ticket ? `Ticket #${ticket.id.slice(0,8).toUpperCase()} · ${getTicketStatusLabel(ticket?.status)}` : '…', icon: <Headphones size={18} color="white" />, step: null },
+    'suggest':           { title: 'Drop a Suggestion',       sub: 'We read every single one',                                          icon: <Lightbulb size={18} color="white" />,         step: null },
   };
   const hdr = headerCfg[mode] || headerCfg['home'];
 
-  const canGoBack = mode !== 'home' && mode !== 'chat' && mode !== 'ticket-created';
+  const canGoBack = mode !== 'home' && mode !== 'chat' && mode !== 'ticket-created' && mode !== 'submitting';
+
+  // ── Ticket status label helper ────────────────────────────────────────────
+  function getTicketStatusLabel(status) {
+    switch (status) {
+      case 'open':      return 'Open';
+      case 'active':    return 'In Review';
+      case 'pending':   return 'Awaiting You';
+      case 'resolved':  return 'Resolved';
+      case 'closed':    return 'Closed';
+      default:          return status || 'Open';
+    }
+  }
+
+  function getTicketStatusColor(status) {
+    switch (status) {
+      case 'open':      return '#4ADE80';
+      case 'active':    return '#D97706';
+      case 'pending':   return '#F59E0B';
+      case 'resolved':  return '#8B5CF6';
+      case 'closed':    return '#94A3B8';
+      default:          return '#4ADE80';
+    }
+  }
+
+  // Get FAQ articles for current topic
+  const faqArticles = FAQ_BY_TOPIC[topic?.id] || FAQ_BY_TOPIC.other || [];
+
+  // ── Standalone AI Chat (Tab 2) ────────────────────────────────────────────
+  const [standaloneAiMsgs, setStandaloneAiMsgs] = useState([]);
+  const [standaloneAiLoading, setStandaloneAiLoading] = useState(false);
+  const [standaloneInput, setStandaloneInput] = useState('');
+  const standaloneChatRef = useRef(null);
+  const standaloneInputRef = useRef(null);
+  const [activeTab, setActiveTab] = useState('support');
+
+  const MIN_TYPING_MS = 700;
+
+  const fetchStandaloneAIResponse = async (message, history) => {
+    const res = await fetch(`${API_URL}/ai-chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authH() },
+      body: JSON.stringify({
+        message,
+        mode: 'general',
+        section: null,
+        history,
+        user: user ? { username: user.username, id: user.id } : null,
+      }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data.reply?.trim() || '';
+  };
+
+  const handleStandaloneSend = async (prefilledMessage) => {
+    const text = prefilledMessage || standaloneInput.trim();
+    if (!text || standaloneAiLoading) return;
+
+    setStandaloneInput('');
+    setStandaloneAiLoading(true);
+    const startedAt = Date.now();
+    const seq = msgSeqRef.current++;
+    setStandaloneAiMsgs(prev => [...prev, { role: 'user', text, _seq: seq }]);
+
+    try {
+      const history = standaloneAiMsgs
+        .filter(m => m.role === 'user' || m.role === 'ai')
+        .map(m => ({ role: m.role === 'ai' ? 'ai' : 'user', text: m.text }));
+      const replyText = await fetchStandaloneAIResponse(text, history);
+
+      // Enforce minimum typing duration so the indicator is always visible
+      const elapsed = Date.now() - startedAt;
+      if (elapsed < MIN_TYPING_MS) {
+        await new Promise(resolve => setTimeout(resolve, MIN_TYPING_MS - elapsed));
+      }
+
+      const fixedReply = replyText || "I'm here to help! Could you tell me more?";
+      const seq2 = msgSeqRef.current++;
+      setStandaloneAiMsgs(prev => [...prev, { role: 'ai', text: fixedReply, _seq: seq2 }]);
+    } catch {
+      const elapsed = Date.now() - startedAt;
+      if (elapsed < MIN_TYPING_MS) {
+        await new Promise(resolve => setTimeout(resolve, MIN_TYPING_MS - elapsed));
+      }
+      const seq2 = msgSeqRef.current++;
+      setStandaloneAiMsgs(prev => [...prev, { role: 'ai', text: "I'm having trouble connecting right now. Please try again in a moment.", _seq: seq2 }]);
+    } finally {
+      setStandaloneAiLoading(false);
+      setTimeout(() => standaloneInputRef.current?.focus(), 200);
+    }
+  };
+
+  // Scroll standalone AI chat to bottom
+  useEffect(() => {
+    if (standaloneChatRef.current) {
+      standaloneChatRef.current.scrollTop = standaloneChatRef.current.scrollHeight;
+    }
+  }, [standaloneAiMsgs, standaloneAiLoading]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   return (
@@ -413,7 +838,6 @@ export default function SuggestionsPanel({ user }) {
         <button onClick={openPanel}
           className="fixed flex items-center justify-center shadow-2xl transition-all hover:scale-110 active:scale-95"
           style={{
-            /* On mobile: sit above BottomNav (60px) + safe area + 14px gap */
             bottom: isMobile
               ? 'calc(60px + env(safe-area-inset-bottom, 0px) + 14px)'
               : 24,
@@ -421,7 +845,7 @@ export default function SuggestionsPanel({ user }) {
             width: isMobile ? 54 : 58,
             height: isMobile ? 54 : 58,
             borderRadius: '50%',
-            zIndex: 1002,  /* above BottomNav (1000) */
+            zIndex: 1002,
             background: 'linear-gradient(135deg,#1B4332,#2D6A4F)',
             border: '3px solid rgba(255,255,255,0.18)',
             boxShadow: '0 8px 32px rgba(27,67,50,0.45)',
@@ -451,7 +875,6 @@ export default function SuggestionsPanel({ user }) {
           )}
         <div className="fixed flex flex-col"
           style={isMobile ? {
-            /* Mobile: full-screen sheet — above BottomNav (z:1000) */
             bottom: 0, left: 0, right: 0,
             height: '92dvh', maxHeight: '92dvh',
             borderRadius: '22px 22px 0 0',
@@ -460,7 +883,6 @@ export default function SuggestionsPanel({ user }) {
             overflow: 'hidden',
             zIndex: 1002,
           } : {
-            /* Desktop: floating panel bottom-right */
             bottom: 96, right: 16,
             width: 'min(400px, calc(100vw - 32px))',
             height: 'min(600px, calc(100vh - 120px))',
@@ -474,7 +896,6 @@ export default function SuggestionsPanel({ user }) {
           {/* ── Header ── */}
           <div className="flex-shrink-0"
             style={{ background: 'linear-gradient(135deg,#1B4332,#2D6A4F)' }}>
-            {/* Drag handle — mobile only */}
             {isMobile && (
               <div className="flex justify-center pt-3 pb-1">
                 <div style={{ width: 38, height: 4, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.3)' }} />
@@ -483,9 +904,12 @@ export default function SuggestionsPanel({ user }) {
             <div className="flex items-center gap-3 px-4 py-3" style={{ minHeight: isMobile ? 60 : 56 }}>
               {canGoBack && (
                 <button onClick={() => {
-                  if (mode === 'ticket-form')      setMode('topic-selected');
-                  else if (mode === 'topic-selected') goHome();
-                  else if (mode === 'suggest')     goHome();
+                  if (mode === 'ticket-form')         setMode('topic-selected');
+                  else if (mode === 'ticket-priority') setMode('ticket-form');
+                  else if (mode === 'ticket-attachments') setMode('ticket-priority');
+                  else if (mode === 'ticket-review')  setMode('ticket-attachments');
+                  else if (mode === 'topic-selected')  goHome();
+                  else if (mode === 'suggest')         goHome();
                 }}
                   style={{
                     width: isMobile ? 40 : 32, height: isMobile ? 40 : 32,
@@ -503,7 +927,9 @@ export default function SuggestionsPanel({ user }) {
                 borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.15)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
               }}>
-                {hdr.icon}
+                {mode === 'submitting'
+                  ? <RefreshCw size={isMobile ? 18 : 15} color="white" className="animate-spin" />
+                  : hdr.icon}
               </div>
 
               <div className="flex-1 min-w-0">
@@ -511,7 +937,12 @@ export default function SuggestionsPanel({ user }) {
                   className="truncate">{hdr.title}</p>
                 <p className="truncate flex items-center gap-1"
                   style={{ fontSize: isMobile ? 12 : 11, marginTop: 3, color: 'rgba(255,255,255,0.7)', margin: '3px 0 0' }}>
-                  {mode === 'chat' && <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', backgroundColor: '#4ADE80', flexShrink: 0 }} />}
+                  {mode === 'chat' && (
+                    <span style={{
+                      display: 'inline-block', width: 7, height: 7, borderRadius: '50%',
+                      backgroundColor: getTicketStatusColor(ticket?.status), flexShrink: 0
+                    }} />
+                  )}
                   {hdr.sub}
                 </p>
               </div>
@@ -532,12 +963,38 @@ export default function SuggestionsPanel({ user }) {
           {/* ── Step bar ── */}
           {hdr.step && (
             <div className="flex-shrink-0 border-b" style={{ borderColor: '#F1F5F9', backgroundColor: '#FAFAFA' }}>
-              <StepBar step={hdr.step[0]} total={hdr.step[1]} />
+              <StepBar step={hdr.step[0]} total={hdr.step[1]} labels={stepLabels} />
             </div>
           )}
 
-          {/* ════════════ HOME ════════════ */}
+          {/* ── Tab Switcher (only at top-level home) ── */}
           {mode === 'home' && (
+            <div className="flex-shrink-0 px-4 py-2 border-b" style={{ borderColor: '#F1F5F9', backgroundColor: '#FAFAFA' }}>
+              <div className="flex rounded-xl overflow-hidden" style={{ backgroundColor: '#E2E8F0', padding: 2 }}>
+                <button onClick={() => setActiveTab('support')}
+                  className="flex-1 py-1.5 px-3 text-xs font-black rounded-lg transition-all duration-200"
+                  style={{
+                    backgroundColor: activeTab === 'support' ? '#1B4332' : 'transparent',
+                    color: activeTab === 'support' ? '#fff' : '#64748B',
+                  }}>
+                  <Ticket size={12} className="inline mr-1.5" style={{ verticalAlign: -1 }} />
+                  Support Tickets
+                </button>
+                <button onClick={() => setActiveTab('ai-chat')}
+                  className="flex-1 py-1.5 px-3 text-xs font-black rounded-lg transition-all duration-200"
+                  style={{
+                    backgroundColor: activeTab === 'ai-chat' ? '#1B4332' : 'transparent',
+                    color: activeTab === 'ai-chat' ? '#fff' : '#64748B',
+                  }}>
+                  <Bot size={12} className="inline mr-1.5" style={{ verticalAlign: -1 }} />
+                  AI Chat
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ════════════ HOME (Support Tickets) ════════════ */}
+          {mode === 'home' && activeTab !== 'ai-chat' && (
             <div className="flex-1 overflow-y-auto" style={{ backgroundColor: '#F8FAFC' }}>
               {/* Welcome banner */}
               <div className="px-4 pt-4 pb-3">
@@ -550,8 +1007,9 @@ export default function SuggestionsPanel({ user }) {
                       : <User size={18} color="white" />}
                   </div>
                   <div>
-                    <p className="text-sm font-black text-white leading-none">
-                      Hi{user ? `, ${user.username || user.full_name}` : ' there'}! 👋
+                    <p className="text-sm font-black text-white leading-none flex items-center gap-1.5">
+                      Hi{user ? `, ${user.username || user.full_name}` : ' there'}!
+                      <Hand size={14} color="white" style={{ opacity: 0.85 }} />
                     </p>
                     <p className="text-[11px] mt-0.5" style={{ color: 'rgba(255,255,255,0.65)' }}>
                       What do you need help with today?
@@ -576,7 +1034,13 @@ export default function SuggestionsPanel({ user }) {
                         WebkitTapHighlightColor: 'transparent', transition: 'box-shadow 0.15s',
                         minHeight: isMobile ? 90 : 80,
                       }}>
-                      <span style={{ fontSize: isMobile ? 24 : 20 }}>{t.emoji}</span>
+                      <div style={{
+                        width: isMobile ? 32 : 28, height: isMobile ? 32 : 28,
+                        borderRadius: 10, backgroundColor: t.bg,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <t.icon size={isMobile ? 17 : 15} color={t.color} strokeWidth={2.25} />
+                      </div>
                       <span style={{ fontSize: isMobile ? 13 : 12, fontWeight: 900, lineHeight: 1.2, color: t.color }}>{t.label}</span>
                       <span style={{ fontSize: isMobile ? 11 : 10, lineHeight: 1.4, color: '#94A3B8' }}>{t.hint}</span>
                     </button>
@@ -621,7 +1085,83 @@ export default function SuggestionsPanel({ user }) {
             </div>
           )}
 
-          {/* ════════════ STEP 1: TOPIC SELECTED ════════════ */}
+          {/* ════════════ AI CHAT (Tab 2) ════════════ */}
+          {mode === 'home' && activeTab === 'ai-chat' && (
+            <div className="flex-1 flex flex-col overflow-hidden" style={{ backgroundColor: '#F8FAFC' }}>
+              {/* Messages */}
+              <div ref={standaloneChatRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+                {standaloneAiMsgs.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-4">
+                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center"
+                      style={{ background: 'linear-gradient(135deg,#1B4332,#2D6A4F)' }}>
+                      <Bot size={28} color="white" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-black" style={{ color: '#1E293B' }}>PRAQEN AI Assistant</p>
+                      <p className="text-xs mt-1" style={{ color: '#64748B' }}>Ask me anything about buying, selling, your wallet, or using PRAQEN!</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 justify-center mt-2">
+                      {['How do I buy Bitcoin?', 'How does escrow work?', 'Reset my password', 'KYC verification'].map(s => (
+                        <button key={s} onClick={() => !standaloneAiLoading && handleStandaloneSend(s)}
+                          className="px-3 py-2 rounded-xl text-xs font-bold transition hover:opacity-80"
+                          style={{ backgroundColor: '#fff', border: '1.5px solid #E2E8F0', color: '#334155' }}>
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  standaloneAiMsgs.map((m, i) => (
+                    <div key={m._seq || i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      {m.role !== 'user' && (
+                        <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 mr-2 mt-0.5"
+                          style={{ background: 'linear-gradient(135deg,#1B4332,#2D6A4F)' }}>
+                          <Bot size={12} color="white" />
+                        </div>
+                      )}
+                      <div className="px-3 py-2.5 text-sm leading-relaxed"
+                        style={{
+                          maxWidth: '80%',
+                          backgroundColor: m.role === 'user' ? '#1B4332' : '#fff',
+                          color: m.role === 'user' ? 'white' : '#1E293B',
+                          borderRadius: m.role === 'user' ? '18px 18px 4px 18px' : '4px 18px 18px 18px',
+                          boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+                        }}>
+                        <Msg text={m.text} />
+                      </div>
+                    </div>
+                  ))
+                )}
+                {standaloneAiLoading && <Typing />}
+              </div>
+
+              {/* Input bar */}
+              <div className="flex-shrink-0 px-4 py-3 border-t" style={{ borderColor: '#F1F5F9', backgroundColor: '#fff' }}>
+                <div className="flex items-center gap-2">
+                  <input ref={standaloneInputRef}
+                    value={standaloneInput}
+                    onChange={e => setStandaloneInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleStandaloneSend(); }}}
+                    placeholder="Ask me anything…"
+                    className="flex-1 px-4 py-2.5 rounded-xl border-2 outline-none text-sm"
+                    style={{ borderColor: standaloneInput ? '#1B4332' : '#E2E8F0', fontFamily: 'inherit' }}
+                    disabled={standaloneAiLoading} />
+                  <button onClick={handleStandaloneSend} disabled={!standaloneInput.trim() || standaloneAiLoading}
+                    className="w-10 h-10 rounded-xl flex items-center justify-center transition flex-shrink-0"
+                    style={{
+                      background: standaloneInput.trim() && !standaloneAiLoading
+                        ? 'linear-gradient(135deg,#1B4332,#2D6A4F)' : '#E2E8F0',
+                    }}>
+                    {standaloneAiLoading
+                      ? <RefreshCw size={16} color="white" className="animate-spin" />
+                      : <Send size={16} color={standaloneInput.trim() ? 'white' : '#94A3B8'} />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ════════════ STEP 1: TOPIC SELECTED + FAQ ════════════ */}
           {mode === 'topic-selected' && (
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4" style={{ backgroundColor: '#F8FAFC' }}>
 
@@ -629,7 +1169,13 @@ export default function SuggestionsPanel({ user }) {
               <div className="p-4 rounded-2xl"
                 style={{ backgroundColor: topic?.bg || '#F0FDF4', border: `2px solid ${topic?.color || '#1B4332'}25` }}>
                 <div className="flex items-center gap-3 mb-2">
-                  <span className="text-3xl">{topic?.emoji}</span>
+                  <div style={{
+                    width: 44, height: 44, borderRadius: 14, backgroundColor: '#fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                  }}>
+                    <TopicIcon size={22} color={topic?.color} strokeWidth={2.25} />
+                  </div>
                   <div>
                     <p className="text-sm font-black" style={{ color: topic?.color }}>{topic?.label}</p>
                     <p className="text-[11px]" style={{ color: '#64748B' }}>{topic?.hint}</p>
@@ -637,76 +1183,125 @@ export default function SuggestionsPanel({ user }) {
                 </div>
               </div>
 
-              {/* What happens next */}
-              <div className="p-4 rounded-2xl space-y-3"
-                style={{ backgroundColor: '#fff', border: '1.5px solid #E2E8F0' }}>
-                <p className="text-xs font-black" style={{ color: '#1E293B' }}>What happens when you create a ticket:</p>
-                {[
-                  { n: '1', text: 'You describe your issue in the next step' },
-                  { n: '2', text: 'A ticket is created instantly with a unique ID' },
-                  { n: '3', text: 'Our AI responds immediately with helpful info' },
-                  { n: '4', text: 'A human support agent follows up in the chat' },
-                ].map(s => (
-                  <div key={s.n} className="flex items-start gap-3">
-                    <span className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-black text-white"
-                      style={{ backgroundColor: '#1B4332', marginTop: 1 }}>{s.n}</span>
-                    <p className="text-[11px] leading-relaxed" style={{ color: '#64748B' }}>{s.text}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Account info */}
-              {user ? (
-                <div className="flex items-center gap-3 p-3 rounded-xl"
-                  style={{ backgroundColor: '#fff', border: '1.5px solid #D1FAE5' }}>
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{ backgroundColor: '#F0FDF4' }}>
-                    {user.avatar_url
-                      ? <img src={user.avatar_url} alt="" className="w-9 h-9 rounded-xl object-cover" />
-                      : <User size={16} color="#1B4332" />}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-black truncate" style={{ color: '#1E293B' }}>
-                      {user.full_name || user.username}
+              {/* Self-serve FAQ — before showing the form */}
+              {showFaq && faqArticles.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Lightbulb size={14} color="#D97706" />
+                    <p className="text-[11px] font-black" style={{ color: '#1E293B' }}>
+                      Quick answers for {topic?.label?.toLowerCase()}
                     </p>
-                    <p className="text-[10px] truncate" style={{ color: '#64748B' }}>@{user.username}</p>
                   </div>
-                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: '#D1FAE5', color: '#1B4332' }}>✓ Logged in</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-3 p-3 rounded-xl"
-                  style={{ backgroundColor: '#FEF2F2', border: '1.5px solid #FECACA' }}>
-                  <User size={16} color="#DC2626" />
-                  <p className="text-xs font-semibold" style={{ color: '#DC2626' }}>
-                    You need to be logged in to create a support ticket.
-                  </p>
+                  {faqArticles.map((faq, i) => (
+                    <details key={i} className="rounded-xl overflow-hidden"
+                      style={{ backgroundColor: '#fff', border: '1.5px solid #E2E8F0' }}>
+                      <summary className="px-4 py-3 text-xs font-bold cursor-pointer"
+                        style={{ color: '#334155', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8 }}
+                      >
+                        <span style={{ color: topic?.color || '#1B4332', fontSize: 16 }}>?</span>
+                        {faq.q}
+                      </summary>
+                      <div className="px-4 pb-3 pt-1 border-t" style={{ borderColor: '#F1F5F9' }}>
+                        <p className="text-[11px] leading-relaxed" style={{ color: '#64748B' }}>
+                          <Msg text={faq.a} />
+                        </p>
+                      </div>
+                    </details>
+                  ))}
+
+                  {/* "Still need help" CTA */}
+                  <div className="pt-2 pb-1 text-center">
+                    <p className="text-[10px] mb-2" style={{ color: '#94A3B8' }}>
+                      Didn't find what you need?
+                    </p>
+                    <button onClick={goToForm}
+                      className="w-full py-3 rounded-xl font-black text-sm text-white flex items-center justify-center gap-2 transition hover:opacity-90"
+                      style={{ background: 'linear-gradient(135deg,#1B4332,#2D6A4F)' }}>
+                      <Ticket size={15} />
+                      Still Need Help — Create Ticket
+                      <ArrowRight size={13} />
+                    </button>
+                  </div>
                 </div>
               )}
 
-              {/* CTA */}
-              <button onClick={goToForm} disabled={!user}
-                className="w-full py-3.5 rounded-xl font-black text-sm text-white flex items-center justify-center gap-2 transition hover:opacity-90 disabled:opacity-40"
-                style={{ background: 'linear-gradient(135deg,#1B4332,#2D6A4F)' }}>
-                <Ticket size={16} />
-                Create a Support Ticket
-                <ArrowRight size={14} />
-              </button>
+              {/* If user clicked past FAQ or no FAQ articles, show the CTA */}
+              {(!showFaq || faqArticles.length === 0) && (
+                <>
+                  {/* What happens next */}
+                  <div className="p-4 rounded-2xl space-y-3"
+                    style={{ backgroundColor: '#fff', border: '1.5px solid #E2E8F0' }}>
+                    <p className="text-xs font-black" style={{ color: '#1E293B' }}>What happens when you create a ticket:</p>
+                    {[
+                      { n: '1', text: 'You describe your issue in the next step' },
+                      { n: '2', text: 'You set the priority so we know how urgent it is' },
+                      { n: '3', text: 'You can attach screenshots as evidence (optional)' },
+                      { n: '4', text: 'You review everything before submitting' },
+                    ].map(s => (
+                      <div key={s.n} className="flex items-start gap-3">
+                        <span className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-black text-white"
+                          style={{ backgroundColor: '#1B4332', marginTop: 1 }}>{s.n}</span>
+                        <p className="text-[11px] leading-relaxed" style={{ color: '#64748B' }}>{s.text}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Account info */}
+                  {user ? (
+                    <div className="flex items-center gap-3 p-3 rounded-xl"
+                      style={{ backgroundColor: '#fff', border: '1.5px solid #D1FAE5' }}>
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: '#F0FDF4' }}>
+                        {user.avatar_url
+                          ? <img src={user.avatar_url} alt="" className="w-9 h-9 rounded-xl object-cover" />
+                          : <User size={16} color="#1B4332" />}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-black truncate" style={{ color: '#1E293B' }}>
+                          {user.full_name || user.username}
+                        </p>
+                        <p className="text-[10px] truncate" style={{ color: '#64748B' }}>@{user.username}</p>
+                      </div>
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full flex-shrink-0 flex items-center gap-1"
+                        style={{ backgroundColor: '#D1FAE5', color: '#1B4332' }}>
+                        <Check size={10} strokeWidth={3} /> Logged in
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3 p-3 rounded-xl"
+                      style={{ backgroundColor: '#FEF2F2', border: '1.5px solid #FECACA' }}>
+                      <User size={16} color="#DC2626" />
+                      <p className="text-xs font-semibold" style={{ color: '#DC2626' }}>
+                        You need to be logged in to create a support ticket.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* CTA */}
+                  <button onClick={goToForm} disabled={!user}
+                    className="w-full py-3.5 rounded-xl font-black text-sm text-white flex items-center justify-center gap-2 transition hover:opacity-90 disabled:opacity-40"
+                    style={{ background: 'linear-gradient(135deg,#1B4332,#2D6A4F)' }}>
+                    <Ticket size={16} />
+                    Get Started
+                    <ArrowRight size={14} />
+                  </button>
+                </>
+              )}
 
               <p className="text-[10px] text-center" style={{ color: '#CBD5E1' }}>
-                Your account info is sent with the ticket so we can help faster
+                Or go back and choose a different topic
               </p>
             </div>
           )}
 
-          {/* ════════════ STEP 2: TICKET FORM ════════════ */}
+          {/* ════════════ STEP 2: DETAILS FORM ════════════ */}
           {mode === 'ticket-form' && (
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4" style={{ backgroundColor: '#F8FAFC' }}>
 
               {/* Topic badge */}
               <div className="flex items-center gap-2 px-3 py-2 rounded-xl"
                 style={{ backgroundColor: topic?.bg || '#F0FDF4', border: `1.5px solid ${topic?.color || '#1B4332'}20` }}>
-                <span className="text-base">{topic?.emoji}</span>
+                <TopicIcon size={15} color={topic?.color} strokeWidth={2.25} />
                 <p className="text-xs font-black" style={{ color: topic?.color }}>{topic?.label}</p>
               </div>
 
@@ -726,28 +1321,471 @@ export default function SuggestionsPanel({ user }) {
                 <label className="text-[11px] font-black uppercase tracking-wider block mb-1.5" style={{ color: '#64748B' }}>
                   Describe your issue <span style={{ color: '#DC2626' }}>*</span>
                 </label>
-                <textarea ref={inputRef} value={msgBody} onChange={e => setMsgBody(e.target.value)}
+                <textarea ref={detailsRef} value={msgBody} onChange={e => setMsgBody(e.target.value)}
                   placeholder={`Tell us exactly what's happening with your ${topic?.label?.toLowerCase() || 'issue'}. Include trade IDs, amounts, or any relevant details…`}
                   rows={isMobile ? 4 : 5}
                   className="w-full px-3 py-2.5 rounded-xl border-2 focus:outline-none resize-none transition"
                   style={{ borderColor: msgBody ? '#1B4332' : '#E2E8F0', backgroundColor: '#fff', fontSize: 16, fontFamily: 'inherit' }} />
-                <p className="text-[10px] mt-1" style={{ color: '#94A3B8' }}>
-                  The more detail you give, the faster we can help
-                </p>
+
+                {/* Live character count + minimum length nudge */}
+                <div className="flex items-center justify-between mt-1.5">
+                  <div className="flex items-center gap-1">
+                    {msgBody.trim().length > 0 && msgBody.trim().length < 10 && (
+                      <span className="flex items-center gap-1 text-[10px] font-bold" style={{ color: '#F59E0B' }}>
+                        <AlertTriangle size={10} /> Add a bit more detail
+                      </span>
+                    )}
+                    {msgBody.trim().length >= 10 && (
+                      <span className="flex items-center gap-1 text-[10px] font-bold" style={{ color: '#1B4332' }}>
+                        <Check size={10} strokeWidth={3} /> Good detail
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px]" style={{ color: msgBody.length > 10 ? '#1B4332' : '#94A3B8' }}>
+                    {msgBody.length} char
+                  </span>
+                </div>
               </div>
 
-              {/* Submit */}
-              <button onClick={createTicket} disabled={creating || !msgBody.trim()}
+              {/* Trade reference — shown for trade/payment topics */}
+              {(topic?.cat === 'trade' || topic?.cat === 'payment') && (
+                <div>
+                  <label className="text-[11px] font-black uppercase tracking-wider block mb-1.5" style={{ color: '#64748B' }}>
+                    Trade / Reference ID <span style={{ color: '#94A3B8' }}>(optional)</span>
+                  </label>
+                  <input value={tradeRef} onChange={e => setTradeRef(e.target.value)}
+                    placeholder="e.g. TRADE-ABC123 or your payment reference…"
+                    className="w-full px-3 py-2.5 rounded-xl border-2 focus:outline-none transition"
+                    style={{ borderColor: tradeRef ? '#1B4332' : '#E2E8F0', backgroundColor: '#fff', fontSize: 16, fontFamily: 'inherit' }} />
+                  <p className="text-[10px] mt-1" style={{ color: '#94A3B8' }}>
+                    This helps us find your case faster
+                  </p>
+                </div>
+              )}
+
+              {/* Next */}
+              <button onClick={goToPriority} disabled={!msgBody.trim() || msgBody.trim().length < 10}
                 className="w-full py-3.5 rounded-xl font-black text-sm text-white flex items-center justify-center gap-2 transition hover:opacity-90 disabled:opacity-40"
                 style={{ background: 'linear-gradient(135deg,#1B4332,#2D6A4F)' }}>
-                {creating
-                  ? <><RefreshCw size={14} className="animate-spin" /> Creating your ticket…</>
-                  : <><Ticket size={14} /> Create Ticket &amp; Open Chat <ArrowRight size={13} /></>}
+                Continue — Set Priority
+                <ArrowRight size={14} />
               </button>
 
               <p className="text-[10px] text-center" style={{ color: '#CBD5E1' }}>
-                By submitting you agree to our support terms · Response time: &lt; 24 hours
+                We'll never share your information
               </p>
+            </div>
+          )}
+
+          {/* ════════════ STEP 3: PRIORITY ════════════ */}
+          {mode === 'ticket-priority' && (
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4" style={{ backgroundColor: '#F8FAFC' }}>
+
+              {/* Priority auto-detect notice */}
+              {priority === 'urgent' && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl"
+                  style={{ backgroundColor: '#FEF2F2', border: '1.5px solid #FECACA' }}>
+                  <AlertOctagon size={14} color="#DC2626" />
+                  <p className="text-[10px] font-bold" style={{ color: '#DC2626' }}>
+                    We detected keywords suggesting this may be urgent — we've pre-selected Urgent for you.
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-wider mb-3" style={{ color: '#64748B' }}>
+                  How urgent is your issue?
+                </p>
+                <div className="space-y-2.5">
+                  {PRIORITIES.map(p => {
+                    const PrioIcon = p.icon;
+                    const isSelected = priority === p.id;
+                    return (
+                      <button key={p.id} onClick={() => setPriority(p.id)}
+                        className="w-full text-left flex items-center gap-3 p-3.5 rounded-xl transition-all"
+                        style={{
+                          backgroundColor: isSelected ? p.bg : '#fff',
+                          border: `2px solid ${isSelected ? p.color : '#E2E8F0'}`,
+                          boxShadow: isSelected ? `0 0 0 1px ${p.color}20` : 'none',
+                        }}>
+                        <div style={{
+                          width: 40, height: 40, borderRadius: 12,
+                          backgroundColor: isSelected ? p.color : '#F1F5F9',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                          transition: 'all 0.2s',
+                        }}>
+                          <PrioIcon size={18} color={isSelected ? 'white' : p.color} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-black" style={{ color: isSelected ? p.color : '#1E293B' }}>
+                            {p.label}
+                          </p>
+                          <p className="text-[10px] mt-0.5" style={{ color: '#64748B' }}>{p.desc}</p>
+                        </div>
+                        <div style={{
+                          width: 22, height: 22, borderRadius: '50%',
+                          border: `2px solid ${isSelected ? p.color : '#CBD5E1'}`,
+                          backgroundColor: isSelected ? p.color : 'transparent',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          flexShrink: 0,
+                        }}>
+                          {isSelected && <Check size={12} color="white" strokeWidth={3} />}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ETA info */}
+              <div className="p-3 rounded-xl" style={{ backgroundColor: '#fff', border: '1.5px solid #E2E8F0' }}>
+                <div className="flex items-center gap-2">
+                  <Clock size={13} color="#64748B" />
+                  <p className="text-[10px]" style={{ color: '#64748B' }}>
+                    Estimated response time:{' '}
+                    <span className="font-bold" style={{ color: RESPONSE_TIMES[priority]?.color || '#64748B' }}>
+                      {RESPONSE_TIMES[priority]?.eta || '~24 hours'}
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Navigation */}
+              <div className="flex gap-2">
+                <button onClick={() => setMode('ticket-form')}
+                  className="px-4 py-3 rounded-xl font-bold text-sm transition flex items-center gap-1.5"
+                  style={{ backgroundColor: '#fff', border: '1.5px solid #E2E8F0', color: '#64748B' }}>
+                  <ChevronLeft size={14} /> Back
+                </button>
+                <button onClick={goToAttachments}
+                  className="flex-1 py-3 rounded-xl font-black text-sm text-white flex items-center justify-center gap-2 transition hover:opacity-90"
+                  style={{ background: 'linear-gradient(135deg,#1B4332,#2D6A4F)' }}>
+                  Continue — Add Evidence
+                  <ArrowRight size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ════════════ STEP 4: ATTACHMENTS ════════════ */}
+          {mode === 'ticket-attachments' && (
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4" style={{ backgroundColor: '#F8FAFC' }}>
+
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-wider mb-1" style={{ color: '#64748B' }}>
+                  Add Supporting Evidence <span style={{ color: '#94A3B8' }}>(optional)</span>
+                </p>
+                <p className="text-[10px] mb-3" style={{ color: '#94A3B8' }}>
+                  Screenshots of error messages, payment receipts, or trade screens help us resolve your issue faster.
+                </p>
+
+                {/* Upload area */}
+                <label className="flex flex-col items-center gap-2 p-6 rounded-xl cursor-pointer transition hover:bg-gray-50"
+                  style={{ backgroundColor: '#fff', border: '2px dashed #CBD5E1' }}>
+                  <Upload size={24} color="#94A3B8" />
+                  <div className="text-center">
+                    <p className="text-xs font-bold" style={{ color: '#475569' }}>
+                      Tap to upload screenshots
+                    </p>
+                    <p className="text-[10px] mt-0.5" style={{ color: '#94A3B8' }}>
+                      PNG, JPG up to 5 MB each
+                    </p>
+                  </div>
+                  <input type="file" accept="image/png,image/jpeg,image/jpg" multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []);
+                      files.forEach(f => {
+                        if (f.size <= 5 * 1024 * 1024) addAttachment(f);
+                        else toast.error(`${f.name} is too large (max 5 MB)`);
+                      });
+                      e.target.value = '';
+                    }} />
+                </label>
+
+                {/* Attachments list */}
+                {attachments.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {attachments.map((att, i) => (
+                      <div key={i} className="flex items-center gap-3 p-2.5 rounded-xl"
+                        style={{ backgroundColor: '#fff', border: '1.5px solid #E2E8F0' }}>
+                        {att.type?.startsWith('image/') ? (
+                          <div style={{
+                            width: 44, height: 44, borderRadius: 10, overflow: 'hidden', flexShrink: 0,
+                            backgroundColor: '#F1F5F9',
+                          }}>
+                            <img src={att.preview} alt={att.name}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          </div>
+                        ) : (
+                          <div style={{
+                            width: 44, height: 44, borderRadius: 10, flexShrink: 0,
+                            backgroundColor: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            <FileText size={18} color="#64748B" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold truncate" style={{ color: '#1E293B' }}>{att.name}</p>
+                          <p className="text-[10px]" style={{ color: '#94A3B8' }}>{formatFileSize(att.size)}</p>
+                        </div>
+                        <button onClick={() => removeAttachment(i)}
+                          style={{
+                            width: 32, height: 32, borderRadius: 8,
+                            border: 'none', cursor: 'pointer', flexShrink: 0,
+                            backgroundColor: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}>
+                          <Trash2 size={14} color="#DC2626" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Upload more button */}
+                {attachments.length > 0 && attachments.length < 5 && (
+                  <label className="mt-2 flex items-center justify-center gap-2 w-full py-2.5 rounded-xl cursor-pointer font-bold text-xs transition"
+                    style={{ backgroundColor: '#fff', border: '1.5px solid #E2E8F0', color: '#64748B' }}>
+                    <Paperclip size={13} /> Add more files
+                    <input type="file" accept="image/png,image/jpeg,image/jpg" multiple
+                      className="hidden"
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        files.forEach(f => {
+                          if (attachments.length + files.length <= 5) {
+                            if (f.size <= 5 * 1024 * 1024) addAttachment(f);
+                            else toast.error(`${f.name} is too large (max 5 MB)`);
+                          } else toast.error('Maximum 5 attachments');
+                        });
+                        e.target.value = '';
+                      }} />
+                  </label>
+                )}
+              </div>
+
+              {/* Navigation */}
+              <div className="flex gap-2">
+                <button onClick={() => setMode('ticket-priority')}
+                  className="px-4 py-3 rounded-xl font-bold text-sm transition flex items-center gap-1.5"
+                  style={{ backgroundColor: '#fff', border: '1.5px solid #E2E8F0', color: '#64748B' }}>
+                  <ChevronLeft size={14} /> Back
+                </button>
+                <button onClick={goToReview}
+                  className="flex-1 py-3 rounded-xl font-black text-sm text-white flex items-center justify-center gap-2 transition hover:opacity-90"
+                  style={{ background: 'linear-gradient(135deg,#1B4332,#2D6A4F)' }}>
+                  {attachments.length > 0 ? `Review (${attachments.length} file${attachments.length > 1 ? 's' : ''})` : 'Skip — Review Ticket'}
+                  <ArrowRight size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ════════════ STEP 5: REVIEW & CONFIRM ════════════ */}
+          {mode === 'ticket-review' && (
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4" style={{ backgroundColor: '#F8FAFC' }}>
+
+              {/* Duplicate ticket warning */}
+              {showDuplicateConfirm && duplicateWarn && (
+                <div className="p-3 rounded-xl space-y-2"
+                  style={{ backgroundColor: '#FFFBEB', border: '1.5px solid #FDE68A' }}>
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle size={14} color="#D97706" className="flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-[11px] font-bold" style={{ color: '#92400E' }}>
+                        You have an open ticket about a similar issue
+                      </p>
+                      <p className="text-[10px] mt-0.5" style={{ color: '#A16207' }}>
+                        Ticket #{duplicateWarn.id?.slice(0, 8).toUpperCase()}: "{duplicateWarn.subject}"
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button onClick={() => { setShowDuplicateConfirm(false); setDuplicateWarn(null); }}
+                      className="flex-1 py-2 rounded-lg text-[10px] font-bold"
+                      style={{ backgroundColor: '#fff', border: '1.5px solid #E2E8F0', color: '#64748B' }}>
+                      Cancel
+                    </button>
+                    <button onClick={submitTicket}
+                      className="flex-1 py-2 rounded-lg text-[10px] font-bold text-white"
+                      style={{ backgroundColor: '#D97706' }}>
+                      Submit Anyway
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Summary card */}
+              <div className="p-4 rounded-2xl space-y-3"
+                style={{ backgroundColor: '#fff', border: '2px solid #1B4332', boxShadow: '0 4px 16px rgba(27,67,50,0.08)' }}>
+
+                <p className="text-[11px] font-black uppercase tracking-wider text-center" style={{ color: '#1B4332' }}>
+                  Ticket Summary
+                </p>
+
+                {/* Topic */}
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl"
+                  style={{ backgroundColor: topic?.bg || '#F0FDF4' }}>
+                  <TopicIcon size={14} color={topic?.color} strokeWidth={2.25} />
+                  <span className="text-xs font-bold" style={{ color: topic?.color }}>{topic?.label}</span>
+                </div>
+
+                {/* Subject */}
+                <div>
+                  <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: '#94A3B8' }}>Subject</p>
+                  <p className="text-xs font-bold mt-0.5" style={{ color: '#1E293B' }}>{subject}</p>
+                </div>
+
+                {/* Message */}
+                <div>
+                  <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: '#94A3B8' }}>Description</p>
+                  <p className="text-[11px] mt-0.5 leading-relaxed" style={{ color: '#475569' }}>{msgBody}</p>
+                </div>
+
+                {/* Trade ref */}
+                {tradeRef && (
+                  <div>
+                    <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: '#94A3B8' }}>Reference ID</p>
+                    <p className="text-xs font-bold mt-0.5" style={{ color: '#1E293B' }}>{tradeRef}</p>
+                  </div>
+                )}
+
+                {/* Priority */}
+                <div className="flex items-center gap-2">
+                  <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: '#94A3B8' }}>Priority</p>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                    style={{
+                      backgroundColor: PRIORITIES.find(p => p.id === priority)?.bg || '#F1F5F9',
+                      color: PRIORITIES.find(p => p.id === priority)?.color || '#64748B',
+                    }}>
+                    {PRIORITIES.find(p => p.id === priority)?.label || 'Normal'}
+                  </span>
+                </div>
+
+                {/* Attachments */}
+                {attachments.length > 0 && (
+                  <div>
+                    <p className="text-[9px] font-bold uppercase tracking-wider mb-1" style={{ color: '#94A3B8' }}>
+                      Attachments ({attachments.length})
+                    </p>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {attachments.map((att, i) => (
+                        <div key={i} style={{
+                          width: 44, height: 44, borderRadius: 10, overflow: 'hidden',
+                          border: '1.5px solid #E2E8F0',
+                        }}>
+                          {att.type?.startsWith('image/')
+                            ? <img src={att.preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F5F9' }}>
+                                <FileText size={16} color="#64748B" />
+                              </div>
+                          }
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Account */}
+                {user && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl"
+                    style={{ backgroundColor: '#F0FDF4' }}>
+                    <User size={13} color="#1B4332" />
+                    <p className="text-[10px] font-bold" style={{ color: '#1B4332' }}>
+                      {user.full_name || user.username} · @{user.username}
+                    </p>
+                  </div>
+                )}
+
+                {/* Estimated response time */}
+                <div className="flex items-center justify-center gap-1.5 pt-1">
+                  <Clock size={11} color={RESPONSE_TIMES[priority]?.color || '#64748B'} />
+                  <p className="text-[10px]" style={{ color: '#64748B' }}>
+                    Estimated response:{' '}
+                    <span className="font-bold" style={{ color: RESPONSE_TIMES[priority]?.color || '#64748B' }}>
+                      {RESPONSE_TIMES[priority]?.eta || '~24 hours'}
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Submit */}
+              <button onClick={submitTicket} disabled={!user || submitting}
+                className="w-full py-3.5 rounded-xl font-black text-sm text-white flex items-center justify-center gap-2 transition hover:opacity-90 disabled:opacity-40"
+                style={{ background: 'linear-gradient(135deg,#1B4332,#2D6A4F)' }}>
+                <CheckCircle size={16} />
+                Confirm & Submit Ticket
+                <ArrowRight size={14} />
+              </button>
+
+              {/* Back */}
+              <div className="flex justify-center">
+                <button onClick={() => setMode('ticket-attachments')}
+                  className="text-[11px] font-bold flex items-center gap-1" style={{ color: '#94A3B8' }}>
+                  <ChevronLeft size={12} /> Edit details
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ════════════ SUBMITTING TRANSITION ════════════ */}
+          {mode === 'submitting' && (
+            <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-4"
+              style={{ backgroundColor: '#F8FAFC' }}>
+
+              {/* Spinner */}
+              <div className="relative">
+                <div className="w-20 h-20 rounded-full flex items-center justify-center"
+                  style={{ background: 'linear-gradient(135deg,#D1FAE5,#A7F3D0)' }}>
+                  <RefreshCw size={36} color="#1B4332" className="animate-spin" />
+                </div>
+                <div className="absolute -top-1 -right-1">
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center"
+                    style={{ backgroundColor: '#1B4332' }}>
+                    <Lock size={12} color="white" />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-base font-black" style={{ color: '#1B4332' }}>
+                  Submitting Your Ticket
+                </p>
+                <p className="text-[11px] mt-1" style={{ color: '#64748B' }}>
+                  Securely sending your request to our support team…
+                </p>
+              </div>
+
+              {/* Progress bar */}
+              <div className="w-full max-w-[200px] h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: '#E2E8F0' }}>
+                <div className="h-full rounded-full"
+                  style={{
+                    width: '100%',
+                    background: 'linear-gradient(90deg, #1B4332, #2D6A4F, #40916C, #2D6A4F, #1B4332)',
+                    backgroundSize: '200% 100%',
+                    animation: 'shimmer 1.2s ease infinite',
+                  }} />
+              </div>
+
+              <style>{`@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
+
+              <div className="space-y-1.5">
+                {[
+                  { text: 'Creating ticket and unique ID', done: true },
+                  { text: priority === 'urgent' ? 'Flagging as urgent priority' : 'Categorizing your request', done: true },
+                  { text: `Routing to ${priority === 'urgent' ? 'priority queue' : 'support team'}`, done: false },
+                ].map((s, i) => (
+                  <div key={i} className="flex items-center gap-2 text-left">
+                    <div style={{
+                      width: 16, height: 16, borderRadius: '50%',
+                      backgroundColor: s.done ? '#D1FAE5' : '#F1F5F9',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    }}>
+                      {s.done ? <Check size={9} color="#1B4332" strokeWidth={3} /> : <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#CBD5E1' }} />}
+                    </div>
+                    <p className="text-[10px]" style={{ color: s.done ? '#1B4332' : '#94A3B8' }}>{s.text}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -763,7 +1801,10 @@ export default function SuggestionsPanel({ user }) {
               </div>
 
               <div>
-                <p className="text-lg font-black" style={{ color: '#1B4332' }}>Ticket Created!</p>
+                <p className="text-lg font-black flex items-center justify-center gap-1.5" style={{ color: '#1B4332' }}>
+                  Ticket Created!
+                  <Smile size={18} color="#1B4332" />
+                </p>
                 <p className="text-[12px] mt-1" style={{ color: '#64748B' }}>
                   Your support request has been submitted
                 </p>
@@ -786,16 +1827,31 @@ export default function SuggestionsPanel({ user }) {
               {/* Status info */}
               <div className="w-full space-y-2">
                 {[
-                  { icon: '✅', text: 'Ticket submitted to our support team' },
-                  { icon: '🤖', text: 'PRAQEN AI is typing a quick response…' },
-                  { icon: '👨‍💼', text: 'A human agent will reply within 24 hours' },
+                  { icon: CheckCircle, color: '#1B4332', text: 'Ticket submitted to our support team' },
+                  { icon: Bot,         color: '#D97706', text: 'PRAQEN AI is typing a quick response…' },
+                  { icon: Headphones,  color: '#D97706', text: `Human agent ${RESPONSE_TIMES[priority]?.eta || 'within 24 hours'}` },
                 ].map(s => (
                   <div key={s.text} className="flex items-center gap-2 px-3 py-2 rounded-xl text-left"
                     style={{ backgroundColor: '#fff', border: '1.5px solid #E2E8F0' }}>
-                    <span className="text-sm flex-shrink-0">{s.icon}</span>
+                    <s.icon size={15} color={s.color} className="flex-shrink-0" />
                     <p className="text-[11px]" style={{ color: '#475569' }}>{s.text}</p>
                   </div>
                 ))}
+              </div>
+
+              {/* Priority badge */}
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold px-3 py-1 rounded-full flex items-center gap-1"
+                  style={{
+                    backgroundColor: PRIORITIES.find(p => p.id === priority)?.bg || '#F1F5F9',
+                    color: PRIORITIES.find(p => p.id === priority)?.color || '#64748B',
+                  }}>
+                  {(() => {
+                    const PrioIcon = PRIORITIES.find(p => p.id === priority)?.icon || Flag;
+                    return <PrioIcon size={11} />;
+                  })()}
+                  {PRIORITIES.find(p => p.id === priority)?.label || 'Normal'} priority
+                </span>
               </div>
 
               {/* Open chat button */}
@@ -807,8 +1863,8 @@ export default function SuggestionsPanel({ user }) {
                 <ArrowRight size={14} />
               </button>
 
-              <button onClick={goHome} className="text-[11px] font-bold" style={{ color: '#94A3B8' }}>
-                ← Back to home
+              <button onClick={goHome} className="text-[11px] font-bold flex items-center gap-1" style={{ color: '#94A3B8' }}>
+                <ChevronLeft size={12} /> Back to home
               </button>
             </div>
           )}
@@ -823,12 +1879,42 @@ export default function SuggestionsPanel({ user }) {
                   <p className="text-[11px] font-black truncate" style={{ color: '#1B4332' }}>
                     {ticket?.subject}
                   </p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />
-                    <p className="text-[10px]" style={{ color: '#64748B' }}>
-                      {topic?.emoji} {topic?.label} · AI + Human support · Ticket #{ticket?.id?.slice(0, 8).toUpperCase()}
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: getTicketStatusColor(ticket?.status) }} />
+                    <TopicIcon size={11} color="#1B4332" className="flex-shrink-0" />
+                    <p className="text-[10px] truncate" style={{ color: '#64748B' }}>
+                      {topic?.label} · {getTicketStatusLabel(ticket?.status)} · Ticket #{ticket?.id?.slice(0, 8).toUpperCase()}
                     </p>
                   </div>
+                  {/* Status progression */}
+                  {ticket?.status && !['resolved', 'closed'].includes(ticket.status) && (
+                    <div className="flex items-center gap-1 mt-1">
+                      {['open', 'active', 'pending'].map((s, i) => {
+                        const statuses = ['open', 'active', 'pending'];
+                        const currentIdx = statuses.indexOf(ticket.status);
+                        const isActive = i <= currentIdx;
+                        return (
+                          <React.Fragment key={s}>
+                            <div style={{
+                              width: 14, height: 14, borderRadius: '50%',
+                              backgroundColor: isActive ? getTicketStatusColor(s) : '#E2E8F0',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}>
+                              {isActive && <Check size={8} color="white" strokeWidth={3} />}
+                            </div>
+                            {i < 2 && (
+                              <div style={{
+                                height: 2, flex: 1,
+                                backgroundColor: i < currentIdx ? getTicketStatusColor(statuses[i + 1]) : '#E2E8F0',
+                                borderRadius: 1,
+                              }} />
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
                 <button onClick={goHome}
                   className="text-[11px] font-bold flex-shrink-0 ml-2 px-2 py-1 rounded-lg transition hover:bg-white"
@@ -843,68 +1929,124 @@ export default function SuggestionsPanel({ user }) {
 
                 {/* Ticket confirmed notice */}
                 <div className="flex flex-col items-center gap-1 py-2 text-center">
-                  <span className="text-[10px] font-bold px-3 py-1 rounded-full"
-                    style={{ backgroundColor: '#D1FAE5', color: '#1B4332' }}>
-                    ✓ Ticket #{ticket?.id?.slice(0, 8).toUpperCase()} · Open
+                  <span className="text-[10px] font-bold px-3 py-1 rounded-full flex items-center gap-1"
+                    style={{ backgroundColor: getTicketStatusColor(ticket?.status) + '20', color: getTicketStatusColor(ticket?.status) }}>
+                    <Check size={10} strokeWidth={3} /> Ticket #{ticket?.id?.slice(0, 8).toUpperCase()} · {getTicketStatusLabel(ticket?.status)}
                   </span>
                   <p className="text-[10px]" style={{ color: '#94A3B8' }}>Chat below — we'll reply here</p>
                 </div>
 
-                {/* Chat messages (ticket + AI interleaved) */}
+                {/* Chat messages (ticket + AI interleaved — sorted by _seq) */}
                 {(() => {
-                  const timeline = [];
+                  // Build one flat list: all messages sorted by global seq number
+                  const chatItems = chatMsgs.map((m, i) => ({
+                    type: 'chat',
+                    seq: m._seq !== undefined ? m._seq : i,
+                    data: m,
+                  }));
 
-                  chatMsgs.forEach((m, i) => {
-                    const isUser = m.sender_type === 'user';
-                    timeline.push(
-                      <div key={`t-${i}`} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-                        {!isUser && (
-                          <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 mr-2 mt-0.5"
-                            style={{ background: 'linear-gradient(135deg,#1D4ED8,#3B82F6)' }}>
-                            <Headphones size={12} color="white" />
+                  const aiItems = aiMsgs.map((m, i) => ({
+                    type: 'ai',
+                    seq: m._seq !== undefined ? m._seq : chatMsgs.length + i,
+                    data: m,
+                  }));
+
+                  // Merge & sort by seq — this is purely deterministic
+                  const allEntries = [...chatItems, ...aiItems]
+                    .sort((a, b) => a.seq - b.seq);
+
+                  const timeline = allEntries.map(entry => {
+                    if (entry.type === 'chat') {
+                      const m = entry.data;
+                      const isUser = m.sender_type === 'user';
+                      return (
+                        <div key={`t-${entry.seq}`} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+                          {!isUser && (
+                            <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 mr-2 mt-0.5"
+                              style={{ background: 'linear-gradient(135deg,#D97706,#F59E0B)' }}>
+                              <Headphones size={12} color="white" />
+                            </div>
+                          )}
+                          <div className="px-3 py-2.5 text-sm leading-relaxed"
+                            style={{
+                              maxWidth: '80%',
+                              backgroundColor: isUser ? '#1B4332' : '#fff',
+                              color: isUser ? 'white' : '#1E293B',
+                              borderRadius: isUser ? '18px 18px 4px 18px' : '4px 18px 18px 18px',
+                              boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+                            }}>
+                            <p className="text-[10px] font-bold mb-1 opacity-60">
+                              {isUser ? (user?.username || 'You') : (m.sender_name || 'Support Agent')}
+                            </p>
+                            <p>{m.message}</p>
                           </div>
-                        )}
-                        <div className="px-3 py-2.5 text-sm leading-relaxed"
-                          style={{
-                            maxWidth: '80%',
-                            backgroundColor: isUser ? '#1B4332' : '#fff',
-                            color: isUser ? 'white' : '#1E293B',
-                            borderRadius: isUser ? '18px 18px 4px 18px' : '4px 18px 18px 18px',
-                            boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-                          }}>
-                          <p className="text-[10px] font-bold mb-1 opacity-60">
-                            {isUser ? (user?.username || 'You') : (m.sender_name || 'Support Agent')}
-                          </p>
-                          <p>{m.message}</p>
                         </div>
-                      </div>
-                    );
+                      );
+                    } else {
+                      const m = entry.data;
+                      return (
+                        <div key={`ai-${entry.seq}`} className="flex justify-start">
+                          <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 mr-2 mt-0.5"
+                            style={{ background: 'linear-gradient(135deg,#1B4332,#2D6A4F)' }}>
+                            <Bot size={12} color="white" />
+                          </div>
+                          <div className="px-3 py-2.5 text-sm leading-relaxed"
+                            style={{
+                              maxWidth: '80%', backgroundColor: '#fff', color: '#1E293B',
+                              borderRadius: '4px 18px 18px 18px',
+                              boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+                            }}>
+                            <p className="text-[10px] font-bold mb-1 opacity-60">PRAQEN AI</p>
+                            <Msg text={m.text} />
+                          </div>
+                        </div>
+                      );
+                    }
                   });
 
-                  aiMsgs.forEach((m, i) => {
-                    timeline.push(
-                      <div key={`ai-${i}`} className="flex justify-start">
-                        <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 mr-2 mt-0.5"
-                          style={{ background: 'linear-gradient(135deg,#1B4332,#2D6A4F)' }}>
-                          <Bot size={12} color="white" />
-                        </div>
-                        <div className="px-3 py-2.5 text-sm leading-relaxed"
-                          style={{
-                            maxWidth: '80%', backgroundColor: '#fff', color: '#1E293B',
-                            borderRadius: '4px 18px 18px 18px',
-                            boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-                          }}>
-                          <p className="text-[10px] font-bold mb-1 opacity-60">PRAQEN AI</p>
-                          <Msg text={m.text} />
-                        </div>
-                      </div>
-                    );
-                  });
+                  // Typing indicator — always as last item in timeline
+                  if (aiLoading) {
+                    timeline.push(<Typing key="typing-indicator" />);
+                  }
 
                   return timeline;
                 })()}
 
-                {aiLoading && <Typing />}
+                {/* Satisfaction rating — shown when ticket is resolved */}
+                {ticket?.status === 'resolved' && !satisfactionSubmitted && (
+                  <div className="flex flex-col items-center gap-2 py-3 px-4 rounded-2xl"
+                    style={{ backgroundColor: '#fff', border: '1.5px solid #E2E8F0' }}>
+                    <p className="text-[10px] font-bold" style={{ color: '#475569' }}>
+                      How was your support experience?
+                    </p>
+                    <div className="flex gap-1.5">
+                      {[1, 2, 3, 4, 5].map(r => (
+                        <button key={r} onClick={() => submitSatisfaction(r)}
+                          style={{
+                            width: 36, height: 36, borderRadius: 10,
+                            border: 'none', cursor: 'pointer', flexShrink: 0,
+                            backgroundColor: r <= satisfactionRating ? '#F59E0B' : '#F1F5F9',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            transition: 'all 0.15s',
+                          }}>
+                          <Star size={r <= satisfactionRating ? 18 : 16}
+                            color={r <= satisfactionRating ? 'white' : '#94A3B8'}
+                            fill={r <= satisfactionRating ? 'white' : 'none'} />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {satisfactionSubmitted && (
+                  <div className="flex items-center justify-center gap-2 py-2">
+                    <Smile size={14} color="#1B4332" />
+                    <p className="text-[10px] font-bold" style={{ color: '#1B4332' }}>
+                      Thanks for your feedback!
+                    </p>
+                  </div>
+                )}
+
                 <div style={{ float: 'left', clear: 'both' }} />
               </div>
 
@@ -921,7 +2063,7 @@ export default function SuggestionsPanel({ user }) {
                   rows={1}
                   style={{
                     flex: 1, padding: isMobile ? '12px 14px' : '10px 12px',
-                    borderRadius: 14, fontSize: 16, /* 16px prevents iOS zoom */
+                    borderRadius: 14, fontSize: 16,
                     resize: 'none', outline: 'none', lineHeight: 1.4,
                     border: `2px solid ${replyText ? '#1B4332' : '#E2E8F0'}`,
                     maxHeight: isMobile ? 120 : 90,
@@ -955,7 +2097,10 @@ export default function SuggestionsPanel({ user }) {
                     <CheckCircle size={32} color="white" />
                   </div>
                   <div>
-                    <p className="font-black text-base" style={{ color: '#92400E' }}>Thank you! 🙏</p>
+                    <p className="font-black text-base flex items-center justify-center gap-1.5" style={{ color: '#92400E' }}>
+                      Thank you!
+                      <Smile size={16} color="#92400E" />
+                    </p>
                     <p className="text-sm mt-1 leading-relaxed" style={{ color: '#64748B' }}>
                       Your suggestion is sent to the PRAQEN team. We read every single one!
                     </p>
@@ -965,7 +2110,9 @@ export default function SuggestionsPanel({ user }) {
                     style={{ background: 'linear-gradient(135deg,#D97706,#F59E0B)' }}>
                     Send Another
                   </button>
-                  <button onClick={goHome} className="text-sm font-bold" style={{ color: '#94A3B8' }}>← Back</button>
+                  <button onClick={goHome} className="text-sm font-bold flex items-center gap-1" style={{ color: '#94A3B8' }}>
+                    <ChevronLeft size={13} /> Back
+                  </button>
                 </div>
               ) : !user ? (
                 <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-4">
@@ -978,13 +2125,14 @@ export default function SuggestionsPanel({ user }) {
                   <div className="flex flex-wrap gap-1.5">
                     {SUG_CATS.map(c => (
                       <button key={c.id} onClick={() => setSugCat(c.id)}
-                        className="px-3 py-1.5 rounded-xl text-xs font-bold transition"
+                        className="px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
                         style={{
                           backgroundColor: sugCat === c.id ? '#D97706' : '#fff',
                           color: sugCat === c.id ? 'white' : '#475569',
                           border: `1.5px solid ${sugCat === c.id ? '#D97706' : '#E2E8F0'}`,
                         }}>
-                        {c.emoji} {c.label}
+                        <c.icon size={13} strokeWidth={2.25} />
+                        {c.label}
                       </button>
                     ))}
                   </div>
