@@ -16,7 +16,6 @@ const { createClient } = require('@supabase/supabase-js');
 const bcrypt     = require('bcryptjs');
 const jwt        = require('jsonwebtoken');
 const crypto     = require('crypto');
-const axios      = require('axios');
 const nodemailer = require('nodemailer');
 const { Resend } = require('resend');
 const resendClient = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
@@ -187,7 +186,6 @@ app.use(helmet({
   contentSecurityPolicy:      false, // pure API server, no HTML pages served
   crossOriginEmbedderPolicy:  false, // allow API calls from the frontend
   crossOriginResourcePolicy:  false, // allow cross-origin fetch from browser
-  crossOriginOpenerPolicy:    { policy: 'same-origin-allow-popups' }, // allow Google Sign-In popup postMessage
 }));
 
 // CORS — only allow requests from our own frontend domain
@@ -528,6 +526,7 @@ async function notifyUserSMS(userId, message) {
     const { data: user, error: dbErr } = await supabaseAdmin.from('users').select('phone').eq('id', userId).single();
     if (dbErr) { console.error(`[SMS] DB lookup failed for ${userId}:`, dbErr.message); return; }
     if (!user?.phone) { console.warn(`[SMS] No phone on file for user ${userId} — skipping`); return; }
+    if (!TWILIO_ENABLED) { console.error('[SMS] Twilio not configured'); return; }
     const phone = user.phone.startsWith('+') ? user.phone : `+${user.phone}`;
     await sendSmsOtp(phone, `[PRAQEN ⚡] ${message}`);
     console.log(`📱 SMS sent to user ${userId} (${phone})`);
@@ -915,87 +914,23 @@ async function getLiveFXRates() {
 }
 
 // ── AI Chat endpoint ─────────────────────────────────────────────────────────
-const PRAQEN_CONTEXT = `You are PRAQEN AI, a helpful support assistant for PRAQEN — a peer-to-peer (P2P) Bitcoin trading platform where users buy and sell Bitcoin using local currencies (GHS, NGN, KES, ZAR, etc.) via mobile money, bank transfer, and gift cards. All trades are escrow-protected.
+const PRAQEN_CONTEXT = `You are PRAQEN AI, the helpful support assistant for PRAQEN — a peer-to-peer (P2P) Bitcoin trading platform where users buy and sell Bitcoin using local currencies (GHS, NGN, KES, ZAR, etc.) via mobile money, bank transfer, and gift cards. All trades are escrow-protected.
 
-=== COMPLETE PLATFORM KNOWLEDGE BASE ===
-Use these facts to answer user questions directly and accurately. Never default to "team will review" for questions that are answered here.
+Key facts about PRAQEN:
+- Users can Buy Bitcoin by browsing seller offers and initiating a trade
+- Users can Sell Bitcoin by creating a sell offer listing
+- Trades are secured by Bitcoin escrow — the seller locks BTC before the buyer pays
+- Payment methods: MTN MoMo, Vodafone Cash, AirtelTigo, bank transfer, gift cards
+- KYC (ID verification) is required for higher trade limits
+- Users build reputation through completed trades and feedback ratings
+- Trust score is based on completed trades, positive feedback, and account age
+- Disputes can be raised during an active trade for moderator review
+- Wallets hold Bitcoin; fiat payments happen directly between users
+- Referral program rewards users for inviting others
 
-## ACCOUNT & AUTH
-- **Registration**: Users sign up with email + password, or Google Sign-In. Email verification is required before trading.
-- **Login**: Email + password, or Google OAuth. Password resets are done via **Forgot Password** on the login page — a reset link is sent to the user's email.
-- **Profile**: Users can set username, full name, avatar, bio, country, and phone number in **Settings**.
-- **Email verification**: A 6-digit code is sent to the user's email. The code expires in 10 minutes.
-- **Phone verification**: Users can verify their phone number. Served via Africa's Talking (for African numbers) or Twilio Verify.
-- **KYC/ID verification**: Upload a government-issued ID (passport, driver's license, national ID) in **Settings → Verification**. Usually reviewed within 24 hours. KYC unlocks higher trade limits.
-- **Delete account**: Users can contact support to close their account and withdraw remaining funds.
+Keep responses concise (2-4 sentences), friendly, and practical. If you don't know something specific about the user's account, tell them to visit the relevant page or contact support. Never make up account-specific details.`;
 
-## BUYING BITCOIN
-- Users browse seller offers on **Buy Bitcoin** page, filtered by country/payment method.
-- Each offer shows price (fixed or market margin), limits, payment methods, and the seller's reputation.
-- Clicking **BUY BTC** opens a trade. The seller locks the exact BTC amount into escrow.
-- Once escrow is locked, the buyer sends payment via the agreed method (MoMo, bank transfer, etc.).
-- After the buyer confirms payment, the seller releases BTC from escrow to the buyer's wallet.
-- **Time limit**: Each offer has a time limit for payment. If the buyer doesn't pay in time, the trade can be cancelled.
-
-## SELLING BITCOIN
-- Users create sell offers on **Sell Bitcoin** with: price (fixed or market margin), payment methods accepted, min/max limits, country, and terms.
-- Wallet must have at least $10 worth of BTC for the listing to appear.
-- When a buyer opens a trade, the seller must lock the exact BTC amount into escrow.
-- After the buyer sends payment and confirms, the seller releases BTC from escrow.
-- Sellers can cancel trades if the buyer doesn't pay within the time limit.
-
-## WALLET
-- Located in the **Wallet** section. Shows BTC balance, locked balance (in escrow), and USD equivalent.
-- **Deposit**: Shows the user's PRAQEN BTC wallet address and a QR code. BTC sent to this address is credited after network confirmations.
-- **Withdraw**: Users can send BTC to any external Bitcoin address. A network fee (miner fee) applies. Withdrawals are processed through the HD wallet system.
-- **Locked balance**: BTC held in active trade escrow. Released when the trade completes or is cancelled.
-- Address format: bc1q... (SegWit mainnet), or tb1... (testnet). The system uses self-custody HD wallet (mnemonic in .env).
-
-## TRADING PROCESS
-- **Opening a trade**: Buyer clicks BUY on an offer. The seller locks BTC in escrow.
-- **Payment**: Buyer sends payment via the offer's listed payment method. Payments happen directly between users (P2P), not through PRAQEN.
-- **Releasing escrow**: After confirming payment, the seller releases BTC. This is irreversible — only release when payment is confirmed.
-- **Cancellation**: If the buyer doesn't pay within the time limit, the seller can cancel. Escrow is returned to the seller.
-- **Disputes**: If there's a problem (non-payment, wrong amount, suspected fraud), either party can **Raise Dispute** on the trade page. A moderator reviews within 24 hours.
-- **Trade reference**: Each trade has a unique ID shown in **My Trades**.
-
-## GIFT CARDS
-- PRAQEN has a **Gift Card Marketplace** where users can buy and sell gift cards for Bitcoin.
-- Supported brands include Amazon, iTunes, Steam, Google Play, and many others.
-- Gift card sellers list their cards at a price in BTC. Buyers purchase them directly.
-- The platform supports multiple currencies for gift cards.
-
-## FEES
-- **Trading fee**: 0.5% on completed trades, deducted from the Bitcoin amount.
-- **No fees** for listing offers, depositing BTC, or browsing.
-- **Withdrawal fee**: Network/miner fee varies based on Bitcoin network congestion.
-
-## REPUTATION & TRUST
-- Users have a **rating** (1-5), **total trades count**, and **completion rate**.
-- **Feedback**: After each trade, users leave positive/negative feedback.
-- **Badges**: Users earn badges for verification status, trade volume, and other achievements.
-- **Trust score**: Based on completed trades, positive feedback, account age, and KYC status.
-- Users with higher trust are shown more prominently in listings.
-
-## REFERRAL PROGRAM
-- Each user has a unique **referral code** (e.g., "username_abc123") on their profile.
-- Sharing the referral link rewards the referrer when the invited user completes trades.
-- Commission details are shown in the user's profile.
-
-## NOTIFICATIONS
-- Users receive notifications for: new trades, trade status changes, messages, KYC updates, and system announcements.
-- Notifications appear in-app and can be sent via push (OneSignal) or email.
-
-## SUPPORT
-- Users can create a support ticket by picking a topic and describing their issue.
-- Tickets get a unique ID. AI responds immediately, followed by a human agent.
-- Response times: Urgent ~2-4 hours, Normal ~12-24 hours, Low ~24-48 hours.
-- Users can attach screenshots to their tickets for faster resolution.
-
-=== RESPONSE RULES ===
-Keep responses concise (2-4 sentences), friendly, and practical. When a user asks a question covered by the knowledge base above, ANSWER IT DIRECTLY with the facts — do NOT default to "I'll escalate this" or "the team is looking into it." If you genuinely don't know something, say so and offer to connect them with a human agent. Never make up account-specific details.`;
-
-const PRAQEN_SUPPORT_AGENT_CONTEXT = `You are Alex, a knowledgeable and friendly human support agent at PRAQEN — a peer-to-peer (P2P) Bitcoin trading platform. You are chatting with a user who has an open support ticket.
+const PRAQEN_SUPPORT_AGENT_CONTEXT = `You are Alex, a friendly and experienced human support agent at PRAQEN — a peer-to-peer (P2P) Bitcoin trading platform. You are chatting with a user who has an open support ticket.
 
 Your personality and rules:
 - You are human. Never say "As an AI" or reveal you are a bot. Speak naturally.
@@ -1003,49 +938,19 @@ Your personality and rules:
 - NEVER repeat a response you or the user already said in this conversation. Read the full history before replying.
 - Acknowledge what the user said specifically before giving advice.
 - Keep replies short — 2 to 3 sentences max. Do not write long paragraphs.
-- IMPORTANT: When the user asks about HOW something works (password reset, KYC, buying, selling, fees, wallet, etc.), ANSWER THEM DIRECTLY using the platform knowledge below. Do NOT default to "I've noted this on your ticket" or "the team is reviewing" — give them the answer right away.
-- Reserve "I've noted this on your ticket" / "I've flagged this" / "the team is reviewing" ONLY for when the user describes a genuine problem or bug that needs manual investigation.
-- After giving a direct answer, ask one follow-up question to check if they need anything else.
-- Use variety: rotate between phrases like "Got it", "Thanks for that update", "I hear you", "Noted", "On it" — never use the same opener twice in a row.
+- When the user describes a problem, say something like "I've noted this on your ticket" or "Our team is reviewing this right now."
+- After giving a brief response, ask one follow-up question to gather more details or check if they need anything else.
+- Use variety: rotate between phrases like "Got it", "Thanks for that update", "I hear you", "Noted", "On it", "I've flagged this to the team" — never use the same opener twice in a row.
 - If you already gave advice on a topic earlier in the conversation, do NOT repeat it. Instead acknowledge and ask if it helped.
 - If the user says something is resolved, congratulate them warmly and close out positively.
 
-=== COMPLETE PLATFORM KNOWLEDGE ===
-Answer factual questions from this knowledge base. Do NOT escalate questions that are answered here.
-
-## ACCOUNT & AUTH
-- **Password reset**: Users tap **Forgot Password** on the login page. A reset link is sent to their email.
-- **KYC/Verification**: Upload ID in **Settings → Verification**. Reviewed within 24 hours. Unlocks higher limits.
-- **Profile settings**: Users can update username, avatar, bio, phone, country in **Settings**.
-- **Google Sign-In**: Users can log in with their Google account. Works alongside email/password.
-
-## BUYING BITCOIN
-- Browse offers on **Buy Bitcoin**, filtered by country/payment method. Seller locks BTC in escrow before buyer pays. Buyer sends payment via MoMo/bank transfer. Seller releases BTC after payment confirmed.
-
-## SELLING BITCOIN
-- Create listings on **Sell Bitcoin** with price/margin, limits, payment methods. Wallet needs $10+ BTC for listing to appear. When trade opens, seller locks exact BTC in escrow.
-
-## WALLET
-- **Deposit**: Copy your PRAQEN BTC address from **Wallet** page. QR code available.
-- **Withdraw**: Enter external BTC address and amount in **Wallet → Withdraw**. Network fee applies.
-- **Locked balance**: BTC held in active trade escrow — released when trade completes or cancels.
-
-## DISPUTES
-- Go to **My Trades**, open the trade, tap **Raise Dispute**. Moderator reviews within 24 hours.
-- Never release escrow without confirming payment received.
-
-## FEES
-- 0.5% on completed trades only. No listing or deposit fees. Withdrawal network fee varies.
-
-## GIFT CARDS
-- **Gift Card Marketplace** for buying/selling cards (Amazon, iTunes, Steam, etc.) in exchange for BTC.
-
-## REFERRALS
-- Share your unique referral code from your profile. You earn commission when invited users complete trades.
-
-## SUPPORT
-- Response times: Urgent ~2-4h, Normal ~12-24h, Low ~24-48h. You can attach screenshots to your ticket.
-`;
+PRAQEN platform facts (use when relevant, but do not dump all facts at once):
+- Trades are escrow-protected — sellers lock BTC before buyer pays
+- Disputes can be raised from My Trades if there is a problem
+- Payments go directly between users via MoMo, bank transfer, gift cards
+- KYC unlocks higher limits — upload ID at Profile → Verification
+- Fees are 0.5% on completed trades only
+- Support response time is within 24 hours for human agents`;
 
 app.post('/api/ai-chat', async (req, res) => {
   try {
@@ -1090,16 +995,13 @@ app.post('/api/ai-chat', async (req, res) => {
     }
 
     // ── Support-mode fallback (no API key / API down) ──────────────────────
-    // This fallback uses a comprehensive FAQ knowledge base so the user gets
-    // factual answers even when the AI API is unavailable. Generic escalation
-    // replies are used ONLY for true problems/bugs, not for informational questions.
     if (isSupportChat) {
       const turn = history.length;
       const q = message.toLowerCase().trim();
       const name = chatUser?.username ? `, ${chatUser.username}` : '';
       let reply = '';
 
-      // ── Greeting detection ──
+      // Greeting — always a warm welcome, never topic info
       if (/^(hey|hi|hello|good\s*(morning|afternoon|evening)|howdy|yo|hiya|sup)\b/.test(q)) {
         const greetings = [
           `Hi${name}! 👋 I'm Alex from PRAQEN support. I have your ticket open right now — how can I help you?`,
@@ -1107,8 +1009,6 @@ app.post('/api/ai-chat', async (req, res) => {
           `Hello${name}! Your ticket is open and the team is on it. What would you like to chat about?`,
         ];
         reply = greetings[turn % 3];
-
-      // ── Acknowledgment / closure ──
       } else if (/thank|thanks|okay|ok\b|great|perfect|got it|cool|nice/.test(q)) {
         const pool = [
           'Happy to help! Let me know if anything else comes up.',
@@ -1116,8 +1016,6 @@ app.post('/api/ai-chat', async (req, res) => {
           'Awesome — the team will follow up too. Is there anything else you need?',
         ];
         reply = pool[turn % 3];
-
-      // ── Wait time / status check ──
       } else if (/how long|wait|still|not yet|any news|update/.test(q)) {
         const pool = [
           'I understand — the team is actively on your case. We aim to resolve tickets within 24 hours. Any updates from your side?',
@@ -1125,55 +1023,22 @@ app.post('/api/ai-chat', async (req, res) => {
           'We haven\'t forgotten about you. Can you share any new details that might help us move faster?',
         ];
         reply = pool[turn % 3];
-
-      // ── Factual Q&A: knowledge base answers ──
-      // These answer the user directly instead of defaulting to escalation.
-      // IMPORTANT: This block MUST come before the payment-reporting branch
-      // so informational "how do I..." questions get factual answers first.
-
-      } else if (/forgot password|reset password|change password|forgot my password/.test(q)) {
-        reply = `No worries! To reset your password, go to the login page and tap **Forgot Password**. A reset link will be sent to your email within a few minutes. If you don't see it, check your spam folder.`;
-      } else if (/how.*(buy|purchase)|how.*start.*trade|find.*seller/.test(q)) {
-        reply = 'To **buy Bitcoin**, go to the **Buy BTC** page and browse seller offers. Filter by your country and payment method, then click **BUY BTC** on any offer to start a trade. The seller will lock Bitcoin in escrow before you send payment.';
-      } else if (/how.*(sell|create.*listing|make.*offer)/.test(q)) {
-        reply = 'To **sell Bitcoin**, go to **Sell BTC** and browse buy offers from buyers, or create your own sell listing. Make sure your wallet has enough BTC — your offer only appears when your balance is above $10.';
-      } else if (/how.*(wallet|deposit|withdraw|fund|address)/.test(q)) {
-        reply = 'Your BTC wallet is in the **Wallet** section. To deposit, copy your PRAQEN BTC address (QR code available) and send from any external wallet. To withdraw, go to **Withdraw**, enter an external BTC address and amount. A network fee applies.';
-      } else if (/how.*(pay|payment|send.*money|make.*payment)/.test(q)) {
-        reply = 'Payments are made directly between you and the other trader using the method shown in the offer (MoMo, bank transfer, etc.). Always confirm you\'ve received payment in your account before releasing escrow. Keep your receipt as proof.';
-      } else if (/kyc|verif|verify.*id|identity|upload.*id|document/.test(q)) {
-        reply = 'To verify your identity, go to **Settings → Verification** and upload a clear photo of your government-issued ID (passport, driver\'s license, or national ID). Most verifications are reviewed within 24 hours. KYC unlocks higher trade limits.';
-      } else if (/gift card|marketplace|amazon.*card|itunes.*card|steam.*card/.test(q)) {
-        reply = 'PRAQEN has a **Gift Card Marketplace** where you can buy and sell gift cards (Amazon, iTunes, Steam, Google Play, and more) for Bitcoin. Just list your card or browse available ones in the marketplace section.';
-      } else if (/fee|cost|charge|commission|price.*fee/.test(q)) {
-        reply = 'PRAQEN charges **0.5%** on completed trades only. There are no fees for listing offers or depositing BTC. Withdrawal fees depend on the current Bitcoin network congestion.';
-      } else if (/referral|invite|earn.*friend|share.*link|commission.*invite/.test(q)) {
-        reply = 'You can find your unique referral code in your profile page. Share your referral link with friends — when they sign up and complete trades, you earn a commission. The more you refer, the more you earn!';
-      } else if (/lock.*balance|balance.*lock|escrow.*balance|why.*(lock|hold)/.test(q)) {
-        reply = 'Locked balance is Bitcoin that\'s currently held in escrow for an active trade. It will be released automatically back to your wallet when the trade completes or is cancelled. You can see your active trades in **My Trades**.';
-      } else if (/cancel.*trade|time.*limit|expire/.test(q)) {
-        reply = 'Each trade has a time limit set by the seller. If the buyer doesn\'t complete payment within that time, the seller can cancel the trade and the escrow is returned. Buyers can also request cancellation from the seller.';
-
-      // ── Payment-related update (user telling us they paid, not asking how) ──
-      } else if (/^(i )?(just )?(paid|sent|transferred|made.*payment)\b|payment.*(sent|made|done|confirmed)/.test(q)) {
+      } else if (/paid|sent|payment|transferred|momo|bank|deposit/.test(q)) {
         const pool = [
           'Thanks for the update — I\'ve noted the payment on your ticket. Has the other party confirmed receipt?',
           'Got it, payment noted. Keep your receipt handy. Has anything changed since you sent it?',
           'Noted on the payment. Can you share the exact amount and method so I can add it to the case?',
         ];
         reply = pool[turn % 3];
-
       } else if (/dispute|scam|fraud|problem|stuck|error|wrong|fail/.test(q)) {
         const pool = [
-          'If you\'re having a problem with a trade, go to **My Trades**, open the trade, and tap **Raise Dispute**. A moderator will review and help resolve it within 24 hours. Never release escrow without confirming payment.',
-          'I\'ve flagged this for the team. In the meantime, go to **My Trades → Raise Dispute** to protect the escrow. Can you share a trade ID or any screenshots so we can move faster?',
-          'On it — I\'ve escalated this. Please raise a dispute on the trade page if you haven\'t already. Any additional info you can share will help us resolve it quickly.',
+          'I\'ve flagged this as urgent. If you haven\'t already, go to **My Trades → Raise Dispute** to lock the escrow. What happened exactly?',
+          'On it — I\'ve escalated this to the team. Can you share a trade ID or any screenshots?',
+          'Understood, this is marked urgent. Our team is reviewing. Any extra info will help us move quickly.',
         ];
         reply = pool[turn % 3];
-
-      // ── Genuine problem / not answered by knowledge base → escalate ──
       } else if (turn === 0) {
-        reply = `Thanks for reaching out${name}! I\'ve received your ticket. Can you tell me a bit more about what you need help with today?`;
+        reply = `Thanks for reaching out${name}! I\'ve received your ticket and I\'m reviewing it now. Can you give me a quick summary of what\'s happening?`;
       } else if (turn <= 2) {
         reply = 'Noted — I\'ve updated your ticket with that. The team is on it. Anything else to add?';
       } else {
@@ -1550,218 +1415,6 @@ app.get('/api/auth/referrer', async (req, res) => {
   }
 });
 
-app.post('/api/auth/google', authLimiter, async (req, res) => {
-  try {
-    const { credential, referralCode } = req.body;
-    if (!credential) {
-      return res.status(400).json({ error: 'Google credential is required' });
-    }
-
-    // 1. Verify Google ID token via Google Tokeninfo API
-    let payload;
-    try {
-      const response = await axios.get(`https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`);
-      payload = response.data;
-    } catch (err) {
-      console.error('[Google Auth] Token verification failed:', err.message);
-      return res.status(401).json({ error: 'Invalid Google credential token' });
-    }
-
-    const { email, name, picture, aud } = payload;
-
-    // Verify audience if client ID is configured
-    const clientID = process.env.GOOGLE_CLIENT_ID;
-    if (clientID && aud !== clientID) {
-      console.error('[Google Auth] Client ID mismatch:', aud, 'vs', clientID);
-      return res.status(401).json({ error: 'Token audience mismatch' });
-    }
-
-    if (!email) {
-      return res.status(400).json({ error: 'Google token did not provide an email address' });
-    }
-
-    const normalizedEmail = email.toLowerCase().trim();
-
-    // 2. Lookup existing user
-    let { data: existingUser, error: findError } = await supabaseAdmin
-      .from('users')
-      .select('*')
-      .eq('email', normalizedEmail)
-      .maybeSingle();
-
-    if (findError) {
-      console.error('[Google Auth] DB lookup error:', findError);
-      return res.status(500).json({ error: 'Database error' });
-    }
-
-    let userToAuth;
-
-    if (existingUser) {
-      userToAuth = existingUser;
-
-      // Update email verification status if not verified
-      if (!existingUser.is_email_verified || !existingUser.email_verified) {
-        const { data: updatedUser } = await supabaseAdmin
-          .from('users')
-          .update({ is_email_verified: true, email_verified: true })
-          .eq('id', existingUser.id)
-          .select()
-          .single();
-        if (updatedUser) {
-          userToAuth = updatedUser;
-        }
-      }
-    } else {
-      // 3. New user registration
-      let baseUsername = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '');
-      if (baseUsername.length < 3) baseUsername = 'user';
-      let username = baseUsername;
-      
-      const { data: uCheck } = await supabaseAdmin
-        .from('users')
-        .select('id')
-        .eq('username', username)
-        .maybeSingle();
-
-      if (uCheck) {
-        username = `${baseUsername}_${Math.floor(1000 + Math.random() * 9000)}`;
-      }
-
-      const passwordHash = await bcrypt.hash(crypto.randomUUID(), 10);
-      const referralCodeValue = await generateUniqueReferralCode(username);
-
-      // Referral lookup
-      let referrerId = null;
-      if (referralCode) {
-        const normalizedRef = referralCode.toLowerCase().trim();
-        const { data: referrer } = await supabaseAdmin
-          .from('users')
-          .select('id')
-          .eq('referral_code', normalizedRef)
-          .maybeSingle();
-        if (referrer) {
-          referrerId = referrer.id;
-        }
-      }
-
-      const { data: insertData, error: insertError } = await supabaseAdmin
-        .from('users')
-        .insert([{
-          email:                  normalizedEmail,
-          phone:                  null,
-          password_hash:          passwordHash,
-          username:               username,
-          full_name:              name || username,
-          bitcoin_wallet_address: null,
-          is_email_verified:      true,
-          email_verified:         true,
-          average_rating:         0,
-          total_trades:           0,
-          completion_rate:        100,
-          account_status:         'ACTIVE',
-          created_at:             new Date(),
-          avatar_url:             picture || null,
-          is_admin:               false,
-          is_moderator:           false,
-          referred_by:            referrerId,
-          referral_code:          referralCodeValue,
-          badge:                  'BEGINNER',
-        }])
-        .select();
-
-      if (insertError) {
-        console.error('[Google Auth] User insertion failed:', insertError);
-        return res.status(500).json({ error: 'Failed to create user account' });
-      }
-
-      const newUser = insertData[0];
-      userToAuth = newUser;
-
-      // Seed balance rows
-      await Promise.all([
-        supabaseAdmin.from('user_balances').insert([{ user_id: newUser.id, balance_btc: 0, balance_usd: 0 }]).then(null, () => {}),
-        supabaseAdmin.from('wallets').insert({ user_id: newUser.id, balance_btc: 0, locked_balance_btc: 0, updated_at: new Date().toISOString() }).then(null, () => {}),
-      ]);
-
-      // Background tasks
-      const bonusExpires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      supabaseAdmin.from('users').update({ bonus_step: 1, bonus_expires_at: bonusExpires })
-        .eq('id', newUser.id).then(null, () => {});
-
-      detectAndSaveCountry(newUser.id, req).catch(() => {});
-
-      emailService.sendWelcomeEmail({ id: newUser.id, email: normalizedEmail, username })
-        .catch(e => console.error('[Google Auth] Welcome email failed:', e.message));
-
-      // Provision HD wallet address
-      Promise.resolve().then(async () => {
-        try {
-          const hdAddrData = hdWalletService.generateUserAddress(newUser.id);
-          await supabaseAdmin.from('users').update({
-            bitcoin_wallet_address: hdAddrData.address,
-            updated_at: new Date().toISOString(),
-          }).eq('id', newUser.id);
-          await supabaseAdmin.from('user_wallets').upsert({
-            user_id:     newUser.id,
-            btc_address:  hdAddrData.address,
-            network:     'mainnet',
-            balance_btc:  0,
-            created_at:  new Date().toISOString(),
-          });
-          console.log(`[Google Auth] HD wallet generated for ${newUser.username}: ${hdAddrData.address}`);
-          realtimeDepositService.subscribeAddress(newUser.id, hdAddrData.address);
-        } catch (e) {
-          console.error('[Google Auth] HD wallet generation failed:', e.message);
-        }
-      });
-
-      // Increment referrer referral count
-      if (referrerId) {
-        (async () => {
-          try {
-            const { data: ref } = await supabaseAdmin.from('users').select('total_referrals').eq('id', referrerId).single();
-            const newCount = (ref?.total_referrals || 0) + 1;
-            await supabaseAdmin.from('users').update({ total_referrals: newCount }).eq('id', referrerId);
-            notifyUserReferral(referrerId, newUser.username).catch(() => {});
-          } catch (refErr) {
-            console.error('[Google Auth] Referrer update failed:', refErr.message);
-          }
-        })();
-      }
-    }
-
-    // 5. Sign JWT
-    const token = jwt.sign(
-      { userId: userToAuth.id, email: userToAuth.email },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    res.json({
-      success: true,
-      token,
-      user: {
-        id:                     userToAuth.id,
-        email:                  userToAuth.email,
-        username:               userToAuth.username,
-        full_name:              userToAuth.full_name,
-        average_rating:         userToAuth.average_rating || 0,
-        total_trades:           userToAuth.total_trades || 0,
-        avatar_url:             userToAuth.avatar_url || null,
-        is_admin:               userToAuth.is_admin || false,
-        is_moderator:           userToAuth.is_moderator || false,
-        referral_code:          userToAuth.referral_code,
-        bitcoin_wallet_address: userToAuth.bitcoin_wallet_address || null,
-      },
-      message: 'Logged in successfully with Google'
-    });
-
-  } catch (err) {
-    console.error('Google login route error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
 app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
     const { email, phone, password, username, fullName, referralCode } = req.body;
@@ -1840,13 +1493,24 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     const newUser = data[0];
 
     // ── Seed balance rows — both tables must exist before any trade ───────
-    await Promise.all([
-      supabaseAdmin.from('user_balances').insert([{ user_id: newUser.id, balance_btc: 0, balance_usd: 0 }])
-        .then(null, () => {}),
-      supabaseAdmin.from('wallets').insert({
-        user_id: newUser.id, balance_btc: 0, locked_balance_btc: 0, updated_at: new Date().toISOString(),
-      }).then(null, () => {}), // ignore duplicate if row already exists
-    ]);
+    await Promise.allSettled([
+  supabaseAdmin.from('user_balances').insert([
+    {
+      user_id: newUser.id,
+      balance_btc: 0,
+      balance_usd: 0,
+    },
+  ]),
+
+  supabaseAdmin.from('wallets').insert([
+    {
+      user_id: newUser.id,
+      balance_btc: 0,
+      locked_balance_btc: 0,
+      updated_at: new Date().toISOString(),
+    },
+  ]),
+]);
 
     // ── Generate 6-digit verification code & save to DB (email users only) ──
     let emailVerifyCode = null;
@@ -1857,16 +1521,6 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
         verification_code:         emailVerifyCode,
         verification_code_expires: new Date(Date.now() + 10 * 60 * 1000),
       }).eq('id', newUser.id);
-    }
-
-    let phoneOtpCode = null;
-    let phoneE164    = null;
-    if (phone) {
-      phoneE164    = phone.trim().startsWith('+') ? phone.trim() : `+${phone.trim().replace(/^0+/, '')}`;
-      phoneOtpCode = Math.floor(100000 + Math.random() * 900000).toString();
-      // Same in-memory store used by /api/auth/verify-otp and
-      // /api/users/verify-phone-otp, so verification works via either endpoint.
-      otpStore.set(phoneE164, { otp: phoneOtpCode, expires: Date.now() + 10 * 60 * 1000 });
     }
 
     // ── Sign JWT ───────────────────────────────────────────────────────────
@@ -1896,7 +1550,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     // 1. Welcome bonus — step 1 (registered, awaiting verification), 30-day window
     const bonusExpires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
     supabaseAdmin.from('users').update({ bonus_step: 1, bonus_expires_at: bonusExpires })
-      .eq('id', newUser.id).then(null, () => {});
+      .eq('id', newUser.id).catch(() => {});
 
     // 2. Detect and save country from IP (fire and forget)
     detectAndSaveCountry(newUser.id, req).catch(() => {});
@@ -1907,14 +1561,6 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
         .catch(e => console.error('[Register] Verification email failed:', e.message));
       emailService.sendWelcomeEmail({ id: newUser.id, email, username })
         .catch(e => console.error('[Register] Welcome email failed:', e.message));
-    }
-
-    if (phone && phoneOtpCode && phoneE164) {
-      sendSmsOtp(phoneE164, `Your PRAQEN verification code is: ${phoneOtpCode}. Valid 10 min. Do not share.`)
-        .then(() => console.log(`[Register] SMS OTP sent to ${phoneE164}`))
-        .catch(e => console.error('[Register] SMS OTP send failed:', e.message));
-      storeOtp(phoneE164, phoneOtpCode)
-        .catch(e => console.warn('[Register] SMS OTP DB backup failed:', e.message));
     }
 
     // 2. Generate HD wallet address for this user
@@ -2125,189 +1771,6 @@ app.post('/api/auth/verify-login-otp', authLimiter, async (req, res) => {
   } catch (err) {
     console.error('[verify-login-otp] error:', err);
     res.status(500).json({ error: 'Verification failed. Please try again.' });
-  }
-});
-
-
-// ── Password Reset Email Template ────────────────────────────────────────────
-function buildPasswordResetEmailHtml(resetUrl) {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PRAQEN Password Reset</title></head>
-<body style="margin:0;padding:0;background:#F0FAF5;font-family:'Segoe UI',Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0FAF5;padding:32px 0;">
-    <tr><td align="center">
-      <table width="520" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(27,67,50,0.10);">
-        <tr><td style="background:linear-gradient(135deg,#1B4332 0%,#2D6A4F 100%);padding:32px 40px;text-align:center;">
-          <div style="display:inline-block;width:56px;height:56px;background:#F4A422;border-radius:14px;line-height:56px;font-size:28px;font-weight:900;color:#1B4332;font-family:Georgia,serif;text-align:center;">P</div>
-          <p style="margin:12px 0 0;color:#ffffff;font-size:20px;font-weight:800;letter-spacing:3px;font-family:Georgia,serif;">PRAQEN</p>
-          <p style="margin:4px 0 0;color:rgba(255,255,255,0.65);font-size:12px;letter-spacing:1px;">Password Reset Request</p>
-        </td></tr>
-        <tr><td style="padding:40px 40px 32px;text-align:center;">
-          <p style="margin:0 0 8px;font-size:16px;font-weight:600;color:#334155;">Reset Your Password</p>
-          <p style="margin:0 0 24px;font-size:13px;color:#64748B;line-height:1.6;">We received a request to reset the password for your PRAQEN account. Click the button below to set a new password. This link expires in <strong>1 hour</strong>.</p>
-          <a href="${resetUrl}" style="display:inline-block;background:linear-gradient(135deg,#1B4332,#2D6A4F);color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;padding:14px 36px;border-radius:10px;letter-spacing:0.5px;">Reset Password →</a>
-          <p style="margin:24px 0 8px;font-size:12px;color:#94A3B8;">If you didn't request this, you can safely ignore this email.</p>
-          <p style="margin:0;font-size:12px;color:#94A3B8;">Never share this link with anyone — PRAQEN will never ask for it.</p>
-        </td></tr>
-        <tr><td style="padding:0 40px 24px;">
-          <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:10px;padding:14px 18px;text-align:center;">
-            <p style="margin:0;font-size:12px;font-weight:700;color:#92400E;">⚠️ Always trade within PRAQEN — never outside our platform</p>
-          </div>
-        </td></tr>
-        <tr><td style="background:#F8FAFC;padding:20px 40px;text-align:center;border-top:1px solid #E2E8F0;">
-          <p style="margin:0 0 4px;font-size:12px;color:#94A3B8;">Need help? Contact us at <a href="mailto:support@praqen.com" style="color:#2D6A4F;font-weight:700;">support@praqen.com</a></p>
-          <p style="margin:0;font-size:11px;color:#CBD5E1;">© 2025 PRAQEN · The World's Most Trusted P2P Bitcoin Marketplace</p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
-}
-
-// ── Send password reset email (reuses same working emailService pipeline as welcome/verification emails) ──
-async function sendPasswordResetEmail(email, resetUrl) {
-  const html = buildPasswordResetEmailHtml(resetUrl);
-  const subject = 'PRAQEN - Password Reset Request';
-  console.log(`📧 Sending password reset to ${email}`);
-
-  // Use emailService.sendEmail() — Brevo SMTP (primary) → Resend (fallback),
-  // same pipeline that successfully sends welcome/verification emails.
-  // emailService.js logs the actual error from each provider attempt.
-  const result = await emailService.sendEmail({
-    to: email,
-    subject,
-    html,
-    type: 'password_reset',
-    metadata: { reset_requested_at: new Date().toISOString() },
-  });
-
-  if (result.success) {
-    console.log(`✅ Password reset email sent via emailService to ${email} (${result.messageId})`);
-    return true;
-  }
-
-  // result.error contains the actual error from Brevo SMTP or Resend fallback
-  console.error('[sendPasswordResetEmail] emailService returned failure:', {
-    error: result.error,
-    providerChain: 'Brevo SMTP → Resend fallback',
-  });
-  throw new Error(`Email delivery failed: ${result.error || 'Unknown error'}`);
-}
-
-// ── Forgot Password: generate reset token & email link ────────────────────────
-app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
-  try {
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ error: 'Email is required' });
-
-    const normalizedEmail = email.toLowerCase().trim();
-
-    const { data: user } = await supabaseAdmin
-      .from('users')
-      .select('id, email')
-      .eq('email', normalizedEmail)
-      .maybeSingle();
-
-    if (!user) {
-      console.log(`[forgot-password] No account for ${normalizedEmail}`);
-      return res.json({ success: true, message: 'If an account exists with that email, a reset link has been sent.' });
-    }
-
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const tokenExpires = new Date(Date.now() + 60 * 60 * 1000);
-
-    const { error: updateError } = await supabaseAdmin
-      .from('users')
-      .update({
-        reset_password_token: resetToken,
-        reset_password_expires: tokenExpires.toISOString(),
-      })
-      .eq('id', user.id);
-
-    if (updateError) {
-      console.error('[forgot-password] DB update error:', updateError.message);
-      return res.status(500).json({ error: 'Failed to process request. Please try again.' });
-    }
-
-    const frontendUrl = (process.env.FRONTEND_URL || 'https://praqen.com').split(',')[0].trim();
-    const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}&email=${encodeURIComponent(normalizedEmail)}`;
-
-    sendPasswordResetEmail(normalizedEmail, resetUrl)
-      .then(() => console.log(`[forgot-password] Reset email sent to ${normalizedEmail}`))
-      .catch(e => console.error('[forgot-password] Email send failed:', e.message));
-
-    return res.json({ success: true, message: 'If an account exists with that email, a reset link has been sent.' });
-
-  } catch (err) {
-    console.error('[forgot-password] error:', err.message);
-    res.status(500).json({ error: 'Failed to process request. Please try again.' });
-  }
-});
-
-// ── Reset Password: validate token & update password ──────────────────────────
-app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
-  try {
-    const { email, newPassword, token } = req.body;
-
-    if (!email || !newPassword || !token) {
-      return res.status(400).json({ error: 'Email, new password, and reset token are required' });
-    }
-
-    if (newPassword.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    }
-
-    const normalizedEmail = email.toLowerCase().trim();
-
-    const { data: user, error: fetchError } = await supabaseAdmin
-      .from('users')
-      .select('id, email, reset_password_token, reset_password_expires, password_hash')
-      .eq('email', normalizedEmail)
-      .maybeSingle();
-
-    if (fetchError || !user) {
-      console.error('[reset-password] DB fetch error:', fetchError?.message);
-      return res.status(400).json({ error: 'Invalid or expired reset link' });
-    }
-
-    if (!user.reset_password_token) {
-      return res.status(400).json({ error: 'No password reset has been requested for this account' });
-    }
-
-    if (user.reset_password_token !== token) {
-      return res.status(400).json({ error: 'Invalid or expired reset link' });
-    }
-
-    const expiresAt = new Date(user.reset_password_expires).getTime();
-    if (Date.now() > expiresAt) {
-      return res.status(400).json({ error: 'Reset link has expired. Please request a new one.' });
-    }
-
-    const passwordHash = await bcrypt.hash(newPassword, 10);
-
-    const { error: updateError } = await supabaseAdmin
-      .from('users')
-      .update({
-        password_hash: passwordHash,
-        reset_password_token: null,
-        reset_password_expires: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', user.id);
-
-    if (updateError) {
-      console.error('[reset-password] DB update error:', updateError.message);
-      return res.status(500).json({ error: 'Failed to reset password. Please try again.' });
-    }
-
-    console.log(`✅ Password reset successful for ${normalizedEmail}`);
-    return res.json({ success: true, message: 'Password has been reset successfully. You can now log in with your new password.' });
-
-  } catch (err) {
-    console.error('[reset-password] error:', err.message);
-    res.status(500).json({ error: 'Failed to reset password. Please try again.' });
   }
 });
 
@@ -2562,10 +2025,7 @@ app.get('/api/team/loans', verifyToken, async (req, res) => {
   try {
     const t = await requireTeam(req, res); if (!t) return;
     const { data, error } = await supabaseAdmin.from('company_loans').select('*').order('created_at', { ascending: false });
-    if (error) {
-      console.error('[GET /api/team/loans] DB error:', error.message, '| code:', error.code);
-      return res.json({ loans: [], totalOwed: '0.00', error: error.message });
-    };
+    if (error) return res.status(400).json({ error: error.message });
     const totalOwed = (data || []).filter(l => l.status !== 'paid').reduce((s, l) => s + parseFloat(l.amount_usd || 0) - parseFloat(l.amount_paid_usd || 0), 0);
     res.json({ loans: data || [], totalOwed: totalOwed.toFixed(2) });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -3194,7 +2654,6 @@ app.get('/api/auth/twilio-check', verifyToken, async (req, res) => {
       twilio_token_set: !!token,
     });
   } catch (e) {
-    console.error('[GET /api/auth/twilio-check] error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -3506,7 +2965,7 @@ app.post('/api/auth/send-verification', otpLimiter, async (req, res) => {
     await supabaseAdmin.from('users').update({
       verification_code:         code,
       verification_code_expires: new Date(expiresAt).toISOString(),
-    }).eq('email', email).throwOnError().then(null, () => {}); // non-fatal if user not created yet
+    }).eq('email', email).throwOnError().catch(() => {}); // non-fatal if user not created yet
 
     let emailSent = false;
     let emailError = null;
@@ -3895,7 +3354,7 @@ app.post('/api/users/submit-phone', verifyToken, async (req, res) => {
         await supabaseAdmin.from('phone_verification_requests').upsert(
           { user_id: req.userId, phone: e164, status: currentUser.is_phone_verified ? 'approved' : 'pending' },
           { onConflict: 'user_id', ignoreDuplicates: true }
-        ).then(null, () => {});
+        ).catch(() => {});
         return res.json({ success: true });
       }
       return res.status(400).json({ error: 'A phone number has already been submitted for your account. It cannot be changed while under review.' });
@@ -4157,7 +3616,7 @@ app.post('/api/auth/resend-code', async (req, res) => {
     await supabaseAdmin.from('users').update({
       verification_code: code,
       verification_code_expires: new Date(expiresAt).toISOString(),
-    }).eq('email', email).then(null, () => {});
+    }).eq('email', email).catch(() => {});
 
     let emailSent = false;
     try {
@@ -4302,14 +3761,7 @@ app.get('/api/bonus/status', verifyToken, async (req, res) => {
     const { data, error } = await supabaseAdmin.from('users')
       .select('bonus_step, bonus_expires_at, bonus_unlocked_at')
       .eq('id', req.userId).single();
-    if (error && error.code === 'PGRST116') {
-      // User not in bonus programme — return default bonus state
-      return res.json({ step: 0, bonus_expires_at: null, bonus_unlocked_at: null, expired: true, ms_remaining: 0, btc_price: 88000, locked_btc: 0, unlocked_btc: 0 });
-    }
-    if (error) {
-      console.error('[GET /api/bonus/status] DB error:', error.message, '| code:', error.code);
-      return res.json({ step: 0, bonus_expires_at: null, bonus_unlocked_at: null, expired: true, ms_remaining: 0, btc_price: 88000, locked_btc: 0, unlocked_btc: 0 });
-    }
+    if (error || !data) return res.status(404).json({ error: 'User not found' });
 
     const now = new Date();
     const expires = data.bonus_expires_at ? new Date(data.bonus_expires_at) : null;
@@ -4339,28 +3791,18 @@ app.get('/api/bonus/status', verifyToken, async (req, res) => {
       unlocked_btc: step === 3 ? bonusBtcTotal  : 0,
     });
   } catch (e) {
-    console.error('[GET /api/bonus/status] error:', e.message);
-    res.json({ step: 0, bonus_expires_at: null, bonus_unlocked_at: null, expired: true, ms_remaining: 0, btc_price: 88000, locked_btc: 0, unlocked_btc: 0 });
+    res.status(500).json({ error: e.message });
   }
 });
 
 app.get('/api/users/profile', verifyToken, async (req, res) => {
   try {
     // Core columns — confirmed to exist in every PRAQEN DB schema
-    const coreCols = 'id, email, username, full_name, bio, location, website, phone, avatar_url, average_rating, total_trades, completion_rate, created_at, is_admin, is_moderator, is_id_verified, is_email_verified, is_phone_verified, total_feedback_count, positive_feedback, negative_feedback, last_login, last_seen_at, badge, country';
-    let { data, error } = await supabaseAdmin.from('users')
-      .select(coreCols)
+    const { data, error } = await supabaseAdmin.from('users')
+      .select('id, email, username, full_name, bio, location, website, phone, avatar_url, average_rating, total_trades, completion_rate, created_at, is_admin, is_moderator, is_id_verified, is_email_verified, is_phone_verified, total_feedback_count, positive_feedback, negative_feedback, last_login, last_seen_at, badge, country')
       .eq('id', req.userId).single();
-    // Fallback if a column doesn't exist in the DB (e.g. is_phone_verified, badge, country)
-    if (error && (error.code === '42703' || (error.message && error.message.includes('does not exist')))) {
-      const essential = 'id, email, username, full_name, avatar_url, average_rating, total_trades, completion_rate, created_at, is_admin, is_moderator, is_id_verified, is_email_verified, total_feedback_count, positive_feedback, negative_feedback, last_login';
-      console.warn('[GET /api/users/profile] Column missing — falling back to essentials:', error.message);
-      const fallback = await supabaseAdmin.from('users').select(essential).eq('id', req.userId).single();
-      if (fallback.error) { error = fallback.error; data = null; }
-      else { data = fallback.data; error = null; Object.assign(data, { is_phone_verified: false, bio: null, location: null, website: null, phone: null, last_seen_at: null, badge: null, country: null }); }
-    }
     if (error) {
-      console.error('[GET /api/users/profile] DB error:', error.message, '| code:', error.code || 'N/A');
+      console.error('[GET /api/users/profile] DB error:', error.message);
       return res.status(500).json({ error: 'Could not load your profile. Please try again.' });
     }
     if (!data) return res.status(404).json({ error: 'Profile not found.' });
@@ -4747,23 +4189,24 @@ app.post('/api/users/:userId/view-profile', async (req, res) => {
 
 app.get('/api/user/balance', verifyToken, async (req, res) => {
   try {
-    const [btcPrice, { data, error }] = await Promise.all([
+    const [{ data, error }, btcPrice] = await Promise.all([
+      supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', req.userId).single(),
       getCurrentBTCPrice().catch(() => 88000),
-      supabaseAdmin.from('wallets').select('balance_btc').eq('user_id', req.userId).maybeSingle(),
     ]);
-    if (error) {
-      console.error('[GET /api/user/balance] DB error:', error.message, '| code:', error.code);
-      return res.json({ balance_btc: 0, balance_usd: 0, btc_price: btcPrice || 88000 });
+    if (error && error.code === 'PGRST116') {
+      await supabaseAdmin.from('user_balances').insert([{ user_id: req.userId, balance_btc: 0, balance_usd: 0 }]);
+      return res.json({ balance_btc: 0, balance_usd: 0, btc_price: btcPrice });
     }
+    if (error) return res.status(400).json({ error: error.message });
     const balBtc = parseFloat(data?.balance_btc || 0);
     const balUsd = parseFloat((balBtc * btcPrice).toFixed(2));
     console.log(`[/api/user/balance] user=${req.userId.slice(0,8)} btc=${balBtc} price=${btcPrice} usd=${balUsd}`);
     res.json({ balance_btc: balBtc, balance_usd: balUsd, btc_price: btcPrice });
   } catch (error) {
-    console.error('[GET /api/user/balance] error:', error.message);
     res.json({ balance_btc: 0, balance_usd: 0, btc_price: 88000 });
   }
 });
+
 // DEV ENDPOINT DISABLED — manual balance injection is not allowed in production.
 // All BTC balances must come from real on-chain deposits monitored by depositMonitor.js.
 app.post('/api/user/add-balance', verifyToken, (req, res) => {
@@ -5023,7 +4466,7 @@ app.get('/api/listings', async (req, res) => {
 
     // Step 1: fetch listings only (no join) — fast
     let listingsQ = supabaseAdmin.from('listings').select(
-      'id, seller_id, listing_type, asset, gift_card_brand, status, bitcoin_price, margin, pricing_type, currency, currency_symbol, country, country_name, payment_method, payment_methods, amount_usd, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local, time_limit, trade_instructions, listing_terms, description, created_at, card_values, card_type, face_value'
+      'id, seller_id, listing_type, gift_card_brand, status, bitcoin_price, margin, pricing_type, currency, currency_symbol, country, country_name, payment_method, payment_methods, amount_usd, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local, time_limit, trade_instructions, listing_terms, description, created_at, card_values, card_type, face_value'
     ).eq('status', 'ACTIVE').order('created_at', { ascending: false }).limit(200);
     if (brand)    listingsQ = listingsQ.ilike('gift_card_brand', `%${brand}%`);
     if (minPrice) listingsQ = listingsQ.gte('bitcoin_price', parseFloat(minPrice));
@@ -5034,11 +4477,7 @@ app.get('/api/listings', async (req, res) => {
       listingsQ,
       new Promise(resolve => setTimeout(() => { _listingsTimedOut = true; resolve({ data: null, error: null }); }, 8000)),
     ]);
-    if (listErr) {
-      console.error('[/api/listings] Listing query error:', listErr.message, '| code:', listErr.code);
-      // Return empty array so the marketplace doesn't crash — client will retry
-      return res.json({ listings: [], stale: false, error: listErr.message });
-    }
+    if (listErr) return res.status(400).json({ error: listErr.message });
     if (_listingsTimedOut || rawListings === null) {
       const stale = getCachedStale(cacheKey);
       if (stale) {
@@ -5067,7 +4506,7 @@ app.get('/api/listings', async (req, res) => {
         ]),
         btcSellerIds.length > 0
           ? Promise.race([
-              supabaseAdmin.from('wallets').select('user_id, balance_btc, balance_usdt').in('user_id', btcSellerIds),
+              supabaseAdmin.from('wallets').select('user_id, balance_btc').in('user_id', btcSellerIds),
               new Promise(resolve => setTimeout(() => resolve({ data: [] }), 4000)),
             ])
           : Promise.resolve({ data: [] }),
@@ -5093,21 +4532,14 @@ app.get('/api/listings', async (req, res) => {
 
     if (balanceCheckedListings.length > 0) {
       const balMap = {};
-      const usdtBalMap = {};
-      (walletRows || []).forEach(w => {
-        balMap[w.user_id] = parseFloat(w.balance_btc || 0);
-        usdtBalMap[w.user_id] = parseFloat(w.balance_usdt || 0);
-      });
-      // 1 USDT ≈ $1 — no external price lookup needed
-      const balanceUsdFor = (l) => (l.asset === 'USDT')
-        ? (usdtBalMap[l.seller_id] || 0)
-        : (balMap[l.seller_id] || 0) * (parseFloat(l.bitcoin_price) || 88000);
+      (walletRows || []).forEach(w => { balMap[w.user_id] = parseFloat(w.balance_btc || 0); });
 
       // For SELL offers: cap displayed limits to seller's actual balance
       listings = listings.map(l => {
         if (l.listing_type !== 'SELL' && l.listing_type !== 'SELL_BITCOIN') return l;
         const sellerBtc    = balMap[l.seller_id] || 0;
-        const balanceUsd   = balanceUsdFor(l);
+        const btcPriceVal  = parseFloat(l.bitcoin_price) || 88000;
+        const balanceUsd   = sellerBtc * btcPriceVal;
         const origMaxUsd   = parseFloat(l.max_limit_usd || 0);
         const origMaxLocal = parseFloat(l.max_limit_local || 0);
 
@@ -5120,18 +4552,19 @@ app.get('/api/listings', async (req, res) => {
         return {
           ...l,
           seller_balance_btc: sellerBtc,
-          seller_balance_usdt: usdtBalMap[l.seller_id] || 0,
           effective_max_usd:  cappedMaxUsd,
           max_limit_usd:      cappedMaxUsd,
           max_limit_local:    cappedMaxLocal,
         };
       });
 
-      // Hide BTC/USDT-required offers where seller has < $10 OR can't fulfil the minimum trade amount
+      // Hide BTC-required offers where seller has < $10 OR can't fulfil the minimum trade amount
       const toPauseIds = [];
       listings = listings.filter(l => {
         if (!btcRequiredTypes.includes(l.listing_type)) return true;
-        const balanceUsd  = balanceUsdFor(l);
+        const sellerBtc   = balMap[l.seller_id] || 0;
+        const btcPriceVal = parseFloat(l.bitcoin_price) || 88000;
+        const balanceUsd  = sellerBtc * btcPriceVal;
         const minUsd      = parseFloat(l.min_limit_usd || 0);
 
         const tooLow    = balanceUsd < 10;
@@ -5264,7 +4697,7 @@ app.put('/api/listings/:id', verifyToken, async (req, res) => {
     const { id } = req.params;
     const { margin, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local,
             payment_method, trade_instructions, listing_terms, time_limit, status } = req.body;
-    const { data: listing, error: findError } = await supabaseAdmin.from('listings').select('seller_id, listing_type, asset').eq('id', id).single();
+    const { data: listing, error: findError } = await supabaseAdmin.from('listings').select('seller_id, listing_type').eq('id', id).single();
     if (findError || !listing) return res.status(404).json({ error: 'Listing not found' });
     if (listing.seller_id !== req.userId) return res.status(403).json({ error: 'You can only edit your own listings' });
     if (min_limit_usd !== undefined && parseFloat(min_limit_usd) < 10) {
@@ -5275,10 +4708,8 @@ app.put('/api/listings/:id', verifyToken, async (req, res) => {
       const isSellListing = ['SELL', 'SELL_BITCOIN'].includes((listing.listing_type || '').toUpperCase());
       if (isSellListing) {
         const { data: sellerWallet } = await supabaseAdmin
-          .from('wallets').select('balance_btc, balance_usdt').eq('user_id', req.userId).maybeSingle();
-        const sellerBalUsd = listing.asset === 'USDT'
-          ? parseFloat(sellerWallet?.balance_usdt || 0) // 1 USDT ≈ $1
-          : parseFloat(sellerWallet?.balance_btc || 0) * 88000;
+          .from('wallets').select('balance_btc').eq('user_id', req.userId).maybeSingle();
+        const sellerBalUsd = parseFloat(sellerWallet?.balance_btc || 0) * 88000;
         if (parseFloat(max_limit_usd) > sellerBalUsd && sellerBalUsd > 0) {
           return res.status(400).json({
             error: `Maximum trade limit ($${parseFloat(max_limit_usd).toFixed(0)}) exceeds your wallet balance ($${sellerBalUsd.toFixed(0)}). Please top up or lower the maximum.`,
@@ -5391,14 +4822,13 @@ app.patch('/api/listings/:id/status', verifyToken, async (req, res) => {
 // GET all active offers for the market — reads from listings (canonical table)
 app.get('/api/offers', async (req, res) => {
   try {
-    const { type, country, asset, limit = 100 } = req.query;
-    const cacheKey = `offers|${type||'all'}|${country||'all'}|${asset||'all'}|${limit}`;
+    const { type, country, limit = 100 } = req.query;
+    const cacheKey = `offers|${type||'all'}|${country||'all'}|${limit}`;
     const hit = getCached(cacheKey);
     if (hit) return res.json({ success: true, offers: hit });
 
     const typeMap = { sell: 'SELL', sell_bitcoin: 'SELL_BITCOIN', buy: 'BUY', buy_bitcoin: 'BUY_BITCOIN', gc_buy: 'BUY_GIFT_CARD', gc_sell: 'SELL_GIFT_CARD' };
     const listingTypeFilter = type ? (typeMap[type.toLowerCase()] || type.toUpperCase()) : null;
-    const assetFilter = asset ? asset.toUpperCase() : null;
 
     let query = supabaseAdmin
       .from('listings')
@@ -5407,7 +4837,6 @@ app.get('/api/offers', async (req, res) => {
 
     if (listingTypeFilter) query = query.eq('listing_type', listingTypeFilter);
     if (country) query = query.eq('country', country);
-    if (assetFilter) query = query.eq('asset', assetFilter);
 
     const { data: listings, error } = await query
       .order('created_at', { ascending: false })
@@ -5440,31 +4869,24 @@ app.get('/api/offers', async (req, res) => {
       country: u.country || null,
     }]));
 
-    // Fetch balances for SELL offer owners so we can hide low-balance offers
+    // Fetch BTC balances for SELL offer owners so we can hide low-balance offers
     const sellSellerIds = [...new Set(
       (listings || [])
         .filter(l => l.listing_type === 'SELL' || l.listing_type === 'SELL_BITCOIN')
         .map(l => l.seller_id)
     )];
     let balMap = {};
-    let usdtBalMap = {};
     if (sellSellerIds.length > 0) {
       const { data: walBals } = await supabaseAdmin
-        .from('wallets').select('user_id, balance_btc, balance_usdt').in('user_id', sellSellerIds);
-      (walBals || []).forEach(b => {
-        balMap[b.user_id] = parseFloat(b.balance_btc || 0);
-        usdtBalMap[b.user_id] = parseFloat(b.balance_usdt || 0);
-      });
+        .from('wallets').select('user_id, balance_btc').in('user_id', sellSellerIds);
+      (walBals || []).forEach(b => { balMap[b.user_id] = parseFloat(b.balance_btc || 0); });
     }
 
     const offers = (listings || [])
       .filter(l => {
-        // Hide SELL offers where seller has < $10 worth of the offer's asset — offer stays
-        // ACTIVE in DB and reappears automatically once they top up their wallet.
+        // Hide SELL offers where seller has < $10 BTC — offer stays ACTIVE in DB
+        // and reappears automatically once they top up their wallet.
         if (l.listing_type !== 'SELL' && l.listing_type !== 'SELL_BITCOIN') return true;
-        if ((l.asset || 'BTC') === 'USDT') {
-          return (usdtBalMap[l.seller_id] || 0) >= 10; // 1 USDT ≈ $1
-        }
         const sellerBtc   = balMap[l.seller_id] || 0;
         const btcPriceVal = parseFloat(l.bitcoin_price) || 88000;
         return sellerBtc * btcPriceVal >= 10;
@@ -5474,7 +4896,6 @@ app.get('/api/offers', async (req, res) => {
         type: (l.listing_type || '').toLowerCase(),
         user_id: l.seller_id,
         seller_balance_btc: balMap[l.seller_id] || undefined,
-        seller_balance_usdt: usdtBalMap[l.seller_id] || undefined,
         users: userMap[l.seller_id] || null,
       }));
 
@@ -5580,26 +5001,17 @@ app.post('/api/offers', verifyToken, async (req, res) => {
       description,
       card_values,
       card_type,
-      gift_card_currencies,
-      asset
+      gift_card_currencies
     } = req.body;
 
     const userId = req.userId;
-    const offerAsset = asset === 'USDT' ? 'USDT' : 'BTC';
 
     // Validation: check required fields
     if (!type && !listing_type) {
       return res.status(400).json({ error: 'Missing offer type (type or listing_type)' });
     }
 
-    // Determine listing type early — gift card offers don't have a
-    // traditional payment_method (the "payment" is the gift card code
-    // itself), so the check below must not apply to them.
-    const offerTypeMap = { 'sell': 'SELL', 'buy': 'BUY', 'gc_buy': 'BUY_GIFT_CARD' };
-    const mappedType = offerTypeMap[type] || listing_type || 'SELL';
-    const isGiftCard = mappedType === 'BUY_GIFT_CARD' || mappedType === 'SELL_GIFT_CARD';
-
-    if (!isGiftCard && !payment_method) {
+    if (!payment_method) {
       return res.status(400).json({ error: 'Missing payment_method' });
     }
 
@@ -5630,7 +5042,11 @@ app.post('/api/offers', verifyToken, async (req, res) => {
       });
     }
 
+    // Determine listing type
+    const offerTypeMap = { 'sell': 'SELL', 'buy': 'BUY', 'gc_buy': 'BUY_GIFT_CARD' };
+    const mappedType = offerTypeMap[type] || listing_type || 'SELL';
     const verifCount = [hasEmail, hasPhone, hasKyc].filter(Boolean).length;
+    const isGiftCard = mappedType === 'BUY_GIFT_CARD' || mappedType === 'SELL_GIFT_CARD';
 
     // Enforce $10 USD minimum trade limit for non-gift-card offers
     if (!isGiftCard && parseFloat(min_limit_usd || 0) < 10) {
@@ -5642,13 +5058,11 @@ app.post('/api/offers', verifyToken, async (req, res) => {
     const cur = currency || 'USD';
     const curSym = currency_symbol || (cur === 'GHS' ? '₵' : cur === 'NGN' ? '₦' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : '$');
 
-    // For SELL offers: max_limit_usd must not exceed the seller's wallet balance for the chosen asset
+    // For SELL offers: max_limit_usd must not exceed the seller's BTC wallet balance
     if ((mappedType === 'SELL' || mappedType === 'SELL_BITCOIN') && max_limit_usd) {
       const { data: sellerWallet } = await supabaseAdmin
-        .from('wallets').select('balance_btc, balance_usdt').eq('user_id', userId).maybeSingle();
-      const sellerBalUsd = offerAsset === 'USDT'
-        ? parseFloat(sellerWallet?.balance_usdt || 0) // 1 USDT ≈ $1
-        : parseFloat(sellerWallet?.balance_btc || 0) * 88000; // approximate BTC price for cap
+        .from('wallets').select('balance_btc').eq('user_id', userId).maybeSingle();
+      const sellerBalUsd = parseFloat(sellerWallet?.balance_btc || 0) * 88000; // approximate BTC price for cap
       if (parseFloat(max_limit_usd) > sellerBalUsd && sellerBalUsd > 0) {
         return res.status(400).json({
           error: `Maximum trade limit ($${parseFloat(max_limit_usd).toFixed(0)}) exceeds your wallet balance ($${sellerBalUsd.toFixed(0)}). Please top up or lower the maximum.`,
@@ -5656,7 +5070,7 @@ app.post('/api/offers', verifyToken, async (req, res) => {
       }
     }
 
-    // Block duplicate active offers: same payment method + same currency + same asset + same type (skip gift cards)
+    // Block duplicate active offers: same payment method + same currency + same type (skip gift cards)
     if (mappedType !== 'BUY_GIFT_CARD') {
       const { data: dupCheck2 } = await supabaseAdmin
         .from('listings')
@@ -5665,12 +5079,11 @@ app.post('/api/offers', verifyToken, async (req, res) => {
         .eq('payment_method', payment_method)
         .eq('listing_type', mappedType)
         .eq('currency', currency || 'USD')
-        .eq('asset', offerAsset)
         .eq('status', 'ACTIVE')
         .limit(1);
       if (dupCheck2 && dupCheck2.length > 0) {
         return res.status(400).json({
-          error: `You already have an active ${offerAsset} ${mappedType} offer for ${payment_method} in ${currency || 'USD'}. Edit it from your Dashboard instead.`,
+          error: `You already have an active ${mappedType} offer for ${payment_method} in ${currency || 'USD'}. Edit it from your Dashboard instead.`,
         });
       }
     }
@@ -5681,7 +5094,6 @@ app.post('/api/offers', verifyToken, async (req, res) => {
       .insert({
         seller_id:           userId,
         listing_type:        mappedType,
-        asset:               offerAsset,
         gift_card_brand:     gift_card_brand || brandDefault,
         status:              'ACTIVE',
         bitcoin_price:       bitcoin_price || 88000,
@@ -6082,8 +5494,6 @@ app.post('/api/trades', verifyToken, async (req, res) => {
           { actor_id: sellerId, direction: 'buy', trade_id: tradeUUID, payment_method: pmDisp }),
         sendTradeAlert(sellerId, trade[0], 'new_trade').catch(() => {}),
         sendTradeAlert(buyerId,  trade[0], 'new_trade').catch(() => {}),
-        notifyUserSMS(sellerId, `PRAQEN: New trade request — ${btcDisp} (${localDisp}) via ${pmDisp}. Open the app to respond.`).catch(() => {}),
-        notifyUserSMS(buyerId,  `PRAQEN: Trade started — ${btcDisp} (${localDisp}) via ${pmDisp}. Funds locked in escrow.`).catch(() => {}),
       ]);
     } catch (notifyErr) {
       console.error('[Trade Open] Pre-escrow notification failed:', notifyErr.message);
@@ -6284,8 +5694,6 @@ app.post('/api/trades/:id/release', tradeLimiter, verifyToken, async (req, res) 
           if (sellerRelUser?.email)
             emailService.sendTradeConfirmationEmail(sellerRelUser, releasedTrade, 'seller')
               .catch(e => console.error('[release] seller email:', e.message));
-          notifyUserSMS(releasedTrade.buyer_id,  `PRAQEN: Trade complete! ₿${parseFloat(releasedTrade.amount_btc || 0).toFixed(8)} has been released to your wallet.`).catch(() => {});
-          notifyUserSMS(releasedTrade.seller_id, `PRAQEN: Trade complete! Payment confirmed and Bitcoin released successfully.`).catch(() => {});
         } catch (e) { console.error('[release] Background notify failed:', e.message); }
       });
     }
@@ -6378,8 +5786,6 @@ app.post('/api/trades/:id/cancel', tradeLimiter, verifyToken, async (req, res) =
         if (sellerCancelUser?.email)
           emailService.sendTradeCancelledEmail(sellerCancelUser, trade, reason)
             .catch(e => console.error('[cancel] seller email:', e.message));
-        notifyUserSMS(trade.buyer_id,  `PRAQEN: Your trade was cancelled${reason ? ` — ${reason}` : ''}. Any locked BTC has been refunded.`).catch(() => {});
-        notifyUserSMS(trade.seller_id, `PRAQEN: Your trade was cancelled${reason ? ` — ${reason}` : ''}. Any locked BTC has been refunded.`).catch(() => {});
       } catch (e) { console.error('[cancel] Background notify failed:', e.message); }
     });
   } catch (error) {
@@ -7378,7 +6784,7 @@ app.post('/api/referral/withdraw', verifyToken, async (req, res) => {
       status:     'CONFIRMED',
       notes:      `Referral earnings withdrawal — ₿${totalEarnings.toFixed(8)} from ${ids.length} commission(s)`,
       created_at: new Date().toISOString(),
-    }).then(null, () => {});
+    }).catch(() => {});
 
     res.json({ success: true, amountBtc: totalEarnings, message: `₿ ${totalEarnings.toFixed(8)} added to your wallet!` });
   } catch (error) {
@@ -7472,19 +6878,36 @@ app.get('/api/notifications', verifyToken, async (req, res) => {
 });
 
 app.put('/api/notifications/:id/read', verifyToken, async (req, res) => {
-  try {
-    await supabaseAdmin.from('notifications').update({ is_read: true, read_at: new Date() }).eq('id', req.params.id).eq('user_id', req.userId);
-    res.json({ success: true });
-  } catch { res.json({ success: true }); }
+  const { data, error } = await supabaseAdmin
+    .from('notifications')
+    .update({ is_read: true })
+    .eq('id', req.params.id)
+    .eq('user_id', req.userId)
+    .select('id, is_read');
+
+  if (error) {
+    console.error('[Notifications] mark read failed:', error.message);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+
+  res.json({ success: true, notification: data?.[0] });
 });
 
 app.put('/api/notifications/read-all', verifyToken, async (req, res) => {
-  try {
-    await supabaseAdmin.from('notifications').update({ is_read: true, read_at: new Date() }).eq('user_id', req.userId).eq('is_read', false);
-    res.json({ success: true });
-  } catch { res.json({ success: true }); }
-});
+  const { data, error } = await supabaseAdmin
+    .from('notifications')
+    .update({ is_read: true })
+    .eq('user_id', req.userId)
+    .eq('is_read', false)
+    .select('id');
 
+  if (error) {
+    console.error('[Notifications] mark all failed:', error.message);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+
+  res.json({ success: true, updated: data?.length ?? 0 });
+});
 // ============================================================
 // REFERRAL CHAT
 // ============================================================
@@ -7602,7 +7025,7 @@ app.post('/api/referral-messages/:userId', verifyToken, async (req, res) => {
       message: message.trim().slice(0, 100),
       is_read: false,
       created_at: new Date(),
-    }).then(null, () => {});
+    }).catch(() => {});
 
     res.json({ message: msg });
   } catch (e) {
@@ -8446,7 +7869,7 @@ app.put('/api/admin/users/:id/verify-phone', verifyToken, async (req, res) => {
     // Update request row if it exists
     await supabaseAdmin.from('phone_verification_requests')
       .update({ status: 'approved', reviewed_at: new Date().toISOString(), reviewed_by: req.userId })
-      .eq('user_id', req.params.id).then(null, () => {});
+      .eq('user_id', req.params.id).catch(() => {});
     await createNotification(req.params.id, 'system', '📱 Phone Number Verified!', 'Great news! Your phone number has been verified by our team. Your trade limit has been upgraded. You can now continue trading.', '/settings?tab=verification');
     sendSystemAlert(req.params.id, '📱 Phone Verified!', 'Your phone number has been verified. Trade limits upgraded!', 'https://praqen.com/settings?tab=verification').catch(() => {});
     res.json({ success: true, user: data });
@@ -8549,7 +7972,7 @@ app.put('/api/admin/phone-verifications/:id/reject', verifyToken, async (req, re
     await supabaseAdmin
       .from('users')
       .update({ phone: null, updated_at: new Date().toISOString() })
-      .eq('id', request.user_id).then(null, () => {});
+      .eq('id', request.user_id).catch(() => {});
 
     // Notify the user
     await createNotification(request.user_id, 'system', '📱 Phone Verification Failed',
@@ -8622,7 +8045,7 @@ app.post('/api/admin/phone/approve', verifyToken, async (req, res) => {
         .from('phone_verification_requests').select('phone').eq('user_id', userId).single();
       if (pvr?.phone) {
         await supabaseAdmin.from('users')
-          .update({ phone: pvr.phone }).eq('id', userId).then(null, () => {});
+          .update({ phone: pvr.phone }).eq('id', userId).catch(() => {});
         console.log(`[phone/approve] recovered missing phone ${pvr.phone} for user ${userId.slice(0,8)}`);
       }
     }
@@ -8639,7 +8062,7 @@ app.post('/api/admin/phone/approve', verifyToken, async (req, res) => {
     // Also mark any pending request row as approved
     await supabaseAdmin.from('phone_verification_requests')
       .update({ status: 'approved', reviewed_at: new Date().toISOString(), reviewed_by: req.userId })
-      .eq('user_id', userId).then(null, () => {});
+      .eq('user_id', userId).catch(() => {});
 
     await createNotification(userId, 'system', '📱 Phone Number Verified!',
       'Your phone number has been verified by our team. Your trade limits have been upgraded!',
@@ -8673,7 +8096,7 @@ app.post('/api/admin/phone/reject', verifyToken, async (req, res) => {
 
     await supabaseAdmin.from('phone_verification_requests')
       .update({ status: 'rejected', reviewed_at: new Date().toISOString(), reviewed_by: req.userId, rejection_reason: reason })
-      .eq('user_id', userId).then(null, () => {});
+      .eq('user_id', userId).catch(() => {});
 
     await createNotification(userId, 'system', '📱 Phone Verification Failed',
       `Your phone number (${phone}) could not be verified. Reason: ${reason}. Please submit a valid number.`,
@@ -9185,15 +8608,7 @@ app.get('/api/wallet', verifyToken, async (req, res) => {
   try {
     const { data: user, error: userError } = await supabaseAdmin.from('users')
       .select('id, username, coinbase_wallet_id, bitcoin_wallet_address, coinbase_wallet_address, wallet_created_at').eq('id', req.userId).single();
-    if (userError && userError.code === 'PGRST116') {
-      // User not found in DB — genuine 404
-      return res.status(404).json({ error: 'User not found' });
-    }
-    if (userError) {
-      // Transient DB error — log and return safe default wallet state
-      console.error('[GET /api/wallet] DB error:', userError.message, '| code:', userError.code);
-      return res.json({ success: true, wallet: { address: null, walletId: null, created_at: null, balance_btc: 0, locked_balance_btc: 0, balance_usd: 0, has_address: false }, transactions: [] });
-    }
+    if (userError || !user) return res.status(404).json({ error: 'User not found' });
     const [{ data: balance }, { data: balanceUsd }] = await Promise.all([
       supabaseAdmin.from('wallets').select('balance_btc, locked_balance_btc').eq('user_id', req.userId).maybeSingle(),
       supabaseAdmin.from('user_balances').select('balance_usd').eq('user_id', req.userId).maybeSingle(),
@@ -9219,8 +8634,7 @@ app.get('/api/wallet', verifyToken, async (req, res) => {
       transactions: (recentTrades || []).map(t => ({ id: t.id, amount_btc: parseFloat(t.amount_btc || 0), amount_usd: parseFloat(t.amount_usd || 0), type: 'trade_completion', status: t.status, date: t.completed_at || t.created_at })),
     });
   } catch (error) {
-    console.error('[GET /api/wallet] Catch error:', error.message);
-    res.json({ success: true, wallet: { address: null, walletId: null, created_at: null, balance_btc: 0, locked_balance_btc: 0, balance_usd: 0, has_address: false }, transactions: [] });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -9984,7 +9398,7 @@ app.post('/api/wallet/usdt/send', verifyToken, async (req, res) => {
       action:     '/wallet',
       is_read:    false,
       created_at: new Date().toISOString(),
-    }).then(null, () => {});
+    }).catch(() => {});
 
     console.log(`[USDT Send] ₮${sendAmount} → ${toAddress} | fee ${feeLabel} | user: ${req.userId.slice(0, 8)} | txid: ${txResult.txid}`);
 
@@ -10403,7 +9817,7 @@ app.post('/api/admin/hot-wallet/collect-fees', verifyToken, async (req, res) => 
       tx_hash:     result.txid,
       notes:       `Admin fee collection → ${toAddress.slice(0, 16)}… by ${req.userId.slice(0, 8)}`,
       created_at:  new Date().toISOString(),
-    }).then(null, () => {});
+    }).catch(() => {});
 
     res.json({ success: true, ...result });
   } catch (e) {
