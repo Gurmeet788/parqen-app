@@ -6878,19 +6878,36 @@ app.get('/api/notifications', verifyToken, async (req, res) => {
 });
 
 app.put('/api/notifications/:id/read', verifyToken, async (req, res) => {
-  try {
-    await supabaseAdmin.from('notifications').update({ is_read: true, read_at: new Date() }).eq('id', req.params.id).eq('user_id', req.userId);
-    res.json({ success: true });
-  } catch { res.json({ success: true }); }
+  const { data, error } = await supabaseAdmin
+    .from('notifications')
+    .update({ is_read: true })
+    .eq('id', req.params.id)
+    .eq('user_id', req.userId)
+    .select('id, is_read');
+
+  if (error) {
+    console.error('[Notifications] mark read failed:', error.message);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+
+  res.json({ success: true, notification: data?.[0] });
 });
 
 app.put('/api/notifications/read-all', verifyToken, async (req, res) => {
-  try {
-    await supabaseAdmin.from('notifications').update({ is_read: true, read_at: new Date() }).eq('user_id', req.userId).eq('is_read', false);
-    res.json({ success: true });
-  } catch { res.json({ success: true }); }
-});
+  const { data, error } = await supabaseAdmin
+    .from('notifications')
+    .update({ is_read: true })
+    .eq('user_id', req.userId)
+    .eq('is_read', false)
+    .select('id');
 
+  if (error) {
+    console.error('[Notifications] mark all failed:', error.message);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+
+  res.json({ success: true, updated: data?.length ?? 0 });
+});
 // ============================================================
 // REFERRAL CHAT
 // ============================================================
