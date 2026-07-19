@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useRates } from '../contexts/RatesContext';
@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { QRCodeSVG } from 'qrcode.react';
-
+import { copyToClipboard } from '../utils/clipboard';
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 const C = {
@@ -464,10 +464,8 @@ function ReceiveModal({ address, network, onClose, onGenerate, checking, onCheck
   const [copied, setCopied] = useState(false);
 
   const copy = () => {
-    navigator.clipboard.writeText(address);
-    setCopied(true);
-    toast.success('Address copied!');
-    setTimeout(() => setCopied(false), 3000);
+    copyToClipboard(address, 'Address copied!')
+      .then((ok) => { if (ok) setCopied(true); setTimeout(() => setCopied(false), 3000); });
   };
 
   const explorerUrl = `https://mempool.space/address/${address}`;
@@ -2217,10 +2215,8 @@ function UsdtReceiveModal({ address, onClose, checking, scanCooldown, onCheckDep
   const [copied, setCopied] = useState(false);
 
   const copy = () => {
-    navigator.clipboard.writeText(address);
-    setCopied(true);
-    toast.success('Tron address copied!');
-    setTimeout(() => setCopied(false), 3000);
+    copyToClipboard(address, 'Tron address copied!')
+      .then((ok) => { if (ok) setCopied(true); setTimeout(() => setCopied(false), 3000); });
   };
 
   const explorerUrl = `https://tronscan.org/#/address/${address}`;

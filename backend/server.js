@@ -915,23 +915,87 @@ async function getLiveFXRates() {
 }
 
 // ── AI Chat endpoint ─────────────────────────────────────────────────────────
-const PRAQEN_CONTEXT = `You are PRAQEN AI, the helpful support assistant for PRAQEN — a peer-to-peer (P2P) Bitcoin trading platform where users buy and sell Bitcoin using local currencies (GHS, NGN, KES, ZAR, etc.) via mobile money, bank transfer, and gift cards. All trades are escrow-protected.
+const PRAQEN_CONTEXT = `You are PRAQEN AI, a helpful support assistant for PRAQEN — a peer-to-peer (P2P) Bitcoin trading platform where users buy and sell Bitcoin using local currencies (GHS, NGN, KES, ZAR, etc.) via mobile money, bank transfer, and gift cards. All trades are escrow-protected.
 
-Key facts about PRAQEN:
-- Users can Buy Bitcoin by browsing seller offers and initiating a trade
-- Users can Sell Bitcoin by creating a sell offer listing
-- Trades are secured by Bitcoin escrow — the seller locks BTC before the buyer pays
-- Payment methods: MTN MoMo, Vodafone Cash, AirtelTigo, bank transfer, gift cards
-- KYC (ID verification) is required for higher trade limits
-- Users build reputation through completed trades and feedback ratings
-- Trust score is based on completed trades, positive feedback, and account age
-- Disputes can be raised during an active trade for moderator review
-- Wallets hold Bitcoin; fiat payments happen directly between users
-- Referral program rewards users for inviting others
+=== COMPLETE PLATFORM KNOWLEDGE BASE ===
+Use these facts to answer user questions directly and accurately. Never default to "team will review" for questions that are answered here.
 
-Keep responses concise (2-4 sentences), friendly, and practical. If you don't know something specific about the user's account, tell them to visit the relevant page or contact support. Never make up account-specific details.`;
+## ACCOUNT & AUTH
+- **Registration**: Users sign up with email + password, or Google Sign-In. Email verification is required before trading.
+- **Login**: Email + password, or Google OAuth. Password resets are done via **Forgot Password** on the login page — a reset link is sent to the user's email.
+- **Profile**: Users can set username, full name, avatar, bio, country, and phone number in **Settings**.
+- **Email verification**: A 6-digit code is sent to the user's email. The code expires in 10 minutes.
+- **Phone verification**: Users can verify their phone number. Served via Africa's Talking (for African numbers) or Twilio Verify.
+- **KYC/ID verification**: Upload a government-issued ID (passport, driver's license, national ID) in **Settings → Verification**. Usually reviewed within 24 hours. KYC unlocks higher trade limits.
+- **Delete account**: Users can contact support to close their account and withdraw remaining funds.
 
-const PRAQEN_SUPPORT_AGENT_CONTEXT = `You are Alex, a friendly and experienced human support agent at PRAQEN — a peer-to-peer (P2P) Bitcoin trading platform. You are chatting with a user who has an open support ticket.
+## BUYING BITCOIN
+- Users browse seller offers on **Buy Bitcoin** page, filtered by country/payment method.
+- Each offer shows price (fixed or market margin), limits, payment methods, and the seller's reputation.
+- Clicking **BUY BTC** opens a trade. The seller locks the exact BTC amount into escrow.
+- Once escrow is locked, the buyer sends payment via the agreed method (MoMo, bank transfer, etc.).
+- After the buyer confirms payment, the seller releases BTC from escrow to the buyer's wallet.
+- **Time limit**: Each offer has a time limit for payment. If the buyer doesn't pay in time, the trade can be cancelled.
+
+## SELLING BITCOIN
+- Users create sell offers on **Sell Bitcoin** with: price (fixed or market margin), payment methods accepted, min/max limits, country, and terms.
+- Wallet must have at least $10 worth of BTC for the listing to appear.
+- When a buyer opens a trade, the seller must lock the exact BTC amount into escrow.
+- After the buyer sends payment and confirms, the seller releases BTC from escrow.
+- Sellers can cancel trades if the buyer doesn't pay within the time limit.
+
+## WALLET
+- Located in the **Wallet** section. Shows BTC balance, locked balance (in escrow), and USD equivalent.
+- **Deposit**: Shows the user's PRAQEN BTC wallet address and a QR code. BTC sent to this address is credited after network confirmations.
+- **Withdraw**: Users can send BTC to any external Bitcoin address. A network fee (miner fee) applies. Withdrawals are processed through the HD wallet system.
+- **Locked balance**: BTC held in active trade escrow. Released when the trade completes or is cancelled.
+- Address format: bc1q... (SegWit mainnet), or tb1... (testnet). The system uses self-custody HD wallet (mnemonic in .env).
+
+## TRADING PROCESS
+- **Opening a trade**: Buyer clicks BUY on an offer. The seller locks BTC in escrow.
+- **Payment**: Buyer sends payment via the offer's listed payment method. Payments happen directly between users (P2P), not through PRAQEN.
+- **Releasing escrow**: After confirming payment, the seller releases BTC. This is irreversible — only release when payment is confirmed.
+- **Cancellation**: If the buyer doesn't pay within the time limit, the seller can cancel. Escrow is returned to the seller.
+- **Disputes**: If there's a problem (non-payment, wrong amount, suspected fraud), either party can **Raise Dispute** on the trade page. A moderator reviews within 24 hours.
+- **Trade reference**: Each trade has a unique ID shown in **My Trades**.
+
+## GIFT CARDS
+- PRAQEN has a **Gift Card Marketplace** where users can buy and sell gift cards for Bitcoin.
+- Supported brands include Amazon, iTunes, Steam, Google Play, and many others.
+- Gift card sellers list their cards at a price in BTC. Buyers purchase them directly.
+- The platform supports multiple currencies for gift cards.
+
+## FEES
+- **Trading fee**: 0.5% on completed trades, deducted from the Bitcoin amount.
+- **No fees** for listing offers, depositing BTC, or browsing.
+- **Withdrawal fee**: Network/miner fee varies based on Bitcoin network congestion.
+
+## REPUTATION & TRUST
+- Users have a **rating** (1-5), **total trades count**, and **completion rate**.
+- **Feedback**: After each trade, users leave positive/negative feedback.
+- **Badges**: Users earn badges for verification status, trade volume, and other achievements.
+- **Trust score**: Based on completed trades, positive feedback, account age, and KYC status.
+- Users with higher trust are shown more prominently in listings.
+
+## REFERRAL PROGRAM
+- Each user has a unique **referral code** (e.g., "username_abc123") on their profile.
+- Sharing the referral link rewards the referrer when the invited user completes trades.
+- Commission details are shown in the user's profile.
+
+## NOTIFICATIONS
+- Users receive notifications for: new trades, trade status changes, messages, KYC updates, and system announcements.
+- Notifications appear in-app and can be sent via push (OneSignal) or email.
+
+## SUPPORT
+- Users can create a support ticket by picking a topic and describing their issue.
+- Tickets get a unique ID. AI responds immediately, followed by a human agent.
+- Response times: Urgent ~2-4 hours, Normal ~12-24 hours, Low ~24-48 hours.
+- Users can attach screenshots to their tickets for faster resolution.
+
+=== RESPONSE RULES ===
+Keep responses concise (2-4 sentences), friendly, and practical. When a user asks a question covered by the knowledge base above, ANSWER IT DIRECTLY with the facts — do NOT default to "I'll escalate this" or "the team is looking into it." If you genuinely don't know something, say so and offer to connect them with a human agent. Never make up account-specific details.`;
+
+const PRAQEN_SUPPORT_AGENT_CONTEXT = `You are Alex, a knowledgeable and friendly human support agent at PRAQEN — a peer-to-peer (P2P) Bitcoin trading platform. You are chatting with a user who has an open support ticket.
 
 Your personality and rules:
 - You are human. Never say "As an AI" or reveal you are a bot. Speak naturally.
@@ -939,19 +1003,49 @@ Your personality and rules:
 - NEVER repeat a response you or the user already said in this conversation. Read the full history before replying.
 - Acknowledge what the user said specifically before giving advice.
 - Keep replies short — 2 to 3 sentences max. Do not write long paragraphs.
-- When the user describes a problem, say something like "I've noted this on your ticket" or "Our team is reviewing this right now."
-- After giving a brief response, ask one follow-up question to gather more details or check if they need anything else.
-- Use variety: rotate between phrases like "Got it", "Thanks for that update", "I hear you", "Noted", "On it", "I've flagged this to the team" — never use the same opener twice in a row.
+- IMPORTANT: When the user asks about HOW something works (password reset, KYC, buying, selling, fees, wallet, etc.), ANSWER THEM DIRECTLY using the platform knowledge below. Do NOT default to "I've noted this on your ticket" or "the team is reviewing" — give them the answer right away.
+- Reserve "I've noted this on your ticket" / "I've flagged this" / "the team is reviewing" ONLY for when the user describes a genuine problem or bug that needs manual investigation.
+- After giving a direct answer, ask one follow-up question to check if they need anything else.
+- Use variety: rotate between phrases like "Got it", "Thanks for that update", "I hear you", "Noted", "On it" — never use the same opener twice in a row.
 - If you already gave advice on a topic earlier in the conversation, do NOT repeat it. Instead acknowledge and ask if it helped.
 - If the user says something is resolved, congratulate them warmly and close out positively.
 
-PRAQEN platform facts (use when relevant, but do not dump all facts at once):
-- Trades are escrow-protected — sellers lock BTC before buyer pays
-- Disputes can be raised from My Trades if there is a problem
-- Payments go directly between users via MoMo, bank transfer, gift cards
-- KYC unlocks higher limits — upload ID at Profile → Verification
-- Fees are 0.5% on completed trades only
-- Support response time is within 24 hours for human agents`;
+=== COMPLETE PLATFORM KNOWLEDGE ===
+Answer factual questions from this knowledge base. Do NOT escalate questions that are answered here.
+
+## ACCOUNT & AUTH
+- **Password reset**: Users tap **Forgot Password** on the login page. A reset link is sent to their email.
+- **KYC/Verification**: Upload ID in **Settings → Verification**. Reviewed within 24 hours. Unlocks higher limits.
+- **Profile settings**: Users can update username, avatar, bio, phone, country in **Settings**.
+- **Google Sign-In**: Users can log in with their Google account. Works alongside email/password.
+
+## BUYING BITCOIN
+- Browse offers on **Buy Bitcoin**, filtered by country/payment method. Seller locks BTC in escrow before buyer pays. Buyer sends payment via MoMo/bank transfer. Seller releases BTC after payment confirmed.
+
+## SELLING BITCOIN
+- Create listings on **Sell Bitcoin** with price/margin, limits, payment methods. Wallet needs $10+ BTC for listing to appear. When trade opens, seller locks exact BTC in escrow.
+
+## WALLET
+- **Deposit**: Copy your PRAQEN BTC address from **Wallet** page. QR code available.
+- **Withdraw**: Enter external BTC address and amount in **Wallet → Withdraw**. Network fee applies.
+- **Locked balance**: BTC held in active trade escrow — released when trade completes or cancels.
+
+## DISPUTES
+- Go to **My Trades**, open the trade, tap **Raise Dispute**. Moderator reviews within 24 hours.
+- Never release escrow without confirming payment received.
+
+## FEES
+- 0.5% on completed trades only. No listing or deposit fees. Withdrawal network fee varies.
+
+## GIFT CARDS
+- **Gift Card Marketplace** for buying/selling cards (Amazon, iTunes, Steam, etc.) in exchange for BTC.
+
+## REFERRALS
+- Share your unique referral code from your profile. You earn commission when invited users complete trades.
+
+## SUPPORT
+- Response times: Urgent ~2-4h, Normal ~12-24h, Low ~24-48h. You can attach screenshots to your ticket.
+`;
 
 app.post('/api/ai-chat', async (req, res) => {
   try {
@@ -996,13 +1090,16 @@ app.post('/api/ai-chat', async (req, res) => {
     }
 
     // ── Support-mode fallback (no API key / API down) ──────────────────────
+    // This fallback uses a comprehensive FAQ knowledge base so the user gets
+    // factual answers even when the AI API is unavailable. Generic escalation
+    // replies are used ONLY for true problems/bugs, not for informational questions.
     if (isSupportChat) {
       const turn = history.length;
       const q = message.toLowerCase().trim();
       const name = chatUser?.username ? `, ${chatUser.username}` : '';
       let reply = '';
 
-      // Greeting — always a warm welcome, never topic info
+      // ── Greeting detection ──
       if (/^(hey|hi|hello|good\s*(morning|afternoon|evening)|howdy|yo|hiya|sup)\b/.test(q)) {
         const greetings = [
           `Hi${name}! 👋 I'm Alex from PRAQEN support. I have your ticket open right now — how can I help you?`,
@@ -1010,6 +1107,8 @@ app.post('/api/ai-chat', async (req, res) => {
           `Hello${name}! Your ticket is open and the team is on it. What would you like to chat about?`,
         ];
         reply = greetings[turn % 3];
+
+      // ── Acknowledgment / closure ──
       } else if (/thank|thanks|okay|ok\b|great|perfect|got it|cool|nice/.test(q)) {
         const pool = [
           'Happy to help! Let me know if anything else comes up.',
@@ -1017,6 +1116,8 @@ app.post('/api/ai-chat', async (req, res) => {
           'Awesome — the team will follow up too. Is there anything else you need?',
         ];
         reply = pool[turn % 3];
+
+      // ── Wait time / status check ──
       } else if (/how long|wait|still|not yet|any news|update/.test(q)) {
         const pool = [
           'I understand — the team is actively on your case. We aim to resolve tickets within 24 hours. Any updates from your side?',
@@ -1024,22 +1125,55 @@ app.post('/api/ai-chat', async (req, res) => {
           'We haven\'t forgotten about you. Can you share any new details that might help us move faster?',
         ];
         reply = pool[turn % 3];
-      } else if (/paid|sent|payment|transferred|momo|bank|deposit/.test(q)) {
+
+      // ── Factual Q&A: knowledge base answers ──
+      // These answer the user directly instead of defaulting to escalation.
+      // IMPORTANT: This block MUST come before the payment-reporting branch
+      // so informational "how do I..." questions get factual answers first.
+
+      } else if (/forgot password|reset password|change password|forgot my password/.test(q)) {
+        reply = `No worries! To reset your password, go to the login page and tap **Forgot Password**. A reset link will be sent to your email within a few minutes. If you don't see it, check your spam folder.`;
+      } else if (/how.*(buy|purchase)|how.*start.*trade|find.*seller/.test(q)) {
+        reply = 'To **buy Bitcoin**, go to the **Buy BTC** page and browse seller offers. Filter by your country and payment method, then click **BUY BTC** on any offer to start a trade. The seller will lock Bitcoin in escrow before you send payment.';
+      } else if (/how.*(sell|create.*listing|make.*offer)/.test(q)) {
+        reply = 'To **sell Bitcoin**, go to **Sell BTC** and browse buy offers from buyers, or create your own sell listing. Make sure your wallet has enough BTC — your offer only appears when your balance is above $10.';
+      } else if (/how.*(wallet|deposit|withdraw|fund|address)/.test(q)) {
+        reply = 'Your BTC wallet is in the **Wallet** section. To deposit, copy your PRAQEN BTC address (QR code available) and send from any external wallet. To withdraw, go to **Withdraw**, enter an external BTC address and amount. A network fee applies.';
+      } else if (/how.*(pay|payment|send.*money|make.*payment)/.test(q)) {
+        reply = 'Payments are made directly between you and the other trader using the method shown in the offer (MoMo, bank transfer, etc.). Always confirm you\'ve received payment in your account before releasing escrow. Keep your receipt as proof.';
+      } else if (/kyc|verif|verify.*id|identity|upload.*id|document/.test(q)) {
+        reply = 'To verify your identity, go to **Settings → Verification** and upload a clear photo of your government-issued ID (passport, driver\'s license, or national ID). Most verifications are reviewed within 24 hours. KYC unlocks higher trade limits.';
+      } else if (/gift card|marketplace|amazon.*card|itunes.*card|steam.*card/.test(q)) {
+        reply = 'PRAQEN has a **Gift Card Marketplace** where you can buy and sell gift cards (Amazon, iTunes, Steam, Google Play, and more) for Bitcoin. Just list your card or browse available ones in the marketplace section.';
+      } else if (/fee|cost|charge|commission|price.*fee/.test(q)) {
+        reply = 'PRAQEN charges **0.5%** on completed trades only. There are no fees for listing offers or depositing BTC. Withdrawal fees depend on the current Bitcoin network congestion.';
+      } else if (/referral|invite|earn.*friend|share.*link|commission.*invite/.test(q)) {
+        reply = 'You can find your unique referral code in your profile page. Share your referral link with friends — when they sign up and complete trades, you earn a commission. The more you refer, the more you earn!';
+      } else if (/lock.*balance|balance.*lock|escrow.*balance|why.*(lock|hold)/.test(q)) {
+        reply = 'Locked balance is Bitcoin that\'s currently held in escrow for an active trade. It will be released automatically back to your wallet when the trade completes or is cancelled. You can see your active trades in **My Trades**.';
+      } else if (/cancel.*trade|time.*limit|expire/.test(q)) {
+        reply = 'Each trade has a time limit set by the seller. If the buyer doesn\'t complete payment within that time, the seller can cancel the trade and the escrow is returned. Buyers can also request cancellation from the seller.';
+
+      // ── Payment-related update (user telling us they paid, not asking how) ──
+      } else if (/^(i )?(just )?(paid|sent|transferred|made.*payment)\b|payment.*(sent|made|done|confirmed)/.test(q)) {
         const pool = [
           'Thanks for the update — I\'ve noted the payment on your ticket. Has the other party confirmed receipt?',
           'Got it, payment noted. Keep your receipt handy. Has anything changed since you sent it?',
           'Noted on the payment. Can you share the exact amount and method so I can add it to the case?',
         ];
         reply = pool[turn % 3];
+
       } else if (/dispute|scam|fraud|problem|stuck|error|wrong|fail/.test(q)) {
         const pool = [
-          'I\'ve flagged this as urgent. If you haven\'t already, go to **My Trades → Raise Dispute** to lock the escrow. What happened exactly?',
-          'On it — I\'ve escalated this to the team. Can you share a trade ID or any screenshots?',
-          'Understood, this is marked urgent. Our team is reviewing. Any extra info will help us move quickly.',
+          'If you\'re having a problem with a trade, go to **My Trades**, open the trade, and tap **Raise Dispute**. A moderator will review and help resolve it within 24 hours. Never release escrow without confirming payment.',
+          'I\'ve flagged this for the team. In the meantime, go to **My Trades → Raise Dispute** to protect the escrow. Can you share a trade ID or any screenshots so we can move faster?',
+          'On it — I\'ve escalated this. Please raise a dispute on the trade page if you haven\'t already. Any additional info you can share will help us resolve it quickly.',
         ];
         reply = pool[turn % 3];
+
+      // ── Genuine problem / not answered by knowledge base → escalate ──
       } else if (turn === 0) {
-        reply = `Thanks for reaching out${name}! I\'ve received your ticket and I\'m reviewing it now. Can you give me a quick summary of what\'s happening?`;
+        reply = `Thanks for reaching out${name}! I\'ve received your ticket. Can you tell me a bit more about what you need help with today?`;
       } else if (turn <= 2) {
         reply = 'Noted — I\'ve updated your ticket with that. The team is on it. Anything else to add?';
       } else {
@@ -4889,7 +5023,7 @@ app.get('/api/listings', async (req, res) => {
 
     // Step 1: fetch listings only (no join) — fast
     let listingsQ = supabaseAdmin.from('listings').select(
-      'id, seller_id, listing_type, gift_card_brand, status, bitcoin_price, margin, pricing_type, currency, currency_symbol, country, country_name, payment_method, payment_methods, amount_usd, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local, time_limit, trade_instructions, listing_terms, description, created_at, card_values, card_type, face_value'
+      'id, seller_id, listing_type, asset, gift_card_brand, status, bitcoin_price, margin, pricing_type, currency, currency_symbol, country, country_name, payment_method, payment_methods, amount_usd, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local, time_limit, trade_instructions, listing_terms, description, created_at, card_values, card_type, face_value'
     ).eq('status', 'ACTIVE').order('created_at', { ascending: false }).limit(200);
     if (brand)    listingsQ = listingsQ.ilike('gift_card_brand', `%${brand}%`);
     if (minPrice) listingsQ = listingsQ.gte('bitcoin_price', parseFloat(minPrice));
@@ -4933,7 +5067,7 @@ app.get('/api/listings', async (req, res) => {
         ]),
         btcSellerIds.length > 0
           ? Promise.race([
-              supabaseAdmin.from('wallets').select('user_id, balance_btc').in('user_id', btcSellerIds),
+              supabaseAdmin.from('wallets').select('user_id, balance_btc, balance_usdt').in('user_id', btcSellerIds),
               new Promise(resolve => setTimeout(() => resolve({ data: [] }), 4000)),
             ])
           : Promise.resolve({ data: [] }),
@@ -4959,14 +5093,21 @@ app.get('/api/listings', async (req, res) => {
 
     if (balanceCheckedListings.length > 0) {
       const balMap = {};
-      (walletRows || []).forEach(w => { balMap[w.user_id] = parseFloat(w.balance_btc || 0); });
+      const usdtBalMap = {};
+      (walletRows || []).forEach(w => {
+        balMap[w.user_id] = parseFloat(w.balance_btc || 0);
+        usdtBalMap[w.user_id] = parseFloat(w.balance_usdt || 0);
+      });
+      // 1 USDT ≈ $1 — no external price lookup needed
+      const balanceUsdFor = (l) => (l.asset === 'USDT')
+        ? (usdtBalMap[l.seller_id] || 0)
+        : (balMap[l.seller_id] || 0) * (parseFloat(l.bitcoin_price) || 88000);
 
       // For SELL offers: cap displayed limits to seller's actual balance
       listings = listings.map(l => {
         if (l.listing_type !== 'SELL' && l.listing_type !== 'SELL_BITCOIN') return l;
         const sellerBtc    = balMap[l.seller_id] || 0;
-        const btcPriceVal  = parseFloat(l.bitcoin_price) || 88000;
-        const balanceUsd   = sellerBtc * btcPriceVal;
+        const balanceUsd   = balanceUsdFor(l);
         const origMaxUsd   = parseFloat(l.max_limit_usd || 0);
         const origMaxLocal = parseFloat(l.max_limit_local || 0);
 
@@ -4979,19 +5120,18 @@ app.get('/api/listings', async (req, res) => {
         return {
           ...l,
           seller_balance_btc: sellerBtc,
+          seller_balance_usdt: usdtBalMap[l.seller_id] || 0,
           effective_max_usd:  cappedMaxUsd,
           max_limit_usd:      cappedMaxUsd,
           max_limit_local:    cappedMaxLocal,
         };
       });
 
-      // Hide BTC-required offers where seller has < $10 OR can't fulfil the minimum trade amount
+      // Hide BTC/USDT-required offers where seller has < $10 OR can't fulfil the minimum trade amount
       const toPauseIds = [];
       listings = listings.filter(l => {
         if (!btcRequiredTypes.includes(l.listing_type)) return true;
-        const sellerBtc   = balMap[l.seller_id] || 0;
-        const btcPriceVal = parseFloat(l.bitcoin_price) || 88000;
-        const balanceUsd  = sellerBtc * btcPriceVal;
+        const balanceUsd  = balanceUsdFor(l);
         const minUsd      = parseFloat(l.min_limit_usd || 0);
 
         const tooLow    = balanceUsd < 10;
@@ -5124,7 +5264,7 @@ app.put('/api/listings/:id', verifyToken, async (req, res) => {
     const { id } = req.params;
     const { margin, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local,
             payment_method, trade_instructions, listing_terms, time_limit, status } = req.body;
-    const { data: listing, error: findError } = await supabaseAdmin.from('listings').select('seller_id, listing_type').eq('id', id).single();
+    const { data: listing, error: findError } = await supabaseAdmin.from('listings').select('seller_id, listing_type, asset').eq('id', id).single();
     if (findError || !listing) return res.status(404).json({ error: 'Listing not found' });
     if (listing.seller_id !== req.userId) return res.status(403).json({ error: 'You can only edit your own listings' });
     if (min_limit_usd !== undefined && parseFloat(min_limit_usd) < 10) {
@@ -5135,8 +5275,10 @@ app.put('/api/listings/:id', verifyToken, async (req, res) => {
       const isSellListing = ['SELL', 'SELL_BITCOIN'].includes((listing.listing_type || '').toUpperCase());
       if (isSellListing) {
         const { data: sellerWallet } = await supabaseAdmin
-          .from('wallets').select('balance_btc').eq('user_id', req.userId).maybeSingle();
-        const sellerBalUsd = parseFloat(sellerWallet?.balance_btc || 0) * 88000;
+          .from('wallets').select('balance_btc, balance_usdt').eq('user_id', req.userId).maybeSingle();
+        const sellerBalUsd = listing.asset === 'USDT'
+          ? parseFloat(sellerWallet?.balance_usdt || 0) // 1 USDT ≈ $1
+          : parseFloat(sellerWallet?.balance_btc || 0) * 88000;
         if (parseFloat(max_limit_usd) > sellerBalUsd && sellerBalUsd > 0) {
           return res.status(400).json({
             error: `Maximum trade limit ($${parseFloat(max_limit_usd).toFixed(0)}) exceeds your wallet balance ($${sellerBalUsd.toFixed(0)}). Please top up or lower the maximum.`,
@@ -5249,13 +5391,14 @@ app.patch('/api/listings/:id/status', verifyToken, async (req, res) => {
 // GET all active offers for the market — reads from listings (canonical table)
 app.get('/api/offers', async (req, res) => {
   try {
-    const { type, country, limit = 100 } = req.query;
-    const cacheKey = `offers|${type||'all'}|${country||'all'}|${limit}`;
+    const { type, country, asset, limit = 100 } = req.query;
+    const cacheKey = `offers|${type||'all'}|${country||'all'}|${asset||'all'}|${limit}`;
     const hit = getCached(cacheKey);
     if (hit) return res.json({ success: true, offers: hit });
 
     const typeMap = { sell: 'SELL', sell_bitcoin: 'SELL_BITCOIN', buy: 'BUY', buy_bitcoin: 'BUY_BITCOIN', gc_buy: 'BUY_GIFT_CARD', gc_sell: 'SELL_GIFT_CARD' };
     const listingTypeFilter = type ? (typeMap[type.toLowerCase()] || type.toUpperCase()) : null;
+    const assetFilter = asset ? asset.toUpperCase() : null;
 
     let query = supabaseAdmin
       .from('listings')
@@ -5264,6 +5407,7 @@ app.get('/api/offers', async (req, res) => {
 
     if (listingTypeFilter) query = query.eq('listing_type', listingTypeFilter);
     if (country) query = query.eq('country', country);
+    if (assetFilter) query = query.eq('asset', assetFilter);
 
     const { data: listings, error } = await query
       .order('created_at', { ascending: false })
@@ -5296,24 +5440,31 @@ app.get('/api/offers', async (req, res) => {
       country: u.country || null,
     }]));
 
-    // Fetch BTC balances for SELL offer owners so we can hide low-balance offers
+    // Fetch balances for SELL offer owners so we can hide low-balance offers
     const sellSellerIds = [...new Set(
       (listings || [])
         .filter(l => l.listing_type === 'SELL' || l.listing_type === 'SELL_BITCOIN')
         .map(l => l.seller_id)
     )];
     let balMap = {};
+    let usdtBalMap = {};
     if (sellSellerIds.length > 0) {
       const { data: walBals } = await supabaseAdmin
-        .from('wallets').select('user_id, balance_btc').in('user_id', sellSellerIds);
-      (walBals || []).forEach(b => { balMap[b.user_id] = parseFloat(b.balance_btc || 0); });
+        .from('wallets').select('user_id, balance_btc, balance_usdt').in('user_id', sellSellerIds);
+      (walBals || []).forEach(b => {
+        balMap[b.user_id] = parseFloat(b.balance_btc || 0);
+        usdtBalMap[b.user_id] = parseFloat(b.balance_usdt || 0);
+      });
     }
 
     const offers = (listings || [])
       .filter(l => {
-        // Hide SELL offers where seller has < $10 BTC — offer stays ACTIVE in DB
-        // and reappears automatically once they top up their wallet.
+        // Hide SELL offers where seller has < $10 worth of the offer's asset — offer stays
+        // ACTIVE in DB and reappears automatically once they top up their wallet.
         if (l.listing_type !== 'SELL' && l.listing_type !== 'SELL_BITCOIN') return true;
+        if ((l.asset || 'BTC') === 'USDT') {
+          return (usdtBalMap[l.seller_id] || 0) >= 10; // 1 USDT ≈ $1
+        }
         const sellerBtc   = balMap[l.seller_id] || 0;
         const btcPriceVal = parseFloat(l.bitcoin_price) || 88000;
         return sellerBtc * btcPriceVal >= 10;
@@ -5323,6 +5474,7 @@ app.get('/api/offers', async (req, res) => {
         type: (l.listing_type || '').toLowerCase(),
         user_id: l.seller_id,
         seller_balance_btc: balMap[l.seller_id] || undefined,
+        seller_balance_usdt: usdtBalMap[l.seller_id] || undefined,
         users: userMap[l.seller_id] || null,
       }));
 
@@ -5428,17 +5580,26 @@ app.post('/api/offers', verifyToken, async (req, res) => {
       description,
       card_values,
       card_type,
-      gift_card_currencies
+      gift_card_currencies,
+      asset
     } = req.body;
 
     const userId = req.userId;
+    const offerAsset = asset === 'USDT' ? 'USDT' : 'BTC';
 
     // Validation: check required fields
     if (!type && !listing_type) {
       return res.status(400).json({ error: 'Missing offer type (type or listing_type)' });
     }
 
-    if (!payment_method) {
+    // Determine listing type early — gift card offers don't have a
+    // traditional payment_method (the "payment" is the gift card code
+    // itself), so the check below must not apply to them.
+    const offerTypeMap = { 'sell': 'SELL', 'buy': 'BUY', 'gc_buy': 'BUY_GIFT_CARD' };
+    const mappedType = offerTypeMap[type] || listing_type || 'SELL';
+    const isGiftCard = mappedType === 'BUY_GIFT_CARD' || mappedType === 'SELL_GIFT_CARD';
+
+    if (!isGiftCard && !payment_method) {
       return res.status(400).json({ error: 'Missing payment_method' });
     }
 
@@ -5469,11 +5630,7 @@ app.post('/api/offers', verifyToken, async (req, res) => {
       });
     }
 
-    // Determine listing type
-    const offerTypeMap = { 'sell': 'SELL', 'buy': 'BUY', 'gc_buy': 'BUY_GIFT_CARD' };
-    const mappedType = offerTypeMap[type] || listing_type || 'SELL';
     const verifCount = [hasEmail, hasPhone, hasKyc].filter(Boolean).length;
-    const isGiftCard = mappedType === 'BUY_GIFT_CARD' || mappedType === 'SELL_GIFT_CARD';
 
     // Enforce $10 USD minimum trade limit for non-gift-card offers
     if (!isGiftCard && parseFloat(min_limit_usd || 0) < 10) {
@@ -5485,11 +5642,13 @@ app.post('/api/offers', verifyToken, async (req, res) => {
     const cur = currency || 'USD';
     const curSym = currency_symbol || (cur === 'GHS' ? '₵' : cur === 'NGN' ? '₦' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : '$');
 
-    // For SELL offers: max_limit_usd must not exceed the seller's BTC wallet balance
+    // For SELL offers: max_limit_usd must not exceed the seller's wallet balance for the chosen asset
     if ((mappedType === 'SELL' || mappedType === 'SELL_BITCOIN') && max_limit_usd) {
       const { data: sellerWallet } = await supabaseAdmin
-        .from('wallets').select('balance_btc').eq('user_id', userId).maybeSingle();
-      const sellerBalUsd = parseFloat(sellerWallet?.balance_btc || 0) * 88000; // approximate BTC price for cap
+        .from('wallets').select('balance_btc, balance_usdt').eq('user_id', userId).maybeSingle();
+      const sellerBalUsd = offerAsset === 'USDT'
+        ? parseFloat(sellerWallet?.balance_usdt || 0) // 1 USDT ≈ $1
+        : parseFloat(sellerWallet?.balance_btc || 0) * 88000; // approximate BTC price for cap
       if (parseFloat(max_limit_usd) > sellerBalUsd && sellerBalUsd > 0) {
         return res.status(400).json({
           error: `Maximum trade limit ($${parseFloat(max_limit_usd).toFixed(0)}) exceeds your wallet balance ($${sellerBalUsd.toFixed(0)}). Please top up or lower the maximum.`,
@@ -5497,7 +5656,7 @@ app.post('/api/offers', verifyToken, async (req, res) => {
       }
     }
 
-    // Block duplicate active offers: same payment method + same currency + same type (skip gift cards)
+    // Block duplicate active offers: same payment method + same currency + same asset + same type (skip gift cards)
     if (mappedType !== 'BUY_GIFT_CARD') {
       const { data: dupCheck2 } = await supabaseAdmin
         .from('listings')
@@ -5506,11 +5665,12 @@ app.post('/api/offers', verifyToken, async (req, res) => {
         .eq('payment_method', payment_method)
         .eq('listing_type', mappedType)
         .eq('currency', currency || 'USD')
+        .eq('asset', offerAsset)
         .eq('status', 'ACTIVE')
         .limit(1);
       if (dupCheck2 && dupCheck2.length > 0) {
         return res.status(400).json({
-          error: `You already have an active ${mappedType} offer for ${payment_method} in ${currency || 'USD'}. Edit it from your Dashboard instead.`,
+          error: `You already have an active ${offerAsset} ${mappedType} offer for ${payment_method} in ${currency || 'USD'}. Edit it from your Dashboard instead.`,
         });
       }
     }
@@ -5521,6 +5681,7 @@ app.post('/api/offers', verifyToken, async (req, res) => {
       .insert({
         seller_id:           userId,
         listing_type:        mappedType,
+        asset:               offerAsset,
         gift_card_brand:     gift_card_brand || brandDefault,
         status:              'ACTIVE',
         bitcoin_price:       bitcoin_price || 88000,

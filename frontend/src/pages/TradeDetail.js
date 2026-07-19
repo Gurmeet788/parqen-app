@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRates } from '../contexts/RatesContext';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -11,6 +11,7 @@ import {
   Smartphone, Building2, ThumbsUp, ThumbsDown, Gift, Repeat2, Heart,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { copyToClipboard } from '../utils/clipboard';
 import { deriveBadge } from '../lib/badge';
 import { resolveCode } from '../components/CountryFlag';
 
@@ -1457,8 +1458,8 @@ export default function TradeDetail({user}) {
                     <div className="p-3 space-y-1">
                       {/* Info rows */}
                       {[
-                        {label:'Trade ID',    val:<div className="flex items-center gap-1.5"><span className="font-mono font-bold text-xs" style={{color:C.forest}}>#{shortId}</span><button onClick={()=>{navigator.clipboard.writeText(trade.id||'');toast.success('Copied!');}} className="w-5 h-5 rounded flex items-center justify-center hover:bg-gray-100"><Copy size={10} style={{color:C.g400}}/></button></div>},
-                        {label:'Offer',       val:<div className="flex items-center gap-1.5"><span className="font-mono font-bold text-xs" style={{color:C.g700}}>#{String(trade.listing_id||'').slice(0,8).toUpperCase()}</span><button onClick={()=>{navigator.clipboard.writeText(trade.listing_id||'');toast.success('Copied!');}} className="w-5 h-5 rounded flex items-center justify-center hover:bg-gray-100"><Copy size={10} style={{color:C.g400}}/></button></div>},
+                        {label:'Trade ID',    val:<div className="flex items-center gap-1.5"><span className="font-mono font-bold text-xs" style={{color:C.forest}}>#{shortId}</span><button onClick={()=>{copyToClipboard(trade.id||'', 'Copied!');}} className="w-5 h-5 rounded flex items-center justify-center hover:bg-gray-100"><Copy size={10} style={{color:C.g400}}/></button></div>},
+                        {label:'Offer',       val:<div className="flex items-center gap-1.5"><span className="font-mono font-bold text-xs" style={{color:C.g700}}>#{String(trade.listing_id||'').slice(0,8).toUpperCase()}</span><button onClick={()=>{copyToClipboard(trade.listing_id||'', 'Copied!');}} className="w-5 h-5 rounded flex items-center justify-center hover:bg-gray-100"><Copy size={10} style={{color:C.g400}}/></button></div>},
                         {label:'Started',     val:<span className="font-bold text-xs" style={{color:C.g700}}>{tradeAge}</span>},
                         {label:'Rate',        val:<span className="font-black text-xs" style={{color:C.forest}}>{sym}{fmt(sellerRate)} {cur}/BTC</span>},
                         {label:'Payment',     val:<span className="font-bold text-xs" style={{color:C.g700}}>{payMethod}</span>},
@@ -1475,7 +1476,7 @@ export default function TradeDetail({user}) {
                       <div className="pt-2 space-y-1.5">
                         <p className="text-xs font-black uppercase tracking-widest" style={{color:C.g400}}>Actions</p>
 
-                        <button onClick={()=>{navigator.clipboard.writeText(trade.id||'');toast.success('Trade ID copied!');}}
+                        <button onClick={()=>{copyToClipboard(trade.id||'', 'Trade ID copied!');}}
                           className="w-full flex items-center gap-2 p-2.5 rounded-xl hover:bg-gray-50 transition text-left border"
                           style={{borderColor:C.g100}}>
                           <Copy size={12} style={{color:C.paid}}/>
@@ -1530,7 +1531,7 @@ export default function TradeDetail({user}) {
                       {trade.trade_ref}
                     </span>
                     <button
-                      onClick={()=>{navigator.clipboard.writeText(trade.trade_ref);toast.success('Reference copied!');}}
+                      onClick={()=>{copyToClipboard(trade.trade_ref, 'Reference copied!');}}
                       className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center hover:bg-gray-200 transition"
                       title="Copy reference">
                       <Copy size={12} style={{color:C.g500}}/>
