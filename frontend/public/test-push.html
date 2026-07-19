@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>PRAQEN — Push Notification Test</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+      background: linear-gradient(135deg, #1B4332 0%, #0c2418 60%, #2D6A4F 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 24px;
+      padding: 40px 36px;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.4);
+    }
+    .logo {
+      width: 64px; height: 64px;
+      background: #F4A422;
+      border-radius: 18px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 30px; font-weight: 900; color: #1B4332;
+      margin-bottom: 20px;
+    }
+    h1 { font-size: 22px; font-weight: 900; color: #0F172A; margin-bottom: 6px; }
+    p.sub { font-size: 13px; color: #64748B; margin-bottom: 28px; }
+
+    .status-box {
+      background: #F8FAFC;
+      border: 1.5px solid #E2E8F0;
+      border-radius: 14px;
+      padding: 16px 18px;
+      margin-bottom: 20px;
+    }
+    .status-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 0;
+      font-size: 13px;
+      border-bottom: 1px solid #F1F5F9;
+    }
+    .status-row:last-child { border-bottom: none; }
+    .status-row .label { color: #64748B; font-weight: 500; }
+    .status-row .val { font-weight: 700; }
+    .green { color: #059669; }
+    .red   { color: #DC2626; }
+    .orange { color: #D97706; }
+
+    button {
+      width: 100%;
+      padding: 15px;
+      border-radius: 14px;
+      border: none;
+      font-size: 15px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: all 0.15s;
+      margin-bottom: 10px;
+    }
+    button:hover { transform: translateY(-1px); }
+    .btn-primary {
+      background: linear-gradient(135deg, #1B4332, #2D6A4F);
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(27,67,50,0.35);
+    }
+    .btn-gold {
+      background: linear-gradient(135deg, #F4A422, #D97706);
+      color: #1B4332;
+      box-shadow: 0 4px 20px rgba(244,164,34,0.35);
+    }
+    .btn-blue {
+      background: linear-gradient(135deg, #2563EB, #1D4ED8);
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(37,99,235,0.3);
+    }
+    #log {
+      margin-top: 20px;
+      background: #0F172A;
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      color: #94A3B8;
+      max-height: 180px;
+      overflow-y: auto;
+      line-height: 1.7;
+    }
+    #log .ok  { color: #34D399; }
+    #log .err { color: #F87171; }
+    #log .info{ color: #60A5FA; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">P</div>
+    <h1>Push Notification Tester</h1>
+    <p class="sub">Test browser push notifications for PRAQEN locally</p>
+
+    <div class="status-box">
+      <div class="status-row">
+        <span class="label">Browser Support</span>
+        <span class="val" id="s-browser">Checking...</span>
+      </div>
+      <div class="status-row">
+        <span class="label">Permission Status</span>
+        <span class="val" id="s-permission">Checking...</span>
+      </div>
+      <div class="status-row">
+        <span class="label">OneSignal SDK</span>
+        <span class="val" id="s-onesignal">Checking...</span>
+      </div>
+      <div class="status-row">
+        <span class="label">Subscribed</span>
+        <span class="val" id="s-subscribed">Checking...</span>
+      </div>
+    </div>
+
+    <button class="btn-gold" onclick="requestPermission()">🔔 Step 1: Allow Notifications</button>
+    <button class="btn-primary" onclick="sendBrowserTest()">🚀 Step 2: Send Browser Test Push</button>
+    <button class="btn-blue" onclick="checkStatus()">🔄 Refresh Status</button>
+
+    <div id="log"><span class="info">Ready. Click a button above to start.</span></div>
+  </div>
+
+  <!-- Load OneSignal SDK (same as your main site) -->
+  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+  <script>
+    const ONESIGNAL_APP_ID = '5fc11b99-516c-4178-8443-b06c08865b99';
+
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    OneSignalDeferred.push(async function(OneSignal) {
+      await OneSignal.init({
+        appId: ONESIGNAL_APP_ID,
+        allowLocalhostAsSecureOrigin: true,
+        notifyButton: { enable: false },
+      });
+      window.OneSignal = OneSignal;
+      log('OneSignal SDK initialized ✅', 'ok');
+      checkStatus();
+    });
+
+    function log(msg, type = 'info') {
+      const el = document.getElementById('log');
+      const line = document.createElement('div');
+      line.className = type;
+      const time = new Date().toLocaleTimeString();
+      line.textContent = `[${time}] ${msg}`;
+      el.appendChild(line);
+      el.scrollTop = el.scrollHeight;
+    }
+
+    async function checkStatus() {
+      // Browser support
+      const browserEl = document.getElementById('s-browser');
+      if ('Notification' in window && 'serviceWorker' in navigator) {
+        browserEl.textContent = '✅ Supported';
+        browserEl.className = 'val green';
+      } else {
+        browserEl.textContent = '❌ Not supported';
+        browserEl.className = 'val red';
+      }
+
+      // Permission
+      const permEl = document.getElementById('s-permission');
+      const perm = Notification.permission;
+      if (perm === 'granted') {
+        permEl.textContent = '✅ Granted';
+        permEl.className = 'val green';
+      } else if (perm === 'denied') {
+        permEl.textContent = '❌ Blocked';
+        permEl.className = 'val red';
+      } else {
+        permEl.textContent = '⚠️ Not asked yet';
+        permEl.className = 'val orange';
+      }
+
+      // OneSignal
+      const osEl = document.getElementById('s-onesignal');
+      if (window.OneSignal) {
+        osEl.textContent = '✅ Loaded';
+        osEl.className = 'val green';
+
+        // Subscribed
+        const subEl = document.getElementById('s-subscribed');
+        try {
+          const optedIn = await window.OneSignal.User.PushSubscription.optedIn;
+          const pid = await window.OneSignal.User.PushSubscription.id;
+          if (optedIn) {
+            subEl.textContent = '✅ Yes';
+            subEl.className = 'val green';
+            log(`Subscribed! Player ID: ${pid || 'pending'}`, 'ok');
+          } else {
+            subEl.textContent = '❌ Not subscribed';
+            subEl.className = 'val red';
+            log('Not subscribed yet — click "Allow Notifications"', 'err');
+          }
+        } catch(e) {
+          subEl.textContent = '⚠️ Unknown';
+          subEl.className = 'val orange';
+        }
+      } else {
+        osEl.textContent = '⏳ Loading...';
+        osEl.className = 'val orange';
+      }
+    }
+
+    async function requestPermission() {
+      log('Requesting notification permission...', 'info');
+      try {
+        const perm = await Notification.requestPermission();
+        if (perm === 'granted') {
+          log('Permission GRANTED ✅', 'ok');
+          // Subscribe via OneSignal too
+          if (window.OneSignal) {
+            await window.OneSignal.User.PushSubscription.optIn();
+            log('Subscribed to OneSignal ✅', 'ok');
+          }
+        } else {
+          log(`Permission ${perm} ❌ — Go to Chrome Settings and Allow`, 'err');
+        }
+        checkStatus();
+      } catch(e) {
+        log('Error: ' + e.message, 'err');
+      }
+    }
+
+    async function sendBrowserTest() {
+      if (Notification.permission !== 'granted') {
+        log('Permission not granted — click Step 1 first!', 'err');
+        return;
+      }
+      log('Sending browser test notification...', 'info');
+      try {
+        const n = new Notification('🔔 PRAQEN Push Test', {
+          body: 'Push notifications are working! Trade alerts will appear like this.',
+          icon: '/logo192.png',
+          badge: '/logo192.png',
+          tag: 'praqen-test',
+        });
+        n.onclick = () => { window.focus(); n.close(); };
+        log('✅ Notification sent! Check your Mac screen top-right.', 'ok');
+      } catch(e) {
+        log('Error: ' + e.message, 'err');
+      }
+    }
+
+    // Auto check on load
+    window.addEventListener('load', () => {
+      setTimeout(checkStatus, 500);
+    });
+  </script>
+</body>
+</html>
