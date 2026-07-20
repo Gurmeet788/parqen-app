@@ -162,7 +162,7 @@ export default function Navbar({ user, onLogout }) {
           Dashboard
         </Link>
 
-        {/* P2P Marketplace Dropdown */}
+{/* P2P Marketplace Dropdown */}
         <div className="relative" ref={marketRef}>
           <button onClick={() => setMarketDrop(!marketDrop)} style={segStyle(isMarketActive || marketDrop, C.forest)}>
             <TrendingUp size={14} />
@@ -192,12 +192,34 @@ export default function Navbar({ user, onLogout }) {
                 </div>
               </Link>
               <Link to="/sell-bitcoin" onClick={() => setMarketDrop(false)}
-                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '13px 16px', textDecoration: 'none', background: isActive('/sell-bitcoin') ? C.mist : '#fff', transition: 'background 0.15s' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '13px 16px', textDecoration: 'none', borderBottom: `1px solid ${C.g100}`, background: isActive('/sell-bitcoin') ? C.mist : '#fff', transition: 'background 0.15s' }}>
                 <div style={{ width: 34, height: 34, borderRadius: 10, background: '#FEF9C3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <Tag size={16} color={C.goldDark} />
                 </div>
                 <div>
                   <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: C.g800 }}>Sell Bitcoin</p>
+                  <p style={{ margin: 0, fontSize: 10, color: C.g400 }}>Get paid in local currency</p>
+                </div>
+              </Link>
+              {/* USDT divider */}
+              <div style={{ height: 1, background: C.g100, margin: '0 12px' }} />
+              <Link to="/buy-usdt" onClick={() => setMarketDrop(false)}
+                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '13px 16px', textDecoration: 'none', borderBottom: `1px solid ${C.g100}`, background: isActive('/buy-usdt') ? C.mist : '#fff', transition: 'background 0.15s' }}>
+                <div style={{ width: 34, height: 34, borderRadius: 10, background: '#D1FAE5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <span style={{ fontSize: 14, fontWeight: 900, color: '#0D9488' }}>₮</span>
+                </div>
+                <div>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: C.g800 }}>Buy USDT</p>
+                  <p style={{ margin: 0, fontSize: 10, color: C.g400 }}>Pay with local currency</p>
+                </div>
+              </Link>
+              <Link to="/sell-usdt" onClick={() => setMarketDrop(false)}
+                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '13px 16px', textDecoration: 'none', background: isActive('/sell-usdt') ? C.mist : '#fff', transition: 'background 0.15s' }}>
+                <div style={{ width: 34, height: 34, borderRadius: 10, background: '#FEF9C3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <span style={{ fontSize: 14, fontWeight: 900, color: C.goldDark }}>₮</span>
+                </div>
+                <div>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: C.g800 }}>Sell USDT</p>
                   <p style={{ margin: 0, fontSize: 10, color: C.g400 }}>Get paid in local currency</p>
                 </div>
               </Link>
@@ -210,81 +232,12 @@ export default function Navbar({ user, onLogout }) {
           Gift Cards
         </Link>
 
-      {/* P2P Marketplace Dropdown */}
-      <div className="relative" ref={marketRef}>
-        <button
-          onClick={() => setMarketDrop(!marketDrop)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '5px',
-            color: isMarketActive ? '#fff' : C.green,
-            background: isMarketActive ? C.green : '#F0FAF5',
-            borderRadius: '10px', padding: '9px 18px',
-            fontSize: '14px', fontWeight: 800,
-            border: `1px solid ${isMarketActive ? C.green : '#c8e6d4'}`,
-            cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.2s',
-          }}>
-          <TrendingUp size={14} />
-          P2P Trade
-          <span style={{
-            fontSize: '9px', background: C.gold, color: '#fff',
-            padding: '2px 5px', borderRadius: '20px', fontWeight: 900,
-          }}>BETA</span>
-          <ChevronDown size={13} style={{ transform: marketDrop ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
-        </button>
-
-        {marketDrop && (
-          <div style={{
-            position: 'absolute', top: 'calc(100% + 8px)', left: 0,
-            width: '200px', background: '#fff', borderRadius: '14px',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.18)', border: `1px solid ${C.g100}`,
-            overflow: 'hidden', zIndex: 50,
-          }}>
-            <Link to="/buy-bitcoin" onClick={() => setMarketDrop(false)}
-              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', textDecoration: 'none', borderBottom: `1px solid ${C.g100}`, background: isActive('/buy-bitcoin') ? C.mist : '#fff', transition: 'background 0.15s' }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: '#DCFCE7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <ShoppingCart size={16} color="#16A34A" />
-              </div>
-              <div>
-                <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: C.g800 }}>Buy Bitcoin</p>
-                <p style={{ margin: 0, fontSize: 10, color: C.g400 }}>Pay with local currency</p>
-              </div>
-            </Link>
-            <Link to="/sell-bitcoin" onClick={() => setMarketDrop(false)}
-              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', textDecoration: 'none', borderBottom: `1px solid ${C.g100}`, background: isActive('/sell-bitcoin') ? C.mist : '#fff', transition: 'background 0.15s' }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: '#FEF9C3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Tag size={16} color={C.goldDark} />
-              </div>
-              <div>
-                <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: C.g800 }}>Sell Bitcoin</p>
-                <p style={{ margin: 0, fontSize: 10, color: C.g400 }}>Get paid in local currency</p>
-              </div>
-            </Link>
-            {/* USDT divider */}
-            <div style={{ height: 1, background: C.g100, margin: '0 12px' }} />
-            <Link to="/buy-usdt" onClick={() => setMarketDrop(false)}
-              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', textDecoration: 'none', borderBottom: `1px solid ${C.g100}`, background: isActive('/buy-usdt') ? C.mist : '#fff', transition: 'background 0.15s' }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: '#D1FAE5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <span style={{ fontSize: 14, fontWeight: 900, color: '#0D9488' }}>₮</span>
-              </div>
-              <div>
-                <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: C.g800 }}>Buy USDT</p>
-                <p style={{ margin: 0, fontSize: 10, color: C.g400 }}>Pay with local currency</p>
-              </div>
-            </Link>
-            <Link to="/sell-usdt" onClick={() => setMarketDrop(false)}
-              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', textDecoration: 'none', background: isActive('/sell-usdt') ? C.mist : '#fff', transition: 'background 0.15s' }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: '#FEF9C3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <span style={{ fontSize: 14, fontWeight: 900, color: C.goldDark }}>₮</span>
-              </div>
-              <div>
-                <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: C.g800 }}>Sell USDT</p>
-                <p style={{ margin: 0, fontSize: 10, color: C.g400 }}>Get paid in local currency</p>
-              </div>
-            </Link>
-          </div>
-        )}
-      </div>
-
+        <Link to="/my-trades" style={segStyle(isActive('/my-trades'), C.g800)}>
+          <List size={14} />
+          My Trades
+        </Link>
+    </div>
+ 
       {/* Create Offer — deliberately outside the track so it reads as an action, not a tab */}
       <Link to="/create-offer"
         style={{
