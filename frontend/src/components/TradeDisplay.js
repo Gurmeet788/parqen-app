@@ -1,16 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { API_URL } from '../App';
+import React, { useState, useEffect } from "react";
+import { API_URL } from "../App";
 
 const TradeDisplay = ({
   usdAmount = 100,
   sellerRate = 85221,
-  paymentMethod = 'mtn',
+  paymentMethod = "mtn",
   localCurrency: initialLocalCurrency,
   exchangeRate: initialExchangeRate,
-  showBreakdown = true
+  showBreakdown = true,
 }) => {
-  const [localCurrency, setLocalCurrency] = useState(initialLocalCurrency || 'GHS');
-  const [exchangeRate, setExchangeRate] = useState(initialExchangeRate || 11.09);
+  const [localCurrency, setLocalCurrency] = useState(
+    initialLocalCurrency || "GHS",
+  );
+  const [exchangeRate, setExchangeRate] = useState(
+    initialExchangeRate || 11.09,
+  );
 
   // Calculate BTC amount based on seller's rate
   const btcAmount = usdAmount / sellerRate;
@@ -20,33 +24,37 @@ const TradeDisplay = ({
   // Format local currency
   const formatLocal = (usdValue) => {
     const localAmount = usdValue * exchangeRate;
-    return `${getCurrencySymbol(localCurrency)}${localAmount.toLocaleString(undefined, {maximumFractionDigits: 0})}`;
+    return `${getCurrencySymbol(localCurrency)}${localAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
   };
 
   // Get currency symbol
   const getCurrencySymbol = (currency) => {
     const symbols = {
-      GHS: '₵',
-      NGN: '₦',
-      KES: 'KSh',
-      ZAR: 'R',
-      UGX: 'USh',
-      TZS: 'TSh',
-      USD: '$',
-      GBP: '£',
-      EUR: '€',
-      XAF: 'CFA',
-      XOF: 'CFA'
+      GHS: "₵",
+      NGN: "₦",
+      KES: "KSh",
+      ZAR: "R",
+      UGX: "USh",
+      TZS: "TSh",
+      USD: "$",
+      GBP: "£",
+      EUR: "€",
+      XAF: "CFA",
+      XOF: "CFA",
     };
-    return symbols[currency] || '$';
+    return symbols[currency] || "$";
   };
 
   useEffect(() => {
     const detectCurrency = async () => {
       try {
         // Check payment method first
-        if (paymentMethod === 'mtn' || paymentMethod === 'vodafone' || paymentMethod === 'airteltigo') {
-          setLocalCurrency('GHS');
+        if (
+          paymentMethod === "mtn" ||
+          paymentMethod === "vodafone" ||
+          paymentMethod === "airteltigo"
+        ) {
+          setLocalCurrency("GHS");
           setExchangeRate(11.09);
           return;
         }
@@ -55,13 +63,15 @@ const TradeDisplay = ({
         const res = await fetch(`${API_URL}/geo/location`);
         const data = await res.json();
 
-        const forexRes = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+        const forexRes = await fetch(
+          "https://api.exchangerate-api.com/v4/latest/USD",
+        );
         const forexData = await forexRes.json();
 
-        setLocalCurrency(data.currency || 'USD');
+        setLocalCurrency(data.currency || "USD");
         setExchangeRate(forexData.rates[data.currency] || 1);
       } catch (error) {
-        console.error('Currency detection failed:', error);
+        console.error("Currency detection failed:", error);
       }
     };
 
@@ -78,7 +88,9 @@ const TradeDisplay = ({
           <span className="text-gray-600">You Pay:</span>
           <div className="text-right">
             <div className="text-xl font-bold">${usdAmount} USD</div>
-            <div className="text-sm text-gray-500">(≈ {formatLocal(usdAmount)})</div>
+            <div className="text-sm text-gray-500">
+              (≈ {formatLocal(usdAmount)})
+            </div>
           </div>
         </div>
       </div>
@@ -86,10 +98,15 @@ const TradeDisplay = ({
       {/* You Receive Section */}
       <div className="bg-green-50 p-4 rounded-xl border border-green-200">
         <div className="text-center">
-          <span className="text-green-700 font-bold text-lg">You will receive:</span>
-          <div className="text-2xl font-bold text-green-700 mt-2">₿ {btcAfterFee.toFixed(8)} BTC</div>
+          <span className="text-green-700 font-bold text-lg">
+            You will receive:
+          </span>
+          <div className="text-2xl font-bold text-green-700 mt-2">
+            ₿ {btcAfterFee.toFixed(8)} BTC
+          </div>
           <div className="text-sm text-green-600 font-semibold">
-            (≈ ${(usdAmount * 0.995).toFixed(2)} USD / {formatLocal(usdAmount * 0.995)})
+            (≈ ${(usdAmount * 0.995).toFixed(2)} USD /{" "}
+            {formatLocal(usdAmount * 0.995)})
           </div>
         </div>
       </div>

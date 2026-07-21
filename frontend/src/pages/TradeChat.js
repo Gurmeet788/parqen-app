@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
-import { API_URL } from '../App';
-import { Send, MessageCircle } from 'lucide-react';
-import { toast } from 'react-toastify';
+import React, { useState, useEffect, useRef } from "react";
+import axios from "axios";
+import { API_URL } from "../App";
+import { Send, MessageCircle } from "lucide-react";
+import { toast } from "react-toastify";
 
 export default function TradeChat({ tradeId, userId, otherUserName }) {
   const [messages, setMessages] = useState([]);
-  const [newMessage, setNewMessage] = useState('');
+  const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef(null);
 
@@ -22,7 +22,7 @@ export default function TradeChat({ tradeId, userId, otherUserName }) {
   }, [messages]);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   const loadMessages = async () => {
@@ -30,7 +30,7 @@ export default function TradeChat({ tradeId, userId, otherUserName }) {
       const response = await axios.get(`${API_URL}/messages/${tradeId}`);
       setMessages(response.data.messages || []);
     } catch (error) {
-      console.error('Failed to load messages:', error);
+      console.error("Failed to load messages:", error);
     } finally {
       setLoading(false);
     }
@@ -45,12 +45,13 @@ export default function TradeChat({ tradeId, userId, otherUserName }) {
         tradeId,
         message: newMessage,
       });
-      setNewMessage('');
+      setNewMessage("");
       await loadMessages();
     } catch (error) {
-      const serverError = error?.response?.data?.error || error?.response?.data?.message;
-      console.error('Error sending message:', serverError || error);
-      toast.error(serverError || 'Failed to send message');
+      const serverError =
+        error?.response?.data?.error || error?.response?.data?.message;
+      console.error("Error sending message:", serverError || error);
+      toast.error(serverError || "Failed to send message");
     }
   };
 
@@ -62,7 +63,9 @@ export default function TradeChat({ tradeId, userId, otherUserName }) {
     <div className="bg-white rounded-lg shadow p-6 mb-6">
       <div className="flex items-center gap-2 mb-4">
         <MessageCircle size={24} className="text-blue-600" />
-        <h3 className="text-xl font-semibold text-slate-900">Live Chat with {otherUserName}</h3>
+        <h3 className="text-xl font-semibold text-slate-900">
+          Live Chat with {otherUserName}
+        </h3>
       </div>
 
       {/* Messages Container */}
@@ -75,19 +78,19 @@ export default function TradeChat({ tradeId, userId, otherUserName }) {
           messages.map((msg) => (
             <div
               key={msg.id}
-              className={`flex ${msg.sender_id === userId ? 'justify-end' : 'justify-start'}`}
+              className={`flex ${msg.sender_id === userId ? "justify-end" : "justify-start"}`}
             >
               <div
                 className={`max-w-xs px-4 py-2 rounded-lg ${
                   msg.sender_id === userId
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white border border-gray-300'
+                    ? "bg-blue-600 text-white"
+                    : "bg-white border border-gray-300"
                 }`}
               >
                 <p className="text-sm">{msg.message_text}</p>
                 <p
                   className={`text-xs mt-1 ${
-                    msg.sender_id === userId ? 'text-blue-100' : 'text-gray-500'
+                    msg.sender_id === userId ? "text-blue-100" : "text-gray-500"
                   }`}
                 >
                   {new Date(msg.created_at).toLocaleTimeString()}
@@ -120,7 +123,8 @@ export default function TradeChat({ tradeId, userId, otherUserName }) {
 
       {/* Buyer Tip */}
       <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
-        💡 <strong>Tip:</strong> Communicate here before confirming. Ask questions about the gift card!
+        💡 <strong>Tip:</strong> Communicate here before confirming. Ask
+        questions about the gift card!
       </div>
     </div>
   );

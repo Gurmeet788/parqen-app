@@ -1,16 +1,16 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import { API_URL } from '../App';
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import axios from "axios";
+import { API_URL } from "../App";
 
 export default function CreateListing() {
   const [formData, setFormData] = useState({
-    giftCardBrand: '',
-    amountUsd: '',
-    bitcoinPrice: '',
+    giftCardBrand: "",
+    amountUsd: "",
+    bitcoinPrice: "",
     processingTime: 15,
-    paymentMethods: ['bank'],
-    description: '',
+    paymentMethods: ["bank"],
+    description: "",
   });
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -26,10 +26,10 @@ export default function CreateListing() {
     try {
       const response = await axios.post(`${API_URL}/listings`, formData);
       if (response.data.success) {
-        navigate('/my-listings');
+        navigate("/my-listings");
       }
     } catch (error) {
-      console.error('Error creating listing:', error);
+      console.error("Error creating listing:", error);
     } finally {
       setLoading(false);
     }
@@ -38,10 +38,17 @@ export default function CreateListing() {
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-4xl font-bold text-slate-900 mb-8">Create Listing</h1>
-        <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow p-8 space-y-6">
+        <h1 className="text-4xl font-bold text-slate-900 mb-8">
+          Create Listing
+        </h1>
+        <form
+          onSubmit={handleSubmit}
+          className="bg-white rounded-lg shadow p-8 space-y-6"
+        >
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Gift Card Brand</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Gift Card Brand
+            </label>
             <input
               type="text"
               name="giftCardBrand"
@@ -55,7 +62,9 @@ export default function CreateListing() {
 
           <div className="grid md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Amount (USD)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Amount (USD)
+              </label>
               <input
                 type="number"
                 name="amountUsd"
@@ -68,7 +77,9 @@ export default function CreateListing() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Bitcoin Price</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Bitcoin Price
+              </label>
               <input
                 type="number"
                 name="bitcoinPrice"
@@ -83,7 +94,9 @@ export default function CreateListing() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Processing Time (minutes)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Processing Time (minutes)
+            </label>
             <input
               type="number"
               name="processingTime"
@@ -94,7 +107,9 @@ export default function CreateListing() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Description
+            </label>
             <textarea
               name="description"
               value={formData.description}
@@ -110,7 +125,7 @@ export default function CreateListing() {
             disabled={loading}
             className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold py-2 rounded-lg transition"
           >
-            {loading ? 'Creating...' : 'Create Listing'}
+            {loading ? "Creating..." : "Create Listing"}
           </button>
         </form>
       </div>

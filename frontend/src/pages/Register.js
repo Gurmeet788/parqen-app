@@ -1,109 +1,202 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link, useLocation } from 'react-router-dom';
-import SEO from '../components/SEO';
-import axios from 'axios';
-import { API_URL } from '../App';
+import React, { useState, useEffect, useRef } from "react";
+import { useNavigate, Link, useLocation } from "react-router-dom";
+import SEO from "../components/SEO";
+import axios from "axios";
+import { API_URL } from "../App";
 import {
-  Mail, Lock, User, Eye, EyeOff, Shield, CheckCircle,
-  ArrowRight, ArrowLeft, RefreshCw, AlertCircle, Smartphone,
-  AtSign, Check, X, Home, Gift, LogIn, Phone, ChevronDown,
-  Bitcoin, Zap, Globe, TrendingUp, Users, BadgeCheck, Star,
-  ArrowUpRight, CircleDollarSign, Wallet, BarChart3
-} from 'lucide-react';
+  Mail,
+  Lock,
+  User,
+  Eye,
+  EyeOff,
+  Shield,
+  CheckCircle,
+  ArrowRight,
+  ArrowLeft,
+  RefreshCw,
+  AlertCircle,
+  Smartphone,
+  AtSign,
+  Check,
+  X,
+  Home,
+  Gift,
+  LogIn,
+  Phone,
+  ChevronDown,
+  Bitcoin,
+  Zap,
+  Globe,
+  TrendingUp,
+  Users,
+  BadgeCheck,
+  Star,
+  ArrowUpRight,
+  CircleDollarSign,
+  Wallet,
+  BarChart3,
+} from "lucide-react";
 
 const C = {
-  forest: '#1B4332', green: '#2D6A4F', mint: '#40916C',
-  gold: '#F4A422', white: '#FFFFFF', mist: '#F0F9F4',
-  g50: '#F8FAFC', g100: '#F1F5F9', g200: '#E2E8F0',
-  g300: '#CBD5E1', g400: '#94A3B8', g500: '#64748B',
-  g600: '#475569', g700: '#334155', g800: '#1E293B',
-  success: '#10B981', danger: '#EF4444', amber: '#F59E0B',
+  forest: "#1B4332",
+  green: "#2D6A4F",
+  mint: "#40916C",
+  gold: "#F4A422",
+  white: "#FFFFFF",
+  mist: "#F0F9F4",
+  g50: "#F8FAFC",
+  g100: "#F1F5F9",
+  g200: "#E2E8F0",
+  g300: "#CBD5E1",
+  g400: "#94A3B8",
+  g500: "#64748B",
+  g600: "#475569",
+  g700: "#334155",
+  g800: "#1E293B",
+  success: "#10B981",
+  danger: "#EF4444",
+  amber: "#F59E0B",
 };
 
 const PHONE_CODES = [
-  { flag: '🇬🇭', code: '+233', name: 'Ghana' },
-  { flag: '🇳🇬', code: '+234', name: 'Nigeria' },
-  { flag: '🇰🇪', code: '+254', name: 'Kenya' },
-  { flag: '🇿🇦', code: '+27',  name: 'South Africa' },
-  { flag: '🇺🇬', code: '+256', name: 'Uganda' },
-  { flag: '🇹🇿', code: '+255', name: 'Tanzania' },
-  { flag: '🇷🇼', code: '+250', name: 'Rwanda' },
-  { flag: '🇺🇸', code: '+1',   name: 'United States' },
-  { flag: '🇬🇧', code: '+44',  name: 'United Kingdom' },
-  { flag: '🇩🇪', code: '+49',  name: 'Germany' },
-  { flag: '🇫🇷', code: '+33',  name: 'France' },
-  { flag: '🇸🇦', code: '+966', name: 'Saudi Arabia' },
-  { flag: '🇦🇪', code: '+971', name: 'UAE' },
-  { flag: '🇮🇳', code: '+91',  name: 'India' },
-  { flag: '🇦🇺', code: '+61',  name: 'Australia' },
-  { flag: '🇨🇲', code: '+237', name: 'Cameroon' },
-  { flag: '🇸🇳', code: '+221', name: 'Senegal' },
+  { flag: "🇬🇭", code: "+233", name: "Ghana" },
+  { flag: "🇳🇬", code: "+234", name: "Nigeria" },
+  { flag: "🇰🇪", code: "+254", name: "Kenya" },
+  { flag: "🇿🇦", code: "+27", name: "South Africa" },
+  { flag: "🇺🇬", code: "+256", name: "Uganda" },
+  { flag: "🇹🇿", code: "+255", name: "Tanzania" },
+  { flag: "🇷🇼", code: "+250", name: "Rwanda" },
+  { flag: "🇺🇸", code: "+1", name: "United States" },
+  { flag: "🇬🇧", code: "+44", name: "United Kingdom" },
+  { flag: "🇩🇪", code: "+49", name: "Germany" },
+  { flag: "🇫🇷", code: "+33", name: "France" },
+  { flag: "🇸🇦", code: "+966", name: "Saudi Arabia" },
+  { flag: "🇦🇪", code: "+971", name: "UAE" },
+  { flag: "🇮🇳", code: "+91", name: "India" },
+  { flag: "🇦🇺", code: "+61", name: "Australia" },
+  { flag: "🇨🇲", code: "+237", name: "Cameroon" },
+  { flag: "🇸🇳", code: "+221", name: "Senegal" },
 ];
 
 const PW_CHECKS = [
-  { label: 'At least 8 characters', test: p => p.length >= 8 },
-  { label: 'Uppercase letter (A–Z)', test: p => /[A-Z]/.test(p) },
-  { label: 'Lowercase letter (a–z)', test: p => /[a-z]/.test(p) },
-  { label: 'Number (0–9)',           test: p => /\d/.test(p) },
+  { label: "At least 8 characters", test: (p) => p.length >= 8 },
+  { label: "Uppercase letter (A–Z)", test: (p) => /[A-Z]/.test(p) },
+  { label: "Lowercase letter (a–z)", test: (p) => /[a-z]/.test(p) },
+  { label: "Number (0–9)", test: (p) => /\d/.test(p) },
 ];
 
 const STATS = [
-  { icon: Users, value: '50,000+', label: 'Active Traders' },
-  { icon: Globe, value: '180+', label: 'Countries' },
-  { icon: CircleDollarSign, value: '$25M+', label: 'Monthly Volume' },
-  { icon: Star, value: '4.9/5', label: 'User Rating' },
+  { icon: Users, value: "50,000+", label: "Active Traders" },
+  { icon: Globe, value: "180+", label: "Countries" },
+  { icon: CircleDollarSign, value: "$25M+", label: "Monthly Volume" },
+  { icon: Star, value: "4.9/5", label: "User Rating" },
 ];
 
 const BENEFITS = [
-  { icon: Shield, title: '100% Escrow Protected', desc: 'Your Bitcoin is locked in secure escrow until both parties confirm the trade' },
-  { icon: Zap, title: 'Lightning Fast Trades', desc: 'Complete your P2P trades in under 15 minutes with instant mobile money' },
-  { icon: TrendingUp, title: 'Best Market Rates', desc: 'Access competitive rates from verified traders across 180+ countries' },
+  {
+    icon: Shield,
+    title: "100% Escrow Protected",
+    desc: "Your Bitcoin is locked in secure escrow until both parties confirm the trade",
+  },
+  {
+    icon: Zap,
+    title: "Lightning Fast Trades",
+    desc: "Complete your P2P trades in under 15 minutes with instant mobile money",
+  },
+  {
+    icon: TrendingUp,
+    title: "Best Market Rates",
+    desc: "Access competitive rates from verified traders across 180+ countries",
+  },
 ];
 
 const TESTIMONIALS = [
-  { name: 'Sarah K.', location: 'Accra, Ghana', text: 'Praqen made my first Bitcoin purchase so easy! The escrow system gave me complete peace of mind.' },
-  { name: 'David M.', location: 'Lagos, Nigeria', text: 'Best P2P platform worldwide. Fast trades and amazing customer support. Highly recommended!' },
+  {
+    name: "Sarah K.",
+    location: "Accra, Ghana",
+    text: "Praqen made my first Bitcoin purchase so easy! The escrow system gave me complete peace of mind.",
+  },
+  {
+    name: "David M.",
+    location: "Lagos, Nigeria",
+    text: "Best P2P platform worldwide. Fast trades and amazing customer support. Highly recommended!",
+  },
 ];
 
 function PwStrength({ password }) {
-  const passed = PW_CHECKS.filter(c => c.test(password)).length;
-  const colors = ['', C.danger, '#F97316', C.amber, C.success, C.success];
-  const labels = ['', 'Weak', 'Fair', 'Good', 'Strong', 'Very Strong'];
+  const passed = PW_CHECKS.filter((c) => c.test(password)).length;
+  const colors = ["", C.danger, "#F97316", C.amber, C.success, C.success];
+  const labels = ["", "Weak", "Fair", "Good", "Strong", "Very Strong"];
   if (!password) return null;
   return (
     <div style={{ marginTop: 8 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <div style={{ display: 'flex', gap: 4, flex: 1 }}>
-          {[1,2,3,4].map(i => (
-            <div key={i} style={{
-              height: 4, flex: 1, borderRadius: 99,
-              background: i <= passed ? colors[passed] : '#E2E8F0',
-              transition: 'background 0.3s'
-            }} />
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          marginBottom: 6,
+        }}
+      >
+        <div style={{ display: "flex", gap: 4, flex: 1 }}>
+          {[1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              style={{
+                height: 4,
+                flex: 1,
+                borderRadius: 99,
+                background: i <= passed ? colors[passed] : "#E2E8F0",
+                transition: "background 0.3s",
+              }}
+            />
           ))}
         </div>
-        <span style={{
-          fontSize: 11, fontWeight: 700, color: colors[passed],
-          textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap'
-        }}>
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 700,
+            color: colors[passed],
+            textTransform: "uppercase",
+            letterSpacing: "0.5px",
+            whiteSpace: "nowrap",
+          }}
+        >
           {labels[passed]}
         </span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 8px' }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "4px 8px",
+        }}
+      >
         {PW_CHECKS.map(({ label, test }) => (
-          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div
+            key={label}
+            style={{ display: "flex", alignItems: "center", gap: 6 }}
+          >
             {test(password) ? (
-              <Check size={12} style={{ color: '#10B981', flexShrink: 0 }} />
+              <Check size={12} style={{ color: "#10B981", flexShrink: 0 }} />
             ) : (
-              <div style={{
-                width: 12, height: 12, borderRadius: '50%',
-                border: '2px solid #CBD5E1', flexShrink: 0
-              }} />
+              <div
+                style={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: "50%",
+                  border: "2px solid #CBD5E1",
+                  flexShrink: 0,
+                }}
+              />
             )}
-            <span style={{
-              fontSize: 11, color: test(password) ? '#64748B' : '#94A3B8',
-              transition: 'color 0.2s'
-            }}>
+            <span
+              style={{
+                fontSize: 11,
+                color: test(password) ? "#64748B" : "#94A3B8",
+                transition: "color 0.2s",
+              }}
+            >
               {label}
             </span>
           </div>
@@ -115,43 +208,60 @@ function PwStrength({ password }) {
 
 function OTPInput({ value, onChange, hasError }) {
   const refs = [useRef(), useRef(), useRef(), useRef(), useRef(), useRef()];
-  const digits = (value + '      ').slice(0, 6).split('');
+  const digits = (value + "      ").slice(0, 6).split("");
 
   const handleKey = (i, e) => {
-    if (e.key === 'Backspace') {
+    if (e.key === "Backspace") {
       onChange(value.slice(0, Math.max(0, i)));
-      if (i > 0) refs[i-1].current?.focus();
+      if (i > 0) refs[i - 1].current?.focus();
     } else if (/^\d$/.test(e.key)) {
-      const arr = (value + '      ').slice(0, 6).split('');
+      const arr = (value + "      ").slice(0, 6).split("");
       arr[i] = e.key;
-      onChange(arr.join('').replace(/\s/g, ''));
-      if (i < 5) refs[i+1].current?.focus();
+      onChange(arr.join("").replace(/\s/g, ""));
+      if (i < 5) refs[i + 1].current?.focus();
     }
     e.preventDefault();
   };
 
-  const handlePaste = e => {
-    const paste = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+  const handlePaste = (e) => {
+    const paste = e.clipboardData
+      .getData("text")
+      .replace(/\D/g, "")
+      .slice(0, 6);
     onChange(paste);
     refs[Math.min(paste.length, 5)].current?.focus();
     e.preventDefault();
   };
 
   return (
-    <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+    <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
       {digits.map((d, i) => (
-        <input key={i} ref={refs[i]} type="text" inputMode="numeric" maxLength={1}
-          value={d === ' ' ? '' : d}
-          onKeyDown={e => handleKey(i, e)}
+        <input
+          key={i}
+          ref={refs[i]}
+          type="text"
+          inputMode="numeric"
+          maxLength={1}
+          value={d === " " ? "" : d}
+          onKeyDown={(e) => handleKey(i, e)}
           onPaste={handlePaste}
           onChange={() => {}}
           style={{
-            width: 44, height: 52, borderRadius: 12,
-            textAlign: 'center', fontSize: 20, fontWeight: 800,
-            border: `2px solid ${hasError ? '#EF4444' : (d !== ' ' && d) ? '#2D6A4F' : '#E2E8F0'}`,
-            color: '#1B4332',
-            background: hasError ? '#FEF2F2' : (d !== ' ' && d) ? 'rgba(45,106,79,0.04)' : '#FFFFFF',
-            outline: 'none', transition: 'all 0.2s',
+            width: 44,
+            height: 52,
+            borderRadius: 12,
+            textAlign: "center",
+            fontSize: 20,
+            fontWeight: 800,
+            border: `2px solid ${hasError ? "#EF4444" : d !== " " && d ? "#2D6A4F" : "#E2E8F0"}`,
+            color: "#1B4332",
+            background: hasError
+              ? "#FEF2F2"
+              : d !== " " && d
+                ? "rgba(45,106,79,0.04)"
+                : "#FFFFFF",
+            outline: "none",
+            transition: "all 0.2s",
             fontFamily: "'Inter', sans-serif",
           }}
         />
@@ -163,73 +273,80 @@ function OTPInput({ value, onChange, hasError }) {
 export default function Register({ onLogin }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const [mode, setMode]               = useState('register');
-  const [step, setStep]               = useState(1);
-  const [method, setMethod]           = useState('email');
-  const [showPw, setShowPw]           = useState(false);
+  const [mode, setMode] = useState("register");
+  const [step, setStep] = useState(1);
+  const [method, setMethod] = useState("email");
+  const [showPw, setShowPw] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [loading, setLoading]         = useState(false);
-  const [otpTimer, setOtpTimer]       = useState(0);
-  const [phoneCode, setPhoneCode]     = useState(PHONE_CODES[0]);
-  const [showCodes, setShowCodes]     = useState(false);
-  const [globalError, setGlobalError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [otpTimer, setOtpTimer] = useState(0);
+  const [phoneCode, setPhoneCode] = useState(PHONE_CODES[0]);
+  const [showCodes, setShowCodes] = useState(false);
+  const [globalError, setGlobalError] = useState("");
   const [currentTestimonial, setCurrentTestimonial] = useState(0);
 
-  const [email, setEmail]       = useState('');
-  const [phone, setPhone]       = useState('');
-  const [otp, setOtp]           = useState('');
-  const [otpError, setOtpError] = useState('');
-  const [username, setUsername] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirm, setConfirm]   = useState('');
-  const [agreed, setAgreed]     = useState(false);
-  const [errs, setErrs]         = useState({});
-  const [referralCode, setReferralCode] = useState('');
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpError, setOtpError] = useState("");
+  const [username, setUsername] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [agreed, setAgreed] = useState(false);
+  const [errs, setErrs] = useState({});
+  const [referralCode, setReferralCode] = useState("");
   const [referrerInfo, setReferrerInfo] = useState(null);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const refCode = params.get('ref');
+    const refCode = params.get("ref");
     if (refCode) {
       setReferralCode(refCode);
-      localStorage.setItem('referralCode', refCode);
+      localStorage.setItem("referralCode", refCode);
     } else {
-      const stored = localStorage.getItem('referralCode');
+      const stored = localStorage.getItem("referralCode");
       if (stored) setReferralCode(stored);
     }
   }, [location.search]);
 
   useEffect(() => {
-    if (!referralCode) { setReferrerInfo(null); return; }
-    axios.get(`${API_URL}/auth/referrer?code=${encodeURIComponent(referralCode)}`)
-      .then(r => { if (r.data.success) setReferrerInfo(r.data.referrer); })
+    if (!referralCode) {
+      setReferrerInfo(null);
+      return;
+    }
+    axios
+      .get(`${API_URL}/auth/referrer?code=${encodeURIComponent(referralCode)}`)
+      .then((r) => {
+        if (r.data.success) setReferrerInfo(r.data.referrer);
+      })
       .catch(() => {});
   }, [referralCode]);
 
   useEffect(() => {
     if (otpTimer <= 0) return;
-    const iv = setInterval(() => setOtpTimer(t => t - 1), 1000);
+    const iv = setInterval(() => setOtpTimer((t) => t - 1), 1000);
     return () => clearInterval(iv);
   }, [otpTimer]);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setCurrentTestimonial(prev => (prev + 1) % TESTIMONIALS.length);
+      setCurrentTestimonial((prev) => (prev + 1) % TESTIMONIALS.length);
     }, 5000);
     return () => clearInterval(interval);
   }, []);
 
-  const contact = method === 'email' ? email : `${phoneCode.code}${phone}`;
+  const contact = method === "email" ? email : `${phoneCode.code}${phone}`;
 
   const validateContact = () => {
     const e = {};
-    if (method === 'email') {
-      if (!email) e.email = 'Email is required';
-      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = 'Enter a valid email';
+    if (method === "email") {
+      if (!email) e.email = "Email is required";
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+        e.email = "Enter a valid email";
     } else {
-      if (!phone) e.phone = 'Phone number is required';
-      else if (phone.length < 7) e.phone = 'Enter a valid phone number';
+      if (!phone) e.phone = "Phone number is required";
+      else if (phone.length < 7) e.phone = "Enter a valid phone number";
     }
     setErrs(e);
     return Object.keys(e).length === 0;
@@ -237,42 +354,54 @@ export default function Register({ onLogin }) {
 
   const validateAll = () => {
     const e = {};
-    if (method === 'email') {
-      if (!email) e.email = 'Email is required';
-      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = 'Enter a valid email';
+    if (method === "email") {
+      if (!email) e.email = "Email is required";
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+        e.email = "Enter a valid email";
     } else {
-      if (!phone) e.phone = 'Phone number is required';
-      else if (phone.length < 7) e.phone = 'Enter a valid phone number';
+      if (!phone) e.phone = "Phone number is required";
+      else if (phone.length < 7) e.phone = "Enter a valid phone number";
     }
-    if (!fullName.trim()) e.fullName = 'Full name is required';
-    if (!username.trim()) e.username = 'Username is required';
-    else if (username.length < 3) e.username = 'At least 3 characters';
-    else if (!/^[a-z0-9_.@-]+$/.test(username)) e.username = 'Letters, numbers, _ . @ - only';
-    if (!password) e.password = 'Password is required';
-    else if (PW_CHECKS.filter(c => c.test(password)).length < 3) e.password = 'Password is too weak';
-    if (password !== confirm) e.confirm = 'Passwords do not match';
-    if (!agreed) e.agreed = 'You must agree to continue';
+    if (!fullName.trim()) e.fullName = "Full name is required";
+    if (!username.trim()) e.username = "Username is required";
+    else if (username.length < 3) e.username = "At least 3 characters";
+    else if (!/^[a-z0-9_.@-]+$/.test(username))
+      e.username = "Letters, numbers, _ . @ - only";
+    if (!password) e.password = "Password is required";
+    else if (PW_CHECKS.filter((c) => c.test(password)).length < 3)
+      e.password = "Password is too weak";
+    if (password !== confirm) e.confirm = "Passwords do not match";
+    if (!agreed) e.agreed = "You must agree to continue";
     setErrs(e);
     return Object.keys(e).length === 0;
   };
 
   const validateNewPassword = () => {
     const e = {};
-    if (!password) e.password = 'Required';
-    else if (PW_CHECKS.filter(c => c.test(password)).length < 3) e.password = 'Too weak';
-    if (password !== confirm) e.confirm = 'Passwords do not match';
+    if (!password) e.password = "Required";
+    else if (PW_CHECKS.filter((c) => c.test(password)).length < 3)
+      e.password = "Too weak";
+    if (password !== confirm) e.confirm = "Passwords do not match";
     setErrs(e);
     return Object.keys(e).length === 0;
   };
 
   const sendOTP = async () => {
     if (!validateContact()) return;
-    setLoading(true); setGlobalError('');
+    setLoading(true);
+    setGlobalError("");
     try {
-      const channel = method === 'email' ? 'email' : 'sms';
-      const body    = method === 'email' ? { email: contact, channel } : { phone: contact, channel };
-      const r = await axios.post(`${API_URL}/auth/send-otp`, { ...body, purpose: 'forgot-password' });
-      setStep('f2'); setOtpTimer(60);
+      const channel = method === "email" ? "email" : "sms";
+      const body =
+        method === "email"
+          ? { email: contact, channel }
+          : { phone: contact, channel };
+      const r = await axios.post(`${API_URL}/auth/send-otp`, {
+        ...body,
+        purpose: "forgot-password",
+      });
+      setStep("f2");
+      setOtpTimer(60);
       // Dev mode: if email/SMS delivery failed, auto-fill the OTP
       if (r.data?.devCode) {
         setOtp(r.data.devCode);
@@ -281,87 +410,127 @@ export default function Register({ onLogin }) {
       const errData = err.response?.data;
       if (errData?.devCode) {
         setOtp(errData.devCode);
-        setStep('f2'); setOtpTimer(60);
+        setStep("f2");
+        setOtpTimer(60);
       } else {
-        setGlobalError(errData?.error || 'Failed to send code. Try again.');
+        setGlobalError(errData?.error || "Failed to send code. Try again.");
       }
+    } finally {
+      setLoading(false);
     }
-    finally { setLoading(false); }
   };
 
   const verifyOTP = async () => {
-    if (otp.length < 6) { setOtpError('Enter the 6-digit code'); return; }
-    setLoading(true); setOtpError('');
+    if (otp.length < 6) {
+      setOtpError("Enter the 6-digit code");
+      return;
+    }
+    setLoading(true);
+    setOtpError("");
     try {
-      if (method === 'email') {
-        await axios.post(`${API_URL}/auth/verify-code`, { email: contact, code: otp });
+      if (method === "email") {
+        await axios.post(`${API_URL}/auth/verify-code`, {
+          email: contact,
+          code: otp,
+        });
       } else {
-        await axios.post(`${API_URL}/auth/verify-otp`, { contact, otp, purpose: mode === 'register' ? 'register' : 'forgot-password' });
+        await axios.post(`${API_URL}/auth/verify-otp`, {
+          contact,
+          otp,
+          purpose: mode === "register" ? "register" : "forgot-password",
+        });
       }
-      setStep(mode === 'register' ? 3 : 'f3');
-    } catch (err) { setOtpError(err.response?.data?.error || 'Incorrect code. Try again.'); }
-    finally { setLoading(false); }
+      setStep(mode === "register" ? 3 : "f3");
+    } catch (err) {
+      setOtpError(err.response?.data?.error || "Incorrect code. Try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleRegister = async () => {
     if (!validateAll()) return;
-    setLoading(true); setGlobalError('');
+    setLoading(true);
+    setGlobalError("");
     try {
       const res = await axios.post(`${API_URL}/auth/register`, {
-        email: method === 'email' ? email : undefined,
-        phone: method === 'phone' ? contact : undefined,
+        email: method === "email" ? email : undefined,
+        phone: method === "phone" ? contact : undefined,
         username: username.toLowerCase(),
-        fullName, password,
+        fullName,
+        password,
         referralCode: referralCode || undefined,
       });
       if (res.data.success && res.data.token) {
-        localStorage.setItem('token', res.data.token);
-        localStorage.removeItem('referralCode');
+        localStorage.setItem("token", res.data.token);
+        localStorage.removeItem("referralCode");
         onLogin(res.data.user, res.data.token);
         setStep(4);
-        setTimeout(() => navigate('/buy-bitcoin'), 1800);
+        setTimeout(() => navigate("/buy-bitcoin"), 1800);
       }
     } catch (err) {
       if (!err.response) {
-        setGlobalError('Cannot reach the server. Please check your internet connection and try again.');
+        setGlobalError(
+          "Cannot reach the server. Please check your internet connection and try again.",
+        );
       } else {
-        setGlobalError(err.response.data?.error || 'Registration failed. Please try again.');
+        setGlobalError(
+          err.response.data?.error || "Registration failed. Please try again.",
+        );
       }
+    } finally {
+      setLoading(false);
     }
-    finally { setLoading(false); }
   };
 
   const handleResetPassword = async () => {
     if (!validateNewPassword()) return;
-    setLoading(true); setGlobalError('');
+    setLoading(true);
+    setGlobalError("");
     try {
-      await axios.post(`${API_URL}/auth/reset-password`, { contact, otp, newPassword: password });
-      setStep('f4');
-    } catch (err) { setGlobalError(err.response?.data?.error || 'Failed to reset password.'); }
-    finally { setLoading(false); }
+      await axios.post(`${API_URL}/auth/reset-password`, {
+        contact,
+        otp,
+        newPassword: password,
+      });
+      setStep("f4");
+    } catch (err) {
+      setGlobalError(err.response?.data?.error || "Failed to reset password.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const startForgot = () => {
-    setMode('forgot'); setStep('f1');
-    setEmail(''); setPhone(''); setOtp(''); setPassword(''); setConfirm('');
-    setErrs({}); setGlobalError('');
+    setMode("forgot");
+    setStep("f1");
+    setEmail("");
+    setPhone("");
+    setOtp("");
+    setPassword("");
+    setConfirm("");
+    setErrs({});
+    setGlobalError("");
   };
 
   const backToRegister = () => {
-    setMode('register'); setStep(1);
-    setOtp(''); setErrs({}); setGlobalError('');
+    setMode("register");
+    setStep(1);
+    setOtp("");
+    setErrs({});
+    setGlobalError("");
   };
 
   const inputStyle = (filled, error) => ({
-    width: '100%',
-    padding: '13px 14px 13px 44px',
+    width: "100%",
+    padding: "13px 14px 13px 44px",
     fontSize: 14,
     borderRadius: 14,
-    border: `2px solid ${error ? '#EF4444' : filled ? '#2D6A4F' : '#E2E8F0'}`,
-    color: '#1E293B',
-    background: error ? '#FEF2F2' : filled ? '#F8FAFC' : '#FFFFFF',
-    outline: 'none',
-    transition: 'all 0.2s ease',
+    border: `2px solid ${error ? "#EF4444" : filled ? "#2D6A4F" : "#E2E8F0"}`,
+    color: "#1E293B",
+    background: error ? "#FEF2F2" : filled ? "#F8FAFC" : "#FFFFFF",
+    outline: "none",
+    transition: "all 0.2s ease",
     fontFamily: "'Inter', sans-serif",
   });
 
@@ -909,31 +1078,39 @@ export default function Register({ onLogin }) {
           <div className="hero-bg-pattern" />
           <div className="hero-glow-1" />
           <div className="hero-glow-2" />
-          
+
           <div className="hero-content">
             <div className="hero-badge">
-              <Bitcoin size={22} className="pulse-gold" style={{ color: '#F4A422' }} />
-              <span style={{ 
-                color: 'white', 
-                fontWeight: 800, 
-                letterSpacing: '4px',
-                fontSize: 15,
-                textTransform: 'uppercase'
-              }}>
+              <Bitcoin
+                size={22}
+                className="pulse-gold"
+                style={{ color: "#F4A422" }}
+              />
+              <span
+                style={{
+                  color: "white",
+                  fontWeight: 800,
+                  letterSpacing: "4px",
+                  fontSize: 15,
+                  textTransform: "uppercase",
+                }}
+              >
                 Praqen
               </span>
             </div>
 
             <h1 className="hero-title">
-              Trade Bitcoin &amp; USDT<br />
-              <span className="highlight">Peer-to-Peer</span><br />
+              Trade Bitcoin &amp; USDT
+              <br />
+              <span className="highlight">Peer-to-Peer</span>
+              <br />
               with Confidence
             </h1>
 
             <p className="hero-description">
               Join the world's most trusted P2P Bitcoin &amp; USDT marketplace.
-              Trade directly with verified users, protected by
-              industry-leading escrow technology.
+              Trade directly with verified users, protected by industry-leading
+              escrow technology.
             </p>
 
             <div className="stats-grid">
@@ -954,7 +1131,13 @@ export default function Register({ onLogin }) {
               <p className="testimonial-quote">
                 "{TESTIMONIALS[currentTestimonial].text}"
               </p>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
                 <div>
                   <p className="testimonial-author">
                     {TESTIMONIALS[currentTestimonial].name}
@@ -965,9 +1148,9 @@ export default function Register({ onLogin }) {
                 </div>
                 <div className="testimonial-dots">
                   {TESTIMONIALS.map((_, i) => (
-                    <div 
+                    <div
                       key={i}
-                      className={`testimonial-dot ${i === currentTestimonial ? 'active' : ''}`}
+                      className={`testimonial-dot ${i === currentTestimonial ? "active" : ""}`}
                       onClick={() => setCurrentTestimonial(i)}
                     />
                   ))}
@@ -984,51 +1167,62 @@ export default function Register({ onLogin }) {
 
         {/* Right Form Panel */}
         <div className="form-panel">
-          <div style={{ width: '100%', maxWidth: 460 }}>
+          <div style={{ width: "100%", maxWidth: 460 }}>
             {/* Mobile Hero Strip */}
             <div className="mobile-hero-strip">
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 10, 
-                marginBottom: 12,
-                flexWrap: 'wrap'
-              }}>
-                <div style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '6px 14px',
-                  borderRadius: 50,
-                  background: 'linear-gradient(135deg, #1B4332, #2D6A4F)',
-                }}>
-                  <Bitcoin size={16} style={{ color: '#F4A422' }} />
-                  <span style={{ 
-                    color: 'white', 
-                    fontWeight: 700, 
-                    fontSize: 12,
-                    letterSpacing: '2px'
-                  }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  marginBottom: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "6px 14px",
+                    borderRadius: 50,
+                    background: "linear-gradient(135deg, #1B4332, #2D6A4F)",
+                  }}
+                >
+                  <Bitcoin size={16} style={{ color: "#F4A422" }} />
+                  <span
+                    style={{
+                      color: "white",
+                      fontWeight: 700,
+                      fontSize: 12,
+                      letterSpacing: "2px",
+                    }}
+                  >
                     PRAQEN
                   </span>
                 </div>
-                <div style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: '#2D6A4F',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4
-                }}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "#2D6A4F",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
                   <Star size={12} fill="#F4A422" color="#F4A422" />
                   4.9/5 · 50K+ traders
                 </div>
               </div>
-              
+
               <div className="mobile-benefits-strip">
                 {BENEFITS.map(({ icon: Icon, title }) => (
                   <div key={title} className="mobile-benefit-pill">
-                    <Icon size={12} style={{ color: '#F4A422', flexShrink: 0 }} />
+                    <Icon
+                      size={12}
+                      style={{ color: "#F4A422", flexShrink: 0 }}
+                    />
                     {title}
                   </div>
                 ))}
@@ -1038,67 +1232,124 @@ export default function Register({ onLogin }) {
             {/* Main Registration Card */}
             <div className="register-card animate-in">
               <div className="card-top">
-                <div className="logo-badge" style={{ display: 'none' }}>
-                  <Bitcoin size={18} style={{ color: '#F4A422' }} />
+                <div className="logo-badge" style={{ display: "none" }}>
+                  <Bitcoin size={18} style={{ color: "#F4A422" }} />
                   PRAQEN
                 </div>
                 <h1 className="card-title">
-                  {mode === 'register' ? 'Create Account' : 'Reset Password'}
+                  {mode === "register" ? "Create Account" : "Reset Password"}
                 </h1>
                 <p className="card-subtitle">
-                  {mode === 'register'
-                    ? 'Join the future of P2P trading'
-                    : "We'll help you get back in"
-                  }
+                  {mode === "register"
+                    ? "Join the future of P2P trading"
+                    : "We'll help you get back in"}
                 </p>
               </div>
 
               {/* ── REFERRAL BANNER ── shown when arriving via an affiliate link */}
-              {referralCode && mode === 'register' && (
-                <div style={{
-                  margin: '0 0 4px',
-                  padding: '12px 16px',
-                  borderRadius: 14,
-                  background: 'linear-gradient(135deg, #1B4332 0%, #2D6A4F 100%)',
-                  border: '1.5px solid #40916C',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                }}>
-                  <div style={{
-                    width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
-                    background: referrerInfo?.avatar_url ? `url(${referrerInfo.avatar_url}) center/cover` : 'linear-gradient(135deg,#F4A422,#E07C0E)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontWeight: 900, fontSize: 15, color: '#1B4332',
-                  }}>
-                    {!referrerInfo?.avatar_url && (referrerInfo?.username?.charAt(0).toUpperCase() || '🎁')}
+              {referralCode && mode === "register" && (
+                <div
+                  style={{
+                    margin: "0 0 4px",
+                    padding: "12px 16px",
+                    borderRadius: 14,
+                    background:
+                      "linear-gradient(135deg, #1B4332 0%, #2D6A4F 100%)",
+                    border: "1.5px solid #40916C",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: "50%",
+                      flexShrink: 0,
+                      background: referrerInfo?.avatar_url
+                        ? `url(${referrerInfo.avatar_url}) center/cover`
+                        : "linear-gradient(135deg,#F4A422,#E07C0E)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontWeight: 900,
+                      fontSize: 15,
+                      color: "#1B4332",
+                    }}
+                  >
+                    {!referrerInfo?.avatar_url &&
+                      (referrerInfo?.username?.charAt(0).toUpperCase() || "🎁")}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     {referrerInfo ? (
                       <>
-                        <p style={{ color: '#F4A422', fontWeight: 800, fontSize: 13, margin: 0 }}>
-                          You were invited by <span style={{ color: '#fff' }}>@{referrerInfo.username}</span>!
+                        <p
+                          style={{
+                            color: "#F4A422",
+                            fontWeight: 800,
+                            fontSize: 13,
+                            margin: 0,
+                          }}
+                        >
+                          You were invited by{" "}
+                          <span style={{ color: "#fff" }}>
+                            @{referrerInfo.username}
+                          </span>
+                          !
                         </p>
-                        <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11, margin: '2px 0 0', fontWeight: 500 }}>
-                          Sign up now and start trading on the world's #1 P2P Bitcoin &amp; USDT platform
+                        <p
+                          style={{
+                            color: "rgba(255,255,255,0.7)",
+                            fontSize: 11,
+                            margin: "2px 0 0",
+                            fontWeight: 500,
+                          }}
+                        >
+                          Sign up now and start trading on the world's #1 P2P
+                          Bitcoin &amp; USDT platform
                         </p>
                       </>
                     ) : (
                       <>
-                        <p style={{ color: '#F4A422', fontWeight: 800, fontSize: 13, margin: 0 }}>
+                        <p
+                          style={{
+                            color: "#F4A422",
+                            fontWeight: 800,
+                            fontSize: 13,
+                            margin: 0,
+                          }}
+                        >
                           You have a referral invitation!
                         </p>
-                        <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11, margin: '2px 0 0', fontWeight: 500 }}>
-                          Sign up now and start trading on the world's #1 P2P Bitcoin &amp; USDT platform
+                        <p
+                          style={{
+                            color: "rgba(255,255,255,0.7)",
+                            fontSize: 11,
+                            margin: "2px 0 0",
+                            fontWeight: 500,
+                          }}
+                        >
+                          Sign up now and start trading on the world's #1 P2P
+                          Bitcoin &amp; USDT platform
                         </p>
                       </>
                     )}
                   </div>
-                  <div style={{
-                    flexShrink: 0, padding: '4px 10px', borderRadius: 20,
-                    background: 'rgba(244,164,34,0.2)', border: '1px solid rgba(244,164,34,0.4)',
-                    fontSize: 10, fontWeight: 800, color: '#F4A422', textTransform: 'uppercase', letterSpacing: '0.5px',
-                  }}>
+                  <div
+                    style={{
+                      flexShrink: 0,
+                      padding: "4px 10px",
+                      borderRadius: 20,
+                      background: "rgba(244,164,34,0.2)",
+                      border: "1px solid rgba(244,164,34,0.4)",
+                      fontSize: 10,
+                      fontWeight: 800,
+                      color: "#F4A422",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.5px",
+                    }}
+                  >
                     Referral
                   </div>
                 </div>
@@ -1106,15 +1357,28 @@ export default function Register({ onLogin }) {
 
               <div className="card-body animate-fade" key={step}>
                 {/* REGISTER STEP 1 */}
-                {step === 1 && mode === 'register' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {step === 1 && mode === "register" && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 14,
+                    }}
+                  >
                     {globalError && (
-                      <div style={{
-                        display: 'flex', alignItems: 'center', gap: 8,
-                        padding: '10px 14px', borderRadius: 12, fontSize: 12,
-                        background: '#FEF2F2', color: '#EF4444',
-                        border: '1.5px solid #FECACA'
-                      }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "10px 14px",
+                          borderRadius: 12,
+                          fontSize: 12,
+                          background: "#FEF2F2",
+                          color: "#EF4444",
+                          border: "1.5px solid #FECACA",
+                        }}
+                      >
                         <AlertCircle size={14} style={{ flexShrink: 0 }} />
                         {globalError}
                       </div>
@@ -1122,16 +1386,22 @@ export default function Register({ onLogin }) {
 
                     {/* Method Toggle */}
                     <div className="method-toggle">
-                      <button 
-                        onClick={() => { setMethod('email'); setErrs({}); }}
-                        className={`method-btn ${method === 'email' ? 'active' : ''}`}
+                      <button
+                        onClick={() => {
+                          setMethod("email");
+                          setErrs({});
+                        }}
+                        className={`method-btn ${method === "email" ? "active" : ""}`}
                       >
                         <Mail size={14} />
                         Email
                       </button>
-                      <button 
-                        onClick={() => { setMethod('phone'); setErrs({}); }}
-                        className={`method-btn ${method === 'phone' ? 'active' : ''}`}
+                      <button
+                        onClick={() => {
+                          setMethod("phone");
+                          setErrs({});
+                        }}
+                        className={`method-btn ${method === "phone" ? "active" : ""}`}
                       >
                         <Smartphone size={14} />
                         Phone
@@ -1139,74 +1409,172 @@ export default function Register({ onLogin }) {
                     </div>
 
                     {/* Email or Phone */}
-                    {method === 'email' ? (
+                    {method === "email" ? (
                       <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        <label
+                          style={{
+                            display: "block",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            marginBottom: 6,
+                            color: "#475569",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.5px",
+                          }}
+                        >
                           Email Address
                         </label>
-                        <div style={{ position: 'relative' }}>
-                          <Mail size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', pointerEvents: 'none', zIndex: 1 }} />
-                          <input 
-                            type="email" 
+                        <div style={{ position: "relative" }}>
+                          <Mail
+                            size={16}
+                            style={{
+                              position: "absolute",
+                              left: 14,
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              color: "#94A3B8",
+                              pointerEvents: "none",
+                              zIndex: 1,
+                            }}
+                          />
+                          <input
+                            type="email"
                             value={email}
                             placeholder="you@example.com"
-                            onChange={e => setEmail(e.target.value)}
+                            onChange={(e) => setEmail(e.target.value)}
                             className="form-input-focus"
                             style={inputStyle(!!email, errs.email)}
                           />
                         </div>
                         {errs.email && (
-                          <p style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#EF4444', marginTop: 5, fontWeight: 500 }}>
-                            <AlertCircle size={10} />{errs.email}
+                          <p
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 4,
+                              fontSize: 11,
+                              color: "#EF4444",
+                              marginTop: 5,
+                              fontWeight: 500,
+                            }}
+                          >
+                            <AlertCircle size={10} />
+                            {errs.email}
                           </p>
                         )}
                       </div>
                     ) : (
                       <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        <label
+                          style={{
+                            display: "block",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            marginBottom: 6,
+                            color: "#475569",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.5px",
+                          }}
+                        >
                           Phone Number
                         </label>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <div style={{ position: 'relative', flexShrink: 0 }}>
-                            <button 
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <div style={{ position: "relative", flexShrink: 0 }}>
+                            <button
                               onClick={() => setShowCodes(!showCodes)}
                               style={{
-                                display: 'flex', alignItems: 'center', gap: 6,
-                                padding: '13px 14px', border: '2px solid #E2E8F0',
-                                borderRadius: 14, background: 'white', cursor: 'pointer',
-                                fontSize: 13, fontWeight: 600, color: '#334155',
-                                flexShrink: 0, transition: 'border-color 0.2s',
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6,
+                                padding: "13px 14px",
+                                border: "2px solid #E2E8F0",
+                                borderRadius: 14,
+                                background: "white",
+                                cursor: "pointer",
+                                fontSize: 13,
+                                fontWeight: 600,
+                                color: "#334155",
+                                flexShrink: 0,
+                                transition: "border-color 0.2s",
                                 fontFamily: "'Inter', sans-serif",
                               }}
                             >
-                              <span style={{ fontSize: 18 }}>{phoneCode.flag}</span>
+                              <span style={{ fontSize: 18 }}>
+                                {phoneCode.flag}
+                              </span>
                               <span>{phoneCode.code}</span>
-                              <ChevronDown size={12} style={{ color: '#94A3B8' }} />
+                              <ChevronDown
+                                size={12}
+                                style={{ color: "#94A3B8" }}
+                              />
                             </button>
                             {showCodes && (
-                              <div style={{
-                                position: 'absolute', top: 'calc(100% + 8px)', left: 0,
-                                width: 280, maxWidth: 'calc(100vw - 32px)',
-                                background: 'white', borderRadius: 18,
-                                boxShadow: '0 20px 60px rgba(0,0,0,0.15)', zIndex: 100,
-                                border: '1px solid #F1F5F9', overflow: 'hidden'
-                              }}>
-                                <div className="phone-dropdown-scroll" style={{ maxHeight: 220, overflowY: 'auto' }}>
-                                  {PHONE_CODES.map(pc => (
+                              <div
+                                style={{
+                                  position: "absolute",
+                                  top: "calc(100% + 8px)",
+                                  left: 0,
+                                  width: 280,
+                                  maxWidth: "calc(100vw - 32px)",
+                                  background: "white",
+                                  borderRadius: 18,
+                                  boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
+                                  zIndex: 100,
+                                  border: "1px solid #F1F5F9",
+                                  overflow: "hidden",
+                                }}
+                              >
+                                <div
+                                  className="phone-dropdown-scroll"
+                                  style={{ maxHeight: 220, overflowY: "auto" }}
+                                >
+                                  {PHONE_CODES.map((pc) => (
                                     <button
                                       key={pc.code}
-                                      onClick={() => { setPhoneCode(pc); setShowCodes(false); }}
+                                      onClick={() => {
+                                        setPhoneCode(pc);
+                                        setShowCodes(false);
+                                      }}
                                       style={{
-                                        width: '100%', display: 'flex', alignItems: 'center', gap: 12,
-                                        padding: '11px 16px', background: phoneCode.code === pc.code ? 'rgba(45,106,79,0.06)' : 'transparent',
-                                        border: 'none', borderBottom: '1px solid #F8FAFC',
-                                        cursor: 'pointer', textAlign: 'left', fontSize: 13,
+                                        width: "100%",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 12,
+                                        padding: "11px 16px",
+                                        background:
+                                          phoneCode.code === pc.code
+                                            ? "rgba(45,106,79,0.06)"
+                                            : "transparent",
+                                        border: "none",
+                                        borderBottom: "1px solid #F8FAFC",
+                                        cursor: "pointer",
+                                        textAlign: "left",
+                                        fontSize: 13,
                                         fontFamily: "'Inter', sans-serif",
                                       }}
                                     >
-                                      <span style={{ fontSize: 20 }}>{pc.flag}</span>
-                                      <span style={{ flex: 1, fontWeight: 600, color: '#334155' }}>{pc.name}</span>
-                                      <span style={{ fontSize: 12, fontWeight: 700, color: phoneCode.code === pc.code ? '#2D6A4F' : '#94A3B8' }}>
+                                      <span style={{ fontSize: 20 }}>
+                                        {pc.flag}
+                                      </span>
+                                      <span
+                                        style={{
+                                          flex: 1,
+                                          fontWeight: 600,
+                                          color: "#334155",
+                                        }}
+                                      >
+                                        {pc.name}
+                                      </span>
+                                      <span
+                                        style={{
+                                          fontSize: 12,
+                                          fontWeight: 700,
+                                          color:
+                                            phoneCode.code === pc.code
+                                              ? "#2D6A4F"
+                                              : "#94A3B8",
+                                        }}
+                                      >
                                         {pc.code}
                                       </span>
                                     </button>
@@ -1215,21 +1583,48 @@ export default function Register({ onLogin }) {
                               </div>
                             )}
                           </div>
-                          <div style={{ flex: 1, position: 'relative' }}>
-                            <Phone size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', pointerEvents: 'none', zIndex: 1 }} />
-                            <input 
+                          <div style={{ flex: 1, position: "relative" }}>
+                            <Phone
+                              size={16}
+                              style={{
+                                position: "absolute",
+                                left: 12,
+                                top: "50%",
+                                transform: "translateY(-50%)",
+                                color: "#94A3B8",
+                                pointerEvents: "none",
+                                zIndex: 1,
+                              }}
+                            />
+                            <input
                               type="tel"
                               value={phone}
                               placeholder="244 123 4567"
-                              onChange={e => setPhone(e.target.value.replace(/\D/g, ''))}
+                              onChange={(e) =>
+                                setPhone(e.target.value.replace(/\D/g, ""))
+                              }
                               className="form-input-focus"
-                              style={{ ...inputStyle(!!phone, errs.phone), paddingLeft: 38 }}
+                              style={{
+                                ...inputStyle(!!phone, errs.phone),
+                                paddingLeft: 38,
+                              }}
                             />
                           </div>
                         </div>
                         {errs.phone && (
-                          <p style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#EF4444', marginTop: 5, fontWeight: 500 }}>
-                            <AlertCircle size={10} />{errs.phone}
+                          <p
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 4,
+                              fontSize: 11,
+                              color: "#EF4444",
+                              marginTop: 5,
+                              fontWeight: 500,
+                            }}
+                          >
+                            <AlertCircle size={10} />
+                            {errs.phone}
                           </p>
                         )}
                       </div>
@@ -1237,81 +1632,186 @@ export default function Register({ onLogin }) {
 
                     {/* Full Name */}
                     <div>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      <label
+                        style={{
+                          display: "block",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          marginBottom: 6,
+                          color: "#475569",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.5px",
+                        }}
+                      >
                         Full Name
                       </label>
-                      <div style={{ position: 'relative' }}>
-                        <User size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', pointerEvents: 'none', zIndex: 1 }} />
-                        <input 
+                      <div style={{ position: "relative" }}>
+                        <User
+                          size={16}
+                          style={{
+                            position: "absolute",
+                            left: 14,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            color: "#94A3B8",
+                            pointerEvents: "none",
+                            zIndex: 1,
+                          }}
+                        />
+                        <input
                           type="text"
                           value={fullName}
                           placeholder="John Doe"
-                          onChange={e => setFullName(e.target.value)}
+                          onChange={(e) => setFullName(e.target.value)}
                           className="form-input-focus"
                           style={inputStyle(!!fullName, errs.fullName)}
                         />
                       </div>
                       {errs.fullName && (
-                        <p style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#EF4444', marginTop: 5, fontWeight: 500 }}>
-                          <AlertCircle size={10} />{errs.fullName}
+                        <p
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                            fontSize: 11,
+                            color: "#EF4444",
+                            marginTop: 5,
+                            fontWeight: 500,
+                          }}
+                        >
+                          <AlertCircle size={10} />
+                          {errs.fullName}
                         </p>
                       )}
                     </div>
 
                     {/* Username */}
                     <div>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      <label
+                        style={{
+                          display: "block",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          marginBottom: 6,
+                          color: "#475569",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.5px",
+                        }}
+                      >
                         Username
                       </label>
-                      <div style={{ position: 'relative' }}>
-                        <AtSign size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', pointerEvents: 'none', zIndex: 1 }} />
-                        <input 
+                      <div style={{ position: "relative" }}>
+                        <AtSign
+                          size={16}
+                          style={{
+                            position: "absolute",
+                            left: 14,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            color: "#94A3B8",
+                            pointerEvents: "none",
+                            zIndex: 1,
+                          }}
+                        />
+                        <input
                           type="text"
                           value={username}
                           placeholder="john_doe"
-                          onChange={e => setUsername(e.target.value.toLowerCase())}
+                          onChange={(e) =>
+                            setUsername(e.target.value.toLowerCase())
+                          }
                           className="form-input-focus"
                           style={inputStyle(!!username, errs.username)}
                         />
                       </div>
                       {errs.username && (
-                        <p style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#EF4444', marginTop: 5, fontWeight: 500 }}>
-                          <AlertCircle size={10} />{errs.username}
+                        <p
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                            fontSize: 11,
+                            color: "#EF4444",
+                            marginTop: 5,
+                            fontWeight: 500,
+                          }}
+                        >
+                          <AlertCircle size={10} />
+                          {errs.username}
                         </p>
                       )}
                     </div>
 
                     {/* Password */}
                     <div>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      <label
+                        style={{
+                          display: "block",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          marginBottom: 6,
+                          color: "#475569",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.5px",
+                        }}
+                      >
                         Password
                       </label>
-                      <div style={{ position: 'relative' }}>
-                        <Lock size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', pointerEvents: 'none', zIndex: 1 }} />
-                        <input 
-                          type={showPw ? 'text' : 'password'}
+                      <div style={{ position: "relative" }}>
+                        <Lock
+                          size={16}
+                          style={{
+                            position: "absolute",
+                            left: 14,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            color: "#94A3B8",
+                            pointerEvents: "none",
+                            zIndex: 1,
+                          }}
+                        />
+                        <input
+                          type={showPw ? "text" : "password"}
                           value={password}
                           placeholder="••••••••"
-                          onChange={e => setPassword(e.target.value)}
+                          onChange={(e) => setPassword(e.target.value)}
                           className="form-input-focus"
                           style={inputWithRightIcon(!!password, errs.password)}
                         />
-                        <button 
+                        <button
                           type="button"
                           onClick={() => setShowPw(!showPw)}
                           style={{
-                            position: 'absolute', right: 14, top: '50%',
-                            transform: 'translateY(-50%)', background: 'none',
-                            border: 'none', cursor: 'pointer', color: '#94A3B8',
-                            padding: 4, display: 'flex', alignItems: 'center'
+                            position: "absolute",
+                            right: 14,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            color: "#94A3B8",
+                            padding: 4,
+                            display: "flex",
+                            alignItems: "center",
                           }}
                         >
                           {showPw ? <EyeOff size={17} /> : <Eye size={17} />}
                         </button>
                       </div>
                       {errs.password && (
-                        <p style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#EF4444', marginTop: 5, fontWeight: 500 }}>
-                          <AlertCircle size={10} />{errs.password}
+                        <p
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                            fontSize: 11,
+                            color: "#EF4444",
+                            marginTop: 5,
+                            fontWeight: 500,
+                          }}
+                        >
+                          <AlertCircle size={10} />
+                          {errs.password}
                         </p>
                       )}
                       <PwStrength password={password} />
@@ -1319,79 +1819,169 @@ export default function Register({ onLogin }) {
 
                     {/* Confirm Password */}
                     <div>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      <label
+                        style={{
+                          display: "block",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          marginBottom: 6,
+                          color: "#475569",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.5px",
+                        }}
+                      >
                         Confirm Password
                       </label>
-                      <div style={{ position: 'relative' }}>
-                        <Lock size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', pointerEvents: 'none', zIndex: 1 }} />
-                        <input 
-                          type={showConfirm ? 'text' : 'password'}
+                      <div style={{ position: "relative" }}>
+                        <Lock
+                          size={16}
+                          style={{
+                            position: "absolute",
+                            left: 14,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            color: "#94A3B8",
+                            pointerEvents: "none",
+                            zIndex: 1,
+                          }}
+                        />
+                        <input
+                          type={showConfirm ? "text" : "password"}
                           value={confirm}
                           placeholder="Repeat your password"
-                          onChange={e => setConfirm(e.target.value)}
+                          onChange={(e) => setConfirm(e.target.value)}
                           className="form-input-focus"
                           style={inputWithRightIcon(!!confirm, errs.confirm)}
                         />
-                        <button 
+                        <button
                           type="button"
                           onClick={() => setShowConfirm(!showConfirm)}
                           style={{
-                            position: 'absolute', right: 14, top: '50%',
-                            transform: 'translateY(-50%)', background: 'none',
-                            border: 'none', cursor: 'pointer', color: '#94A3B8',
-                            padding: 4, display: 'flex', alignItems: 'center'
+                            position: "absolute",
+                            right: 14,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            color: "#94A3B8",
+                            padding: 4,
+                            display: "flex",
+                            alignItems: "center",
                           }}
                         >
-                          {showConfirm ? <EyeOff size={17} /> : <Eye size={17} />}
+                          {showConfirm ? (
+                            <EyeOff size={17} />
+                          ) : (
+                            <Eye size={17} />
+                          )}
                         </button>
                       </div>
                       {errs.confirm && (
-                        <p style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#EF4444', marginTop: 5, fontWeight: 500 }}>
-                          <AlertCircle size={10} />{errs.confirm}
+                        <p
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                            fontSize: 11,
+                            color: "#EF4444",
+                            marginTop: 5,
+                            fontWeight: 500,
+                          }}
+                        >
+                          <AlertCircle size={10} />
+                          {errs.confirm}
                         </p>
                       )}
                     </div>
 
                     {/* Terms */}
                     <div>
-                      <div 
+                      <div
                         onClick={() => setAgreed(!agreed)}
-                        style={{ 
-                          display: 'flex', alignItems: 'flex-start', gap: 10, 
-                          cursor: 'pointer', padding: 4, borderRadius: 10,
-                          transition: 'background 0.2s'
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: 10,
+                          cursor: "pointer",
+                          padding: 4,
+                          borderRadius: 10,
+                          transition: "background 0.2s",
                         }}
                       >
-                        <div style={{
-                          width: 22, height: 22, borderRadius: 7,
-                          border: `2px solid ${errs.agreed ? '#EF4444' : agreed ? '#2D6A4F' : '#CBD5E1'}`,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          flexShrink: 0, marginTop: 1, transition: 'all 0.2s',
-                          cursor: 'pointer', background: agreed ? '#2D6A4F' : 'transparent'
-                        }}>
+                        <div
+                          style={{
+                            width: 22,
+                            height: 22,
+                            borderRadius: 7,
+                            border: `2px solid ${errs.agreed ? "#EF4444" : agreed ? "#2D6A4F" : "#CBD5E1"}`,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                            marginTop: 1,
+                            transition: "all 0.2s",
+                            cursor: "pointer",
+                            background: agreed ? "#2D6A4F" : "transparent",
+                          }}
+                        >
                           {agreed && <Check size={12} color="white" />}
                         </div>
-                        <p style={{ fontSize: 12, lineHeight: 1.5, color: '#64748B', margin: 0 }}>
-                          I agree to the{' '}
-                          <a href="/terms" style={{ color: '#2D6A4F', fontWeight: 700, textDecoration: 'none' }} onClick={e => e.stopPropagation()}>
+                        <p
+                          style={{
+                            fontSize: 12,
+                            lineHeight: 1.5,
+                            color: "#64748B",
+                            margin: 0,
+                          }}
+                        >
+                          I agree to the{" "}
+                          <a
+                            href="/terms"
+                            style={{
+                              color: "#2D6A4F",
+                              fontWeight: 700,
+                              textDecoration: "none",
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             Terms of Service
-                          </a>
-                          {' '}and{' '}
-                          <a href="/privacy" style={{ color: '#2D6A4F', fontWeight: 700, textDecoration: 'none' }} onClick={e => e.stopPropagation()}>
+                          </a>{" "}
+                          and{" "}
+                          <a
+                            href="/privacy"
+                            style={{
+                              color: "#2D6A4F",
+                              fontWeight: 700,
+                              textDecoration: "none",
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             Privacy Policy
-                          </a>.
-                          I understand all trades are escrow-protected.
+                          </a>
+                          . I understand all trades are escrow-protected.
                         </p>
                       </div>
                       {errs.agreed && (
-                        <p style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#EF4444', marginTop: 5, fontWeight: 500 }}>
-                          <AlertCircle size={10} />{errs.agreed}
+                        <p
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                            fontSize: 11,
+                            color: "#EF4444",
+                            marginTop: 5,
+                            fontWeight: 500,
+                          }}
+                        >
+                          <AlertCircle size={10} />
+                          {errs.agreed}
                         </p>
                       )}
                     </div>
 
                     {/* Submit */}
-                    <button 
+                    <button
                       onClick={handleRegister}
                       disabled={loading}
                       className="submit-btn"
@@ -1410,9 +2000,23 @@ export default function Register({ onLogin }) {
                     </button>
 
                     {/* Sign In Link */}
-                    <p style={{ textAlign: 'center', fontSize: 13, color: '#64748B', margin: 0 }}>
-                      Already have an account?{' '}
-                      <Link to="/login" style={{ color: '#2D6A4F', fontWeight: 700, textDecoration: 'none' }}>
+                    <p
+                      style={{
+                        textAlign: "center",
+                        fontSize: 13,
+                        color: "#64748B",
+                        margin: 0,
+                      }}
+                    >
+                      Already have an account?{" "}
+                      <Link
+                        to="/login"
+                        style={{
+                          color: "#2D6A4F",
+                          fontWeight: 700,
+                          textDecoration: "none",
+                        }}
+                      >
                         Sign In
                       </Link>
                     </p>
@@ -1420,130 +2024,368 @@ export default function Register({ onLogin }) {
                 )}
 
                 {/* FORGOT PASSWORD f1 */}
-                {step === 'f1' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {step === "f1" && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 14,
+                    }}
+                  >
                     {globalError && (
-                      <div style={{
-                        display: 'flex', alignItems: 'center', gap: 8,
-                        padding: '10px 14px', borderRadius: 12, fontSize: 12,
-                        background: '#FEF2F2', color: '#EF4444',
-                        border: '1.5px solid #FECACA'
-                      }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "10px 14px",
+                          borderRadius: 12,
+                          fontSize: 12,
+                          background: "#FEF2F2",
+                          color: "#EF4444",
+                          border: "1.5px solid #FECACA",
+                        }}
+                      >
                         <AlertCircle size={14} style={{ flexShrink: 0 }} />
                         {globalError}
                       </div>
                     )}
 
                     <div className="method-toggle">
-                      <button onClick={() => setMethod('email')} className={`method-btn ${method === 'email' ? 'active' : ''}`}>
-                        <Mail size={14} />Email
+                      <button
+                        onClick={() => setMethod("email")}
+                        className={`method-btn ${method === "email" ? "active" : ""}`}
+                      >
+                        <Mail size={14} />
+                        Email
                       </button>
-                      <button onClick={() => setMethod('phone')} className={`method-btn ${method === 'phone' ? 'active' : ''}`}>
-                        <Smartphone size={14} />Phone
+                      <button
+                        onClick={() => setMethod("phone")}
+                        className={`method-btn ${method === "phone" ? "active" : ""}`}
+                      >
+                        <Smartphone size={14} />
+                        Phone
                       </button>
                     </div>
 
-                    {method === 'email' ? (
+                    {method === "email" ? (
                       <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        <label
+                          style={{
+                            display: "block",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            marginBottom: 6,
+                            color: "#475569",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.5px",
+                          }}
+                        >
                           Email Address
                         </label>
-                        <div style={{ position: 'relative' }}>
-                          <Mail size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', pointerEvents: 'none', zIndex: 1 }} />
-                          <input type="email" value={email} placeholder="you@example.com"
-                            onChange={e => setEmail(e.target.value)} className="form-input-focus"
-                            style={inputStyle(!!email, errs.email)} />
+                        <div style={{ position: "relative" }}>
+                          <Mail
+                            size={16}
+                            style={{
+                              position: "absolute",
+                              left: 14,
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              color: "#94A3B8",
+                              pointerEvents: "none",
+                              zIndex: 1,
+                            }}
+                          />
+                          <input
+                            type="email"
+                            value={email}
+                            placeholder="you@example.com"
+                            onChange={(e) => setEmail(e.target.value)}
+                            className="form-input-focus"
+                            style={inputStyle(!!email, errs.email)}
+                          />
                         </div>
-                        {errs.email && <p style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#EF4444', marginTop: 5, fontWeight: 500 }}><AlertCircle size={10} />{errs.email}</p>}
+                        {errs.email && (
+                          <p
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 4,
+                              fontSize: 11,
+                              color: "#EF4444",
+                              marginTop: 5,
+                              fontWeight: 500,
+                            }}
+                          >
+                            <AlertCircle size={10} />
+                            {errs.email}
+                          </p>
+                        )}
                       </div>
                     ) : (
                       <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        <label
+                          style={{
+                            display: "block",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            marginBottom: 6,
+                            color: "#475569",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.5px",
+                          }}
+                        >
                           Phone Number
                         </label>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button onClick={() => setShowCodes(!showCodes)} style={{
-                            display: 'flex', alignItems: 'center', gap: 6,
-                            padding: '13px 14px', border: '2px solid #E2E8F0',
-                            borderRadius: 14, background: 'white', cursor: 'pointer',
-                            fontSize: 13, fontWeight: 600, color: '#334155', flexShrink: 0,
-                            fontFamily: "'Inter', sans-serif",
-                          }}>
-                            <span style={{ fontSize: 18 }}>{phoneCode.flag}</span>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            onClick={() => setShowCodes(!showCodes)}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                              padding: "13px 14px",
+                              border: "2px solid #E2E8F0",
+                              borderRadius: 14,
+                              background: "white",
+                              cursor: "pointer",
+                              fontSize: 13,
+                              fontWeight: 600,
+                              color: "#334155",
+                              flexShrink: 0,
+                              fontFamily: "'Inter', sans-serif",
+                            }}
+                          >
+                            <span style={{ fontSize: 18 }}>
+                              {phoneCode.flag}
+                            </span>
                             <span>{phoneCode.code}</span>
                           </button>
-                          <div style={{ flex: 1, position: 'relative' }}>
-                            <Phone size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', pointerEvents: 'none', zIndex: 1 }} />
-                            <input type="tel" value={phone} placeholder="244 123 4567"
-                              onChange={e => setPhone(e.target.value.replace(/\D/g, ''))} className="form-input-focus"
-                              style={{ ...inputStyle(!!phone, errs.phone), paddingLeft: 38 }} />
+                          <div style={{ flex: 1, position: "relative" }}>
+                            <Phone
+                              size={16}
+                              style={{
+                                position: "absolute",
+                                left: 12,
+                                top: "50%",
+                                transform: "translateY(-50%)",
+                                color: "#94A3B8",
+                                pointerEvents: "none",
+                                zIndex: 1,
+                              }}
+                            />
+                            <input
+                              type="tel"
+                              value={phone}
+                              placeholder="244 123 4567"
+                              onChange={(e) =>
+                                setPhone(e.target.value.replace(/\D/g, ""))
+                              }
+                              className="form-input-focus"
+                              style={{
+                                ...inputStyle(!!phone, errs.phone),
+                                paddingLeft: 38,
+                              }}
+                            />
                           </div>
                         </div>
-                        {errs.phone && <p style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#EF4444', marginTop: 5, fontWeight: 500 }}><AlertCircle size={10} />{errs.phone}</p>}
+                        {errs.phone && (
+                          <p
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 4,
+                              fontSize: 11,
+                              color: "#EF4444",
+                              marginTop: 5,
+                              fontWeight: 500,
+                            }}
+                          >
+                            <AlertCircle size={10} />
+                            {errs.phone}
+                          </p>
+                        )}
                       </div>
                     )}
 
-                    <button onClick={sendOTP} disabled={loading} className="submit-btn">
-                      {loading ? <><RefreshCw size={16} className="animate-spin" />Sending code…</> : <>Send Reset Code <ArrowRight size={16} /></>}
+                    <button
+                      onClick={sendOTP}
+                      disabled={loading}
+                      className="submit-btn"
+                    >
+                      {loading ? (
+                        <>
+                          <RefreshCw size={16} className="animate-spin" />
+                          Sending code…
+                        </>
+                      ) : (
+                        <>
+                          Send Reset Code <ArrowRight size={16} />
+                        </>
+                      )}
                     </button>
 
-                    <button onClick={backToRegister} style={{
-                      width: '100%', background: 'none', border: 'none', cursor: 'pointer',
-                      fontSize: 13, fontWeight: 600, color: '#64748B', padding: 8,
-                      fontFamily: "'Inter', sans-serif",
-                    }}>
+                    <button
+                      onClick={backToRegister}
+                      style={{
+                        width: "100%",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "#64748B",
+                        padding: 8,
+                        fontFamily: "'Inter', sans-serif",
+                      }}
+                    >
                       ← Back to Register
                     </button>
                   </div>
                 )}
 
                 {/* FORGOT f2 OTP */}
-                {step === 'f2' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{
-                        width: 56, height: 56, borderRadius: 16,
-                        background: 'rgba(45,106,79,0.08)', display: 'flex',
-                        alignItems: 'center', justifyContent: 'center',
-                        margin: '0 auto 12px', fontSize: 26
-                      }}>
-                        {method === 'email' ? '📧' : '📱'}
+                {step === "f2" && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 14,
+                    }}
+                  >
+                    <div style={{ textAlign: "center" }}>
+                      <div
+                        style={{
+                          width: 56,
+                          height: 56,
+                          borderRadius: 16,
+                          background: "rgba(45,106,79,0.08)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          margin: "0 auto 12px",
+                        }}
+                      >
+                        {method === "email" ? (
+                          <Mail size={26} color="#2D6A4F" />
+                        ) : (
+                          <Smartphone size={26} color="#2D6A4F" />
+                        )}
                       </div>
-                      <p style={{ fontSize: 12, color: '#64748B', margin: '0 0 4px' }}>We sent a 6-digit code to</p>
-                      <p style={{ fontSize: 14, fontWeight: 700, color: '#1B4332', margin: 0, wordBreak: 'break-all' }}>{contact}</p>
+                      <p
+                        style={{
+                          fontSize: 12,
+                          color: "#64748B",
+                          margin: "0 0 4px",
+                        }}
+                      >
+                        We sent a 6-digit code to
+                      </p>
+                      <p
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 700,
+                          color: "#1B4332",
+                          margin: 0,
+                          wordBreak: "break-all",
+                        }}
+                      >
+                        {contact}
+                      </p>
                     </div>
 
                     {globalError && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 12, fontSize: 12, background: '#FEF2F2', color: '#EF4444' }}>
-                        <AlertCircle size={14} />{globalError}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "10px 14px",
+                          borderRadius: 12,
+                          fontSize: 12,
+                          background: "#FEF2F2",
+                          color: "#EF4444",
+                        }}
+                      >
+                        <AlertCircle size={14} />
+                        {globalError}
                       </div>
                     )}
 
-                    <OTPInput value={otp} onChange={setOtp} hasError={!!otpError} />
+                    <OTPInput
+                      value={otp}
+                      onChange={setOtp}
+                      hasError={!!otpError}
+                    />
 
                     {otpError && (
-                      <p style={{ textAlign: 'center', fontSize: 12, fontWeight: 600, color: '#EF4444', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, margin: 0 }}>
-                        <AlertCircle size={11} />{otpError}
+                      <p
+                        style={{
+                          textAlign: "center",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: "#EF4444",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 5,
+                          margin: 0,
+                        }}
+                      >
+                        <AlertCircle size={11} />
+                        {otpError}
                       </p>
                     )}
 
-                    <button onClick={verifyOTP} disabled={loading || otp.length < 6} className="submit-btn">
-                      {loading ? <><RefreshCw size={16} className="animate-spin" />Verifying…</> : <>Verify Code <ArrowRight size={16} /></>}
+                    <button
+                      onClick={verifyOTP}
+                      disabled={loading || otp.length < 6}
+                      className="submit-btn"
+                    >
+                      {loading ? (
+                        <>
+                          <RefreshCw size={16} className="animate-spin" />
+                          Verifying…
+                        </>
+                      ) : (
+                        <>
+                          Verify Code <ArrowRight size={16} />
+                        </>
+                      )}
                     </button>
 
-                    <div style={{ textAlign: 'center' }}>
+                    <div style={{ textAlign: "center" }}>
                       {otpTimer > 0 ? (
-                        <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>
-                          Resend in <span style={{ fontWeight: 700, color: '#2D6A4F' }}>{otpTimer}s</span>
+                        <p
+                          style={{ fontSize: 12, color: "#94A3B8", margin: 0 }}
+                        >
+                          Resend in{" "}
+                          <span style={{ fontWeight: 700, color: "#2D6A4F" }}>
+                            {otpTimer}s
+                          </span>
                         </p>
                       ) : (
-                        <button onClick={() => { setOtp(''); sendOTP(); }} style={{
-                          background: 'none', border: 'none', cursor: 'pointer',
-                          fontSize: 12, fontWeight: 700, color: '#2D6A4F',
-                          display: 'flex', alignItems: 'center', gap: 5, margin: '0 auto',
-                          fontFamily: "'Inter', sans-serif",
-                        }}>
-                          <RefreshCw size={11} />Resend Code
+                        <button
+                          onClick={() => {
+                            setOtp("");
+                            sendOTP();
+                          }}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            color: "#2D6A4F",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 5,
+                            margin: "0 auto",
+                            fontFamily: "'Inter', sans-serif",
+                          }}
+                        >
+                          <RefreshCw size={11} />
+                          Resend Code
                         </button>
                       )}
                     </div>
@@ -1551,104 +2393,298 @@ export default function Register({ onLogin }) {
                 )}
 
                 {/* FORGOT f3 New Password */}
-                {step === 'f3' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {step === "f3" && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 14,
+                    }}
+                  >
                     {globalError && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 12, fontSize: 12, background: '#FEF2F2', color: '#EF4444' }}>
-                        <AlertCircle size={14} />{globalError}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "10px 14px",
+                          borderRadius: 12,
+                          fontSize: 12,
+                          background: "#FEF2F2",
+                          color: "#EF4444",
+                        }}
+                      >
+                        <AlertCircle size={14} />
+                        {globalError}
                       </div>
                     )}
 
                     <div>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      <label
+                        style={{
+                          display: "block",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          marginBottom: 6,
+                          color: "#475569",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.5px",
+                        }}
+                      >
                         New Password
                       </label>
-                      <div style={{ position: 'relative' }}>
-                        <Lock size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', pointerEvents: 'none', zIndex: 1 }} />
-                        <input type={showPw ? 'text' : 'password'} value={password}
+                      <div style={{ position: "relative" }}>
+                        <Lock
+                          size={16}
+                          style={{
+                            position: "absolute",
+                            left: 14,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            color: "#94A3B8",
+                            pointerEvents: "none",
+                            zIndex: 1,
+                          }}
+                        />
+                        <input
+                          type={showPw ? "text" : "password"}
+                          value={password}
                           placeholder="Create a new strong password"
-                          onChange={e => setPassword(e.target.value)} className="form-input-focus"
-                          style={inputWithRightIcon(!!password, errs.password)} />
-                        <button type="button" onClick={() => setShowPw(!showPw)} style={{
-                          position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)',
-                          background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8',
-                          padding: 4, display: 'flex', alignItems: 'center'
-                        }}>
+                          onChange={(e) => setPassword(e.target.value)}
+                          className="form-input-focus"
+                          style={inputWithRightIcon(!!password, errs.password)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPw(!showPw)}
+                          style={{
+                            position: "absolute",
+                            right: 14,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            color: "#94A3B8",
+                            padding: 4,
+                            display: "flex",
+                            alignItems: "center",
+                          }}
+                        >
                           {showPw ? <EyeOff size={17} /> : <Eye size={17} />}
                         </button>
                       </div>
-                      {errs.password && <p style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#EF4444', marginTop: 5, fontWeight: 500 }}><AlertCircle size={10} />{errs.password}</p>}
+                      {errs.password && (
+                        <p
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                            fontSize: 11,
+                            color: "#EF4444",
+                            marginTop: 5,
+                            fontWeight: 500,
+                          }}
+                        >
+                          <AlertCircle size={10} />
+                          {errs.password}
+                        </p>
+                      )}
                       <PwStrength password={password} />
                     </div>
 
                     <div>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      <label
+                        style={{
+                          display: "block",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          marginBottom: 6,
+                          color: "#475569",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.5px",
+                        }}
+                      >
                         Confirm New Password
                       </label>
-                      <div style={{ position: 'relative' }}>
-                        <Lock size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', pointerEvents: 'none', zIndex: 1 }} />
-                        <input type={showConfirm ? 'text' : 'password'} value={confirm}
+                      <div style={{ position: "relative" }}>
+                        <Lock
+                          size={16}
+                          style={{
+                            position: "absolute",
+                            left: 14,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            color: "#94A3B8",
+                            pointerEvents: "none",
+                            zIndex: 1,
+                          }}
+                        />
+                        <input
+                          type={showConfirm ? "text" : "password"}
+                          value={confirm}
                           placeholder="Repeat your password"
-                          onChange={e => setConfirm(e.target.value)} className="form-input-focus"
-                          style={inputWithRightIcon(!!confirm, errs.confirm)} />
-                        <button type="button" onClick={() => setShowConfirm(!showConfirm)} style={{
-                          position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)',
-                          background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8',
-                          padding: 4, display: 'flex', alignItems: 'center'
-                        }}>
-                          {showConfirm ? <EyeOff size={17} /> : <Eye size={17} />}
+                          onChange={(e) => setConfirm(e.target.value)}
+                          className="form-input-focus"
+                          style={inputWithRightIcon(!!confirm, errs.confirm)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirm(!showConfirm)}
+                          style={{
+                            position: "absolute",
+                            right: 14,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            color: "#94A3B8",
+                            padding: 4,
+                            display: "flex",
+                            alignItems: "center",
+                          }}
+                        >
+                          {showConfirm ? (
+                            <EyeOff size={17} />
+                          ) : (
+                            <Eye size={17} />
+                          )}
                         </button>
                       </div>
-                      {errs.confirm && <p style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#EF4444', marginTop: 5, fontWeight: 500 }}><AlertCircle size={10} />{errs.confirm}</p>}
+                      {errs.confirm && (
+                        <p
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                            fontSize: 11,
+                            color: "#EF4444",
+                            marginTop: 5,
+                            fontWeight: 500,
+                          }}
+                        >
+                          <AlertCircle size={10} />
+                          {errs.confirm}
+                        </p>
+                      )}
                     </div>
 
-                    <button onClick={handleResetPassword} disabled={loading} className="submit-btn">
-                      {loading ? <><RefreshCw size={16} className="animate-spin" />Resetting…</> : <>Reset Password <ArrowRight size={16} /></>}
+                    <button
+                      onClick={handleResetPassword}
+                      disabled={loading}
+                      className="submit-btn"
+                    >
+                      {loading ? (
+                        <>
+                          <RefreshCw size={16} className="animate-spin" />
+                          Resetting…
+                        </>
+                      ) : (
+                        <>
+                          Reset Password <ArrowRight size={16} />
+                        </>
+                      )}
                     </button>
                   </div>
                 )}
 
                 {/* Success States */}
                 {step === 4 && (
-                  <div style={{ textAlign: 'center', padding: '16px 0' }}>
-                    <div style={{
-                      width: 80, height: 80, borderRadius: '50%',
-                      background: 'rgba(16,185,129,0.1)', display: 'flex',
-                      alignItems: 'center', justifyContent: 'center',
-                      margin: '0 auto 20px'
-                    }}>
-                      <CheckCircle size={42} style={{ color: '#10B981' }} />
+                  <div style={{ textAlign: "center", padding: "16px 0" }}>
+                    <div
+                      style={{
+                        width: 80,
+                        height: 80,
+                        borderRadius: "50%",
+                        background: "rgba(16,185,129,0.1)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        margin: "0 auto 20px",
+                      }}
+                    >
+                      <CheckCircle size={42} style={{ color: "#10B981" }} />
                     </div>
-                    <h3 style={{ fontSize: 24, fontWeight: 800, color: '#1B4332', margin: '0 0 8px', fontFamily: "'Outfit', sans-serif" }}>
-                      Welcome to <span className="shimmer-text">PRAQEN</span>! 🎉
+                    <h3
+                      style={{
+                        fontSize: 24,
+                        fontWeight: 800,
+                        color: "#1B4332",
+                        margin: "0 0 8px",
+                        fontFamily: "'Outfit', sans-serif",
+                      }}
+                    >
+                      Welcome to <span className="shimmer-text">PRAQEN</span>!
+                      🎉
                     </h3>
-                    <p style={{ fontSize: 14, color: '#64748B', margin: '0 0 16px', lineHeight: 1.6 }}>
+                    <p
+                      style={{
+                        fontSize: 14,
+                        color: "#64748B",
+                        margin: "0 0 16px",
+                        lineHeight: 1.6,
+                      }}
+                    >
                       Your account is ready. Redirecting to the marketplace…
                     </p>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 12, color: '#94A3B8' }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 8,
+                        fontSize: 12,
+                        color: "#94A3B8",
+                      }}
+                    >
                       <RefreshCw size={12} className="animate-spin" />
                       Taking you to live offers…
                     </div>
                   </div>
                 )}
 
-                {step === 'f4' && (
-                  <div style={{ textAlign: 'center', padding: '16px 0' }}>
-                    <div style={{
-                      width: 80, height: 80, borderRadius: '50%',
-                      background: 'rgba(16,185,129,0.1)', display: 'flex',
-                      alignItems: 'center', justifyContent: 'center',
-                      margin: '0 auto 20px'
-                    }}>
-                      <CheckCircle size={42} style={{ color: '#10B981' }} />
+                {step === "f4" && (
+                  <div style={{ textAlign: "center", padding: "16px 0" }}>
+                    <div
+                      style={{
+                        width: 80,
+                        height: 80,
+                        borderRadius: "50%",
+                        background: "rgba(16,185,129,0.1)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        margin: "0 auto 20px",
+                      }}
+                    >
+                      <CheckCircle size={42} style={{ color: "#10B981" }} />
                     </div>
-                    <h3 style={{ fontSize: 24, fontWeight: 800, color: '#1B4332', margin: '0 0 8px', fontFamily: "'Outfit', sans-serif" }}>
+                    <h3
+                      style={{
+                        fontSize: 24,
+                        fontWeight: 800,
+                        color: "#1B4332",
+                        margin: "0 0 8px",
+                        fontFamily: "'Outfit', sans-serif",
+                      }}
+                    >
                       Password Reset! ✅
                     </h3>
-                    <p style={{ fontSize: 14, color: '#64748B', margin: '0 0 20px', lineHeight: 1.6 }}>
+                    <p
+                      style={{
+                        fontSize: 14,
+                        color: "#64748B",
+                        margin: "0 0 20px",
+                        lineHeight: 1.6,
+                      }}
+                    >
                       You can now log in with your new password.
                     </p>
-                    <button onClick={() => navigate('/login')} className="submit-btn">
+                    <button
+                      onClick={() => navigate("/login")}
+                      className="submit-btn"
+                    >
                       Go to Login <ArrowRight size={16} />
                     </button>
                   </div>
@@ -1656,30 +2692,55 @@ export default function Register({ onLogin }) {
               </div>
 
               {/* Card Footer */}
-              {step !== 4 && step !== 'f4' && (
+              {step !== 4 && step !== "f4" && (
                 <div className="card-footer-bar">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#94A3B8' }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 5,
+                      fontSize: 11,
+                      color: "#94A3B8",
+                    }}
+                  >
                     <Shield size={11} />
                     <span>SSL · Zero fraud</span>
                   </div>
                   <div>
-                    {mode === 'register' && step === 1 && (
-                      <button onClick={startForgot} style={{
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        fontSize: 12, fontWeight: 600, color: '#2D6A4F',
-                        fontFamily: "'Inter', sans-serif", padding: '4px 8px',
-                        borderRadius: 8, transition: 'background 0.2s'
-                      }}>
+                    {mode === "register" && step === 1 && (
+                      <button
+                        onClick={startForgot}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: "#2D6A4F",
+                          fontFamily: "'Inter', sans-serif",
+                          padding: "4px 8px",
+                          borderRadius: 8,
+                          transition: "background 0.2s",
+                        }}
+                      >
                         Forgot password?
                       </button>
                     )}
-                    {mode === 'forgot' && (
-                      <button onClick={backToRegister} style={{
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        fontSize: 12, fontWeight: 600, color: '#64748B',
-                        fontFamily: "'Inter', sans-serif", padding: '4px 8px',
-                        borderRadius: 8,
-                      }}>
+                    {mode === "forgot" && (
+                      <button
+                        onClick={backToRegister}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: "#64748B",
+                          fontFamily: "'Inter', sans-serif",
+                          padding: "4px 8px",
+                          borderRadius: 8,
+                        }}
+                      >
                         ← Register instead
                       </button>
                     )}

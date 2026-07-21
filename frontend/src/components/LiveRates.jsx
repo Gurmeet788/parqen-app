@@ -1,4 +1,4 @@
-import { useRates } from '../contexts/RatesContext';
+import { useRates } from "../contexts/RatesContext";
 
 function LiveRates() {
   const { rates, btcUsd } = useRates();

@@ -1,92 +1,148 @@
-import React, { useState, useRef } from 'react';
-import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import SEO from '../components/SEO';
-import axios from 'axios';
-import { API_URL } from '../App';
+import React, { useState, useRef } from "react";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
+import SEO from "../components/SEO";
+import axios from "axios";
+import { API_URL } from "../App";
 import {
-  Mail, Lock, Eye, EyeOff, Shield, ArrowRight, ArrowLeft,
-  AlertCircle, RefreshCw, Smartphone, CheckCircle, ChevronDown,
-  Home, Gift, LogIn, Bitcoin, Star, Zap, Globe,
-  Users, CircleDollarSign
-} from 'lucide-react';
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  Shield,
+  ArrowRight,
+  ArrowLeft,
+  AlertCircle,
+  RefreshCw,
+  Smartphone,
+  CheckCircle,
+  ChevronDown,
+  Home,
+  Gift,
+  LogIn,
+  Bitcoin,
+  Star,
+  Zap,
+  Globe,
+  Users,
+  CircleDollarSign,
+  Hand,
+} from "lucide-react";
 
 const C = {
-  forest: '#1B4332', green: '#2D6A4F', mint: '#40916C',
-  gold: '#F4A422', white: '#FFFFFF', mist: '#F0F9F4',
-  g50: '#F8FAFC', g100: '#F1F5F9', g200: '#E2E8F0',
-  g300: '#CBD5E1', g400: '#94A3B8', g500: '#64748B',
-  g600: '#475569', g700: '#334155', g800: '#1E293B',
-  success: '#10B981', danger: '#EF4444',
+  forest: "#1B4332",
+  green: "#2D6A4F",
+  mint: "#40916C",
+  gold: "#F4A422",
+  white: "#FFFFFF",
+  mist: "#F0F9F4",
+  g50: "#F8FAFC",
+  g100: "#F1F5F9",
+  g200: "#E2E8F0",
+  g300: "#CBD5E1",
+  g400: "#94A3B8",
+  g500: "#64748B",
+  g600: "#475569",
+  g700: "#334155",
+  g800: "#1E293B",
+  success: "#10B981",
+  danger: "#EF4444",
 };
 
 const COUNTRIES = [
-  { flag: '🇬🇭', name: 'Ghana', code: '+233', min: 9, max: 9 },
-  { flag: '🇳🇬', name: 'Nigeria', code: '+234', min: 10, max: 10 },
-  { flag: '🇰🇪', name: 'Kenya', code: '+254', min: 9, max: 9 },
-  { flag: '🇿🇦', name: 'South Africa', code: '+27', min: 9, max: 9 },
-  { flag: '🇹🇿', name: 'Tanzania', code: '+255', min: 9, max: 9 },
-  { flag: '🇺🇬', name: 'Uganda', code: '+256', min: 9, max: 9 },
-  { flag: '🇺🇸', name: 'United States', code: '+1', min: 10, max: 10 },
-  { flag: '🇬🇧', name: 'United Kingdom', code: '+44', min: 10, max: 10 },
-  { flag: '🇩🇪', name: 'Germany', code: '+49', min: 10, max: 11 },
-  { flag: '🇫🇷', name: 'France', code: '+33', min: 9, max: 9 },
-  { flag: '🇸🇦', name: 'Saudi Arabia', code: '+966', min: 9, max: 9 },
-  { flag: '🇦🇪', name: 'UAE', code: '+971', min: 9, max: 9 },
-  { flag: '🇮🇳', name: 'India', code: '+91', min: 10, max: 10 },
-  { flag: '🇦🇺', name: 'Australia', code: '+61', min: 9, max: 9 },
-  { flag: '🇨🇲', name: 'Cameroon', code: '+237', min: 9, max: 9 },
+  { flag: "🇬🇭", name: "Ghana", code: "+233", min: 9, max: 9 },
+  { flag: "🇳🇬", name: "Nigeria", code: "+234", min: 10, max: 10 },
+  { flag: "🇰🇪", name: "Kenya", code: "+254", min: 9, max: 9 },
+  { flag: "🇿🇦", name: "South Africa", code: "+27", min: 9, max: 9 },
+  { flag: "🇹🇿", name: "Tanzania", code: "+255", min: 9, max: 9 },
+  { flag: "🇺🇬", name: "Uganda", code: "+256", min: 9, max: 9 },
+  { flag: "🇺🇸", name: "United States", code: "+1", min: 10, max: 10 },
+  { flag: "🇬🇧", name: "United Kingdom", code: "+44", min: 10, max: 10 },
+  { flag: "🇩🇪", name: "Germany", code: "+49", min: 10, max: 11 },
+  { flag: "🇫🇷", name: "France", code: "+33", min: 9, max: 9 },
+  { flag: "🇸🇦", name: "Saudi Arabia", code: "+966", min: 9, max: 9 },
+  { flag: "🇦🇪", name: "UAE", code: "+971", min: 9, max: 9 },
+  { flag: "🇮🇳", name: "India", code: "+91", min: 10, max: 10 },
+  { flag: "🇦🇺", name: "Australia", code: "+61", min: 9, max: 9 },
+  { flag: "🇨🇲", name: "Cameroon", code: "+237", min: 9, max: 9 },
 ];
 
 const BENEFITS = [
-  { icon: Shield, title: '100% Escrow Protected', desc: 'Your Bitcoin is locked in secure escrow until both parties confirm the trade' },
-  { icon: Zap, title: 'Lightning Fast Trades', desc: 'Complete your P2P trades in under 15 minutes with instant mobile money' },
-  { icon: Globe, title: 'Best Market Rates', desc: 'Access competitive rates from verified traders across 180+ countries' },
+  {
+    icon: Shield,
+    title: "100% Escrow Protected",
+    desc: "Your Bitcoin is locked in secure escrow until both parties confirm the trade",
+  },
+  {
+    icon: Zap,
+    title: "Lightning Fast Trades",
+    desc: "Complete your P2P trades in under 15 minutes with instant mobile money",
+  },
+  {
+    icon: Globe,
+    title: "Best Market Rates",
+    desc: "Access competitive rates from verified traders across 180+ countries",
+  },
 ];
 
 const STATS = [
-  { icon: Users, value: '50,000+', label: 'Active Traders' },
-  { icon: Globe, value: '180+', label: 'Countries' },
-  { icon: CircleDollarSign, value: '$25M+', label: 'Monthly Volume' },
-  { icon: Star, value: '4.9/5', label: 'User Rating' },
+  { icon: Users, value: "50,000+", label: "Active Traders" },
+  { icon: Globe, value: "180+", label: "Countries" },
+  { icon: CircleDollarSign, value: "$25M+", label: "Monthly Volume" },
+  { icon: Star, value: "4.9/5", label: "User Rating" },
 ];
 
 function OtpBoxes({ value, onChange }) {
   const refs = [useRef(), useRef(), useRef(), useRef(), useRef(), useRef()];
-  const digits = Array.from({ length: 6 }, (_, i) => value[i] || '');
-  const focus = i => refs[i]?.current?.focus();
+  const digits = Array.from({ length: 6 }, (_, i) => value[i] || "");
+  const focus = (i) => refs[i]?.current?.focus();
 
   const handleChange = (i, v) => {
-    const d = v.replace(/\D/g, '').slice(-1);
+    const d = v.replace(/\D/g, "").slice(-1);
     const arr = [...digits];
     arr[i] = d;
-    onChange(arr.join(''));
+    onChange(arr.join(""));
     if (d && i < 5) focus(i + 1);
   };
   const handleKey = (i, e) => {
-    if (e.key === 'Backspace' && !digits[i] && i > 0) {
-      const arr = [...digits]; arr[i - 1] = '';
-      onChange(arr.join('')); focus(i - 1);
+    if (e.key === "Backspace" && !digits[i] && i > 0) {
+      const arr = [...digits];
+      arr[i - 1] = "";
+      onChange(arr.join(""));
+      focus(i - 1);
     }
   };
-  const handlePaste = e => {
-    const p = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
-    onChange(p); focus(Math.min(p.length, 5)); e.preventDefault();
+  const handlePaste = (e) => {
+    const p = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    onChange(p);
+    focus(Math.min(p.length, 5));
+    e.preventDefault();
   };
 
   return (
-    <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+    <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
       {digits.map((d, i) => (
-        <input key={i} ref={refs[i]} type="text" inputMode="numeric" maxLength={1}
+        <input
+          key={i}
+          ref={refs[i]}
+          type="text"
+          inputMode="numeric"
+          maxLength={1}
           value={d}
-          onChange={e => handleChange(i, e.target.value)}
-          onKeyDown={e => handleKey(i, e)}
+          onChange={(e) => handleChange(i, e.target.value)}
+          onKeyDown={(e) => handleKey(i, e)}
           onPaste={handlePaste}
           style={{
-            width: 44, height: 52, borderRadius: 12,
-            textAlign: 'center', fontSize: 20, fontWeight: 800,
-            border: `2px solid ${d ? '#2D6A4F' : '#E2E8F0'}`,
-            color: '#1B4332', background: d ? 'rgba(45,106,79,0.04)' : '#FFFFFF',
-            outline: 'none', transition: 'all 0.2s',
+            width: 44,
+            height: 52,
+            borderRadius: 12,
+            textAlign: "center",
+            fontSize: 20,
+            fontWeight: 800,
+            border: `2px solid ${d ? "#2D6A4F" : "#E2E8F0"}`,
+            color: "#1B4332",
+            background: d ? "rgba(45,106,79,0.04)" : "#FFFFFF",
+            outline: "none",
+            transition: "all 0.2s",
             fontFamily: "'Inter', sans-serif",
           }}
         />
@@ -98,129 +154,194 @@ function OtpBoxes({ value, onChange }) {
 export default function Login({ onLogin }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const msg = searchParams.get('message');
+  const msg = searchParams.get("message");
 
-  const [step, setStep] = useState('choose');
+  const [step, setStep] = useState("choose");
   const [otpSent, setOtpSent] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [remember, setRemember] = useState(false);
   const [country, setCountry] = useState(COUNTRIES[0]);
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState("");
   const [showDrop, setShowDrop] = useState(false);
-  const [search, setSearch] = useState('');
-  const [otp, setOtp] = useState('');
-  const [emailOtp, setEmailOtp] = useState('');
-  const [pendingEmail, setPendingEmail] = useState('');
+  const [search, setSearch] = useState("");
+  const [otp, setOtp] = useState("");
+  const [emailOtp, setEmailOtp] = useState("");
+  const [pendingEmail, setPendingEmail] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
-  const fullPhone = `${country.code}${phone.replace(/^0+/, '')}`;
+  const fullPhone = `${country.code}${phone.replace(/^0+/, "")}`;
 
-  const go = newStep => {
-    setStep(newStep); setError(''); setNotice('');
-    setOtp(''); setEmailOtp(''); setOtpSent(false); setShowDrop(false); setSearch('');
+  const go = (newStep) => {
+    setStep(newStep);
+    setError("");
+    setNotice("");
+    setOtp("");
+    setEmailOtp("");
+    setOtpSent(false);
+    setShowDrop(false);
+    setSearch("");
   };
 
-  const filteredCountries = COUNTRIES.filter(c =>
-    c.name.toLowerCase().includes(search.toLowerCase()) || c.code.includes(search)
+  const filteredCountries = COUNTRIES.filter(
+    (c) =>
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
+      c.code.includes(search),
   );
 
   const validatePhone = () => {
-    const digits = phone.replace(/^0+/, '');
+    const digits = phone.replace(/^0+/, "");
     if (!digits || digits.length < country.min) {
-      setError(`Enter a valid ${country.name} number (${country.min}–${country.max} digits after country code)`);
+      setError(
+        `Enter a valid ${country.name} number (${country.min}–${country.max} digits after country code)`,
+      );
       return false;
     }
     return true;
   };
 
-  const handleEmailLogin = async e => {
-    e?.preventDefault(); setError('');
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError('Enter a valid email address'); return; }
-    if (!password) { setError('Password is required'); return; }
+  const handleEmailLogin = async (e) => {
+    e?.preventDefault();
+    setError("");
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError("Enter a valid email address");
+      return;
+    }
+    if (!password) {
+      setError("Password is required");
+      return;
+    }
     setLoading(true);
     try {
-      const { data } = await axios.post(`${API_URL}/auth/login`, { email, password });
+      const { data } = await axios.post(`${API_URL}/auth/login`, {
+        email,
+        password,
+      });
       if (data.requiresOtp) {
-        if (remember) localStorage.setItem('remember_contact', email);
+        if (remember) localStorage.setItem("remember_contact", email);
         setPendingEmail(data.email || email);
-        setEmailOtp('');
-        setStep('email-otp');
+        setEmailOtp("");
+        setStep("email-otp");
         setNotice(`A 6-digit code was sent to ${data.email || email}`);
       } else if (data.success) {
-        if (remember) localStorage.setItem('remember_contact', email);
+        if (remember) localStorage.setItem("remember_contact", email);
         onLogin(data.user, data.token);
-        navigate('/buy-bitcoin');
+        navigate("/buy-bitcoin");
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'Login failed. Check your details and try again.');
-    } finally { setLoading(false); }
+      setError(
+        err.response?.data?.error ||
+          "Login failed. Check your details and try again.",
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleVerifyEmailOtp = async () => {
-    if (emailOtp.length !== 6) { setError('Enter the full 6-digit code'); return; }
-    setLoading(true); setError('');
+    if (emailOtp.length !== 6) {
+      setError("Enter the full 6-digit code");
+      return;
+    }
+    setLoading(true);
+    setError("");
     try {
-      const { data } = await axios.post(`${API_URL}/auth/verify-login-otp`, { email: pendingEmail, code: emailOtp });
+      const { data } = await axios.post(`${API_URL}/auth/verify-login-otp`, {
+        email: pendingEmail,
+        code: emailOtp,
+      });
       if (data.success) {
         onLogin(data.user, data.token);
-        navigate('/buy-bitcoin');
+        navigate("/buy-bitcoin");
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'Invalid code. Please try again.');
-      setEmailOtp('');
-    } finally { setLoading(false); }
+      setError(err.response?.data?.error || "Invalid code. Please try again.");
+      setEmailOtp("");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const resendEmailOtp = async () => {
-    setError(''); setEmailOtp(''); setNotice('');
+    setError("");
+    setEmailOtp("");
+    setNotice("");
     setLoading(true);
     try {
-      const { data } = await axios.post(`${API_URL}/auth/login`, { email: pendingEmail, password });
+      const { data } = await axios.post(`${API_URL}/auth/login`, {
+        email: pendingEmail,
+        password,
+      });
       if (data.requiresOtp) setNotice(`New code sent to ${pendingEmail}`);
     } catch (err) {
-      setError(err.response?.data?.error || 'Could not resend code. Try logging in again.');
-    } finally { setLoading(false); }
+      setError(
+        err.response?.data?.error ||
+          "Could not resend code. Try logging in again.",
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   const sendSms = async () => {
-    setError('');
+    setError("");
     if (!validatePhone()) return;
     setLoading(true);
     try {
-      await axios.post(`${API_URL}/auth/send-otp`, { phone: fullPhone, channel: 'sms' });
-      setOtpSent(true); setNotice(`Code sent to ${fullPhone}`);
+      await axios.post(`${API_URL}/auth/send-otp`, {
+        phone: fullPhone,
+        channel: "sms",
+      });
+      setOtpSent(true);
+      setNotice(`Code sent to ${fullPhone}`);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to send code. Try again.');
-    } finally { setLoading(false); }
+      setError(err.response?.data?.error || "Failed to send code. Try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const verifySms = async () => {
-    if (otp.length !== 6) { setError('Enter the full 6-digit code'); return; }
-    setLoading(true); setError('');
+    if (otp.length !== 6) {
+      setError("Enter the full 6-digit code");
+      return;
+    }
+    setLoading(true);
+    setError("");
     try {
-      await axios.post(`${API_URL}/auth/verify-otp`, { phone: fullPhone, code: otp });
-      const { data } = await axios.post(`${API_URL}/auth/login`, { phone: fullPhone, method: 'phone' });
-      if (data.success) { onLogin(data.user, data.token); navigate('/buy-bitcoin'); }
+      await axios.post(`${API_URL}/auth/verify-otp`, {
+        phone: fullPhone,
+        code: otp,
+      });
+      const { data } = await axios.post(`${API_URL}/auth/login`, {
+        phone: fullPhone,
+        method: "phone",
+      });
+      if (data.success) {
+        onLogin(data.user, data.token);
+        navigate("/buy-bitcoin");
+      }
     } catch (err) {
-      setError(err.response?.data?.error || 'Invalid code. Please try again.');
-      setOtp('');
-    } finally { setLoading(false); }
+      setError(err.response?.data?.error || "Invalid code. Please try again.");
+      setOtp("");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const inputStyle = (filled, error) => ({
-    width: '100%',
-    padding: '13px 14px 13px 44px',
+    width: "100%",
+    padding: "13px 14px 13px 44px",
     fontSize: 14,
     borderRadius: 14,
-    border: `2px solid ${error ? '#EF4444' : filled ? '#2D6A4F' : '#E2E8F0'}`,
-    color: '#1E293B',
-    background: error ? '#FEF2F2' : filled ? '#F8FAFC' : '#FFFFFF',
-    outline: 'none',
-    transition: 'all 0.2s ease',
+    border: `2px solid ${error ? "#EF4444" : filled ? "#2D6A4F" : "#E2E8F0"}`,
+    color: "#1E293B",
+    background: error ? "#FEF2F2" : filled ? "#F8FAFC" : "#FFFFFF",
+    outline: "none",
+    transition: "all 0.2s ease",
     fontFamily: "'Inter', sans-serif",
   });
 
@@ -230,7 +351,7 @@ export default function Login({ onLogin }) {
   });
 
   // Import additional icons needed
-  const { Users, CircleDollarSign } = require('lucide-react');
+  const { Users, CircleDollarSign } = require("lucide-react");
 
   return (
     <>
@@ -523,76 +644,142 @@ export default function Login({ onLogin }) {
           <div className="hero-bg-pattern" />
           <div className="hero-glow-1" />
           <div className="hero-glow-2" />
-          
-          <div style={{ position: 'relative', zIndex: 2 }}>
+
+          <div style={{ position: "relative", zIndex: 2 }}>
             {/* Brand Badge */}
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '10px 22px',
-              borderRadius: 50,
-              background: 'rgba(255, 255, 255, 0.1)',
-              border: '1.5px solid rgba(255, 255, 255, 0.2)',
-              backdropFilter: 'blur(10px)',
-              marginBottom: 36
-            }}>
-              <Bitcoin size={22} style={{ color: '#F4A422' }} />
-              <span style={{ color: 'white', fontWeight: 800, letterSpacing: '4px', fontSize: 15 }}>
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "10px 22px",
+                borderRadius: 50,
+                background: "rgba(255, 255, 255, 0.1)",
+                border: "1.5px solid rgba(255, 255, 255, 0.2)",
+                backdropFilter: "blur(10px)",
+                marginBottom: 36,
+              }}
+            >
+              <Bitcoin size={22} style={{ color: "#F4A422" }} />
+              <span
+                style={{
+                  color: "white",
+                  fontWeight: 800,
+                  letterSpacing: "4px",
+                  fontSize: 15,
+                }}
+              >
                 PRAQEN
               </span>
             </div>
 
-            <h1 style={{
-              fontFamily: "'Outfit', sans-serif",
-              fontSize: 44,
-              fontWeight: 900,
-              color: 'white',
-              lineHeight: 1.1,
-              margin: '0 0 16px',
-              letterSpacing: '-1px'
-            }}>
-              Welcome<br/>Back! 👋
+            <h1
+              style={{
+                fontFamily: "'Outfit', sans-serif",
+                fontSize: 44,
+                fontWeight: 900,
+                color: "white",
+                lineHeight: 1.1,
+                margin: "0 0 16px",
+                letterSpacing: "-1px",
+              }}
+            >
+              Welcome
+              <br />
+              Back!
             </h1>
 
-            <p style={{
-              fontSize: 16,
-              color: 'rgba(255, 255, 255, 0.7)',
-              lineHeight: 1.6,
-              margin: '0 0 40px',
-              fontWeight: 400
-            }}>
-              Sign in to continue trading Bitcoin &amp; USDT peer-to-peer with confidence.
+            <p
+              style={{
+                fontSize: 16,
+                color: "rgba(255, 255, 255, 0.7)",
+                lineHeight: 1.6,
+                margin: "0 0 40px",
+                fontWeight: 400,
+              }}
+            >
+              Sign in to continue trading Bitcoin &amp; USDT peer-to-peer with
+              confidence.
             </p>
 
             {/* Stats */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 40 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
+                marginBottom: 40,
+              }}
+            >
               {STATS.map(({ icon: Icon, value, label }) => (
-                <div key={label} style={{
-                  display: 'flex', alignItems: 'center', gap: 14,
-                  padding: '14px 16px', borderRadius: 16,
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  backdropFilter: 'blur(10px)'
-                }}>
-                  <div style={{
-                    width: 44, height: 44, borderRadius: 12,
-                    background: 'rgba(244, 164, 34, 0.2)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: '#F4A422', flexShrink: 0
-                  }}>
+                <div
+                  key={label}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 14,
+                    padding: "14px 16px",
+                    borderRadius: 16,
+                    background: "rgba(255, 255, 255, 0.08)",
+                    border: "1px solid rgba(255, 255, 255, 0.1)",
+                    backdropFilter: "blur(10px)",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 12,
+                      background: "rgba(244, 164, 34, 0.2)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#F4A422",
+                      flexShrink: 0,
+                    }}
+                  >
                     <Icon size={20} />
                   </div>
                   <div>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: 'white', lineHeight: 1.2 }}>{value}</div>
-                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</div>
+                    <div
+                      style={{
+                        fontSize: 18,
+                        fontWeight: 800,
+                        color: "white",
+                        lineHeight: 1.2,
+                      }}
+                    >
+                      {value}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "rgba(255,255,255,0.5)",
+                        fontWeight: 500,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.5px",
+                      }}
+                    >
+                      {label}
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(255,255,255,0.35)', fontSize: 12, marginTop: 'auto' }}>
+          <div
+            style={{
+              position: "relative",
+              zIndex: 2,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              color: "rgba(255,255,255,0.35)",
+              fontSize: 12,
+              marginTop: "auto",
+            }}
+          >
             <Shield size={14} />
             All data encrypted · SOC 2 Type II · ISO 27001
           </div>
@@ -600,21 +787,50 @@ export default function Login({ onLogin }) {
 
         {/* Right Form Panel */}
         <div className="form-panel">
-          <div style={{ width: '100%', maxWidth: 460 }}>
+          <div style={{ width: "100%", maxWidth: 460 }}>
             {/* Mobile Hero Strip */}
             <div className="mobile-hero-strip">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-                <div style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  padding: '6px 14px', borderRadius: 50,
-                  background: 'linear-gradient(135deg, #1B4332, #2D6A4F)',
-                }}>
-                  <Bitcoin size={16} style={{ color: '#F4A422' }} />
-                  <span style={{ color: 'white', fontWeight: 700, fontSize: 12, letterSpacing: '2px' }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  marginBottom: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "6px 14px",
+                    borderRadius: 50,
+                    background: "linear-gradient(135deg, #1B4332, #2D6A4F)",
+                  }}
+                >
+                  <Bitcoin size={16} style={{ color: "#F4A422" }} />
+                  <span
+                    style={{
+                      color: "white",
+                      fontWeight: 700,
+                      fontSize: 12,
+                      letterSpacing: "2px",
+                    }}
+                  >
                     PRAQEN
                   </span>
                 </div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#2D6A4F', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "#2D6A4F",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
                   <Star size={12} fill="#F4A422" color="#F4A422" />
                   4.9/5 · 50K+ traders
                 </div>
@@ -622,7 +838,10 @@ export default function Login({ onLogin }) {
               <div className="mobile-benefits-strip">
                 {BENEFITS.map(({ icon: Icon, title }) => (
                   <div key={title} className="mobile-benefit-pill">
-                    <Icon size={12} style={{ color: '#F4A422', flexShrink: 0 }} />
+                    <Icon
+                      size={12}
+                      style={{ color: "#F4A422", flexShrink: 0 }}
+                    />
                     {title}
                   </div>
                 ))}
@@ -632,88 +851,227 @@ export default function Login({ onLogin }) {
             {/* Login Card */}
             <div className="login-card animate-in">
               <div className="card-top">
-                <h1 style={{
-                  fontSize: 22,
-                  fontWeight: 800,
-                  color: '#1B4332',
-                  margin: '0 0 4px',
-                  letterSpacing: '-0.3px',
-                  fontFamily: "'Outfit', sans-serif"
-                }}>
-                  {step === 'choose' ? 'Sign In' : step === 'email' ? 'Email Sign In' : step === 'email-otp' ? 'Check Your Email' : otpSent ? 'Verify Code' : 'Phone Sign In'}
+                <h1
+                  style={{
+                    fontSize: 22,
+                    fontWeight: 800,
+                    color: "#1B4332",
+                    margin: "0 0 4px",
+                    letterSpacing: "-0.3px",
+                    fontFamily: "'Outfit', sans-serif",
+                  }}
+                >
+                  {step === "choose"
+                    ? "Sign In"
+                    : step === "email"
+                      ? "Email Sign In"
+                      : step === "email-otp"
+                        ? "Check Your Email"
+                        : otpSent
+                          ? "Verify Code"
+                          : "Phone Sign In"}
                 </h1>
-                <p style={{ fontSize: 13, color: '#64748B', margin: 0, fontWeight: 400 }}>
-                  {step === 'choose' ? 'Choose your sign-in method'
-                    : step === 'email' ? 'Sign in with your email & password'
-                    : step === 'email-otp' ? `We sent a 6-digit code to ${pendingEmail}`
-                    : otpSent ? `Code sent to ${fullPhone}`
-                    : "We'll send a 6-digit code via SMS"}
+                <p
+                  style={{
+                    fontSize: 13,
+                    color: "#64748B",
+                    margin: 0,
+                    fontWeight: 400,
+                  }}
+                >
+                  {step === "choose"
+                    ? "Choose your sign-in method"
+                    : step === "email"
+                      ? "Sign in with your email & password"
+                      : step === "email-otp"
+                        ? `We sent a 6-digit code to ${pendingEmail}`
+                        : otpSent
+                          ? `Code sent to ${fullPhone}`
+                          : "We'll send a 6-digit code via SMS"}
                 </p>
               </div>
 
-              <div className="card-body animate-fade" key={step + String(otpSent)}>
+              <div
+                className="card-body animate-fade"
+                key={step + String(otpSent)}
+              >
                 {/* Alerts */}
                 {msg && !error && (
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 14px', borderRadius: 12, fontSize: 12, background: '#FFFBEB', color: '#92400E', border: '1.5px solid #FDE68A', marginBottom: 14 }}>
-                    <AlertCircle size={13} style={{ flexShrink: 0, marginTop: 1 }} />{msg}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 8,
+                      padding: "10px 14px",
+                      borderRadius: 12,
+                      fontSize: 12,
+                      background: "#FFFBEB",
+                      color: "#92400E",
+                      border: "1.5px solid #FDE68A",
+                      marginBottom: 14,
+                    }}
+                  >
+                    <AlertCircle
+                      size={13}
+                      style={{ flexShrink: 0, marginTop: 1 }}
+                    />
+                    {msg}
                   </div>
                 )}
                 {error && (
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 14px', borderRadius: 12, fontSize: 12, background: '#FEF2F2', color: '#EF4444', border: '1.5px solid #FECACA', marginBottom: 14 }}>
-                    <AlertCircle size={13} style={{ flexShrink: 0, marginTop: 1 }} />{error}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 8,
+                      padding: "10px 14px",
+                      borderRadius: 12,
+                      fontSize: 12,
+                      background: "#FEF2F2",
+                      color: "#EF4444",
+                      border: "1.5px solid #FECACA",
+                      marginBottom: 14,
+                    }}
+                  >
+                    <AlertCircle
+                      size={13}
+                      style={{ flexShrink: 0, marginTop: 1 }}
+                    />
+                    {error}
                   </div>
                 )}
                 {notice && !error && (
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 14px', borderRadius: 12, fontSize: 12, background: '#F0FDF4', color: '#10B981', border: '1.5px solid #BBF7D0', marginBottom: 14 }}>
-                    <CheckCircle size={13} style={{ flexShrink: 0, marginTop: 1 }} />{notice}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 8,
+                      padding: "10px 14px",
+                      borderRadius: 12,
+                      fontSize: 12,
+                      background: "#F0FDF4",
+                      color: "#10B981",
+                      border: "1.5px solid #BBF7D0",
+                      marginBottom: 14,
+                    }}
+                  >
+                    <CheckCircle
+                      size={13}
+                      style={{ flexShrink: 0, marginTop: 1 }}
+                    />
+                    {notice}
                   </div>
                 )}
 
                 {/* CHOOSE STEP */}
-                {step === 'choose' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {step === "choose" && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 12,
+                    }}
+                  >
                     {/* Email Method */}
-                    <button className="method-card" onClick={() => go('email')}>
-                      <div className="method-icon" style={{ background: 'linear-gradient(135deg, #2D6A4F, #40916C)' }}>
+                    <button className="method-card" onClick={() => go("email")}>
+                      <div
+                        className="method-icon"
+                        style={{
+                          background:
+                            "linear-gradient(135deg, #2D6A4F, #40916C)",
+                        }}
+                      >
                         <Mail size={22} color="white" />
                       </div>
                       <div style={{ flex: 1 }}>
-                        <p style={{ fontWeight: 700, fontSize: 14, color: '#1B4332', margin: '0 0 2px' }}>
+                        <p
+                          style={{
+                            fontWeight: 700,
+                            fontSize: 14,
+                            color: "#1B4332",
+                            margin: "0 0 2px",
+                          }}
+                        >
                           Continue with Email
                         </p>
-                        <p style={{ fontSize: 12, color: '#64748B', margin: 0 }}>
+                        <p
+                          style={{ fontSize: 12, color: "#64748B", margin: 0 }}
+                        >
                           Sign in with your email & password
                         </p>
                       </div>
-                      <ArrowRight size={18} style={{ color: '#CBD5E1', flexShrink: 0 }} />
+                      <ArrowRight
+                        size={18}
+                        style={{ color: "#CBD5E1", flexShrink: 0 }}
+                      />
                     </button>
 
                     {/* Phone Method */}
-                    <button className="method-card" onClick={() => go('sms')}>
-                      <div className="method-icon" style={{ background: 'linear-gradient(135deg, #3B82F6, #6366F1)' }}>
+                    <button className="method-card" onClick={() => go("sms")}>
+                      <div
+                        className="method-icon"
+                        style={{
+                          background:
+                            "linear-gradient(135deg, #3B82F6, #6366F1)",
+                        }}
+                      >
                         <Smartphone size={22} color="white" />
                       </div>
                       <div style={{ flex: 1 }}>
-                        <p style={{ fontWeight: 700, fontSize: 14, color: '#1B4332', margin: '0 0 2px' }}>
+                        <p
+                          style={{
+                            fontWeight: 700,
+                            fontSize: 14,
+                            color: "#1B4332",
+                            margin: "0 0 2px",
+                          }}
+                        >
                           Continue with Phone (SMS)
                         </p>
-                        <p style={{ fontSize: 12, color: '#64748B', margin: 0 }}>
+                        <p
+                          style={{ fontSize: 12, color: "#64748B", margin: 0 }}
+                        >
                           Get a one-time 6-digit code via text
                         </p>
                       </div>
-                      <ArrowRight size={18} style={{ color: '#CBD5E1', flexShrink: 0 }} />
+                      <ArrowRight
+                        size={18}
+                        style={{ color: "#CBD5E1", flexShrink: 0 }}
+                      />
                     </button>
 
                     {/* Trust Pills */}
-                    <div style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      gap: 16, padding: '12px', borderRadius: 12,
-                      background: '#F8FAFC', border: '1px solid #F1F5F9',
-                      flexWrap: 'wrap'
-                    }}>
-                      {[['🔒','256-bit SSL'],['✅','2.4M+ traders'],['🌍','180+ countries']].map(([ic, lb]) => (
-                        <div key={lb} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, color: '#64748B' }}>
-                          <span>{ic}</span>{lb}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 16,
+                        padding: "12px",
+                        borderRadius: 12,
+                        background: "#F8FAFC",
+                        border: "1px solid #F1F5F9",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      {[
+                        [Lock, "256-bit SSL"],
+                        [CheckCircle, "2.4M+ traders"],
+                        [Globe, "180+ countries"],
+                      ].map(([Icon, lb]) => (
+                        <div
+                          key={lb}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color: "#64748B",
+                          }}
+                        >
+                          <Icon size={14} color="#64748B" />
+                          {lb}
                         </div>
                       ))}
                     </div>
@@ -721,298 +1079,735 @@ export default function Login({ onLogin }) {
                 )}
 
                 {/* EMAIL STEP */}
-                {step === 'email' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                    <div style={{
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '10px 14px', borderRadius: 12,
-                      background: 'rgba(45,106,79,0.06)', border: '1.5px solid rgba(45,106,79,0.15)'
-                    }}>
-                      <Mail size={14} style={{ color: '#2D6A4F' }} />
-                      <span style={{ fontSize: 12, fontWeight: 700, color: '#2D6A4F' }}>Email Sign In</span>
+                {step === "email" && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "10px 14px",
+                        borderRadius: 12,
+                        background: "rgba(45,106,79,0.06)",
+                        border: "1.5px solid rgba(45,106,79,0.15)",
+                      }}
+                    >
+                      <Mail size={14} style={{ color: "#2D6A4F" }} />
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: "#2D6A4F",
+                        }}
+                      >
+                        Email Sign In
+                      </span>
                     </div>
 
                     <div>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      <label
+                        style={{
+                          display: "block",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          marginBottom: 6,
+                          color: "#475569",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.5px",
+                        }}
+                      >
                         Email Address
                       </label>
-                      <div style={{ position: 'relative' }}>
-                        <Mail size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', pointerEvents: 'none', zIndex: 1 }} />
-                        <input type="email" value={email}
-                          onChange={e => { setEmail(e.target.value); setError(''); }}
-                          onKeyDown={e => e.key === 'Enter' && handleEmailLogin(e)}
+                      <div style={{ position: "relative" }}>
+                        <Mail
+                          size={16}
+                          style={{
+                            position: "absolute",
+                            left: 14,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            color: "#94A3B8",
+                            pointerEvents: "none",
+                            zIndex: 1,
+                          }}
+                        />
+                        <input
+                          type="email"
+                          value={email}
+                          onChange={(e) => {
+                            setEmail(e.target.value);
+                            setError("");
+                          }}
+                          onKeyDown={(e) =>
+                            e.key === "Enter" && handleEmailLogin(e)
+                          }
                           placeholder="you@example.com"
                           className="form-input-focus"
-                          style={inputStyle(!!email, false)} />
+                          style={inputStyle(!!email, false)}
+                        />
                       </div>
                     </div>
 
                     <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                        <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: 6,
+                        }}
+                      >
+                        <label
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 700,
+                            color: "#475569",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.5px",
+                          }}
+                        >
                           Password
                         </label>
-                        <Link to="/forgot-password" style={{ fontSize: 12, fontWeight: 600, color: '#2D6A4F', textDecoration: 'none' }}>
+                        <Link
+                          to="/forgot-password"
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color: "#2D6A4F",
+                            textDecoration: "none",
+                          }}
+                        >
                           Forgot?
                         </Link>
                       </div>
-                      <div style={{ position: 'relative' }}>
-                        <Lock size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', pointerEvents: 'none', zIndex: 1 }} />
-                        <input type={showPw ? 'text' : 'password'} value={password}
-                          onChange={e => { setPassword(e.target.value); setError(''); }}
-                          onKeyDown={e => e.key === 'Enter' && handleEmailLogin(e)}
+                      <div style={{ position: "relative" }}>
+                        <Lock
+                          size={16}
+                          style={{
+                            position: "absolute",
+                            left: 14,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            color: "#94A3B8",
+                            pointerEvents: "none",
+                            zIndex: 1,
+                          }}
+                        />
+                        <input
+                          type={showPw ? "text" : "password"}
+                          value={password}
+                          onChange={(e) => {
+                            setPassword(e.target.value);
+                            setError("");
+                          }}
+                          onKeyDown={(e) =>
+                            e.key === "Enter" && handleEmailLogin(e)
+                          }
                           placeholder="Enter your password"
                           className="form-input-focus"
-                          style={inputWithRightIcon(!!password, false)} />
-                        <button type="button" onClick={() => setShowPw(!showPw)}
+                          style={inputWithRightIcon(!!password, false)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPw(!showPw)}
                           style={{
-                            position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)',
-                            background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8',
-                            padding: 4, display: 'flex', alignItems: 'center'
-                          }}>
+                            position: "absolute",
+                            right: 14,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            color: "#94A3B8",
+                            padding: 4,
+                            display: "flex",
+                            alignItems: "center",
+                          }}
+                        >
                           {showPw ? <EyeOff size={17} /> : <Eye size={17} />}
                         </button>
                       </div>
                     </div>
 
                     {/* Remember Me */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
-                      onClick={() => setRemember(!remember)}>
-                      <div style={{
-                        width: 20, height: 20, borderRadius: 6,
-                        border: `2px solid ${remember ? '#2D6A4F' : '#CBD5E1'}`,
-                        background: remember ? '#2D6A4F' : 'transparent',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        transition: 'all 0.2s', flexShrink: 0
-                      }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        cursor: "pointer",
+                      }}
+                      onClick={() => setRemember(!remember)}
+                    >
+                      <div
+                        style={{
+                          width: 20,
+                          height: 20,
+                          borderRadius: 6,
+                          border: `2px solid ${remember ? "#2D6A4F" : "#CBD5E1"}`,
+                          background: remember ? "#2D6A4F" : "transparent",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          transition: "all 0.2s",
+                          flexShrink: 0,
+                        }}
+                      >
                         {remember && (
-                          <svg width="11" height="9" viewBox="0 0 11 9" fill="none">
-                            <path d="M1 4.5L4 7.5L10 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          <svg
+                            width="11"
+                            height="9"
+                            viewBox="0 0 11 9"
+                            fill="none"
+                          >
+                            <path
+                              d="M1 4.5L4 7.5L10 1"
+                              stroke="white"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
                           </svg>
                         )}
                       </div>
-                      <span style={{ fontSize: 13, color: '#64748B', userSelect: 'none' }}>Remember me on this device</span>
+                      <span
+                        style={{
+                          fontSize: 13,
+                          color: "#64748B",
+                          userSelect: "none",
+                        }}
+                      >
+                        Remember me on this device
+                      </span>
                     </div>
 
-                    <button onClick={handleEmailLogin} disabled={loading}
+                    <button
+                      onClick={handleEmailLogin}
+                      disabled={loading}
                       className="submit-btn"
                       style={{
-                        background: 'linear-gradient(135deg, #2D6A4F, #40916C)',
-                        color: 'white',
-                        boxShadow: '0 6px 20px rgba(45, 106, 79, 0.25)'
-                      }}>
+                        background: "linear-gradient(135deg, #2D6A4F, #40916C)",
+                        color: "white",
+                        boxShadow: "0 6px 20px rgba(45, 106, 79, 0.25)",
+                      }}
+                    >
                       {loading ? (
-                        <><RefreshCw size={16} className="animate-spin" />Signing in…</>
+                        <>
+                          <RefreshCw size={16} className="animate-spin" />
+                          Signing in…
+                        </>
                       ) : (
-                        <>Sign In <ArrowRight size={16} /></>
+                        <>
+                          Sign In <ArrowRight size={16} />
+                        </>
                       )}
                     </button>
                   </div>
                 )}
 
                 {/* EMAIL OTP STEP */}
-                {step === 'email-otp' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                    <div style={{
-                      display: 'flex', alignItems: 'center', gap: 12,
-                      padding: '14px', borderRadius: 14,
-                      background: 'rgba(45,106,79,0.06)', border: '1.5px solid rgba(45,106,79,0.15)'
-                    }}>
-                      <div style={{
-                        width: 40, height: 40, borderRadius: 12,
-                        background: 'linear-gradient(135deg, #2D6A4F, #40916C)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-                      }}>
+                {step === "email-otp" && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        padding: "14px",
+                        borderRadius: 14,
+                        background: "rgba(45,106,79,0.06)",
+                        border: "1.5px solid rgba(45,106,79,0.15)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 12,
+                          background:
+                            "linear-gradient(135deg, #2D6A4F, #40916C)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
                         <Mail size={18} color="white" />
                       </div>
                       <div>
-                        <p style={{ fontWeight: 700, fontSize: 13, color: '#1B4332', margin: '0 0 2px' }}>Code sent!</p>
-                        <p style={{ fontSize: 12, color: '#2D6A4F', margin: 0 }}>Check your inbox at {pendingEmail}</p>
+                        <p
+                          style={{
+                            fontWeight: 700,
+                            fontSize: 13,
+                            color: "#1B4332",
+                            margin: "0 0 2px",
+                          }}
+                        >
+                          Code sent!
+                        </p>
+                        <p
+                          style={{ fontSize: 12, color: "#2D6A4F", margin: 0 }}
+                        >
+                          Check your inbox at {pendingEmail}
+                        </p>
                       </div>
                     </div>
 
-                    <div style={{ textAlign: 'center' }}>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 12, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    <div style={{ textAlign: "center" }}>
+                      <label
+                        style={{
+                          display: "block",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          marginBottom: 12,
+                          color: "#475569",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.5px",
+                        }}
+                      >
                         Enter 6-digit code
                       </label>
-                      <OtpBoxes value={emailOtp} onChange={v => { setEmailOtp(v); setError(''); }} />
+                      <OtpBoxes
+                        value={emailOtp}
+                        onChange={(v) => {
+                          setEmailOtp(v);
+                          setError("");
+                        }}
+                      />
                     </div>
 
-                    <button onClick={handleVerifyEmailOtp} disabled={loading || emailOtp.length !== 6}
+                    <button
+                      onClick={handleVerifyEmailOtp}
+                      disabled={loading || emailOtp.length !== 6}
                       className="submit-btn"
                       style={{
-                        background: 'linear-gradient(135deg, #2D6A4F, #40916C)',
-                        color: 'white',
-                        boxShadow: '0 6px 20px rgba(45, 106, 79, 0.25)',
-                        opacity: (loading || emailOtp.length !== 6) ? 0.55 : 1
-                      }}>
+                        background: "linear-gradient(135deg, #2D6A4F, #40916C)",
+                        color: "white",
+                        boxShadow: "0 6px 20px rgba(45, 106, 79, 0.25)",
+                        opacity: loading || emailOtp.length !== 6 ? 0.55 : 1,
+                      }}
+                    >
                       {loading ? (
-                        <><RefreshCw size={16} className="animate-spin" />Verifying…</>
+                        <>
+                          <RefreshCw size={16} className="animate-spin" />
+                          Verifying…
+                        </>
                       ) : (
-                        <>Verify & Sign In <ArrowRight size={16} /></>
+                        <>
+                          Verify & Sign In <ArrowRight size={16} />
+                        </>
                       )}
                     </button>
 
-                    <button onClick={resendEmailOtp} disabled={loading}
+                    <button
+                      onClick={resendEmailOtp}
+                      disabled={loading}
                       style={{
-                        width: '100%', padding: '12px', borderRadius: 12,
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        fontSize: 13, fontWeight: 600, color: '#2D6A4F',
-                        fontFamily: "'Inter', sans-serif"
-                      }}>
+                        width: "100%",
+                        padding: "12px",
+                        borderRadius: 12,
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "#2D6A4F",
+                        fontFamily: "'Inter', sans-serif",
+                      }}
+                    >
                       ← Resend code
                     </button>
                   </div>
                 )}
 
                 {/* SMS STEP */}
-                {step === 'sms' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                    <div style={{
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '10px 14px', borderRadius: 12,
-                      background: 'rgba(59,130,246,0.06)', border: '1.5px solid rgba(99,102,241,0.15)'
-                    }}>
-                      <Smartphone size={14} style={{ color: '#3B82F6' }} />
-                      <span style={{ fontSize: 12, fontWeight: 700, color: '#3B82F6' }}>Phone (SMS) Sign In</span>
+                {step === "sms" && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "10px 14px",
+                        borderRadius: 12,
+                        background: "rgba(59,130,246,0.06)",
+                        border: "1.5px solid rgba(99,102,241,0.15)",
+                      }}
+                    >
+                      <Smartphone size={14} style={{ color: "#3B82F6" }} />
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: "#3B82F6",
+                        }}
+                      >
+                        Phone (SMS) Sign In
+                      </span>
                     </div>
 
                     {!otpSent ? (
                       <>
                         <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          <label
+                            style={{
+                              display: "block",
+                              fontSize: 12,
+                              fontWeight: 700,
+                              marginBottom: 6,
+                              color: "#475569",
+                              textTransform: "uppercase",
+                              letterSpacing: "0.5px",
+                            }}
+                          >
                             Phone Number
                           </label>
-                          <div style={{ display: 'flex', gap: 8 }}>
-                            <div style={{ position: 'relative', flexShrink: 0 }}>
-                              <button onClick={() => { setShowDrop(!showDrop); setSearch(''); }}
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <div
+                              style={{ position: "relative", flexShrink: 0 }}
+                            >
+                              <button
+                                onClick={() => {
+                                  setShowDrop(!showDrop);
+                                  setSearch("");
+                                }}
                                 style={{
-                                  display: 'flex', alignItems: 'center', gap: 6,
-                                  padding: '13px 14px', border: `2px solid ${showDrop ? '#2D6A4F' : '#E2E8F0'}`,
-                                  borderRadius: 14, background: 'white', cursor: 'pointer',
-                                  fontSize: 13, fontWeight: 600, color: '#334155',
-                                  fontFamily: "'Inter', sans-serif", whiteSpace: 'nowrap'
-                                }}>
-                                <span style={{ fontSize: 18 }}>{country.flag}</span>
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                  padding: "13px 14px",
+                                  border: `2px solid ${showDrop ? "#2D6A4F" : "#E2E8F0"}`,
+                                  borderRadius: 14,
+                                  background: "white",
+                                  cursor: "pointer",
+                                  fontSize: 13,
+                                  fontWeight: 600,
+                                  color: "#334155",
+                                  fontFamily: "'Inter', sans-serif",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                <span style={{ fontSize: 18 }}>
+                                  {country.flag}
+                                </span>
                                 <span>{country.code}</span>
-                                <ChevronDown size={12} style={{ color: '#94A3B8', transform: showDrop ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                                <ChevronDown
+                                  size={12}
+                                  style={{
+                                    color: "#94A3B8",
+                                    transform: showDrop
+                                      ? "rotate(180deg)"
+                                      : "none",
+                                    transition: "transform 0.2s",
+                                  }}
+                                />
                               </button>
                               {showDrop && (
-                                <div style={{
-                                  position: 'absolute', top: 'calc(100% + 8px)', left: 0,
-                                  width: 280, maxWidth: 'calc(100vw - 32px)',
-                                  background: 'white', borderRadius: 18,
-                                  boxShadow: '0 20px 60px rgba(0,0,0,0.15)', zIndex: 100,
-                                  border: '1px solid #F1F5F9', overflow: 'hidden'
-                                }}>
-                                  <div style={{ padding: 10, borderBottom: '1px solid #F1F5F9' }}>
-                                    <input autoFocus value={search}
-                                      onChange={e => setSearch(e.target.value)}
+                                <div
+                                  style={{
+                                    position: "absolute",
+                                    top: "calc(100% + 8px)",
+                                    left: 0,
+                                    width: 280,
+                                    maxWidth: "calc(100vw - 32px)",
+                                    background: "white",
+                                    borderRadius: 18,
+                                    boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
+                                    zIndex: 100,
+                                    border: "1px solid #F1F5F9",
+                                    overflow: "hidden",
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      padding: 10,
+                                      borderBottom: "1px solid #F1F5F9",
+                                    }}
+                                  >
+                                    <input
+                                      autoFocus
+                                      value={search}
+                                      onChange={(e) =>
+                                        setSearch(e.target.value)
+                                      }
                                       placeholder="Search country…"
                                       style={{
-                                        width: '100%', padding: '10px 12px', borderRadius: 10,
-                                        border: '1.5px solid #E2E8F0', fontSize: 13, color: '#1E293B',
-                                        background: '#F8FAFC', outline: 'none', fontFamily: "'Inter', sans-serif"
-                                      }} />
+                                        width: "100%",
+                                        padding: "10px 12px",
+                                        borderRadius: 10,
+                                        border: "1.5px solid #E2E8F0",
+                                        fontSize: 13,
+                                        color: "#1E293B",
+                                        background: "#F8FAFC",
+                                        outline: "none",
+                                        fontFamily: "'Inter', sans-serif",
+                                      }}
+                                    />
                                   </div>
-                                  <div style={{ maxHeight: 220, overflowY: 'auto' }}>
-                                    {filteredCountries.map(c => (
-                                      <button key={`${c.name}-${c.code}`}
-                                        onClick={() => { setCountry(c); setShowDrop(false); setPhone(''); setError(''); }}
+                                  <div
+                                    style={{
+                                      maxHeight: 220,
+                                      overflowY: "auto",
+                                    }}
+                                  >
+                                    {filteredCountries.map((c) => (
+                                      <button
+                                        key={`${c.name}-${c.code}`}
+                                        onClick={() => {
+                                          setCountry(c);
+                                          setShowDrop(false);
+                                          setPhone("");
+                                          setError("");
+                                        }}
                                         style={{
-                                          width: '100%', display: 'flex', alignItems: 'center', gap: 12,
-                                          padding: '11px 16px', background: country.name === c.name ? 'rgba(45,106,79,0.06)' : 'transparent',
-                                          border: 'none', borderBottom: '1px solid #F8FAFC',
-                                          cursor: 'pointer', textAlign: 'left', fontSize: 13,
-                                          fontFamily: "'Inter', sans-serif"
-                                        }}>
-                                        <span style={{ fontSize: 20 }}>{c.flag}</span>
-                                        <span style={{ flex: 1, fontWeight: 600, color: '#334155' }}>{c.name}</span>
-                                        <span style={{ fontSize: 12, fontWeight: 700, color: country.name === c.name ? '#2D6A4F' : '#94A3B8' }}>{c.code}</span>
+                                          width: "100%",
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: 12,
+                                          padding: "11px 16px",
+                                          background:
+                                            country.name === c.name
+                                              ? "rgba(45,106,79,0.06)"
+                                              : "transparent",
+                                          border: "none",
+                                          borderBottom: "1px solid #F8FAFC",
+                                          cursor: "pointer",
+                                          textAlign: "left",
+                                          fontSize: 13,
+                                          fontFamily: "'Inter', sans-serif",
+                                        }}
+                                      >
+                                        <span style={{ fontSize: 20 }}>
+                                          {c.flag}
+                                        </span>
+                                        <span
+                                          style={{
+                                            flex: 1,
+                                            fontWeight: 600,
+                                            color: "#334155",
+                                          }}
+                                        >
+                                          {c.name}
+                                        </span>
+                                        <span
+                                          style={{
+                                            fontSize: 12,
+                                            fontWeight: 700,
+                                            color:
+                                              country.name === c.name
+                                                ? "#2D6A4F"
+                                                : "#94A3B8",
+                                          }}
+                                        >
+                                          {c.code}
+                                        </span>
                                       </button>
                                     ))}
                                   </div>
                                 </div>
                               )}
                             </div>
-                            <div style={{ flex: 1, position: 'relative' }}>
-                              <Smartphone size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', pointerEvents: 'none', zIndex: 1 }} />
-                              <input type="tel" value={phone}
-                                onChange={e => { setPhone(e.target.value.replace(/\D/g, '')); setError(''); }}
+                            <div style={{ flex: 1, position: "relative" }}>
+                              <Smartphone
+                                size={16}
+                                style={{
+                                  position: "absolute",
+                                  left: 12,
+                                  top: "50%",
+                                  transform: "translateY(-50%)",
+                                  color: "#94A3B8",
+                                  pointerEvents: "none",
+                                  zIndex: 1,
+                                }}
+                              />
+                              <input
+                                type="tel"
+                                value={phone}
+                                onChange={(e) => {
+                                  setPhone(e.target.value.replace(/\D/g, ""));
+                                  setError("");
+                                }}
                                 placeholder={`${country.min}–${country.max} digits`}
                                 className="form-input-focus"
-                                style={{ ...inputStyle(!!phone, false), paddingLeft: 38 }} />
+                                style={{
+                                  ...inputStyle(!!phone, false),
+                                  paddingLeft: 38,
+                                }}
+                              />
                             </div>
                           </div>
-                          <p style={{ fontSize: 11, color: '#94A3B8', margin: '6px 0 0' }}>
-                            {country.flag} {country.name} · {country.code} · Enter without leading zero
+                          <p
+                            style={{
+                              fontSize: 11,
+                              color: "#94A3B8",
+                              margin: "6px 0 0",
+                            }}
+                          >
+                            {country.flag} {country.name} · {country.code} ·
+                            Enter without leading zero
                           </p>
                         </div>
 
-                        <button onClick={sendSms} disabled={loading}
+                        <button
+                          onClick={sendSms}
+                          disabled={loading}
                           className="submit-btn"
                           style={{
-                            background: 'linear-gradient(135deg, #3B82F6, #6366F1)',
-                            color: 'white',
-                            boxShadow: '0 6px 20px rgba(59, 130, 246, 0.25)'
-                          }}>
+                            background:
+                              "linear-gradient(135deg, #3B82F6, #6366F1)",
+                            color: "white",
+                            boxShadow: "0 6px 20px rgba(59, 130, 246, 0.25)",
+                          }}
+                        >
                           {loading ? (
-                            <><RefreshCw size={16} className="animate-spin" />Sending code…</>
+                            <>
+                              <RefreshCw size={16} className="animate-spin" />
+                              Sending code…
+                            </>
                           ) : (
-                            <><Smartphone size={16} />Send SMS Code</>
+                            <>
+                              <Smartphone size={16} />
+                              Send SMS Code
+                            </>
                           )}
                         </button>
                       </>
                     ) : (
                       <>
-                        <div style={{
-                          display: 'flex', alignItems: 'center', gap: 12,
-                          padding: '14px', borderRadius: 14,
-                          background: 'rgba(59,130,246,0.06)', border: '1.5px solid rgba(99,102,241,0.15)'
-                        }}>
-                          <div style={{
-                            width: 40, height: 40, borderRadius: 12,
-                            background: 'linear-gradient(135deg, #3B82F6, #6366F1)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            flexShrink: 0
-                          }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 12,
+                            padding: "14px",
+                            borderRadius: 14,
+                            background: "rgba(59,130,246,0.06)",
+                            border: "1.5px solid rgba(99,102,241,0.15)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 40,
+                              height: 40,
+                              borderRadius: 12,
+                              background:
+                                "linear-gradient(135deg, #3B82F6, #6366F1)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              flexShrink: 0,
+                            }}
+                          >
                             <Smartphone size={18} color="white" />
                           </div>
                           <div>
-                            <p style={{ fontWeight: 700, fontSize: 13, color: '#1E40AF', margin: '0 0 2px' }}>Code sent!</p>
-                            <p style={{ fontSize: 12, color: '#3B82F6', margin: 0 }}>Check messages at {fullPhone}</p>
+                            <p
+                              style={{
+                                fontWeight: 700,
+                                fontSize: 13,
+                                color: "#1E40AF",
+                                margin: "0 0 2px",
+                              }}
+                            >
+                              Code sent!
+                            </p>
+                            <p
+                              style={{
+                                fontSize: 12,
+                                color: "#3B82F6",
+                                margin: 0,
+                              }}
+                            >
+                              Check messages at {fullPhone}
+                            </p>
                           </div>
                         </div>
 
-                        <div style={{ textAlign: 'center' }}>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 12, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        <div style={{ textAlign: "center" }}>
+                          <label
+                            style={{
+                              display: "block",
+                              fontSize: 12,
+                              fontWeight: 700,
+                              marginBottom: 12,
+                              color: "#475569",
+                              textTransform: "uppercase",
+                              letterSpacing: "0.5px",
+                            }}
+                          >
                             Enter 6-digit code
                           </label>
-                          <OtpBoxes value={otp} onChange={v => { setOtp(v); setError(''); }} />
+                          <OtpBoxes
+                            value={otp}
+                            onChange={(v) => {
+                              setOtp(v);
+                              setError("");
+                            }}
+                          />
                         </div>
 
-                        <button onClick={verifySms} disabled={loading || otp.length !== 6}
+                        <button
+                          onClick={verifySms}
+                          disabled={loading || otp.length !== 6}
                           className="submit-btn"
                           style={{
-                            background: 'linear-gradient(135deg, #3B82F6, #6366F1)',
-                            color: 'white',
-                            boxShadow: '0 6px 20px rgba(59, 130, 246, 0.25)',
-                            opacity: (loading || otp.length !== 6) ? 0.55 : 1
-                          }}>
+                            background:
+                              "linear-gradient(135deg, #3B82F6, #6366F1)",
+                            color: "white",
+                            boxShadow: "0 6px 20px rgba(59, 130, 246, 0.25)",
+                            opacity: loading || otp.length !== 6 ? 0.55 : 1,
+                          }}
+                        >
                           {loading ? (
-                            <><RefreshCw size={16} className="animate-spin" />Verifying…</>
+                            <>
+                              <RefreshCw size={16} className="animate-spin" />
+                              Verifying…
+                            </>
                           ) : (
-                            <>Verify & Sign In <ArrowRight size={16} /></>
+                            <>
+                              Verify & Sign In <ArrowRight size={16} />
+                            </>
                           )}
                         </button>
 
-                        <button onClick={() => { setOtpSent(false); setOtp(''); setError(''); setNotice(''); }}
+                        <button
+                          onClick={() => {
+                            setOtpSent(false);
+                            setOtp("");
+                            setError("");
+                            setNotice("");
+                          }}
                           style={{
-                            width: '100%', padding: '12px', borderRadius: 12,
-                            background: 'none', border: 'none', cursor: 'pointer',
-                            fontSize: 13, fontWeight: 600, color: '#3B82F6',
-                            fontFamily: "'Inter', sans-serif"
-                          }}>
+                            width: "100%",
+                            padding: "12px",
+                            borderRadius: 12,
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            fontSize: 13,
+                            fontWeight: 600,
+                            color: "#3B82F6",
+                            fontFamily: "'Inter', sans-serif",
+                          }}
+                        >
                           ← Resend code
                         </button>
                       </>
@@ -1021,22 +1816,43 @@ export default function Login({ onLogin }) {
                 )}
 
                 {/* Divider & Register CTA — hidden during OTP verification */}
-                {step !== 'email-otp' && (
+                {step !== "email-otp" && (
                   <>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
-                      <div style={{ flex: 1, height: 1, background: '#E2E8F0' }} />
-                      <span style={{ fontSize: 11, fontWeight: 600, color: '#94A3B8' }}>OR</span>
-                      <div style={{ flex: 1, height: 1, background: '#E2E8F0' }} />
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        marginTop: 4,
+                      }}
+                    >
+                      <div
+                        style={{ flex: 1, height: 1, background: "#E2E8F0" }}
+                      />
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: "#94A3B8",
+                        }}
+                      >
+                        OR
+                      </span>
+                      <div
+                        style={{ flex: 1, height: 1, background: "#E2E8F0" }}
+                      />
                     </div>
 
-                    <button onClick={() => navigate('/register')}
+                    <button
+                      onClick={() => navigate("/register")}
                       className="submit-btn"
                       style={{
-                        background: 'none',
-                        border: '2px solid #2D6A4F',
-                        color: '#2D6A4F',
-                        boxShadow: 'none'
-                      }}>
+                        background: "none",
+                        border: "2px solid #2D6A4F",
+                        color: "#2D6A4F",
+                        boxShadow: "none",
+                      }}
+                    >
                       Create a Free Account
                     </button>
                   </>
@@ -1045,16 +1861,32 @@ export default function Login({ onLogin }) {
 
               {/* Card Footer */}
               <div className="card-footer-bar">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#94A3B8' }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                    fontSize: 11,
+                    color: "#94A3B8",
+                  }}
+                >
                   <Shield size={11} />
                   <span>SSL · Zero fraud</span>
                 </div>
-                <button onClick={() => go(step === 'email-otp' ? 'email' : 'choose')}
+                <button
+                  onClick={() => go(step === "email-otp" ? "email" : "choose")}
                   style={{
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    fontSize: 12, fontWeight: 600, color: '#64748B',
-                    fontFamily: "'Inter', sans-serif", padding: '4px 8px', borderRadius: 8
-                  }}>
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "#64748B",
+                    fontFamily: "'Inter', sans-serif",
+                    padding: "4px 8px",
+                    borderRadius: 8,
+                  }}
+                >
                   ← Back
                 </button>
               </div>

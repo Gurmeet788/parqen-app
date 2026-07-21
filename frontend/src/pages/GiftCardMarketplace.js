@@ -30,6 +30,25 @@ import {
   Phone,
   Mail,
   Ban,
+  Zap,
+  Crown,
+  ShoppingBag,
+  Smartphone,
+  Gamepad2,
+  Clapperboard,
+  UtensilsCrossed,
+  Plane,
+  Package,
+  MessageSquare,
+  ClipboardList,
+  BarChart2,
+  Circle,
+  Star,
+  IdCard,
+  Search,
+  Radio,
+  Trophy,
+  Medal,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import CountryFlag, { resolveCode } from "../components/CountryFlag";
@@ -65,7 +84,8 @@ const C = {
 // ── Featured badge config ─────────────────────────────────────────────────────
 const FEATURED = {
   fast_responder: {
-    tag: "⚡ FAST RESPONDER OF THE WEEK",
+    tag: "FAST RESPONDER OF THE WEEK",
+    icon: Zap,
     ribbon:
       "linear-gradient(90deg,#1E3A8A 0%,#3730A3 18%,#6366F1 38%,#A5B4FC 50%,#6366F1 62%,#3730A3 82%,#1E3A8A 100%)",
     border: "#4F46E5",
@@ -80,7 +100,8 @@ const FEATURED = {
     pulse: true,
   },
   active_trader: {
-    tag: "👑 ACTIVE TRADER OF THE WEEK",
+    tag: "ACTIVE TRADER OF THE WEEK",
+    icon: Crown,
     ribbon:
       "linear-gradient(90deg,#92400E 0%,#B45309 18%,#F59E0B 38%,#FDE68A 50%,#F59E0B 62%,#B45309 82%,#92400E 100%)",
     border: "#D97706",
@@ -287,7 +308,8 @@ const PAYMENT_OPTIONS = [
 const GC_BRAND_GROUPS = [
   { cat: null, color: null, items: ["All Brands"] },
   {
-    cat: "🛍️ Shopping",
+    cat: "Shopping",
+    icon: ShoppingBag,
     color: "#10B981",
     items: [
       "Amazon",
@@ -320,7 +342,8 @@ const GC_BRAND_GROUPS = [
     ],
   },
   {
-    cat: "📱 Tech",
+    cat: "Tech",
+    icon: Smartphone,
     color: "#3B82F6",
     items: [
       "Apple / iTunes",
@@ -330,7 +353,8 @@ const GC_BRAND_GROUPS = [
     ],
   },
   {
-    cat: "🎮 Gaming",
+    cat: "Gaming",
+    icon: Gamepad2,
     color: "#7C3AED",
     items: [
       "Steam",
@@ -355,7 +379,8 @@ const GC_BRAND_GROUPS = [
     ],
   },
   {
-    cat: "🎬 Streaming",
+    cat: "Streaming",
+    icon: Clapperboard,
     color: "#EC4899",
     items: [
       "Netflix",
@@ -374,7 +399,8 @@ const GC_BRAND_GROUPS = [
     ],
   },
   {
-    cat: "🍔 Food & Delivery",
+    cat: "Food & Delivery",
+    icon: UtensilsCrossed,
     color: "#F97316",
     items: [
       "Starbucks",
@@ -387,12 +413,14 @@ const GC_BRAND_GROUPS = [
     ],
   },
   {
-    cat: "✈️ Travel",
+    cat: "Travel",
+    icon: Plane,
     color: "#0D9488",
     items: ["Airbnb", "Uber", "Hotels.com", "Booking.com"],
   },
   {
-    cat: "💳 Financial / Prepaid",
+    cat: "Financial / Prepaid",
+    icon: CreditCard,
     color: "#F59E0B",
     items: [
       "Visa Gift Card",
@@ -405,7 +433,7 @@ const GC_BRAND_GROUPS = [
       "Crypto Voucher",
     ],
   },
-  { cat: "📦 Other", color: "#64748B", items: ["Other"] },
+  { cat: "Other", icon: Package, color: "#64748B", items: ["Other"] },
 ];
 // Flat list used by filter logic
 const GC_BRANDS = GC_BRAND_GROUPS.flatMap((g) => g.items);
@@ -554,6 +582,7 @@ function GCCard({ listing, btcPriceUSD, onViewSeller, onTrade, featuredType }) {
   const { rates: USD_RATES } = useRates();
   const u = getUser(listing.users);
   const badge = deriveBadge(u);
+  const Icon = badge.Icon;
   const [seen, setSeen] = useState(() => getLastSeen(u));
   useEffect(() => {
     const id = setInterval(() => setSeen(getLastSeen(u)), 30000);
@@ -630,6 +659,9 @@ function GCCard({ listing, btcPriceUSD, onViewSeller, onTrade, featuredType }) {
           >
             <span
               style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
                 fontSize: 12,
                 fontWeight: 900,
                 letterSpacing: "0.12em",
@@ -638,6 +670,7 @@ function GCCard({ listing, btcPriceUSD, onViewSeller, onTrade, featuredType }) {
                 whiteSpace: "nowrap",
               }}
             >
+              {ft.icon && <ft.icon size={13} style={{ flexShrink: 0 }} />}
               {ft.tag}
             </span>
           </div>
@@ -713,7 +746,7 @@ function GCCard({ listing, btcPriceUSD, onViewSeller, onTrade, featuredType }) {
                 }}
               >
                 <span style={{ color: badge.iconColor || badge.textColor }}>
-                  {badge.icon}
+                  <Icon size={16} color={badge.color} />
                 </span>
                 <span style={{ color: badge.textColor }}>{badge.label}</span>
               </span>
@@ -963,6 +996,7 @@ function SellerModal({ seller, listing, onClose, onTrade, btcPriceUSD }) {
 
   const u = getUser(freshSeller || seller);
   const badge = deriveBadge(u);
+  const Icon = badge.Icon;
   const seen = getLastSeen(u);
   const trades = getTrades(u);
   const rating = parseFloat(u.average_rating || 0);
@@ -1076,10 +1110,10 @@ function SellerModal({ seller, listing, onClose, onTrade, btcPriceUSD }) {
   if (!seller) return null;
 
   const TABS = [
-    { id: "overview", label: "👤 Profile" },
-    { id: "feedback", label: `💬 Reviews (${total})` },
-    { id: "rules", label: "📋 Rules" },
-    { id: "offer", label: "📊 Offer" },
+    { id: "overview", label: "Profile", icon: User },
+    { id: "feedback", label: `Reviews (${total})`, icon: MessageSquare },
+    { id: "rules", label: "Rules", icon: ClipboardList },
+    { id: "offer", label: "Offer", icon: BarChart2 },
   ];
 
   return (
@@ -1176,8 +1210,15 @@ function SellerModal({ seller, listing, onClose, onTrade, btcPriceUSD }) {
                   countryCode={ccCode}
                   className="w-4 h-3 rounded-sm"
                 />
-                <span className="text-white/60 text-xs">
-                  {seen.online ? "🟢 Active now" : seen.label}
+                <span className="text-white/60 text-xs inline-flex items-center gap-1">
+                  {seen.online && (
+                    <Circle
+                      size={8}
+                      fill="#22C55E"
+                      style={{ color: "#22C55E" }}
+                    />
+                  )}
+                  {seen.online ? "Active now" : seen.label}
                 </span>
               </div>
               <span
@@ -1189,7 +1230,7 @@ function SellerModal({ seller, listing, onClose, onTrade, btcPriceUSD }) {
                 }}
               >
                 <span style={{ color: badge.iconColor || badge.textColor }}>
-                  {badge.icon}
+                  <Icon size={16} color={badge.color} />
                 </span>
                 <span style={{ color: badge.textColor }}>{badge.label}</span>
               </span>
@@ -1309,11 +1350,11 @@ function SellerModal({ seller, listing, onClose, onTrade, btcPriceUSD }) {
           className="flex border-b flex-shrink-0 overflow-x-auto"
           style={{ borderColor: C.g200 }}
         >
-          {TABS.map(({ id, label }) => (
+          {TABS.map(({ id, label, icon: TabIcon }) => (
             <button
               key={id}
               onClick={() => setTab(id)}
-              className="flex-shrink-0 px-3 py-2.5 text-xs font-bold whitespace-nowrap transition"
+              className="flex-shrink-0 px-3 py-2.5 text-xs font-bold whitespace-nowrap transition inline-flex items-center gap-1.5"
               style={{
                 color: tab === id ? C.green : C.g500,
                 borderBottom:
@@ -1321,6 +1362,7 @@ function SellerModal({ seller, listing, onClose, onTrade, btcPriceUSD }) {
                 backgroundColor: tab === id ? `${C.green}08` : "transparent",
               }}
             >
+              {TabIcon && <TabIcon size={13} />}
               {label}
             </button>
           ))}
@@ -1339,15 +1381,16 @@ function SellerModal({ seller, listing, onClose, onTrade, btcPriceUSD }) {
                   { label: "Trades", value: fmt(trades), sub: "completed" },
                   {
                     label: "Rating",
-                    value: `⭐ ${rating.toFixed(1)}`,
+                    value: rating.toFixed(1),
                     sub: "of 5.0",
+                    icon: Star,
                   },
                   {
                     label: "Completion",
                     value: `${compRate.toFixed(0)}%`,
                     sub: "rate",
                   },
-                ].map(({ label, value, sub }) => (
+                ].map(({ label, value, sub, icon: StatIcon }) => (
                   <div
                     key={label}
                     className="rounded-xl p-3 text-center"
@@ -1357,9 +1400,10 @@ function SellerModal({ seller, listing, onClose, onTrade, btcPriceUSD }) {
                     }}
                   >
                     <p
-                      className="font-black text-sm"
+                      className="font-black text-sm inline-flex items-center justify-center gap-1"
                       style={{ color: C.forest }}
                     >
+                      {StatIcon && <StatIcon size={12} />}
                       {value}
                     </p>
                     <p
@@ -1433,17 +1477,17 @@ function SellerModal({ seller, listing, onClose, onTrade, btcPriceUSD }) {
                   Verification
                 </p>
                 {[
-                  { label: "Phone Number", ok: phoneOk, icon: "📱" },
-                  { label: "Email Address", ok: emailOk, icon: "📧" },
-                  { label: "ID / KYC", ok: kycOk, icon: "🪪" },
-                ].map(({ label, ok, icon }) => (
+                  { label: "Phone Number", ok: phoneOk, icon: Phone },
+                  { label: "Email Address", ok: emailOk, icon: Mail },
+                  { label: "ID / KYC", ok: kycOk, icon: IdCard },
+                ].map(({ label, ok, icon: FieldIcon }) => (
                   <div
                     key={label}
                     className="flex items-center justify-between px-3 py-2.5 border-t"
                     style={{ borderColor: C.g100 }}
                   >
                     <div className="flex items-center gap-2">
-                      <span className="text-sm">{icon}</span>
+                      <FieldIcon size={14} style={{ color: C.g500 }} />
                       <span
                         className="text-xs font-semibold"
                         style={{ color: C.g700 }}
@@ -1452,13 +1496,14 @@ function SellerModal({ seller, listing, onClose, onTrade, btcPriceUSD }) {
                       </span>
                     </div>
                     <span
-                      className="text-xs font-black px-2.5 py-1 rounded-full"
+                      className="text-xs font-black px-2.5 py-1 rounded-full inline-flex items-center gap-1"
                       style={{
                         backgroundColor: ok ? "#F0FDF4" : "#FEF2F2",
                         color: ok ? "#16A34A" : "#DC2626",
                       }}
                     >
-                      {ok ? "✓ Verified" : "✗ Not verified"}
+                      {ok ? <CheckCircle size={11} /> : <X size={11} />}
+                      {ok ? "Verified" : "Not verified"}
                     </span>
                   </div>
                 ))}
@@ -1572,8 +1617,11 @@ function SellerModal({ seller, listing, onClose, onTrade, btcPriceUSD }) {
                     >
                       {fmt(pos)}
                     </p>
-                    <p className="text-xs" style={{ color: C.g400 }}>
-                      👍 Positive
+                    <p
+                      className="text-xs inline-flex items-center gap-1"
+                      style={{ color: C.g400 }}
+                    >
+                      <ThumbsUp size={11} /> Positive
                     </p>
                   </div>
                   <div className="text-center flex-1">
@@ -1583,8 +1631,11 @@ function SellerModal({ seller, listing, onClose, onTrade, btcPriceUSD }) {
                     >
                       {fmt(neg)}
                     </p>
-                    <p className="text-xs" style={{ color: C.g400 }}>
-                      👎 Negative
+                    <p
+                      className="text-xs inline-flex items-center gap-1"
+                      style={{ color: C.g400 }}
+                    >
+                      <ThumbsDown size={11} /> Negative
                     </p>
                   </div>
                   <div className="text-center flex-1">
@@ -1633,7 +1684,11 @@ function SellerModal({ seller, listing, onClose, onTrade, btcPriceUSD }) {
                 </div>
               ) : reviews.length === 0 ? (
                 <div className="text-center py-8">
-                  <p className="text-3xl mb-2">💬</p>
+                  <MessageSquare
+                    size={30}
+                    className="mx-auto mb-2"
+                    style={{ color: C.g300 }}
+                  />
                   <p className="font-bold text-sm" style={{ color: C.g700 }}>
                     No reviews yet
                   </p>
@@ -1669,7 +1724,11 @@ function SellerModal({ seller, listing, onClose, onTrade, btcPriceUSD }) {
                               backgroundColor: isPos ? "#16A34A" : "#DC2626",
                             }}
                           >
-                            {isPos ? "👍" : "👎"}
+                            {isPos ? (
+                              <ThumbsUp size={12} />
+                            ) : (
+                              <ThumbsDown size={12} />
+                            )}
                           </div>
                           <span
                             className="text-xs font-black"
@@ -2656,9 +2715,10 @@ export default function GiftCards({ user }) {
                                   }}
                                 >
                                   <span
-                                    className="text-xs font-black uppercase tracking-wider"
+                                    className="text-xs font-black uppercase tracking-wider inline-flex items-center gap-1"
                                     style={{ color: group.color || C.g500 }}
                                   >
+                                    {group.icon && <group.icon size={12} />}
                                     {group.cat}
                                   </span>
                                 </div>
@@ -2752,18 +2812,30 @@ export default function GiftCards({ user }) {
                       className="p-2 border-b sticky top-0 bg-white"
                       style={{ borderColor: C.g100 }}
                     >
-                      <input
-                        type="text"
-                        placeholder="🔍  Search country…"
-                        value={countrySearch}
-                        onChange={(e) => setCountrySearch(e.target.value)}
-                        className="w-full px-3 py-1.5 font-semibold rounded-xl border focus:outline-none"
-                        style={{
-                          borderColor: C.g200,
-                          color: C.g800,
-                          fontSize: "16px",
-                        }}
-                      />
+                      <div className="relative">
+                        <Search
+                          size={13}
+                          style={{
+                            position: "absolute",
+                            left: 10,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            color: C.g400,
+                          }}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Search country…"
+                          value={countrySearch}
+                          onChange={(e) => setCountrySearch(e.target.value)}
+                          className="w-full pl-7 pr-3 py-1.5 font-semibold rounded-xl border focus:outline-none"
+                          style={{
+                            borderColor: C.g200,
+                            color: C.g800,
+                            fontSize: "16px",
+                          }}
+                        />
+                      </div>
                     </div>
                     <div className="overflow-y-auto max-h-56">
                       {(() => {
@@ -2906,7 +2978,7 @@ export default function GiftCards({ user }) {
                   backgroundColor: "#FEF2F2",
                 }}
               >
-                ✕
+                <X size={14} />
               </button>
             )}
           </div>
@@ -3003,7 +3075,11 @@ export default function GiftCards({ user }) {
             className="bg-white rounded-2xl border p-8 text-center"
             style={{ borderColor: C.g200 }}
           >
-            <p className="text-5xl mb-3">📡</p>
+            <Radio
+              size={44}
+              className="mx-auto mb-3"
+              style={{ color: C.g300 }}
+            />
             <p className="font-black text-base mb-1" style={{ color: C.g800 }}>
               Couldn't load offers
             </p>
@@ -3026,7 +3102,11 @@ export default function GiftCards({ user }) {
             className="bg-white rounded-2xl border p-10 text-center"
             style={{ borderColor: C.g200 }}
           >
-            <p className="text-5xl mb-4">🎁</p>
+            <Gift
+              size={44}
+              className="mx-auto mb-4"
+              style={{ color: C.g300 }}
+            />
             <p className="font-black text-base mb-1" style={{ color: C.g800 }}>
               No gift card offers found
             </p>
@@ -3136,10 +3216,9 @@ export default function GiftCards({ user }) {
                     alignItems: "center",
                     justifyContent: "center",
                     flexShrink: 0,
-                    fontSize: 20,
                   }}
                 >
-                  🎁
+                  <Gift size={20} color="#FFFFFF" />
                 </div>
                 <div>
                   <p
@@ -3195,10 +3274,10 @@ export default function GiftCards({ user }) {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
               {[
-                { icon: "✅", label: "Register", sub: "$1 locked" },
-                { icon: "⚡", label: "Verify", sub: "stays safe" },
-                { icon: "₿", label: "1 Trade", sub: "$2 unlocks" },
-              ].map(({ icon, label, sub }, i, arr) => (
+                { icon: CheckCircle, label: "Register", sub: "$1 locked" },
+                { icon: Zap, label: "Verify", sub: "stays safe" },
+                { icon: Bitcoin, label: "1 Trade", sub: "$2 unlocks" },
+              ].map(({ icon: StepIcon, label, sub }, i, arr) => (
                 <div
                   key={label}
                   style={{
@@ -3223,9 +3302,15 @@ export default function GiftCards({ user }) {
                     }}
                   >
                     <div
-                      style={{ fontSize: 22, lineHeight: 1, marginBottom: 6 }}
+                      style={{
+                        fontSize: 22,
+                        lineHeight: 1,
+                        marginBottom: 6,
+                        display: "flex",
+                        justifyContent: "center",
+                      }}
                     >
-                      {icon}
+                      <StepIcon size={22} color="#fff" />
                     </div>
                     <div
                       style={{
@@ -3428,7 +3513,7 @@ export default function GiftCards({ user }) {
                 </span>
               </div>
               {affLeaderboard.map((u, i) => {
-                const medals = ["🥇", "🥈", "🥉"];
+                const medalColors = ["#FFD700", "#C0C0C0", "#CD7F32"];
                 const badgeColors = {
                   BEGINNER: "#7C3AED",
                   PRO: "#059669",
@@ -3452,8 +3537,18 @@ export default function GiftCards({ user }) {
                           : "none",
                     }}
                   >
-                    <span style={{ fontSize: 20, flexShrink: 0 }}>
-                      {medals[i]}
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 800,
+                        flexShrink: 0,
+                        width: 20,
+                        display: "flex",
+                        justifyContent: "center",
+                        color: medalColors[i] || "#94A3B8",
+                      }}
+                    >
+                      {i < 3 ? <Medal size={18} /> : i + 1}
                     </span>
                     <div
                       style={{
@@ -3567,9 +3662,18 @@ export default function GiftCards({ user }) {
                 }}
               >
                 <span
-                  style={{ fontSize: 12, color: "#166534", fontWeight: 600 }}
+                  style={{
+                    fontSize: 12,
+                    color: "#166534",
+                    fontWeight: 600,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                    justifyContent: "center",
+                  }}
                 >
-                  🏆 Could you be next?
+                  <Trophy size={13} />
+                  Could you be next?
                 </span>
               </div>
             </div>

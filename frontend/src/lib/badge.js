@@ -1,44 +1,139 @@
 // Single source of truth for all badge definitions across the app.
 // Import TRUST_MAP, deriveBadge, and BadgeChip from here — never define them per-page.
 
+import {
+  Shield,
+  Zap,
+  Briefcase,
+  Target,
+  Medal,
+  Crown,
+  Diamond,
+  Flame,
+  Rocket,
+  Trophy,
+} from "lucide-react";
+
 export const TRUST_MAP = {
-  LEGEND:     { label:'LEGEND',     icon:'♛', iconColor:'#92400E', textColor:'#78350F', borderColor:'#F59E0B', bg:'linear-gradient(135deg,#FEF3C7,#FDE68A)', glow:'rgba(245,158,11,0.65)', animate:true  },
-  AMBASSADOR: { label:'AMBASSADOR', icon:'◈', iconColor:'#99F6E4', textColor:'#FFFFFF', borderColor:'#0D9488', bg:'linear-gradient(135deg,#0D9488,#2D6A4F)', glow:'rgba(13,148,136,0.45)'               },
-  EXPERT:     { label:'EXPERT',     icon:'▲', iconColor:'#7DD3FC', textColor:'#FFFFFF', borderColor:'#3B82F6', bg:'linear-gradient(135deg,#1E3A5F,#1E40AF)', glow:'rgba(59,130,246,0.45)'               },
-  PRO:        { label:'PRO',        icon:'●', iconColor:'#059669', textColor:'#065F46', borderColor:'#34D399', bg:'linear-gradient(135deg,#D1FAE5,#A7F3D0)', glow:'rgba(52,211,153,0.4)'                },
-  ACTIVE:     { label:'Active',     icon:'●', iconColor:'#22C55E', textColor:'#166534', borderColor:'#86EFAC', bg:'linear-gradient(135deg,#F0FDF4,#DCFCE7)', glow:'rgba(134,239,172,0.35)'              },
-  BEGINNER:   { label:'NEW ✦',      icon:'🌱', iconColor:null,     textColor:'#7C3AED', borderColor:'#C4B5FD', bg:'linear-gradient(135deg,#EDE9FE,#F5F3FF)', glow:'rgba(167,139,250,0.5)',  animate:true },
+  BEGINNER: {
+    label: "BEGINNER",
+    Icon: Shield,
+    color: "#22C55E",
+    bg: "#F0FDF4",
+    borderColor: "#22C55E",
+  },
+
+  ACTIVE: {
+    label: "ACTIVE",
+    Icon: Zap,
+    color: "#3B82F6",
+    bg: "#EFF6FF",
+    borderColor: "#3B82F6",
+  },
+
+  PRO: {
+    label: "PRO",
+    Icon: Briefcase,
+    color: "#8B5CF6",
+    bg: "#F5F3FF",
+    borderColor: "#8B5CF6",
+  },
+
+  EXPERT: {
+    label: "EXPERT",
+    Icon: Target,
+    color: "#F97316",
+    bg: "#FFF7ED",
+    borderColor: "#F97316",
+  },
+
+  AMBASSADOR: {
+    label: "AMBASSADOR",
+    Icon: Medal,
+    color: "#14B8A6",
+    bg: "#F0FDFA",
+    borderColor: "#14B8A6",
+  },
+
+  LEGEND: {
+    label: "LEGEND",
+    Icon: Crown,
+    color: "#EAB308",
+    bg: "#FEFCE8",
+    borderColor: "#EAB308",
+  },
+
+  ELITE: {
+    label: "ELITE",
+    Icon: Trophy,
+    color: "#EF4444",
+    bg: "#FEF2F2",
+    borderColor: "#EF4444",
+  },
+
+  DIAMOND: {
+    label: "DIAMOND",
+    Icon: Diamond,
+    color: "#06B6D4",
+    bg: "#ECFEFF",
+    borderColor: "#06B6D4",
+  },
+
+  TITAN: {
+    label: "TITAN",
+    Icon: Flame,
+    color: "#EC4899",
+    bg: "#FDF2F8",
+    borderColor: "#EC4899",
+  },
+
+  GODMODE: {
+    label: "GODMODE",
+    Icon: Rocket,
+    color: "#FFFFFF",
+    bg: "linear-gradient(90deg,#FF0080,#FF8C00,#40E0D0)",
+    borderColor: "#FF8C00",
+  },
 };
 
-export function deriveBadge(u) {
-  if (u?.badge) {
-    const b = String(u.badge).toUpperCase();
+export function deriveBadge(user) {
+  if (user?.badge) {
+    const b = String(user.badge).toUpperCase();
     if (TRUST_MAP[b]) return TRUST_MAP[b];
   }
-  const t = parseInt(u?.total_trades ?? u?.trade_count ?? 0);
-  if (t >= 500) return TRUST_MAP.LEGEND;
+
+  const t = Number(user?.total_trades ?? user?.trade_count ?? 0);
+
+  if (t >= 1500) return TRUST_MAP.GODMODE;
+  if (t >= 1000) return TRUST_MAP.TITAN;
+  if (t >= 750) return TRUST_MAP.DIAMOND;
+  if (t >= 500) return TRUST_MAP.ELITE;
+  if (t >= 300) return TRUST_MAP.LEGEND;
   if (t >= 200) return TRUST_MAP.AMBASSADOR;
   if (t >= 100) return TRUST_MAP.EXPERT;
-  if (t >= 25)  return TRUST_MAP.PRO;
-  if (t >= 5)   return TRUST_MAP.ACTIVE;
+  if (t >= 25) return TRUST_MAP.PRO;
+  if (t >= 5) return TRUST_MAP.ACTIVE;
+
   return TRUST_MAP.BEGINNER;
 }
 
 // Drop-in React component for rendering a badge pill consistently everywhere.
 // Works with both Tailwind and inline-style pages.
-export function BadgeChip({ user, className = '' }) {
+export function BadgeChip({ user, className = "" }) {
   const badge = deriveBadge(user);
+  const Icon = badge.Icon;
+
   return (
     <span
-      className={`inline-flex items-center gap-0.5 text-xs font-black px-1.5 py-0.5 rounded-full border flex-shrink-0 ${badge.animate ? 'shadow-md' : ''} ${className}`}
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-semibold ${className}`}
       style={{
         background: badge.bg,
         borderColor: badge.borderColor,
-        boxShadow: badge.glow ? `0 0 8px ${badge.glow}` : undefined,
       }}
     >
-      <span style={{ color: badge.iconColor || badge.textColor }}>{badge.icon}</span>
-      <span style={{ color: badge.textColor }}>{badge.label}</span>
+      <Icon size={14} strokeWidth={2.2} style={{ color: badge.color }} />
+
+      <span style={{ color: badge.color }}>{badge.label}</span>
     </span>
   );
 }

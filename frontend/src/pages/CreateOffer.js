@@ -9,7 +9,12 @@ import {
   Eye, ChevronRight, ChevronLeft, ShoppingCart, Tag,
   BarChart2, Settings2, FileText, ArrowUpRight, ArrowDownRight,
   Gift, Search, ChevronDown, X,
-  Smartphone, Banknote, Zap, Star, Wallet
+  Smartphone, Banknote, Zap, Star, Wallet,
+  Waves, Heart, CircleDot, CircleDollarSign, Apple, MessageCircle, Diamond,
+  CreditCard, Globe, Rocket, Building2, Palmtree, Landmark, Link, Phone,
+  Hexagon, Moon, Gamepad2, Package, Target, Film, Music2, Footprints,
+  Square, ShoppingBag, Sparkles, PlayCircle, PartyPopper, ThumbsUp,
+  CheckCircle2, Lightbulb, Briefcase, Megaphone, ArrowDown
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
@@ -73,73 +78,73 @@ const CURRENCIES_LIST = [...new Map(
 // ── Payment methods — comprehensive list with categories ──────────────────────
 const PAYMENT_METHODS = [
   // Mobile Money
-  { id:'mtn_momo',      name:'MTN Mobile Money',             icon:'📱', cat:'Mobile Money',   countries:['GH','NG','UG','CM','RW','CI'] },
-  { id:'vodafone',      name:'Vodafone Cash',                icon:'📱', cat:'Mobile Money',   countries:['GH'] },
-  { id:'airteltigo',    name:'AirtelTigo Money',             icon:'📱', cat:'Mobile Money',   countries:['GH'] },
-  { id:'mpesa',         name:'M-Pesa',                       icon:'📱', cat:'Mobile Money',   countries:['KE','TZ'] },
-  { id:'airtel_money',  name:'Airtel Money',                 icon:'📱', cat:'Mobile Money',   countries:['UG','TZ','KE'] },
-  { id:'orange_money',  name:'Orange Money',                 icon:'📱', cat:'Mobile Money',   countries:['CM','SN','CI'] },
-  { id:'wave',          name:'Wave',                         icon:'🌊', cat:'Mobile Money',   countries:['SN','CI'] },
-  { id:'chipper',       name:'Chipper Cash',                 icon:'💚', cat:'Mobile Money',   countries:[] },
-  { id:'ecocash',       name:'EcoCash',                      icon:'📱', cat:'Mobile Money',   countries:['ZW'] },
-  { id:'tigo_pesa',     name:'Tigo Pesa / Mixx',             icon:'📱', cat:'Mobile Money',   countries:['TZ'] },
-  { id:'moov_money',    name:'Moov Money',                   icon:'📱', cat:'Mobile Money',   countries:['BJ','CI','TG'] },
-  { id:'africell',      name:'Africell Money',               icon:'📱', cat:'Mobile Money',   countries:['SL','GM'] },
-  { id:'paga',          name:'Paga',                         icon:'🟢', cat:'Mobile Money',   countries:['NG'] },
+  { id:'mtn_momo',      name:'MTN Mobile Money',             icon:Smartphone, cat:'Mobile Money',   countries:['GH','NG','UG','CM','RW','CI'] },
+  { id:'vodafone',      name:'Vodafone Cash',                icon:Smartphone, cat:'Mobile Money',   countries:['GH'] },
+  { id:'airteltigo',    name:'AirtelTigo Money',             icon:Smartphone, cat:'Mobile Money',   countries:['GH'] },
+  { id:'mpesa',         name:'M-Pesa',                       icon:Smartphone, cat:'Mobile Money',   countries:['KE','TZ'] },
+  { id:'airtel_money',  name:'Airtel Money',                 icon:Smartphone, cat:'Mobile Money',   countries:['UG','TZ','KE'] },
+  { id:'orange_money',  name:'Orange Money',                 icon:Smartphone, cat:'Mobile Money',   countries:['CM','SN','CI'] },
+  { id:'wave',          name:'Wave',                         icon:Waves, cat:'Mobile Money',   countries:['SN','CI'] },
+  { id:'chipper',       name:'Chipper Cash',                 icon:Heart, cat:'Mobile Money',   countries:[] },
+  { id:'ecocash',       name:'EcoCash',                      icon:Smartphone, cat:'Mobile Money',   countries:['ZW'] },
+  { id:'tigo_pesa',     name:'Tigo Pesa / Mixx',             icon:Smartphone, cat:'Mobile Money',   countries:['TZ'] },
+  { id:'moov_money',    name:'Moov Money',                   icon:Smartphone, cat:'Mobile Money',   countries:['BJ','CI','TG'] },
+  { id:'africell',      name:'Africell Money',               icon:Smartphone, cat:'Mobile Money',   countries:['SL','GM'] },
+  { id:'paga',          name:'Paga',                         icon:CircleDot, cat:'Mobile Money',   countries:['NG'] },
   // Digital Wallets & E-wallets
-  { id:'paypal',        name:'PayPal',                       icon:'💰', cat:'Digital Wallet', countries:['US','GB','EU','AU','CA'] },
-  { id:'cash_app',      name:'Cash App',                     icon:'💸', cat:'Digital Wallet', countries:['US','GB'] },
-  { id:'apple_pay',     name:'Apple Pay',                    icon:'🍎', cat:'Digital Wallet', countries:['US','GB','EU','AU','CA'] },
-  { id:'alipay',        name:'Alipay',                       icon:'💙', cat:'Digital Wallet', countries:[] },
-  { id:'wechat_pay',    name:'WeChat Pay',                   icon:'💬', cat:'Digital Wallet', countries:[] },
-  { id:'venmo',         name:'Venmo',                        icon:'🔵', cat:'Digital Wallet', countries:['US'] },
-  { id:'zelle',         name:'Zelle',                        icon:'💜', cat:'Digital Wallet', countries:['US'] },
-  { id:'revolut',       name:'Revolut',                      icon:'🔷', cat:'Digital Wallet', countries:['GB','EU'] },
-  { id:'skrill',        name:'Skrill',                       icon:'💳', cat:'Digital Wallet', countries:[] },
-  { id:'neteller',      name:'Neteller',                     icon:'💳', cat:'Digital Wallet', countries:[] },
-  { id:'payeer',        name:'Payeer',                       icon:'💳', cat:'Digital Wallet', countries:[] },
-  { id:'perfect_money', name:'Perfect Money',                icon:'💳', cat:'Digital Wallet', countries:[] },
+  { id:'paypal',        name:'PayPal',                       icon:CircleDollarSign, cat:'Digital Wallet', countries:['US','GB','EU','AU','CA'] },
+  { id:'cash_app',      name:'Cash App',                     icon:Banknote, cat:'Digital Wallet', countries:['US','GB'] },
+  { id:'apple_pay',     name:'Apple Pay',                    icon:Apple, cat:'Digital Wallet', countries:['US','GB','EU','AU','CA'] },
+  { id:'alipay',        name:'Alipay',                       icon:CreditCard, cat:'Digital Wallet', countries:[] },
+  { id:'wechat_pay',    name:'WeChat Pay',                   icon:MessageCircle, cat:'Digital Wallet', countries:[] },
+  { id:'venmo',         name:'Venmo',                        icon:CircleDot, cat:'Digital Wallet', countries:['US'] },
+  { id:'zelle',         name:'Zelle',                        icon:Heart, cat:'Digital Wallet', countries:['US'] },
+  { id:'revolut',       name:'Revolut',                      icon:Diamond, cat:'Digital Wallet', countries:['GB','EU'] },
+  { id:'skrill',        name:'Skrill',                       icon:CreditCard, cat:'Digital Wallet', countries:[] },
+  { id:'neteller',      name:'Neteller',                     icon:CreditCard, cat:'Digital Wallet', countries:[] },
+  { id:'payeer',        name:'Payeer',                       icon:CreditCard, cat:'Digital Wallet', countries:[] },
+  { id:'perfect_money', name:'Perfect Money',                icon:CreditCard, cat:'Digital Wallet', countries:[] },
   // Remittance
-  { id:'wise',          name:'Wise',                         icon:'🌍', cat:'Remittance',     countries:['US','GB','EU','AU','CA'] },
-  { id:'worldremit',    name:'WorldRemit',                   icon:'🌐', cat:'Remittance',     countries:[] },
-  { id:'remitly',       name:'Remitly',                      icon:'🚀', cat:'Remittance',     countries:[] },
-  { id:'western_union', name:'Western Union',                icon:'🏢', cat:'Remittance',     countries:[] },
-  { id:'moneygram',     name:'MoneyGram',                    icon:'🏢', cat:'Remittance',     countries:[] },
+  { id:'wise',          name:'Wise',                         icon:Globe, cat:'Remittance',     countries:['US','GB','EU','AU','CA'] },
+  { id:'worldremit',    name:'WorldRemit',                   icon:Globe, cat:'Remittance',     countries:[] },
+  { id:'remitly',       name:'Remitly',                      icon:Rocket, cat:'Remittance',     countries:[] },
+  { id:'western_union', name:'Western Union',                icon:Building2, cat:'Remittance',     countries:[] },
+  { id:'moneygram',     name:'MoneyGram',                    icon:Building2, cat:'Remittance',     countries:[] },
   // FinTech / Neobank
-  { id:'opay',          name:'OPay',                         icon:'🟢', cat:'FinTech',        countries:['NG'] },
-  { id:'palmpay',       name:'PalmPay',                      icon:'🌴', cat:'FinTech',        countries:['NG'] },
-  { id:'kuda',          name:'Kuda Bank',                    icon:'🏦', cat:'FinTech',        countries:['NG'] },
-  { id:'moniepoint',    name:'Moniepoint',                   icon:'🏦', cat:'FinTech',        countries:['NG'] },
-  { id:'gtbank',        name:'GTBank',                       icon:'🏦', cat:'FinTech',        countries:['NG'] },
-  { id:'access',        name:'Access Bank',                  icon:'🏦', cat:'FinTech',        countries:['NG'] },
-  { id:'paystack',      name:'Paystack',                     icon:'💚', cat:'FinTech',        countries:['NG','GH','ZA'] },
-  { id:'flutterwave',   name:'Flutterwave (Barter)',          icon:'🦋', cat:'FinTech',        countries:['NG','GH','KE','ZA'] },
+  { id:'opay',          name:'OPay',                         icon:CircleDot, cat:'FinTech',        countries:['NG'] },
+  { id:'palmpay',       name:'PalmPay',                      icon:Palmtree, cat:'FinTech',        countries:['NG'] },
+  { id:'kuda',          name:'Kuda Bank',                    icon:Landmark, cat:'FinTech',        countries:['NG'] },
+  { id:'moniepoint',    name:'Moniepoint',                   icon:Landmark, cat:'FinTech',        countries:['NG'] },
+  { id:'gtbank',        name:'GTBank',                       icon:Landmark, cat:'FinTech',        countries:['NG'] },
+  { id:'access',        name:'Access Bank',                  icon:Landmark, cat:'FinTech',        countries:['NG'] },
+  { id:'paystack',      name:'Paystack',                     icon:Heart, cat:'FinTech',        countries:['NG','GH','ZA'] },
+  { id:'flutterwave',   name:'Flutterwave (Barter)',          icon:Sparkles, cat:'FinTech',        countries:['NG','GH','KE','ZA'] },
   // Bank
-  { id:'bank_transfer', name:'Bank Transfer',                icon:'🏦', cat:'Bank',           countries:[] },
-  { id:'wire_transfer', name:'Wire Transfer',                icon:'🔗', cat:'Bank',           countries:[] },
-  { id:'mobile_banking',name:'Mobile Banking App',           icon:'📲', cat:'Bank',           countries:[] },
-  { id:'interbank',     name:'Interbank (GhIPSS/NIBSS/EFT)', icon:'🏦', cat:'Bank',           countries:['GH','NG'] },
-  { id:'ussd',          name:'USSD Bank Transfer',           icon:'📞', cat:'Bank',           countries:[] },
-  { id:'instant_eft',   name:'Instant EFT (South Africa)',   icon:'🏦', cat:'Bank',           countries:['ZA'] },
-  { id:'cash_deposit',  name:'Cash Deposit (Bank Counter)',  icon:'🏦', cat:'Bank',           countries:[] },
+  { id:'bank_transfer', name:'Bank Transfer',                icon:Landmark, cat:'Bank',           countries:[] },
+  { id:'wire_transfer', name:'Wire Transfer',                icon:Link, cat:'Bank',           countries:[] },
+  { id:'mobile_banking',name:'Mobile Banking App',           icon:Smartphone, cat:'Bank',           countries:[] },
+  { id:'interbank',     name:'Interbank (GhIPSS/NIBSS/EFT)', icon:Landmark, cat:'Bank',           countries:['GH','NG'] },
+  { id:'ussd',          name:'USSD Bank Transfer',           icon:Phone, cat:'Bank',           countries:[] },
+  { id:'instant_eft',   name:'Instant EFT (South Africa)',   icon:Landmark, cat:'Bank',           countries:['ZA'] },
+  { id:'cash_deposit',  name:'Cash Deposit (Bank Counter)',  icon:Landmark, cat:'Bank',           countries:[] },
   // Cash
-  { id:'cash_person',   name:'Cash in Person (Face-to-Face)',icon:'💵', cat:'Cash',           countries:[] },
-  { id:'cash_out',      name:'Cash Out',                     icon:'💵', cat:'Cash',           countries:[] },
+  { id:'cash_person',   name:'Cash in Person (Face-to-Face)',icon:Banknote, cat:'Cash',           countries:[] },
+  { id:'cash_out',      name:'Cash Out',                     icon:Banknote, cat:'Cash',           countries:[] },
   // Crypto
-  { id:'usdt',          name:'USDT (Tether – TRC20)',         icon:'💵', cat:'Crypto',         countries:[] },
-  { id:'binance_pay',   name:'Binance Pay',                  icon:'🟡', cat:'Crypto',         countries:[] },
-  { id:'btc_pay',       name:'Bitcoin (BTC)',                 icon:'₿',  cat:'Crypto',         countries:[] },
-  { id:'eth_pay',       name:'Ethereum (ETH)',               icon:'⬡',  cat:'Crypto',         countries:[] },
-  { id:'luno',          name:'Luno Wallet',                  icon:'🌙', cat:'Crypto',         countries:[] },
-  { id:'yellow_card',   name:'Yellow Card Wallet',           icon:'💛', cat:'Crypto',         countries:[] },
+  { id:'usdt',          name:'USDT (Tether – TRC20)',         icon:Banknote, cat:'Crypto',         countries:[] },
+  { id:'binance_pay',   name:'Binance Pay',                  icon:CircleDot, cat:'Crypto',         countries:[] },
+  { id:'btc_pay',       name:'Bitcoin (BTC)',                 icon:Bitcoin, cat:'Crypto',         countries:[] },
+  { id:'eth_pay',       name:'Ethereum (ETH)',               icon:Hexagon,  cat:'Crypto',         countries:[] },
+  { id:'luno',          name:'Luno Wallet',                  icon:Moon, cat:'Crypto',         countries:[] },
+  { id:'yellow_card',   name:'Yellow Card Wallet',           icon:Heart, cat:'Crypto',         countries:[] },
   // Gift Card / Voucher payment
-  { id:'pls_gc',        name:'PLS Gift Card',                icon:'🎁', cat:'Gift Card Pay',  countries:[] },
-  { id:'vanilla',       name:'Vanilla Card',                 icon:'🎁', cat:'Gift Card Pay',  countries:[] },
-  { id:'razer_gold',    name:'Razer Gold Gift Card',          icon:'🎮', cat:'Gift Card Pay',  countries:[] },
-  { id:'moneypak',      name:'MoneyPak',                     icon:'💚', cat:'Gift Card Pay',  countries:['US'] },
-  { id:'postepay',      name:'PostePay',                     icon:'🟡', cat:'Gift Card Pay',  countries:['IT'] },
-  { id:'walmart_w2w',   name:'Walmart to Walmart',           icon:'🛒', cat:'Gift Card Pay',  countries:['US'] },
-  { id:'psn_pay',       name:'PlayStation Gift Card',        icon:'🎮', cat:'Gift Card Pay',  countries:[] },
+  { id:'pls_gc',        name:'PLS Gift Card',                icon:Gift, cat:'Gift Card Pay',  countries:[] },
+  { id:'vanilla',       name:'Vanilla Card',                 icon:Gift, cat:'Gift Card Pay',  countries:[] },
+  { id:'razer_gold',    name:'Razer Gold Gift Card',          icon:Gamepad2, cat:'Gift Card Pay',  countries:[] },
+  { id:'moneypak',      name:'MoneyPak',                     icon:Heart, cat:'Gift Card Pay',  countries:['US'] },
+  { id:'postepay',      name:'PostePay',                     icon:CircleDot, cat:'Gift Card Pay',  countries:['IT'] },
+  { id:'walmart_w2w',   name:'Walmart to Walmart',           icon:ShoppingCart, cat:'Gift Card Pay',  countries:['US'] },
+  { id:'psn_pay',       name:'PlayStation Gift Card',        icon:Gamepad2, cat:'Gift Card Pay',  countries:[] },
 ];
 
 const CAT_COLORS = {
@@ -155,31 +160,31 @@ const CAT_COLORS = {
 
 // ── Gift card brands ──────────────────────────────────────────────────────────
 const GC_BRANDS = [
-  { name:'Amazon',              icon:'📦', color:'#FF9900' },
-  { name:'Apple / iTunes',      icon:'🍎', color:'#555555' },
-  { name:'iTunes Denmark',      icon:'🍎', color:'#C5001A' },
-  { name:'Google Play',         icon:'▶️',  color:'#34A853' },
-  { name:'Steam',               icon:'🎮', color:'#1B2838' },
-  { name:'eBay',                icon:'🛍️', color:'#E53238' },
-  { name:'Walmart',             icon:'🛒', color:'#0071CE' },
-  { name:'Target',              icon:'🎯', color:'#CC0000' },
-  { name:'Visa Gift Card',      icon:'💳', color:'#1A1F71' },
-  { name:'Mastercard GC',       icon:'💳', color:'#EB001B' },
-  { name:'Amex Gift Card',      icon:'💳', color:'#007BC1' },
-  { name:'Netflix',             icon:'🎬', color:'#E50914' },
-  { name:'Spotify',             icon:'🎵', color:'#1DB954' },
-  { name:'Xbox',                icon:'🎮', color:'#107C10' },
-  { name:'PlayStation',         icon:'🎮', color:'#003087' },
-  { name:'Nintendo',            icon:'🎮', color:'#E4000F' },
-  { name:'Razer Gold',          icon:'🟡', color:'#44D62C' },
-  { name:'Nike Gift Card',      icon:'👟', color:'#111111' },
-  { name:'MoneyPak',            icon:'💚', color:'#00A651' },
-  { name:'PostePay',            icon:'🟡', color:'#FFCC00' },
-  { name:'PLS Gift Card',       icon:'🎁', color:'#FF6B6B' },
-  { name:'Vanilla Card',        icon:'🎁', color:'#8B4513' },
-  { name:'Roblox',              icon:'🟥', color:'#E62E2E' },
-  { name:'Fortnite V-Bucks',    icon:'🎮', color:'#1D76DB' },
-  { name:'Other',               icon:'🎁', color:'#94A3B8' },
+  { name:'Amazon',              icon:Package, color:'#FF9900' },
+  { name:'Apple / iTunes',      icon:Apple, color:'#555555' },
+  { name:'iTunes Denmark',      icon:Apple, color:'#C5001A' },
+  { name:'Google Play',         icon:PlayCircle, color:'#34A853' },
+  { name:'Steam',               icon:Gamepad2, color:'#1B2838' },
+  { name:'eBay',                icon:ShoppingBag, color:'#E53238' },
+  { name:'Walmart',             icon:ShoppingCart, color:'#0071CE' },
+  { name:'Target',              icon:Target, color:'#CC0000' },
+  { name:'Visa Gift Card',      icon:CreditCard, color:'#1A1F71' },
+  { name:'Mastercard GC',       icon:CreditCard, color:'#EB001B' },
+  { name:'Amex Gift Card',      icon:CreditCard, color:'#007BC1' },
+  { name:'Netflix',             icon:Film, color:'#E50914' },
+  { name:'Spotify',             icon:Music2, color:'#1DB954' },
+  { name:'Xbox',                icon:Gamepad2, color:'#107C10' },
+  { name:'PlayStation',         icon:Gamepad2, color:'#003087' },
+  { name:'Nintendo',            icon:Gamepad2, color:'#E4000F' },
+  { name:'Razer Gold',          icon:CircleDot, color:'#44D62C' },
+  { name:'Nike Gift Card',      icon:Footprints, color:'#111111' },
+  { name:'MoneyPak',            icon:Heart, color:'#00A651' },
+  { name:'PostePay',            icon:CircleDot, color:'#FFCC00' },
+  { name:'PLS Gift Card',       icon:Gift, color:'#FF6B6B' },
+  { name:'Vanilla Card',        icon:Gift, color:'#8B4513' },
+  { name:'Roblox',              icon:Square, color:'#E62E2E' },
+  { name:'Fortnite V-Bucks',    icon:Gamepad2, color:'#1D76DB' },
+  { name:'Other',               icon:Gift, color:'#94A3B8' },
 ];
 
 const GC_FACE_VALUES = [10, 20, 25, 50, 100, 200, 500, 1000];
@@ -464,7 +469,7 @@ export default function CreateOffer() {
       });
 
       if (r.data.success || r.data.offer) {
-        toast.success('🎉 Offer published successfully!');
+        toast.success('Offer published successfully!', { icon: <PartyPopper size={18} /> });
         if (offerType === 'sell') navigate('/buy-bitcoin');
         else if (offerType === 'buy') navigate('/sell-bitcoin');
         else navigate('/gift-cards');
@@ -531,7 +536,7 @@ export default function CreateOffer() {
                           onClick={() => { setPayMethod(m.id); setShowPayMenu(false); setPaySearch(''); setDupOfferWarning(null); }}
                           className="w-full flex items-center gap-3 px-3 py-3 text-left active:bg-gray-100 transition"
                           style={{ backgroundColor: payMethod === m.id ? `${C.green}08` : undefined }}>
-                          <span className="text-xl w-7 text-center flex-shrink-0">{m.icon}</span>
+                          <span className="w-7 flex items-center justify-center flex-shrink-0"><m.icon size={18} style={{ color: C.g600 }} /></span>
                           <span className="text-sm font-semibold flex-1" style={{ color: C.g800 }}>{m.name}</span>
                           {payMethod === m.id && <Check size={14} style={{ color: C.green }} />}
                         </button>
@@ -549,7 +554,7 @@ export default function CreateOffer() {
                   <button key={m.id}
                     onClick={() => { setPayMethod(m.id); setShowPayMenu(false); setPaySearch(''); setDupOfferWarning(null); }}
                     className="w-full flex items-center gap-3 px-3 py-3 text-left active:bg-gray-100 transition">
-                    <span className="text-xl w-7 text-center flex-shrink-0">{m.icon}</span>
+                    <span className="w-7 flex items-center justify-center flex-shrink-0"><m.icon size={18} style={{ color: C.g600 }} /></span>
                     <span className="text-sm font-semibold flex-1" style={{ color: C.g800 }}>{m.name}</span>
                     <span className="text-xs" style={{ color: C.g400 }}>{m.cat}</span>
                     {payMethod === m.id && <Check size={14} style={{ color: C.green }} />}
@@ -578,11 +583,11 @@ export default function CreateOffer() {
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-black" style={{ color: C.g800 }}>Your Offer</span>
               <span className="text-xs">{curr?.flag}</span>
-              <span className="text-xs font-black px-1.5 py-0.5 rounded-sm text-white"
-                style={{ backgroundColor: C.green }}>⭐ Pro</span>
+              <span className="text-xs font-black px-1.5 py-0.5 rounded-sm text-white flex items-center gap-0.5"
+                style={{ backgroundColor: C.green }}><Star size={10} fill="currentColor" /> Pro</span>
             </div>
             <div className="flex items-center gap-1.5 text-xs mt-0.5 font-black" style={{ color: C.g500 }}>
-              <span style={{ color: C.success }}>👍 0</span>
+              <span className="flex items-center gap-0.5" style={{ color: C.success }}><ThumbsUp size={11} /> 0</span>
               <span>·</span><span>0 Trades</span>
               <span>·</span><span style={{ color: C.success }}>● Active</span>
             </div>
@@ -649,13 +654,14 @@ export default function CreateOffer() {
               ? `${sym}${fmt(parseFloat(minLimit))} – ${sym}${fmt(parseFloat(maxLimit))} ${cur}`
               : 'Set limits in previous step'}</span>
           )}
-          <span>⏱ {timeLimit}min</span>
+          <span className="inline-flex items-center gap-0.5"><Clock size={10} />{timeLimit}min</span>
         </div>
       </div>
       <div className="px-3 py-2">
-        <div className="w-full py-1.5 rounded-lg text-white text-xs font-black text-center"
+        <div className="w-full py-1.5 rounded-lg text-white text-xs font-black text-center flex items-center justify-center gap-1"
           style={{ backgroundColor: offerType === 'sell' ? C.green : offerType === 'buy' ? C.paid : C.purple }}>
-          {offerType === 'sell' ? 'Buy BTC →' : offerType === 'buy' ? 'Sell BTC →' : offerType === 'gc_buy' ? 'Sell Gift Card →' : 'Buy Gift Card →'}
+          {offerType === 'sell' ? 'Buy BTC' : offerType === 'buy' ? 'Sell BTC' : offerType === 'gc_buy' ? 'Sell Gift Card' : 'Buy Gift Card'}
+          <ArrowRight size={12} />
         </div>
       </div>
     </div>
@@ -669,7 +675,7 @@ export default function CreateOffer() {
       subtitle: 'I have BTC, I want local currency',
       icon: Bitcoin,
       color: C.green,
-      badge: '🟢 Listed on Buy Bitcoin page',
+      badge: 'Listed on Buy Bitcoin page',
       badgeColor: C.success,
       desc: 'You own Bitcoin and want to sell it. Buyers pay you in local cash via MTN, bank, PayPal, etc.',
     },
@@ -679,7 +685,7 @@ export default function CreateOffer() {
       subtitle: 'I have cash, I want BTC',
       icon: ShoppingCart,
       color: C.paid,
-      badge: '🔵 Listed on Sell Bitcoin page',
+      badge: 'Listed on Sell Bitcoin page',
       badgeColor: C.paid,
       desc: 'Post your buy offer. Bitcoin sellers come to you and you pay them in local currency.',
     },
@@ -689,7 +695,7 @@ export default function CreateOffer() {
       subtitle: 'I have BTC, I want a gift card',
       icon: Gift,
       color: C.purple,
-      badge: '💜 Listed on Gift Cards page',
+      badge: 'Listed on Gift Cards page',
       badgeColor: C.purple,
       desc: 'Spend your Bitcoin on gift cards. Users with unused gift cards come to trade with you — you pay in BTC.',
     },
@@ -796,7 +802,7 @@ export default function CreateOffer() {
                         <p className="text-xs mb-2 leading-relaxed" style={{ color: C.g500 }}>{ot.desc}</p>
                         <div className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full"
                           style={{ backgroundColor: `${ot.badgeColor}15`, color: ot.badgeColor }}>
-                          {ot.badge}
+                          <CircleDot size={10} />{ot.badge}
                         </div>
                       </button>
                     );
@@ -872,18 +878,19 @@ export default function CreateOffer() {
                   <div className="flex-1 min-w-0">
                     {walletBal.btc * btcPrice >= 10 ? (
                       <p className="text-xs leading-relaxed" style={{ color: '#15803D' }}>
-                        ✅ <strong>Wallet ready:</strong> Your balance is <strong>${(walletBal.btc * btcPrice).toFixed(2)}</strong>.
+                        <CheckCircle2 size={12} className="inline-block mr-1 align-text-bottom" /><strong>Wallet ready:</strong> Your balance is <strong>${(walletBal.btc * btcPrice).toFixed(2)}</strong>.
                         Your offer will be visible in the Buy Bitcoin market.
                       </p>
                     ) : (
                       <p className="text-xs leading-relaxed" style={{ color: '#92400E' }}>
-                        ⚠️ <strong>Top up required:</strong> Your wallet has <strong>${(walletBal.btc * btcPrice).toFixed(2)}</strong>.
+                        <AlertTriangle size={12} className="inline-block mr-1 align-text-bottom" /><strong>Top up required:</strong> Your wallet has <strong>${(walletBal.btc * btcPrice).toFixed(2)}</strong>.
                         You need at least <strong>$10 in BTC</strong> for your offer to appear in the Buy Bitcoin market.{' '}
                         <button
                           type="button"
                           onClick={() => navigate('/wallet')}
+                          className="inline-flex items-center gap-0.5"
                           style={{ color: '#D97706', fontWeight: 700, textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 'inherit' }}>
-                          Top up your wallet →
+                          Top up your wallet <ArrowRight size={11} />
                         </button>
                       </p>
                     )}
@@ -931,7 +938,7 @@ export default function CreateOffer() {
                           backgroundColor: active ? `${C.purple}10` : C.white,
                           width:'100%', boxSizing:'border-box',
                         }}>
-                        <span className="text-base flex-shrink-0">{b.icon}</span>
+                        <span className="flex-shrink-0"><b.icon size={16} style={{ color: C.purple }} /></span>
                         <span className="text-xs font-bold truncate flex-1 min-w-0" style={{ color: C.g800 }}>{b.name}</span>
                         {active && <Check size={11} style={{ color: C.purple, flexShrink: 0 }} />}
                       </button>
@@ -1188,8 +1195,11 @@ export default function CreateOffer() {
                     </p>
                     <div className="p-4 rounded-2xl border-2 flex items-center gap-4"
                       style={{ borderColor: C.purple, backgroundColor: `${C.purple}06` }}>
-                      <span className="text-4xl flex-shrink-0">
-                        {GC_BRANDS.find(b => b.name === gcBrand)?.icon || '🎁'}
+                      <span className="flex-shrink-0">
+                        {(() => {
+                          const BrandIcon = GC_BRANDS.find(b => b.name === gcBrand)?.icon || Gift;
+                          return <BrandIcon size={32} style={{ color: C.purple }} />;
+                        })()}
                       </span>
                       <div className="flex-1 min-w-0">
                         <p className="font-black text-base" style={{ color: C.forest }}>{gcBrand}</p>
@@ -1232,7 +1242,7 @@ export default function CreateOffer() {
                       }}>
                       {selectedPay ? (
                         <>
-                          <span className="text-2xl flex-shrink-0">{selectedPay.icon}</span>
+                          <span className="flex-shrink-0"><selectedPay.icon size={22} style={{ color: C.g600 }} /></span>
                           <div className="flex-1 min-w-0">
                             <p className="text-base font-bold" style={{ color: C.g800 }}>{selectedPay.name}</p>
                             <p className="text-xs mt-0.5" style={{ color: CAT_COLORS[selectedPay.cat] || C.g400 }}>
@@ -1433,8 +1443,8 @@ export default function CreateOffer() {
                           {/* Header */}
                           <div className="px-3 py-2 flex items-center justify-between flex-wrap gap-1"
                             style={{ backgroundColor: `${C.success}12` }}>
-                            <p className="text-xs font-black" style={{ color: C.success }}>
-                              💡 Per $100 trade
+                            <p className="text-xs font-black flex items-center gap-1" style={{ color: C.success }}>
+                              <Lightbulb size={12} /> Per $100 trade
                             </p>
                             <span className="text-xs font-bold px-2 py-0.5 rounded-full"
                               style={{ backgroundColor: C.success, color: C.white }}>
@@ -1469,9 +1479,9 @@ export default function CreateOffer() {
                             <div className="flex items-start justify-between gap-2 pt-1.5 border-t"
                               style={{ borderColor: yourProfitUSD < 0 ? `${C.danger}25` : `${C.success}25` }}>
                               <div className="flex items-center gap-1.5 min-w-0">
-                                <span className="w-5 h-5 rounded-full flex items-center justify-center text-xs flex-shrink-0"
+                                <span className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
                                   style={{ backgroundColor: yourProfitUSD < 0 ? C.danger : C.success, color: C.white }}>
-                                  {yourProfitUSD < 0 ? '↓' : '✓'}
+                                  {yourProfitUSD < 0 ? <ArrowDown size={12} /> : <Check size={12} />}
                                 </span>
                                 <span className="text-xs font-bold" style={{ color: C.g700 }}>
                                   {yourProfitUSD < 0 ? 'Your loss' : 'Your profit'}
@@ -1528,11 +1538,11 @@ export default function CreateOffer() {
                     </span>
                   </div>
                   {fixedPrice && btcLocal > 0 && (
-                    <p className="text-xs mt-1.5 font-semibold"
+                    <p className="text-xs mt-1.5 font-semibold flex items-center gap-1"
                       style={{ color: parseFloat(fixedPrice) >= btcLocal ? C.success : C.danger }}>
                       {parseFloat(fixedPrice) >= btcLocal
-                        ? `✅ +${((parseFloat(fixedPrice) / btcLocal - 1) * 100).toFixed(1)}% above market`
-                        : `⚠️ −${((1 - parseFloat(fixedPrice) / btcLocal) * 100).toFixed(1)}% below market`}
+                        ? <><CheckCircle2 size={12} />+{((parseFloat(fixedPrice) / btcLocal - 1) * 100).toFixed(1)}% above market</>
+                        : <><AlertTriangle size={12} />−{((1 - parseFloat(fixedPrice) / btcLocal) * 100).toFixed(1)}% below market</>}
                     </p>
                   )}
                 </div>
@@ -1557,7 +1567,7 @@ export default function CreateOffer() {
                            borderColor: walletCapacityLocal > 0 ? '#A7F3D0' : '#FDE68A' }}>
                   <div className="p-3 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm">💼</span>
+                      <Briefcase size={16} style={{ color: walletCapacityLocal > 0 ? C.forest : '#92400E' }} />
                       <div>
                         <p className="text-xs font-black uppercase tracking-wide"
                           style={{ color: walletCapacityLocal > 0 ? C.forest : '#92400E' }}>
@@ -1580,8 +1590,8 @@ export default function CreateOffer() {
                   </div>
                   {walletCapacityLocal === 0 && (
                     <div className="px-3 pb-2">
-                      <p className="text-xs font-semibold" style={{ color: '#92400E' }}>
-                        💡 No balance yet — you can still create this offer. BTC is only locked when a buyer opens a trade.
+                      <p className="text-xs font-semibold flex items-center gap-1" style={{ color: '#92400E' }}>
+                        <Lightbulb size={12} className="flex-shrink-0" /> No balance yet — you can still create this offer. BTC is only locked when a buyer opens a trade.
                       </p>
                     </div>
                   )}
@@ -1589,7 +1599,7 @@ export default function CreateOffer() {
               ) : (
                 <div className="rounded-xl border p-3 flex items-start gap-2.5"
                   style={{ backgroundColor: '#F0FDF4', borderColor: '#A7F3D0' }}>
-                  <span className="text-sm flex-shrink-0">💡</span>
+                  <Lightbulb size={14} className="flex-shrink-0" style={{ color: C.forest }} />
                   <p className="text-xs font-semibold" style={{ color: C.forest }}>
                     No wallet balance needed. You're setting how much BTC you want to buy — sellers will fill your order. Set any limits you like.
                   </p>
@@ -1676,7 +1686,7 @@ export default function CreateOffer() {
                 )}
                 {maxExceedsWallet && (
                   <div className="flex items-start gap-2 p-2.5 rounded-xl" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
-                    <span style={{ fontSize: 14, flexShrink: 0, marginTop: 1 }}>💡</span>
+                    <Lightbulb size={14} style={{ flexShrink: 0, marginTop: 1, color: '#92400E' }} />
                     <p className="text-xs font-semibold" style={{ color: '#92400E' }}>
                       Your limit exceeds your current wallet balance — that's OK! You can create the offer now and your BTC will be locked only when a buyer opens a trade.
                     </p>
@@ -1685,7 +1695,7 @@ export default function CreateOffer() {
 
                 {minLimit && maxLimit && curr && parseFloat(maxLimit) >= parseFloat(minLimit) && (
                   <div className="p-3 rounded-xl space-y-1.5" style={{ backgroundColor: C.mist, width:'100%', boxSizing:'border-box' }}>
-                    <p className="text-xs font-black mb-1" style={{ color: C.forest }}>📣 Offer card preview:</p>
+                    <p className="text-xs font-black mb-1 flex items-center gap-1" style={{ color: C.forest }}><Megaphone size={12} /> Offer card preview:</p>
                     {[
                       { label:'Range', val:`${sym}${fmt(parseFloat(minLimit))} – ${sym}${fmt(parseFloat(maxLimit))} ${cur}` },
                       { label:'USD', val:`$${fmt(parseFloat(minLimit)/localRate,0)} – $${fmt(parseFloat(maxLimit)/localRate,0)}` },
@@ -1857,9 +1867,9 @@ export default function CreateOffer() {
                 style={{
                   alignSelf:'flex-start', padding:'7px 14px', borderRadius:8,
                   backgroundColor:'#D97706', color:'#fff', fontWeight:800,
-                  fontSize:12, border:'none', cursor:'pointer',
+                  fontSize:12, border:'none', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:4,
                 }}>
-                Go to Dashboard →
+                Go to Dashboard <ArrowRight size={12} />
               </button>
             </div>
           )}
@@ -1887,7 +1897,7 @@ export default function CreateOffer() {
               ? <><RefreshCw size={16} className="animate-spin" />Publishing…</>
               : step < 5
                 ? <>Continue <ChevronRight size={16} /></>
-                : <>🚀 Publish Offer</>}
+                : <><Rocket size={16} />Publish Offer</>}
           </button>
         </div>
 
