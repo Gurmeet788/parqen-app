@@ -810,7 +810,7 @@ export default function Profile({ userId: propUserId }) {
 
           {/* ── OVERVIEW ── */}
           {tab === 'overview' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,280px)', gap: 20, alignItems: 'start' }}>
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px]" style={{ gap: 20, alignItems: 'start' }}>
 
               {/* Left column */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
