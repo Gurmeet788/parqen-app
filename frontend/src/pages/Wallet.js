@@ -45,7 +45,7 @@ const fmtDate = d => {
 };
 
 // ─── Withdraw Modal ────────────────────────────────────────────────────────────
-function WithdrawModal({ balance, btcPrice, onClose, onSend, kycStatus }) {
+function WithdrawModal({ balance, btcPrice, onClose, onSend, kycStatus, onSwitchToInternal }) {
   const [address,   setAddress]   = useState('');
   const [amount,    setAmount]    = useState('');
   const [usdAmount, setUsdAmount] = useState('');
@@ -142,7 +142,7 @@ function WithdrawModal({ balance, btcPrice, onClose, onSend, kycStatus }) {
   const fmtUsdVal = n => `$${parseFloat(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4"
+    <div className="fixed inset-0 z-[1100] flex items-end md:items-center justify-center p-0 md:p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}>
       <div className="bg-white w-full md:max-w-md rounded-t-3xl md:rounded-3xl overflow-hidden shadow-2xl"
         style={{ marginBottom: 'calc(60px + env(safe-area-inset-bottom, 0px))' }}>
@@ -169,6 +169,19 @@ function WithdrawModal({ balance, btcPrice, onClose, onSend, kycStatus }) {
         </div>
 
         <div className="p-5 overflow-y-auto" style={{ maxHeight: '75vh' }}>
+
+          {/* ── Destination toggle: external wallet (this modal) vs PRAQEN user ── */}
+          <div className="flex rounded-2xl overflow-hidden mb-4" style={{ border: `1.5px solid ${C.g200}` }}>
+            <div className="flex-1 py-3 text-center font-black text-xs"
+              style={{ background: 'linear-gradient(135deg, #1a1a2e, #16213e)', color: '#fff' }}>
+              External Wallet
+            </div>
+            <button onClick={onSwitchToInternal}
+              className="flex-1 py-3 text-center font-black text-xs transition hover:bg-gray-50"
+              style={{ color: C.g500 }}>
+              PRAQEN User
+            </button>
+          </div>
 
           {/* ── KYC gate ── */}
           {kycStatus && !(kycStatus.email && kycStatus.phone && kycStatus.kyc) ? (
@@ -210,9 +223,6 @@ function WithdrawModal({ balance, btcPrice, onClose, onSend, kycStatus }) {
                 style={{ background: 'linear-gradient(135deg, #10b981, #059669)', boxShadow: '0 4px 14px rgba(16,185,129,0.35)' }}>
                 <Shield size={15} /> Complete Verification Now
               </a>
-              <p className="text-xs text-center" style={{ color: C.g400 }}>
-                Internal transfers to PRAQEN users don't require KYC.
-              </p>
             </div>
           ) : (
           <div className="space-y-4">
@@ -471,7 +481,7 @@ function ReceiveModal({ address, network, onClose, onGenerate, checking, onCheck
   const explorerUrl = `https://mempool.space/address/${address}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4"
+    <div className="fixed inset-0 z-[1100] flex items-end md:items-center justify-center p-0 md:p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}>
       <div className="bg-white w-full md:max-w-sm rounded-t-2xl md:rounded-2xl overflow-hidden shadow-2xl">
         <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: C.g100 }}>
@@ -615,7 +625,7 @@ function TxReceiptModal({ tx, onClose, onRepeat, btcPrice }) {
   ].filter(Boolean);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4"
+    <div className="fixed inset-0 z-[1100] flex items-end md:items-center justify-center p-0 md:p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}>
       <div className="bg-white w-full md:max-w-sm rounded-t-3xl md:rounded-3xl overflow-hidden shadow-2xl">
 
@@ -855,7 +865,7 @@ function TxRow({ tx, onClick }) {
 const CURRENCY_SYMBOLS = { USD:'$', GBP:'£', EUR:'€', GHS:'₵', NGN:'₦', KES:'KSh ', ZAR:'R ' };
 
 // ─── Internal Transfer Modal ───────────────────────────────────────────────────
-function InternalTransferModal({ balance, btcPrice, displayCurrency, fxRate, currentUserId, currentUser, onClose, onDone, initialUsername }) {
+function InternalTransferModal({ balance, btcPrice, displayCurrency, fxRate, currentUserId, currentUser, onClose, onDone, initialUsername, onSwitchToExternal }) {
   const [step,        setStep]        = useState('form');
   const [inputMode,   setInputMode]   = useState('username'); // 'username' | 'address'
   const [query,       setQuery]       = useState(initialUsername || '');
@@ -921,7 +931,7 @@ function InternalTransferModal({ balance, btcPrice, displayCurrency, fxRate, cur
   const recipientLabel = recipient?.username ? `@${recipient.username}` : recipient?.address ? `${recipient.address.slice(0,12)}…` : '';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4"
+    <div className="fixed inset-0 z-[1100] flex items-end md:items-center justify-center p-0 md:p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}>
       <div className="bg-white w-full md:max-w-md rounded-t-3xl md:rounded-3xl overflow-hidden shadow-2xl"
         style={{ marginBottom: 'calc(60px + env(safe-area-inset-bottom, 0px))' }}>
@@ -1091,6 +1101,19 @@ function InternalTransferModal({ balance, btcPrice, displayCurrency, fxRate, cur
           {step === 'form' && (
             <div className="p-5 space-y-4">
 
+              {/* ── Destination toggle: PRAQEN user (this modal) vs external wallet ── */}
+              <div className="flex rounded-2xl overflow-hidden" style={{ border: `1.5px solid ${C.g200}` }}>
+                <button onClick={onSwitchToExternal}
+                  className="flex-1 py-3 text-center font-black text-xs transition hover:bg-gray-50"
+                  style={{ color: C.g500 }}>
+                  External Wallet
+                </button>
+                <div className="flex-1 py-3 text-center font-black text-xs"
+                  style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)', color: '#fff' }}>
+                  PRAQEN User
+                </div>
+              </div>
+
               {/* Balance */}
               <div className="flex items-center justify-between px-4 py-3 rounded-2xl"
                 style={{ background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)', border: '1px solid #bbf7d0' }}>
@@ -1239,7 +1262,7 @@ function InternalTransferModal({ balance, btcPrice, displayCurrency, fxRate, cur
 }
 
 // ─── USDT Withdraw Modal ──────────────────────────────────────────────────────
-function UsdtWithdrawModal({ balance, onClose, onSend, kycStatus }) {
+function UsdtWithdrawModal({ balance, onClose, onSend, kycStatus, onSwitchToInternal }) {
   const [address,       setAddress]       = useState('');
   const [amount,        setAmount]        = useState('');
   const [inputMode,     setInputMode]     = useState('usdt'); // 'usdt' | 'usd'
@@ -1311,7 +1334,7 @@ function UsdtWithdrawModal({ balance, onClose, onSend, kycStatus }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4"
+    <div className="fixed inset-0 z-[1100] flex items-end md:items-center justify-center p-0 md:p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}>
       <div className="bg-white w-full md:max-w-md rounded-t-3xl md:rounded-3xl overflow-hidden shadow-2xl"
         style={{ marginBottom: 'calc(60px + env(safe-area-inset-bottom, 0px))' }}>
@@ -1334,6 +1357,19 @@ function UsdtWithdrawModal({ balance, onClose, onSend, kycStatus }) {
           </div>
         </div>
         <div className="p-5 overflow-y-auto space-y-4" style={{ maxHeight: '75vh' }}>
+
+          {/* ── Destination toggle: external wallet (this modal) vs PRAQEN user ── */}
+          <div className="flex rounded-2xl overflow-hidden" style={{ border: `1.5px solid ${C.g200}` }}>
+            <div className="flex-1 py-3 text-center font-black text-xs"
+              style={{ background: 'linear-gradient(135deg, #1a1a2e, #16213e)', color: '#fff' }}>
+              External Wallet
+            </div>
+            <button onClick={onSwitchToInternal}
+              className="flex-1 py-3 text-center font-black text-xs transition hover:bg-gray-50"
+              style={{ color: C.g500 }}>
+              PRAQEN User
+            </button>
+          </div>
 
           {/* ── KYC gate ── */}
           {kycStatus && !(kycStatus.email && kycStatus.phone && kycStatus.kyc) ? (
@@ -1375,9 +1411,6 @@ function UsdtWithdrawModal({ balance, onClose, onSend, kycStatus }) {
                 style={{ background: 'linear-gradient(135deg, #10b981, #059669)', boxShadow: '0 4px 14px rgba(16,185,129,0.35)' }}>
                 <Shield size={15} /> Complete Verification Now
               </a>
-              <p className="text-xs text-center" style={{ color: '#9ca3af' }}>
-                Internal transfers to PRAQEN users don't require KYC.
-              </p>
             </div>
           ) : <>
 
@@ -1658,7 +1691,7 @@ function UsdtWithdrawModal({ balance, onClose, onSend, kycStatus }) {
 }
 
 // ─── USDT Internal Transfer Modal ─────────────────────────────────────────────
-function UsdtInternalTransferModal({ balance, onClose, onTransfer }) {
+function UsdtInternalTransferModal({ balance, onClose, onTransfer, onSwitchToExternal }) {
   // steps: 'recipient' → 'amount' → 'preview' → 'success'
   const [step,          setStep]          = useState('recipient');
   const [mode,          setMode]          = useState('username');   // always 'username' for internal
@@ -1725,7 +1758,7 @@ function UsdtInternalTransferModal({ balance, onClose, onTransfer }) {
   ) : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+    <div className="fixed inset-0 z-[1100] flex items-end sm:items-center justify-center p-0 sm:p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}>
       <div className="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl"
         style={{ backgroundColor: '#fff', maxHeight: '96dvh', overflowY: 'auto' }}>
@@ -1788,6 +1821,19 @@ function UsdtInternalTransferModal({ balance, onClose, onTransfer }) {
           {/* ══ STEP 1: Recipient ══════════════════════════════════════════ */}
           {step === 'recipient' && (
             <>
+              {/* ── Destination toggle: PRAQEN user (this modal) vs external wallet ── */}
+              <div className="flex rounded-2xl overflow-hidden" style={{ border: `1.5px solid ${C.g200}` }}>
+                <button onClick={onSwitchToExternal}
+                  className="flex-1 py-3 text-center font-black text-xs transition hover:bg-gray-50"
+                  style={{ color: C.g500 }}>
+                  External Wallet
+                </button>
+                <div className="flex-1 py-3 text-center font-black text-xs"
+                  style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)', color: '#fff' }}>
+                  PRAQEN User
+                </div>
+              </div>
+
               {/* Input */}
               <div>
                 <label className="block text-xs font-black mb-2 uppercase tracking-wide" style={{ color: C.g500 }}>
@@ -2164,7 +2210,7 @@ function WalletSwitcher({ activeCoin, onSelect, dark, pulse }) {
 // the real modal opens, so Send/Receive/Transfer work from either wallet view.
 function AssetPickerSheet({ title, subtitle, onPick, onClose }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4"
+    <div className="fixed inset-0 z-[1100] flex items-end md:items-center justify-center p-0 md:p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
       onClick={onClose}>
       <div className="bg-white w-full md:max-w-xs rounded-t-3xl md:rounded-3xl overflow-hidden shadow-2xl"
@@ -2210,6 +2256,52 @@ function AssetPickerSheet({ title, subtitle, onPick, onClose }) {
   );
 }
 
+// ─── Asset Action Sheet — shown when an Assets row (Bitcoin / Tether) is tapped ──
+// Coin is already known here, so it skips straight to Send/Receive/Transfer/Swap for it.
+function AssetActionSheet({ asset, balanceLabel, usdLabel, onAction, onClose }) {
+  const isBtc = asset === 'BTC';
+  const actions = [
+    { key: 'send',     label: 'Send',     icon: Send },
+    { key: 'receive',  label: 'Receive',  icon: Download },
+    { key: 'transfer', label: 'Transfer', icon: ArrowUpRight },
+    { key: 'swap',     label: 'Swap',     icon: ArrowLeftRight },
+  ];
+  return (
+    <div className="fixed inset-0 z-[1100] flex items-end md:items-center justify-center p-0 md:p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}>
+      <div className="bg-white w-full md:max-w-xs rounded-t-3xl md:rounded-3xl overflow-hidden shadow-2xl"
+        onClick={e => e.stopPropagation()}>
+        <div className="px-5 pt-5 pb-4 flex items-center gap-3 border-b" style={{ borderColor: C.g100 }}>
+          <div className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0"
+            style={isBtc ? { background: 'linear-gradient(135deg,#F7931A,#e8830a)' } : { background: '#26A17B' }}>
+            {isBtc ? <span style={{ fontSize: 19, fontWeight: 900, color: '#fff' }}>₿</span> : <TetherGlyph size={21} />}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-black text-sm" style={{ color: C.g800 }}>{isBtc ? 'Bitcoin' : 'Tether USD'}</p>
+            <p className="text-xs" style={{ color: C.g400 }}>{balanceLabel}{usdLabel ? ` · ${usdLabel}` : ''}</p>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-xl flex items-center justify-center hover:bg-gray-100 flex-shrink-0">
+            <X size={14} style={{ color: C.g500 }} />
+          </button>
+        </div>
+        <div className="px-3 py-4 grid grid-cols-4 gap-1.5 sm:gap-2">
+          {actions.map(({ key, label, icon: Icon }) => (
+            <button key={key} onClick={() => onAction(key)}
+              className="flex flex-col items-center gap-1.5 sm:gap-2 py-3 px-1 rounded-2xl border hover:bg-gray-50 transition active:scale-[0.98]"
+              style={{ borderColor: C.g200 }}>
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: C.mist }}>
+                <Icon size={15} style={{ color: C.green }} />
+              </div>
+              <span className="text-[11px] sm:text-xs font-bold text-center leading-tight whitespace-nowrap" style={{ color: C.g700 }}>{label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── USDT Receive Modal ────────────────────────────────────────────────────────
 function UsdtReceiveModal({ address, onClose, checking, scanCooldown, onCheckDeposits }) {
   const [copied, setCopied] = useState(false);
@@ -2222,7 +2314,7 @@ function UsdtReceiveModal({ address, onClose, checking, scanCooldown, onCheckDep
   const explorerUrl = `https://tronscan.org/#/address/${address}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4"
+    <div className="fixed inset-0 z-[1100] flex items-end md:items-center justify-center p-0 md:p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}>
       <div className="bg-white w-full md:max-w-sm rounded-t-2xl md:rounded-2xl overflow-hidden shadow-2xl">
         <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: C.g100 }}>
@@ -2382,6 +2474,7 @@ export default function WalletPage({ user }) {
   const [showUsdtInternal, setShowUsdtInternal] = useState(false);
   const [showUsdtRecv,     setShowUsdtRecv]     = useState(false);
   const [assetPicker,      setAssetPicker]      = useState(null); // { type: 'send' | 'receive' | 'transfer' }
+  const [assetActionSheet, setAssetActionSheet] = useState(null); // 'BTC' | 'USDT' — opened from the Assets row tap
   const [showUsdtHint,     setShowUsdtHint]     = useState(() => !localStorage.getItem('praqen_usdt_hint_seen'));
   const dismissUsdtHint = () => { setShowUsdtHint(false); localStorage.setItem('praqen_usdt_hint_seen', '1'); };
   const [swapFrom,      setSwapFrom]      = useState('BTC');
@@ -2682,6 +2775,17 @@ export default function WalletPage({ user }) {
     }
   };
 
+  // ── Asset action sheet dispatch — Send/Receive/Swap resolve for the tapped coin ──
+  const handleAssetAction = (action, asset) => {
+    setAssetActionSheet(null);
+    if (action === 'swap') {
+      setSwapFrom(asset);
+      setActiveCoin('SWAP');
+    } else {
+      openAssetModal(action, asset);
+    }
+  };
+
   // ── Execute BTC↔USDT swap ─────────────────────────────────────────────────
   const doSwap = async () => {
     // Resolve effective native amount from whichever input mode is active
@@ -2868,7 +2972,7 @@ export default function WalletPage({ user }) {
             <p className="font-black text-sm" style={{ color: C.g800 }}>Assets</p>
           </div>
 
-          <button onClick={() => setActiveCoin('BTC')}
+          <button onClick={() => setAssetActionSheet('BTC')}
             className="w-full flex items-center gap-3 px-5 py-4 transition hover:bg-slate-50 border-b" style={{ borderColor: C.g100 }}>
             <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#FFF7E8' }}>
               <Bitcoin size={18} style={{ color: C.gold }} />
@@ -2884,7 +2988,7 @@ export default function WalletPage({ user }) {
             <ChevronRight size={16} style={{ color: C.g300 }} className="flex-shrink-0" />
           </button>
 
-          <button onClick={() => setActiveCoin('USDT')}
+          <button onClick={() => setAssetActionSheet('USDT')}
             className="w-full flex items-center gap-3 px-5 py-4 transition hover:bg-slate-50">
             <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#E8F7F2' }}>
               <TetherGlyph size={16} color="#26A17B" />
@@ -3422,9 +3526,9 @@ export default function WalletPage({ user }) {
 
       {selectedTx && <TxReceiptModal tx={selectedTx} btcPrice={btcPrice} onClose={() => setSelectedTx(null)}
           onRepeat={(username) => { setSelectedTx(null); setRepeatUsername(username); setShowInternal(true); }} />}
-      {showSend && <WithdrawModal balance={availableBal} btcPrice={btcPrice} onClose={() => setShowSend(false)} onSend={sendBitcoin} kycStatus={userVerif} />}
-      {showUsdtSend && <UsdtWithdrawModal balance={usdtData?.balance_usdt || 0} onClose={() => setShowUsdtSend(false)} onSend={sendUsdt} kycStatus={userVerif} />}
-      {showUsdtInternal && <UsdtInternalTransferModal balance={usdtData?.balance_usdt || 0} onClose={() => setShowUsdtInternal(false)} onTransfer={doUsdtInternalTransfer} />}
+      {showSend && <WithdrawModal balance={availableBal} btcPrice={btcPrice} onClose={() => setShowSend(false)} onSend={sendBitcoin} kycStatus={userVerif} onSwitchToInternal={() => { setShowSend(false); setShowInternal(true); }} />}
+      {showUsdtSend && <UsdtWithdrawModal balance={usdtData?.balance_usdt || 0} onClose={() => setShowUsdtSend(false)} onSend={sendUsdt} kycStatus={userVerif} onSwitchToInternal={() => { setShowUsdtSend(false); setShowUsdtInternal(true); }} />}
+      {showUsdtInternal && <UsdtInternalTransferModal balance={usdtData?.balance_usdt || 0} onClose={() => setShowUsdtInternal(false)} onTransfer={doUsdtInternalTransfer} onSwitchToExternal={() => { setShowUsdtInternal(false); setShowUsdtSend(true); }} />}
       {showRecv && (
         <ReceiveModal
           address={walletData?.address}
@@ -3452,6 +3556,19 @@ export default function WalletPage({ user }) {
           onClose={() => setAssetPicker(null)}
         />
       )}
+      {assetActionSheet && (
+        <AssetActionSheet
+          asset={assetActionSheet}
+          balanceLabel={assetActionSheet === 'BTC'
+            ? (showBal ? `${fmt(balance, 6)} BTC` : '•••• BTC')
+            : (showBal ? `${usdtBal.toFixed(2)} USDT` : '•••• USDT')}
+          usdLabel={assetActionSheet === 'BTC'
+            ? (showBal ? fmtLocal(totalUsd) : '••••')
+            : (showBal ? fmtLocal(usdtBal) : '••••')}
+          onAction={(action) => handleAssetAction(action, assetActionSheet)}
+          onClose={() => setAssetActionSheet(null)}
+        />
+      )}
       {showInternal && (
         <InternalTransferModal
           balance={availableBal}
@@ -3462,6 +3579,7 @@ export default function WalletPage({ user }) {
           currentUser={user}
           initialUsername={repeatUsername}
           onClose={() => { setShowInternal(false); setRepeatUsername(null); }}
+          onSwitchToExternal={() => { setShowInternal(false); setRepeatUsername(null); setShowSend(true); }}
           onDone={(newBal) => {
             setWalletData(prev => prev ? { ...prev, available_btc: newBal, balance_btc: newBal } : prev);
             setShowInternal(false);
