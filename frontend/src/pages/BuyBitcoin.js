@@ -315,7 +315,7 @@ function OfferCard({listing, btcPriceUSD, onViewSeller, onBuy, liked, onToggleLi
   const { btcReceived } = calcBtc(examplePay, btcPriceUSD, margin, usdRate);
   const fiatEquiv = parseFloat((btcReceived * btcPriceUSD * usdRate).toFixed(2));
 
-  const marginLabel = margin===0 ? 'Market rate' : margin>0 ? `+${margin}% above market` : `${Math.abs(margin)}% below market`;
+  const marginLabel = margin===0 ? '0%' : margin>0 ? `+${margin}%` : `${margin}%`;
   const marginBg    = margin>0 ? C.danger : margin<0 ? C.success : C.g400;
 
   const pos   = parseInt(u.positive_feedback||0);
@@ -326,179 +326,84 @@ function OfferCard({listing, btcPriceUSD, onViewSeller, onBuy, liked, onToggleLi
   const ft = featuredType ? FEATURED[featuredType] : null;
 
   return (
-    <div className="rounded-2xl overflow-hidden transition-all w-full"
+    <div className="bg-white rounded-xl transition-all w-full flex flex-col md:flex-row md:items-center md:justify-between px-5 py-3.5 gap-4 md:gap-6 hover:bg-[#F6FBF8]"
       style={{
-        background: ft?.bgGradient || (ft ? ft.bg : '#fff'),
-        border: ft ? `2.5px solid ${ft.border}` : `1px solid ${C.g200}`,
-        boxShadow: ft ? `0 0 0 3px ${ft.glow}, 0 10px 36px ${ft.glow}` : 'none',
-        animation: ft?.pulse ? 'featuredPulse 2.5s ease-in-out infinite' : undefined,
+        border: ft ? `2px solid ${ft.border}` : '1px solid #E2E8F0',
+        borderLeft: ft ? `4px solid ${ft.border}` : '4px solid #A7F3D0',
+        boxShadow: ft ? `0 0 0 3px ${ft.glow}` : '0 1px 3px rgba(0,0,0,0.04)',
       }}>
-      {ft && (
-        <div style={{position:'relative', overflow:'hidden'}}>
-          <div className="flex items-center justify-center gap-2"
-            style={{
-              background: ft.ribbon,
-              padding: ft.pulse ? '10px 16px' : '8px 16px',
-            }}>
-            <span style={{
-              fontSize: ft.pulse ? 12 : 11,
-              fontWeight: 900,
-              letterSpacing: '0.12em',
-              color: '#fff',
-              textShadow: '0 1px 6px rgba(0,0,0,0.45)',
-              whiteSpace: 'nowrap',
-            }}>
-              {ft.tag}
-            </span>
-          </div>
-          {ft.pulse && (
-            <div style={{
-              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-              background: 'linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.30) 50%,transparent 100%)',
-              animation: 'shimmer 2.4s linear infinite',
-              pointerEvents: 'none',
-            }}/>
+      {/* Col 1: Avatar, name, trust, trades, status */}
+      <div className="flex items-center gap-3 flex-1 min-w-[210px]">
+        <div className="relative flex-shrink-0">
+          <button onClick={onViewSeller} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+            <Avatar user={u} size={42} radius="rounded-full" />
+          </button>
+          {seen.online && (
+            <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white"
+              style={{ backgroundColor: C.online }} />
           )}
         </div>
-      )}
-      <div className="px-4 pt-4 pb-2">
-        <div className="flex items-start gap-3">
-          <div className="relative flex-shrink-0">
-            <button onClick={onViewSeller}>
-              <Avatar user={u} size={48} radius="rounded-xl"/>
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <CountryFlag countryCode={u?.country_code || u?.country || u?.location || null} className="w-4 h-3 rounded-sm flex-shrink-0" />
+            <button onClick={onViewSeller} className="font-black text-sm hover:underline leading-tight uppercase truncate" style={{ color: '#1E293B', maxWidth: '120px' }}>
+              {getDisplayName(u) || 'Seller'}
             </button>
-            {seen.online && (
-              <span className="absolute -bottom-0.5 -right-0.5">
-                <span className="absolute inline-flex w-3.5 h-3.5 rounded-full animate-ping"
-                  style={{backgroundColor:C.online, opacity:0.6}}/>
-                <span className="relative inline-flex w-3.5 h-3.5 rounded-full border-2 border-white"
-                  style={{backgroundColor:C.online}}/>
-              </span>
-            )}
+            {isVerified(u) && <BadgeCheck size={13} style={{ color: '#3B82F6', flexShrink: 0 }} />}
           </div>
-
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <CountryFlag
-                countryCode={u?.country_code || u?.country || u?.location || null}
-                className="w-4 h-3 rounded-sm flex-shrink-0"/>
-              <button onClick={onViewSeller}
-                className="font-black text-sm hover:underline leading-tight truncate"
-                style={{color:C.g800, maxWidth:'130px'}}>
-                {getDisplayName(u) || 'Seller'}
-              </button>
-              {isVerified(u) && <BadgeCheck size={14} style={{color:'#3B82F6', flexShrink:0}}/>}
-              {u.country && (
-                <span className="text-xs font-semibold flex-shrink-0" style={{color:C.g500}}>
-                  · {resolveCode(u.country)?.toUpperCase() || u.country}
-                </span>
-              )}
-              <span className={`inline-flex items-center gap-px font-medium px-1 py-0 rounded-full border flex-shrink-0 ${badge.animate ? 'shadow-md' : ''}`}
-                style={{background:badge.bg, borderColor:badge.borderColor, fontSize:'8px', boxShadow: badge.glow ? `0 0 8px ${badge.glow}` : undefined}}>
-                <span style={{color:badge.iconColor||badge.textColor}}>{badge.icon}</span>
-                <span style={{color:badge.textColor}}>{badge.label}</span>
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between mt-1.5 gap-1">
-              <div className="flex items-center gap-1.5">
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md font-bold"
-                  style={{backgroundColor:'rgba(22,163,74,0.10)', color:'#16A34A', fontSize:'11px'}}>
-                  <ThumbsUp size={10} strokeWidth={2.5}/>{fmt(pos)}
-                </span>
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md font-bold"
-                  style={{backgroundColor:'rgba(239,68,68,0.08)', color:'#EF4444', fontSize:'11px'}}>
-                  <ThumbsDown size={10} strokeWidth={2.5}/>{fmt(neg)}
-                </span>
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-bold"
-                  style={{backgroundColor:C.g100, color:C.g600}}>
-                  <Repeat2 size={9} strokeWidth={2.5}/>{fmt(trades)} trades
-                </span>
-                {seen.online ? (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-bold"
-                    style={{backgroundColor:'#F0FDF4', color:C.online}}>
-                    <span className="relative flex w-1.5 h-1.5 flex-shrink-0">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{backgroundColor:C.online}}/>
-                      <span className="relative inline-flex rounded-full w-1.5 h-1.5" style={{backgroundColor:C.online}}/>
-                    </span>
-                    Active
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium"
-                    style={{backgroundColor:C.g100, color:C.g400}}>
-                    <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{backgroundColor:C.g300}}/>
-                    {seen.label}
-                  </span>
-                )}
-              </div>
-            </div>
+          <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5 flex-wrap">
+            <span className="font-bold">👍 {pos + neg > 0 ? `${Math.round(pos / (pos + neg) * 100)}%` : '100%'}</span>
+            <span>•</span>
+            <span>{fmt(trades)} Trades</span>
+            <span>•</span>
+            <span style={{ color: seen.online ? '#22C55E' : '#64748B' }} className="flex items-center gap-1 font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: seen.online ? '#22C55E' : '#94A3B8' }} />
+              {seen.online ? 'Active' : seen.label}
+            </span>
           </div>
-        </div>
-
-        <div className="mt-2.5">
-          <span className="inline-flex flex-col px-2.5 py-1.5 rounded-lg"
-            style={{backgroundColor: ft ? `${ft.border}18` : C.g100}}>
-            <span className="text-xs font-normal leading-tight" style={{color: ft ? ft.labelColor : C.g400}}>Seller accepts:</span>
-            <span className="text-xs font-black leading-tight tracking-wide" style={{color: ft ? ft.labelColor : C.g700}}>{pmLabel.toUpperCase()}</span>
-          </span>
         </div>
       </div>
 
-      <div style={{height:1, backgroundColor: ft ? ft.divider : C.g100}}/>
-
-      <div className="px-4 py-3 grid grid-cols-2 gap-2">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{color: ft ? ft.labelColor : C.g500}}>YOU PAY</p>
-          <p className="text-lg font-bold leading-tight truncate" style={{color:C.g800}}>
-            {sym}{fmt(examplePay, 2)}
-          </p>
-          <p className="text-xs font-semibold mt-0.5" style={{color:C.g400}}>{cur}</p>
-        </div>
-        <div className="border-l pl-3" style={{borderColor: ft ? ft.divider : C.g100}}>
-          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{color: ft ? ft.labelColor : C.g500}}>YOU RECEIVE</p>
-          <p className="text-lg font-bold leading-tight truncate" style={{color:C.gold}}>
-            ₿{fBtc(btcReceived)}
-          </p>
-          <p className="text-xs font-semibold mt-0.5" style={{color:C.g500}}>≈ {sym}{fmt(fiatEquiv, 2)} {cur}</p>
-          <span className="inline-block mt-1.5 font-semibold px-2 py-0.5 rounded"
-            style={{backgroundColor:marginBg, color:'#fff', fontSize:'10px', letterSpacing:'0.01em'}}>
+      {/* Col 2: Rate, margin badge, limit */}
+      <div className="flex flex-col flex-1 min-w-[190px]">
+        <div className="flex items-center gap-2">
+          <span style={{ color: '#F59E0B', fontSize: '15px' }}>🪙</span>
+          <span className="font-black text-base text-slate-800">
+            {fmt(rateLocal, 2)} {cur}
+          </span>
+          <span className="inline-block px-1.5 py-0.5 rounded text-xs font-black" style={{ backgroundColor: '#DCFCE7', color: '#166534' }}>
             {marginLabel}
           </span>
         </div>
+        <span className="text-xs text-slate-400 font-semibold mt-0.5">
+          {fmt(minLocal)} - {fmt(maxLocal)} {cur}
+        </span>
       </div>
 
-      <div className="px-4 pb-2">
-        <p className="text-xs font-semibold" style={{color:C.g600}}>
-          Rate: {sym}{fmt(rateLocal)}/BTC
-        </p>
-      </div>
-
-      {(minLocal > 0 || maxLocal > 0) && (
-        <div className="px-4 pb-2">
-          <p className="text-xs font-bold" style={{color:C.g600}}>
-            Available LIMIT {cur} {fmt(minLocal)} – {fmt(maxLocal)}
-          </p>
+      {/* Col 3: Pay method, amount, and Receive BTC */}
+      <div className="flex items-center justify-between md:justify-start gap-4 md:gap-8 flex-1.5 min-w-[250px]">
+        <div className="flex flex-col">
+          <span className="text-[10px] uppercase font-bold text-slate-400 leading-tight">Pay {pmLabel}</span>
+          <span className="font-black text-sm text-slate-800 mt-0.5">
+            {fmt(examplePay)} {cur}
+          </span>
         </div>
-      )}
+        <div className="flex flex-col border-l pl-4 border-slate-200">
+          <span className="text-[10px] uppercase font-bold text-slate-400 leading-tight">Receive BTC</span>
+          <span className="font-black text-sm text-slate-800 mt-0.5">
+            {fBtc(btcReceived)} BTC
+          </span>
+          <span className="text-[10px] text-slate-400 font-semibold">
+            ≈ {sym}{fmt(fiatEquiv, 2)} {cur}
+          </span>
+        </div>
+      </div>
 
-      <div className="px-4 pb-4 flex items-center gap-2">
-        <button onClick={onViewSeller}
-          className="w-10 h-11 rounded-xl border flex items-center justify-center flex-shrink-0 transition"
-          style={{
-            borderColor: ft ? ft.border : C.g200,
-            backgroundColor: ft ? `${ft.border}12` : 'transparent',
-          }}>
-          <Info size={15} style={{color: ft ? ft.border : C.g400}}/>
-        </button>
-        <button onClick={onBuy}
-          className="flex-1 h-11 rounded-xl text-white font-black text-base flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition"
-          style={{
-            background: ft ? ft.btnGradient : C.forest,
-            boxShadow: ft ? ft.btnShadow : undefined,
-          }}>
-          BUY BTC <ArrowRight size={15}/>
+      {/* Col 4: Buy Button */}
+      <div className="flex items-center justify-end flex-shrink-0">
+        <button onClick={onBuy} className="h-10 px-5 rounded-lg text-white font-black text-sm flex items-center justify-center gap-1.5 hover:opacity-90 active:scale-[0.98] transition"
+          style={{ backgroundColor: '#22C55E' }}>
+          Buy 🪙
         </button>
       </div>
     </div>
@@ -1317,7 +1222,7 @@ export default function BuyBitcoin({user}) {
 
   return (
     <div className="min-h-screen flex flex-col"
-      style={{backgroundColor:C.g100, fontFamily:"'DM Sans',sans-serif"}}>
+      style={{backgroundColor:'#F0FAF5', fontFamily:"'DM Sans',sans-serif"}}>
       <SEO />
       <style>{`
         @keyframes slideUp { from{transform:translateY(100%);opacity:0} to{transform:translateY(0);opacity:1} }
@@ -1375,8 +1280,8 @@ export default function BuyBitcoin({user}) {
               className="flex-1 text-center py-3 text-xs font-black border-b-2 transition-all"
               style={{
                 borderColor:     tab.active ? tab.color : 'transparent',
-                color:           tab.active ? tab.color : C.g400,
-                backgroundColor: tab.active ? tab.color+'18' : 'transparent',
+                color:           tab.active ? '#FFFFFF' : C.g400,
+                backgroundColor: tab.active ? '#1B4332' : 'transparent',
               }}>
               {tab.label}
             </Link>
@@ -1712,7 +1617,7 @@ export default function BuyBitcoin({user}) {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 w-full">
+          <div className="flex flex-col gap-2.5 w-full rounded-xl p-2" style={{ border: '1px solid #86EFAC', backgroundColor: 'transparent' }}>
             {filtered.map(l=>(
               <div key={l.id} className="w-full">
                 <OfferCard
