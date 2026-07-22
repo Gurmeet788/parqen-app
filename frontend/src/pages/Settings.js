@@ -55,10 +55,25 @@ function VerifStep({ n, title, desc, done, active, badge }) {
 }
 
 // ─── Toggle Switch ────────────────────────────────────────────────────────────
-function Toggle({ checked, onChange }) {
+
+function Toggle({ checked, onChange, disabled = false, label }) {
   return (
-    <button onClick={() => onChange(!checked)} className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${checked ? 'bg-green-500' : 'bg-gray-200'}`}>
-      <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${checked ? 'translate-x-5' : 'translate-x-0.5'}`} />
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => !disabled && onChange(!checked)}
+      className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 
+        focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-500
+        ${checked ? 'bg-green-500' : 'bg-gray-300'}
+        ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+    >
+      <span
+        className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform
+          ${checked ? 'translate-x-5' : 'translate-x-0'}`}
+      />
     </button>
   );
 }
@@ -641,8 +656,15 @@ export default function Settings({ user, setUser }) {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token'); localStorage.removeItem('user'); localStorage.removeItem('praqen_kyc');
-    toast.info('Logged out'); navigate('/login');
+    localStorage.removeItem('token'); 
+    localStorage.removeItem('user');
+    localStorage.removeItem('praqen_kyc');
+
+      if (setUser) setUser(null);                     
+  window.dispatchEvent(new Event('userUpdated'));
+
+    toast.info('Logged out'); 
+    navigate('/login');
   };
 
   const handleSendPhoneOtp = async () => {
