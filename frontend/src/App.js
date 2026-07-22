@@ -200,7 +200,8 @@ function App() {
   useEffect(() => {
     if (token) {
       loadProfile();
-    } else {
+    } else
+    {
       setLoading(false);
     }
 
