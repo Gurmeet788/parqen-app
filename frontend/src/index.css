@@ -30,6 +30,7 @@ html {
   scroll-behavior: smooth;
   /* Prevent horizontal scroll at the root */
   overflow-x: clip;
+  background-color: #F8FAFC;  
 }
 
 /* ── Body ───────────────────────────────────────────────────────── */
@@ -44,12 +45,14 @@ body {
   max-width: 100vw;
   /* Prevent pull-to-refresh bounce on iOS */
   overscroll-behavior-y: none;
+  background-color: #F8FAFC;
 }
 
 /* ── Root div ───────────────────────────────────────────────────── */
 #root {
   overflow-x: hidden;
   max-width: 100vw;
+  background-color: #F8FAFC;
 }
 
 /* ── Code font ──────────────────────────────────────────────────── */
@@ -171,97 +174,35 @@ label {
   animation: shimmer 1.5s infinite;
 }
 
-/* ── Toast / System Notifications ───────────────────────────────── */
-@keyframes praqen-slide-in {
-  from { transform: translateX(110%); opacity: 0; }
-  to   { transform: translateX(0);    opacity: 1; }
+/* ── Custom Toast / System Notifications ────────────────────────── */
+/* Managed in frontend/src/components/CustomToastContainer.js */
+
+.custom-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 4px;
+  outline: none;
+  /* background line hata di, ab inline se aayegi */
 }
-@keyframes praqen-slide-in-top {
-  from { transform: translateY(-20px); opacity: 0; }
-  to   { transform: translateY(0);     opacity: 1; }
+.custom-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  cursor: pointer;
+  background: currentColor;
 }
-
-.Toastify__toast-container {
-  width: 370px;
-  max-width: calc(100vw - 24px);
-  z-index: 99999;
+.custom-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 4px;
+  background: transparent;
 }
-
-.Toastify__toast-container--top-right {
-  top: 76px;
-  right: 16px;
-}
-
-.Toastify__toast {
-  border-radius: 16px !important;
-  box-shadow: 0 12px 40px rgba(0,0,0,0.13), 0 2px 10px rgba(0,0,0,0.07) !important;
-  padding: 0 !important;
-  min-height: unset !important;
-  overflow: hidden;
-  border: 1px solid rgba(0,0,0,0.06) !important;
-  animation: praqen-slide-in 0.28s cubic-bezier(0.34,1.56,0.64,1) both;
-}
-
-/* Coloured accent bar on left edge */
-.Toastify__toast::before {
-  content: '';
-  position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: 4px;
-  border-radius: 16px 0 0 16px;
-}
-.Toastify__toast--success::before { background: #10b981; }
-.Toastify__toast--error::before   { background: #ef4444; }
-.Toastify__toast--warning::before { background: #f59e0b; }
-.Toastify__toast--info::before    { background: #3b82f6; }
-
-.Toastify__toast--success { background: #f0fdf8 !important; }
-.Toastify__toast--error   { background: #fff5f5 !important; }
-.Toastify__toast--warning { background: #fffbeb !important; }
-.Toastify__toast--info    { background: #f0f7ff !important; }
-
-.Toastify__toast-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
-  font-size: 13.5px !important;
-  font-weight: 600 !important;
-  color: #1e293b !important;
-  line-height: 1.5 !important;
-  margin: 0 !important;
-  padding: 14px 12px 14px 20px !important;
-}
-
-/* Icon colour per type */
-.Toastify__toast--success .Toastify__toast-icon svg { color: #10b981; }
-.Toastify__toast--error   .Toastify__toast-icon svg { color: #ef4444; }
-.Toastify__toast--warning .Toastify__toast-icon svg { color: #f59e0b; }
-.Toastify__toast--info    .Toastify__toast-icon svg { color: #3b82f6; }
-
-/* Progress bar */
-.Toastify__progress-bar { height: 3px !important; border-radius: 0 0 16px 0; }
-.Toastify__progress-bar--success { background: #10b981 !important; }
-.Toastify__progress-bar--error   { background: #ef4444 !important; }
-.Toastify__progress-bar--warning { background: #f59e0b !important; }
-.Toastify__progress-bar--info    { background: #3b82f6 !important; }
-
-/* Close button */
-.Toastify__close-button {
-  color: #94a3b8 !important;
-  opacity: 1 !important;
-  align-self: center !important;
-  padding: 0 12px 0 4px !important;
-}
-.Toastify__close-button:hover { color: #334155 !important; }
-
-/* Mobile — slide down from top, sits below navbar */
-@media (max-width: 600px) {
-  .Toastify__toast-container {
-    width: calc(100vw - 24px) !important;
-    left: 12px !important;
-    right: 12px !important;
-    top: calc(68px + env(safe-area-inset-top, 0px)) !important;
-  }
-  .Toastify__toast {
-    animation: praqen-slide-in-top 0.28s cubic-bezier(0.34,1.56,0.64,1) both !important;
-    margin-bottom: 8px !important;
-  }
+.custom-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
 }

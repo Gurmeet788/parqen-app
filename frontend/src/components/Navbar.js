@@ -6,6 +6,7 @@ import Notifications from './Notifications';
 import {
   Wallet, User, Settings, LogOut, ChevronDown,
   BarChart3, Gift, List, Eye, EyeOff, ShoppingCart, Tag, TrendingUp,
+  Plus, LayoutDashboard,
 } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
@@ -82,7 +83,7 @@ export default function Navbar({ user, onLogout }) {
 
       // Fetch BTC + USDT in parallel
       const [btcRes, usdtRes] = await Promise.all([
-        axios.get(`${API_URL}/hd-wallet/wallet`, { headers }),
+        axios.get(`${API_URL}/hd-wallet/wallet`, { headers }).catch(() => ({ data: { success: true, balance_btc: 0, available_btc: 0, locked_btc: 0 } })),
         axios.get(`${API_URL}/wallet/usdt`, { headers }).catch(() => ({ data: {} })),
       ]);
 
@@ -133,124 +134,123 @@ export default function Navbar({ user, onLogout }) {
   const handleLogout = () => { onLogout(); navigate('/login'); };
 
   const isActive       = (path) => location.pathname === path;
-  const isMarketActive = ['/buy-bitcoin', '/sell-bitcoin'].some(p => location.pathname.startsWith(p));
+  const isMarketActive = ['/buy-bitcoin', '/sell-bitcoin', '/buy-usdt', '/sell-usdt'].some(p => location.pathname.startsWith(p));
   const isGiftActive   = location.pathname.startsWith('/gift-cards');
 
   // ── Desktop Nav Links ───────────────────────────────────────────────────────
+  const segStyle = (active, activeColor) => ({
+    display: 'flex', alignItems: 'center', gap: 6,
+    color: active ? activeColor : C.g500,
+    background: active ? '#fff' : 'transparent',
+    boxShadow: active ? '0 1px 5px rgba(15,23,42,0.10)' : 'none',
+    borderRadius: 999, padding: '7px 14px',
+    fontSize: '13.5px', fontWeight: 800,
+    textDecoration: 'none', whiteSpace: 'nowrap', border: 'none',
+    cursor: 'pointer', transition: 'all 0.2s',
+  });
+
   const DesktopNavLinks = () => (
-    <div className="hidden md:flex items-center gap-3 flex-1 justify-center">
+    <div className="hidden md:flex items-center flex-1 justify-center" style={{ gap: 12 }}>
 
-      {/* Dashboard */}
-      <Link to="/dashboard"
-        style={{
-          color: isActive('/dashboard') ? '#fff' : C.forest,
-          background: isActive('/dashboard') ? C.forest : 'transparent',
-          borderRadius: '10px', padding: '9px 18px',
-          fontSize: '14px', fontWeight: 800,
-          textDecoration: 'none', whiteSpace: 'nowrap',
-          border: isActive('/dashboard') ? `1px solid ${C.forest}` : `1px solid transparent`,
-          transition: 'all 0.2s',
-        }}>
-        Dashboard
-      </Link>
+      {/* Segmented control — one cohesive track instead of separate floating pills */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 2,
+        background: C.g100, borderRadius: 999, padding: 4,
+      }}>
+        <Link to="/dashboard" style={segStyle(isActive('/dashboard'), C.forest)}>
+          <LayoutDashboard size={14} />
+          Dashboard
+        </Link>
 
-      {/* P2P Marketplace Dropdown */}
-      <div className="relative" ref={marketRef}>
-        <button
-          onClick={() => setMarketDrop(!marketDrop)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '5px',
-            color: isMarketActive ? '#fff' : C.green,
-            background: isMarketActive ? C.green : '#F0FAF5',
-            borderRadius: '10px', padding: '9px 18px',
-            fontSize: '14px', fontWeight: 800,
-            border: `1px solid ${isMarketActive ? C.green : '#c8e6d4'}`,
-            cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.2s',
-          }}>
-          <TrendingUp size={14} />
-          P2P Trade
-          <span style={{
-            fontSize: '9px', background: C.gold, color: '#fff',
-            padding: '2px 5px', borderRadius: '20px', fontWeight: 900,
-          }}>BETA</span>
-          <ChevronDown size={13} style={{ transform: marketDrop ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
-        </button>
+{/* P2P Marketplace Dropdown */}
+        <div className="relative" ref={marketRef}>
+          <button onClick={() => setMarketDrop(!marketDrop)} style={segStyle(isMarketActive || marketDrop, C.forest)}>
+            <TrendingUp size={14} />
+            P2P Trade
+            <span style={{
+              fontSize: '8.5px', background: C.gold, color: '#fff',
+              padding: '1.5px 5px', borderRadius: '20px', fontWeight: 900, letterSpacing: '0.3px',
+            }}>BETA</span>
+            <ChevronDown size={12} style={{ transform: marketDrop ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+          </button>
 
-        {marketDrop && (
-          <div style={{
-            position: 'absolute', top: 'calc(100% + 8px)', left: 0,
-            width: '200px', background: '#fff', borderRadius: '14px',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.18)', border: `1px solid ${C.g100}`,
-            overflow: 'hidden', zIndex: 50,
-          }}>
-            <Link to="/buy-bitcoin" onClick={() => setMarketDrop(false)}
-              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', textDecoration: 'none', borderBottom: `1px solid ${C.g100}`, background: isActive('/buy-bitcoin') ? C.mist : '#fff', transition: 'background 0.15s' }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: '#DCFCE7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <ShoppingCart size={16} color="#16A34A" />
-              </div>
-              <div>
-                <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: C.g800 }}>Buy Bitcoin</p>
-                <p style={{ margin: 0, fontSize: 10, color: C.g400 }}>Pay with local currency</p>
-              </div>
-            </Link>
-            <Link to="/sell-bitcoin" onClick={() => setMarketDrop(false)}
-              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', textDecoration: 'none', background: isActive('/sell-bitcoin') ? C.mist : '#fff', transition: 'background 0.15s' }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: '#FEF9C3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Tag size={16} color={C.goldDark} />
-              </div>
-              <div>
-                <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: C.g800 }}>Sell Bitcoin</p>
-                <p style={{ margin: 0, fontSize: 10, color: C.g400 }}>Get paid in local currency</p>
-              </div>
-            </Link>
-          </div>
-        )}
-      </div>
+          {marketDrop && (
+            <div style={{
+              position: 'absolute', top: 'calc(100% + 10px)', left: 0,
+              width: '210px', background: '#fff', borderRadius: '16px',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.18)', border: `1px solid ${C.g100}`,
+              overflow: 'hidden', zIndex: 50,
+            }}>
+              <Link to="/buy-bitcoin" onClick={() => setMarketDrop(false)}
+                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '13px 16px', textDecoration: 'none', borderBottom: `1px solid ${C.g100}`, background: isActive('/buy-bitcoin') ? C.mist : '#fff', transition: 'background 0.15s' }}>
+                <div style={{ width: 34, height: 34, borderRadius: 10, background: '#DCFCE7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <ShoppingCart size={16} color="#16A34A" />
+                </div>
+                <div>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: C.g800 }}>Buy Bitcoin</p>
+                  <p style={{ margin: 0, fontSize: 10, color: C.g400 }}>Pay with local currency</p>
+                </div>
+              </Link>
+              <Link to="/sell-bitcoin" onClick={() => setMarketDrop(false)}
+                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '13px 16px', textDecoration: 'none', borderBottom: `1px solid ${C.g100}`, background: isActive('/sell-bitcoin') ? C.mist : '#fff', transition: 'background 0.15s' }}>
+                <div style={{ width: 34, height: 34, borderRadius: 10, background: '#FEF9C3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Tag size={16} color={C.goldDark} />
+                </div>
+                <div>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: C.g800 }}>Sell Bitcoin</p>
+                  <p style={{ margin: 0, fontSize: 10, color: C.g400 }}>Get paid in local currency</p>
+                </div>
+              </Link>
+              {/* USDT divider */}
+              <div style={{ height: 1, background: C.g100, margin: '0 12px' }} />
+              <Link to="/buy-usdt" onClick={() => setMarketDrop(false)}
+                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '13px 16px', textDecoration: 'none', borderBottom: `1px solid ${C.g100}`, background: isActive('/buy-usdt') ? C.mist : '#fff', transition: 'background 0.15s' }}>
+                <div style={{ width: 34, height: 34, borderRadius: 10, background: '#D1FAE5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <span style={{ fontSize: 14, fontWeight: 900, color: '#0D9488' }}>₮</span>
+                </div>
+                <div>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: C.g800 }}>Buy USDT</p>
+                  <p style={{ margin: 0, fontSize: 10, color: C.g400 }}>Pay with local currency</p>
+                </div>
+              </Link>
+              <Link to="/sell-usdt" onClick={() => setMarketDrop(false)}
+                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '13px 16px', textDecoration: 'none', background: isActive('/sell-usdt') ? C.mist : '#fff', transition: 'background 0.15s' }}>
+                <div style={{ width: 34, height: 34, borderRadius: 10, background: '#FEF9C3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <span style={{ fontSize: 14, fontWeight: 900, color: C.goldDark }}>₮</span>
+                </div>
+                <div>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: C.g800 }}>Sell USDT</p>
+                  <p style={{ margin: 0, fontSize: 10, color: C.g400 }}>Get paid in local currency</p>
+                </div>
+              </Link>
+            </div>
+          )}
+        </div>
 
-      {/* Gift Cards — direct link */}
-      <Link to="/gift-cards"
-        style={{
-          display: 'flex', alignItems: 'center', gap: '6px',
-          color: isGiftActive ? '#fff' : C.purple,
-          background: isGiftActive ? C.purple : '#F5F3FF',
-          borderRadius: '10px',
-          fontSize: '14px', fontWeight: 800,
-          textDecoration: 'none', whiteSpace: 'nowrap', padding: '9px 18px',
-          border: `1px solid ${isGiftActive ? C.purple : '#d4c5ff'}`,
-          transition: 'all 0.2s',
-        }}>
-        <Gift size={14} color={isGiftActive ? '#fff' : C.purple} />
-        Gift Cards
-      </Link>
+        <Link to="/gift-cards" style={segStyle(isGiftActive, C.purple)}>
+          <Gift size={14} />
+          Gift Cards
+        </Link>
 
-      {/* My Trades */}
-      <Link to="/my-trades"
-        style={{
-          color: isActive('/my-trades') ? '#fff' : C.g700,
-          background: isActive('/my-trades') ? C.g700 : 'transparent',
-          borderRadius: '10px', padding: '9px 18px',
-          fontSize: '14px', fontWeight: 800,
-          textDecoration: 'none', whiteSpace: 'nowrap',
-          border: isActive('/my-trades') ? `1px solid ${C.g700}` : `1px solid transparent`,
-          transition: 'all 0.2s',
-        }}>
-        My Trades
-      </Link>
-
-      {/* Create Offer CTA */}
+        <Link to="/my-trades" style={segStyle(isActive('/my-trades'), C.g800)}>
+          <List size={14} />
+          My Trades
+        </Link>
+    </div>
+ 
+      {/* Create Offer — deliberately outside the track so it reads as an action, not a tab */}
       <Link to="/create-offer"
         style={{
-          display: 'flex', alignItems: 'center', gap: '4px',
-          background: isActive('/create-offer')
-            ? `linear-gradient(135deg, ${C.goldDark}, ${C.gold})`
-            : `linear-gradient(135deg, ${C.gold}, #FBBF24)`,
-          color: '#0D1F14', borderRadius: '10px', padding: '9px 20px',
-          fontSize: '14px', fontWeight: 900,
+          display: 'flex', alignItems: 'center', gap: 6,
+          background: `linear-gradient(135deg, ${C.gold}, #FBBF24)`,
+          color: '#0D1F14', borderRadius: 999, padding: '9px 18px',
+          fontSize: '13.5px', fontWeight: 900,
           textDecoration: 'none', whiteSpace: 'nowrap',
-          boxShadow: '0 2px 12px rgba(244,164,34,0.45)',
+          boxShadow: '0 4px 14px rgba(244,164,34,0.4)',
           transition: 'all 0.2s',
         }}>
-        + Create Offer
+        <Plus size={15} strokeWidth={3} />
+        Create Offer
       </Link>
     </div>
   );
@@ -268,8 +268,14 @@ export default function Navbar({ user, onLogout }) {
       paddingRight: 'env(safe-area-inset-right, 0px)',
     }}>      <div className="max-w-[1280px] mx-auto px-4 md:px-8">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 64, gap: 12 }}>
-          <Link to="/" style={{ textDecoration: 'none', flexShrink: 0 }}>
-            <span style={{ fontSize: 22, fontWeight: 900, letterSpacing: '-0.5px' }}>
+          <Link to="/" style={{ textDecoration: 'none', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 9 }}>
+            <div style={{
+              width: 30, height: 30, borderRadius: 9, background: C.gold,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 16, fontWeight: 900, color: C.dark, fontFamily: 'Georgia,serif',
+              boxShadow: '0 2px 8px rgba(244,164,34,0.45)', flexShrink: 0,
+            }}>P</div>
+            <span style={{ fontSize: 21, fontWeight: 900, letterSpacing: '-0.5px' }}>
               <span style={{ color: C.forest }}>PRA</span><span style={{ color: C.gold }}>QEN</span>
             </span>
           </Link>
@@ -289,6 +295,7 @@ export default function Navbar({ user, onLogout }) {
           </div>
         </div>
       </div>
+      <div style={{ height: 2, background: `linear-gradient(90deg, ${C.forest}, ${C.mint}, ${C.gold})`, opacity: 0.6 }} />
     </nav>
   );
 
@@ -303,12 +310,19 @@ export default function Navbar({ user, onLogout }) {
       paddingTop: 'env(safe-area-inset-top, 0px)',
       paddingLeft: 'env(safe-area-inset-left, 0px)',
       paddingRight: 'env(safe-area-inset-right, 0px)',
-    }}>      <div className="max-w-[1400px] mx-auto px-4 md:px-10">
+    }}>      <style>{`@keyframes prqPulseDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.75)}}`}</style>
+      <div className="max-w-[1400px] mx-auto px-4 md:px-10">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 64, gap: 12 }}>
 
           {/* Logo */}
-          <Link to="/" style={{ textDecoration: 'none', flexShrink: 0 }}>
-            <span style={{ fontSize: 22, fontWeight: 900, letterSpacing: '-0.5px' }}>
+          <Link to="/" style={{ textDecoration: 'none', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 9 }}>
+            <div style={{
+              width: 30, height: 30, borderRadius: 9, background: C.gold,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 16, fontWeight: 900, color: C.dark, fontFamily: 'Georgia,serif',
+              boxShadow: '0 2px 8px rgba(244,164,34,0.45)', flexShrink: 0,
+            }}>P</div>
+            <span style={{ fontSize: 21, fontWeight: 900, letterSpacing: '-0.5px' }}>
               <span style={{ color: C.forest }}>PRA</span><span style={{ color: C.gold }}>QEN</span>
             </span>
           </Link>
@@ -338,21 +352,25 @@ export default function Navbar({ user, onLogout }) {
 
             {/* Wallet balance pill — desktop only */}
             <div className="hidden md:flex items-center"
-              style={{ gap: 6, background: C.mist, border: `1px solid #c8e6d4`, borderRadius: 10, padding: '6px 12px' }}>
+              style={{ gap: 6, borderRadius: 8, padding: '6px 10px' }}>
               <button onClick={() => setShowBal(!showBal)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 0 }}
                 title={showBal ? 'Hide balance' : 'Show balance'}>
                 {showBal
-                  ? <Eye size={14} color={C.green} />
+                  ? <Eye size={14} color={C.g400} />
                   : <EyeOff size={14} color={C.g400} />}
               </button>
-              <Link to="/wallet" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Wallet size={13} color={C.forest} />
-                <span style={{ fontSize: 13, fontWeight: 900, color: C.forest }}>
+              <Link to="/wallet" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 5 }}>
+                <Wallet size={13} color={C.g500} />
+                <span style={{ fontSize: 13, fontWeight: 800, color: C.g700 }}>
                   {showBal ? `${localCode} ${sym}${fmt(totalLocal, 2)}` : '••••••'}
                 </span>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: C.mint, display: 'inline-block', animation: 'prqPulseDot 2s ease-in-out infinite' }} />
               </Link>
             </div>
+
+            {/* Divider */}
+            <div className="hidden md:block" style={{ width: 1, height: 24, background: C.g200 }} />
 
             {/* Avatar + dropdown */}
             <div style={{ position: 'relative' }} ref={dropRef}>
@@ -364,15 +382,22 @@ export default function Navbar({ user, onLogout }) {
                   borderRadius: 10, padding: '5px 10px 5px 5px',
                   cursor: 'pointer', transition: 'all 0.2s',
                 }}>
-                <div style={{
-                  width: 30, height: 30, borderRadius: 8, overflow: 'hidden',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontWeight: 900, fontSize: 13, color: '#fff', flexShrink: 0,
-                  background: `linear-gradient(135deg, ${C.gold}, #FBBF24)`,
-                }}>
-                  {displayUser?.avatar_url
-                    ? <img src={displayUser.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : <span style={{ color: C.dark }}>{displayUser?.username?.charAt(0)?.toUpperCase() || 'U'}</span>}
+                <div style={{ position: 'relative', flexShrink: 0 }}>
+                  <div style={{
+                    width: 30, height: 30, borderRadius: 8, overflow: 'hidden',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontWeight: 900, fontSize: 13, color: '#fff',
+                    background: `linear-gradient(135deg, ${C.gold}, #FBBF24)`,
+                  }}>
+                    {displayUser?.avatar_url
+                      ? <img src={displayUser.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : <span style={{ color: C.dark }}>{displayUser?.username?.charAt(0)?.toUpperCase() || 'U'}</span>}
+                  </div>
+                  {/* Online status dot — you're viewing this navbar, so the heartbeat is live */}
+                  <span style={{
+                    position: 'absolute', bottom: -2, right: -2, width: 9, height: 9,
+                    borderRadius: '50%', background: '#22C55E', border: '2px solid #fff',
+                  }} />
                 </div>
                 <span className="hidden md:block" style={{ fontSize: 13, fontWeight: 800, color: C.g800, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {displayUser?.username || 'User'}
@@ -467,6 +492,7 @@ export default function Navbar({ user, onLogout }) {
           </div>
         </div>
       </div>
+      <div style={{ height: 2, background: `linear-gradient(90deg, ${C.forest}, ${C.mint}, ${C.gold})`, opacity: 0.6 }} />
     </nav>
   );
 }
