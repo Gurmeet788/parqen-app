@@ -9,7 +9,7 @@ import {
   X, Info, ArrowRight, PlusCircle, MapPin, Heart,
   Filter, Home, Wallet, User, Gift, Shield,
   ChevronDown, ThumbsUp, ThumbsDown, Repeat2,
-  Phone, Mail, Ban
+  Phone, Mail, Ban, ArrowUp, ArrowDown,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import CountryFlag, { resolveCode } from '../components/CountryFlag';
@@ -307,11 +307,11 @@ function OfferCard({listing, btcPriceUSD, onViewBuyer, onSell, featuredType, liv
   const ft = featuredType ? FEATURED[featuredType] : null;
 
   return (
-    <div className="rounded-2xl overflow-hidden transition-all w-full"
+    <div className={`rounded-2xl overflow-hidden transition-all w-full hover:-translate-y-0.5 ${ft ? '' : 'shadow-[0_1px_2px_rgba(27,67,50,0.04),0_10px_28px_-14px_rgba(27,67,50,0.18)] hover:shadow-[0_2px_4px_rgba(27,67,50,0.06),0_20px_44px_-16px_rgba(27,67,50,0.28)]'}`}
       style={{
         background:  ft?.bgGradient || '#fff',
         border:      ft ? `2.5px solid ${ft.border}` : `1px solid ${C.g200}`,
-        boxShadow:   ft ? `0 0 0 3px ${ft.glow}, 0 10px 36px ${ft.glow}` : 'none',
+        boxShadow:   ft ? `0 0 0 3px ${ft.glow}, 0 10px 36px ${ft.glow}` : undefined,
         animation:   ft?.pulse ? 'hotOfferPulse 2.5s ease-in-out infinite' : undefined,
       }}>
 
@@ -407,12 +407,10 @@ function OfferCard({listing, btcPriceUSD, onViewBuyer, onSell, featuredType, liv
         </div>
 
         {/* Payment method */}
-        <div className="mt-2.5">
-          <span className="inline-flex flex-col px-2.5 py-1.5 rounded-lg"
-            style={{backgroundColor:C.g100}}>
-            <span className="text-xs font-normal leading-tight" style={{color:C.g400}}>Buyer pays via:</span>
-            <span className="text-xs font-black leading-tight tracking-wide" style={{color:C.g700}}>{pmLabel.toUpperCase()}</span>
-          </span>
+        <div className="mt-3 flex items-center justify-between gap-2 px-3 py-2 rounded-xl"
+          style={{backgroundColor:`${C.sell}14`, border:`1px solid ${C.sell}30`}}>
+          <span className="text-xs font-semibold" style={{color:C.g500}}>Buyer pays via</span>
+          <span className="text-xs font-black tracking-wide" style={{color:C.sell}}>{pmLabel.toUpperCase()}</span>
         </div>
       </div>
 
@@ -420,26 +418,33 @@ function OfferCard({listing, btcPriceUSD, onViewBuyer, onSell, featuredType, liv
       <div style={{height:1, backgroundColor:C.g100}}/>
 
       {/* ─ You Send / You Receive ────────────────────────────── */}
-      <div className="px-4 py-3 grid grid-cols-2 gap-2">
+      <div className="px-4 py-3.5 grid grid-cols-2 gap-3">
         <div>
-          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{color:C.g500}}>YOU SEND</p>
-          <p className="font-bold leading-tight" style={{color:C.gold, fontSize: exampleBtc < 0.001 ? '13px' : '17px'}}>
-            ₿{fBtc(exampleBtc)}
-          </p>
+          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{color:C.g500}}>You send</p>
+          <div className="flex items-center gap-1.5">
+            <span className="flex items-center justify-center rounded-full flex-shrink-0"
+              style={{width:20, height:20, backgroundColor:`${C.gold}22`, border:`1px solid ${C.gold}55`, color:'#B4790A', fontSize:11, fontWeight:900}}>
+              ₿
+            </span>
+            <p className="font-bold leading-tight truncate" style={{color:'#B4790A', fontSize: exampleBtc < 0.001 ? '13px' : '17px'}}>
+              {fBtc(exampleBtc)}
+            </p>
+          </div>
           {/* Market value of the BTC sent — strips out buyer's margin so it differs from YOU RECEIVE */}
-          <p className="text-xs font-semibold mt-0.5" style={{color:C.g600}}>
+          <p className="text-xs font-semibold mt-0.5" style={{color:C.g600, paddingLeft:26}}>
             {sym}{fmt(parseFloat((exampleBtc * btcPriceUSD * usdRate).toFixed(2)))} {cur}
           </p>
-          <p className="text-xs font-semibold mt-0" style={{color:C.g400}}>Bitcoin</p>
+          <p className="text-xs font-semibold mt-0" style={{color:C.g400, paddingLeft:26}}>Bitcoin</p>
         </div>
-        <div className="border-l pl-3" style={{borderColor:C.g100}}>
-          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{color:C.g500}}>YOU RECEIVE</p>
+        <div className="border-l pl-3.5" style={{borderColor:C.g100}}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{color:C.g500}}>You receive</p>
           <p className="text-lg font-bold leading-tight truncate" style={{color:C.g800}}>
             {sym}{fmt(exampleRecv)} {cur}
           </p>
           <p className="text-xs font-semibold mt-0.5" style={{color:C.g400}}>Cash payment</p>
-          <span className="inline-block mt-1.5 font-semibold px-2 py-0.5 rounded"
-            style={{backgroundColor:marginBg, color:'#fff', fontSize:'10px'}}>
+          <span className="inline-flex items-center gap-1 mt-1.5 font-bold px-2 py-0.5 rounded-md"
+            style={{backgroundColor:`${marginBg}18`, color:marginBg, fontSize:'10px', letterSpacing:'0.01em'}}>
+            {margin > 0 ? <ArrowUp size={9} strokeWidth={3.5}/> : margin < 0 ? <ArrowDown size={9} strokeWidth={3.5}/> : null}
             {marginLabel}
           </span>
         </div>
@@ -956,6 +961,8 @@ export default function SellBitcoin({user}) {
   const [showFilters,   setShowFilters]   = useState(false);
   const [showCountry,   setShowCountry]   = useState(false);
   const [showPayment,   setShowPayment]   = useState(false);
+  const [showAssetMenu, setShowAssetMenu] = useState(false);
+  const [showSellAssetMenu, setShowSellAssetMenu] = useState(false);
   const [sortBy,       setSortBy]       = useState('rate_high');
   const [modal,        setModal]        = useState(null);
   const [sellAmt,      setSellAmt]      = useState('');
@@ -1218,9 +1225,80 @@ export default function SellBitcoin({user}) {
       <div className="bg-white border-b sticky z-30 flex-shrink-0" style={{top:'var(--navbar-h)',borderColor:C.g200}}>
         {/* 3 equal tabs — always fits any phone */}
         <div className="flex w-full">
+          <div className="flex-1 relative">
+            <button onClick={()=>setShowAssetMenu(v=>!v)}
+              className="w-full text-center py-3 text-xs font-black border-b-2 border-transparent transition-all flex items-center justify-center gap-1"
+              style={{color:C.g400}}>
+              Buy BTC <ChevronDown size={12} className={`transition-transform ${showAssetMenu?'rotate-180':''}`}/>
+            </button>
+            {showAssetMenu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={()=>setShowAssetMenu(false)}/>
+                <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1.5 w-52 rounded-2xl border shadow-xl overflow-hidden z-50 bg-white"
+                  style={{borderColor:C.g200}}>
+                  <button onClick={()=>{setShowAssetMenu(false); navigate('/buy-bitcoin');}}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-3 text-left hover:bg-gray-50 transition">
+                    <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-black text-xs text-white"
+                      style={{background:'linear-gradient(135deg,#F7931A,#e8830a)'}}>₿</span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-xs font-black" style={{color:C.g800}}>Bitcoin</span>
+                      <span className="block text-[10px] font-semibold" style={{color:C.g400}}>BTC</span>
+                    </span>
+                    <ArrowRight size={13} style={{color:C.g300}}/>
+                  </button>
+                  <button onClick={()=>{setShowAssetMenu(false); navigate('/buy-usdt');}}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-3 text-left hover:bg-gray-50 transition border-t"
+                    style={{borderColor:C.g100}}>
+                    <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-black text-xs text-white"
+                      style={{background:'#26A17B'}}>₮</span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-xs font-black" style={{color:C.g800}}>Tether</span>
+                      <span className="block text-[10px] font-semibold" style={{color:C.g400}}>USDT · TRC-20</span>
+                    </span>
+                    <ArrowRight size={13} style={{color:C.g300}}/>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+          <div className="flex-1 relative">
+            <button onClick={()=>setShowSellAssetMenu(v=>!v)}
+              className="w-full text-center py-3 text-xs font-black border-b-2 transition-all flex items-center justify-center gap-1"
+              style={{borderColor:C.sell, color:C.sell, backgroundColor:`${C.sell}18`}}>
+              Sell <ChevronDown size={12} className={`transition-transform ${showSellAssetMenu?'rotate-180':''}`}/>
+            </button>
+            {showSellAssetMenu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={()=>setShowSellAssetMenu(false)}/>
+                <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1.5 w-52 rounded-2xl border shadow-xl overflow-hidden z-50 bg-white"
+                  style={{borderColor:C.g200}}>
+                  <button onClick={()=>setShowSellAssetMenu(false)}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-3 text-left transition"
+                    style={{backgroundColor:`${C.sell}0d`}}>
+                    <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-black text-xs text-white"
+                      style={{background:'linear-gradient(135deg,#F7931A,#e8830a)'}}>₿</span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-xs font-black" style={{color:C.g800}}>Bitcoin</span>
+                      <span className="block text-[10px] font-semibold" style={{color:C.g400}}>BTC · you're here</span>
+                    </span>
+                    <CheckCircle size={14} style={{color:C.sell}}/>
+                  </button>
+                  <button onClick={()=>{setShowSellAssetMenu(false); navigate('/sell-usdt');}}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-3 text-left hover:bg-gray-50 transition border-t"
+                    style={{borderColor:C.g100}}>
+                    <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-black text-xs text-white"
+                      style={{background:'#26A17B'}}>₮</span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-xs font-black" style={{color:C.g800}}>Tether</span>
+                      <span className="block text-[10px] font-semibold" style={{color:C.g400}}>USDT · TRC-20</span>
+                    </span>
+                    <ArrowRight size={13} style={{color:C.g300}}/>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
           {[
-            {label:'Buy BTC',    path:'/buy-bitcoin',  active:false, color:'#1B4332'},
-            {label:'Sell',       path:'/sell-bitcoin', active:true,  color:'#D97706'},
             {label:'Gift Cards', path:'/gift-cards',   active:false, color:'#0D9488'},
           ].map(tab=>(
             <Link key={tab.path} to={tab.path}
