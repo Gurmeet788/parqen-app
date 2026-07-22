@@ -2327,8 +2327,11 @@ const MODERATOR_EMAIL_ALLOWLIST = [
   'parqen5@gmail.com',
 ];
 
-// ── Team portal: direct login (no OTP — restricted to the allowlist above) ───
-app.post('/api/team/login', async (req, res) => {
+// ── Team portal: direct login — password THEN a mandatory email OTP ──────────
+// No path through this route ever issues a token on password alone. Reuses the
+// same emailLoginOtpStore + /api/auth/verify-login-otp flow as regular user
+// login, so team accounts get at least the same protection as everyone else.
+app.post('/api/team/login', authLimiter, async (req, res) => {
   try {
     const { email: rawEmail, password } = req.body;
     const email = (rawEmail || '').toLowerCase().trim();
@@ -2349,24 +2352,19 @@ app.post('/api/team/login', async (req, res) => {
 
     if (!data.is_moderator && !data.is_admin) return res.status(403).json({ error: 'Access denied. This account does not have team privileges.' });
 
-    const jwtSecret = process.env.JWT_SECRET || JWT_SECRET;
-    const token = jwt.sign({ userId: data.id, email: data.email }, jwtSecret, { expiresIn: '7d' });
-    const now = new Date().toISOString();
-    try { await supabaseAdmin.from('users').update({ last_login: now, last_seen_at: now }).eq('id', data.id); } catch (_) {}
-
-    return res.json({
-      success: true,
-      token,
-      user: {
-        id: data.id, email: data.email, username: data.username, full_name: data.full_name,
-        is_moderator: data.is_moderator, is_admin: data.is_admin,
-        avatar_url: data.avatar_url || null,
-        average_rating: data.average_rating || 0, total_trades: data.total_trades || 0,
-        referral_code: data.referral_code || null,
-        total_referrals: data.total_referrals || 0,
-        referral_earnings_btc: data.referral_earnings_btc || 0,
-      },
+    // Password confirmed — now require the email code before issuing any token.
+    const loginOtp = String(Math.floor(100000 + Math.random() * 900000));
+    emailLoginOtpStore.set(email, {
+      code: loginOtp,
+      expires: Date.now() + 10 * 60 * 1000,
+      userId: data.id,
     });
+    emailService.sendLoginOtpEmail(
+      { id: data.id, email: data.email, username: data.username },
+      loginOtp
+    ).catch(err => console.error('[team-login-otp] email send failed:', err.message));
+
+    return res.json({ success: true, requiresOtp: true, email: data.email });
   } catch (err) {
     console.error('team/login error:', err);
     res.status(500).json({ error: err.message || 'Login failed. Please try again.' });
@@ -2375,7 +2373,7 @@ app.post('/api/team/login', async (req, res) => {
 
 // ── Team portal: check email status ─────────────────────────────────────────
 // Returns: has_account | needs_setup | not_allowed
-app.post('/api/team/check-email', async (req, res) => {
+app.post('/api/team/check-email', authLimiter, async (req, res) => {
   try {
     const email = (req.body.email || '').toLowerCase().trim();
     if (!email) return res.status(400).json({ error: 'Email required' });
@@ -2394,7 +2392,7 @@ app.post('/api/team/check-email', async (req, res) => {
 });
 
 // ── Team portal: first-time account setup ────────────────────────────────────
-app.post('/api/team/setup-account', async (req, res) => {
+app.post('/api/team/setup-account', authLimiter, async (req, res) => {
   try {
     const { email: rawEmail, full_name, password } = req.body;
     const email = (rawEmail || '').toLowerCase().trim();
@@ -6323,13 +6321,14 @@ app.post('/api/trades/:id/cancel', tradeLimiter, verifyToken, async (req, res) =
         return res.status(403).json({ error: 'This dispute cannot be self-cancelled — a moderator will resolve it.' });
       }
     } else {
-      // Not yet disputed: any participant can cancel, EXCEPT after buyer marks
-      // paid — only the seller can cancel at that point (protects the seller if
-      // a payment claim turns out to be fake; the buyer must open a dispute
-      // instead of unilaterally backing out after claiming to pay).
-      const isPostPay = trade.buyer_confirmed === true;
-      if (isPostPay && !isSeller) {
-        return res.status(403).json({ error: 'Cannot cancel after payment has been sent — open a dispute instead' });
+      // Not yet disputed: only the BUYER can unilaterally cancel. Sellers hold
+      // the escrowed BTC — letting a seller cancel on demand (even before payment)
+      // gives them an easy way to pocket a payment the buyer sends moments later
+      // and still reclaim the BTC, or simply back a buyer into a corner. A seller
+      // who wants out of a trade must open a dispute instead, so a moderator can
+      // review it rather than the seller unilaterally deciding.
+      if (!isBuyer) {
+        return res.status(403).json({ error: 'Only the buyer can cancel this trade — open a dispute instead' });
       }
     }
 
@@ -7029,7 +7028,8 @@ app.post('/api/admin/moderator-login', verifyToken, async (req, res) => {
     if (user?.is_moderator || user?.is_admin || user?.email === ADMIN_EMAIL) {
       return res.json({ success: true, moderator: { username: user?.email === ADMIN_EMAIL ? 'PRAQEN Admin' : user.username, role: user?.email === ADMIN_EMAIL ? 'admin' : 'moderator' } });
     }
-    const envCode = process.env.MODERATOR_ACCESS_CODE || 'PRAQEN_MOD_2024';
+    const envCode = process.env.MODERATOR_ACCESS_CODE;
+    if (!envCode) return res.status(403).json({ error: 'Moderator access code is not configured.' });
     if (code !== envCode) return res.status(403).json({ error: 'Invalid moderator code' });
     res.json({ success: true, token: `mod_${req.userId}`, moderator: { username: user?.username || 'Moderator', role: 'moderator' } });
   } catch (error) {

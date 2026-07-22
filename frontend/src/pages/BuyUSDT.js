@@ -981,6 +981,8 @@ export default function BuyUSDT({user}) {
   const [paymentSearch, setPaymentSearch] = useState('');
   const [showCountry,   setShowCountry]   = useState(false);
   const [showPayment,   setShowPayment]   = useState(false);
+  const [showAssetMenu, setShowAssetMenu] = useState(false);
+  const [showSellAssetMenu, setShowSellAssetMenu] = useState(false);
   const [sortBy,       setSortBy]       = useState('rate_low');
   const [modal,        setModal]        = useState(null);
   const [liked,        setLiked]        = useState(new Set());
@@ -1277,10 +1279,79 @@ export default function BuyUSDT({user}) {
       {/* ══ 2. TAB NAVIGATION ══════════════════════════════════ */}
       <div className="bg-white border-b sticky z-30 flex-shrink-0" style={{top:'var(--navbar-h)',borderColor:C.g200}}>
         <div className="flex w-full">
+          <div className="flex-1 relative">
+            <button onClick={()=>setShowAssetMenu(v=>!v)}
+              className="w-full text-center py-3 text-xs font-black border-b-2 transition-all flex items-center justify-center gap-1"
+              style={{borderColor:C.forest, color:C.forest, backgroundColor:`${C.forest}18`}}>
+              Buy USDT <ChevronDown size={12} className={`transition-transform ${showAssetMenu?'rotate-180':''}`}/>
+            </button>
+            {showAssetMenu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={()=>setShowAssetMenu(false)}/>
+                <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1.5 w-52 rounded-2xl border shadow-xl overflow-hidden z-50 bg-white"
+                  style={{borderColor:C.g200}}>
+                  <button onClick={()=>{setShowAssetMenu(false); navigate('/buy-bitcoin');}}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-3 text-left hover:bg-gray-50 transition">
+                    <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-black text-xs text-white"
+                      style={{background:'linear-gradient(135deg,#F7931A,#e8830a)'}}>₿</span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-xs font-black" style={{color:C.g800}}>Bitcoin</span>
+                      <span className="block text-[10px] font-semibold" style={{color:C.g400}}>BTC</span>
+                    </span>
+                    <ArrowRight size={13} style={{color:C.g300}}/>
+                  </button>
+                  <button onClick={()=>setShowAssetMenu(false)}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-3 text-left transition border-t"
+                    style={{borderColor:C.g100, backgroundColor:`${C.forest}0d`}}>
+                    <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-black text-xs text-white"
+                      style={{background:'#26A17B'}}>₮</span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-xs font-black" style={{color:C.g800}}>Tether</span>
+                      <span className="block text-[10px] font-semibold" style={{color:C.g400}}>USDT · you're here</span>
+                    </span>
+                    <CheckCircle size={14} style={{color:C.forest}}/>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+          <div className="flex-1 relative">
+            <button onClick={()=>setShowSellAssetMenu(v=>!v)}
+              className="w-full text-center py-3 text-xs font-black border-b-2 border-transparent transition-all flex items-center justify-center gap-1"
+              style={{color:C.g400}}>
+              Sell <ChevronDown size={12} className={`transition-transform ${showSellAssetMenu?'rotate-180':''}`}/>
+            </button>
+            {showSellAssetMenu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={()=>setShowSellAssetMenu(false)}/>
+                <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1.5 w-52 rounded-2xl border shadow-xl overflow-hidden z-50 bg-white"
+                  style={{borderColor:C.g200}}>
+                  <button onClick={()=>{setShowSellAssetMenu(false); navigate('/sell-bitcoin');}}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-3 text-left hover:bg-gray-50 transition">
+                    <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-black text-xs text-white"
+                      style={{background:'linear-gradient(135deg,#F7931A,#e8830a)'}}>₿</span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-xs font-black" style={{color:C.g800}}>Bitcoin</span>
+                      <span className="block text-[10px] font-semibold" style={{color:C.g400}}>BTC</span>
+                    </span>
+                    <ArrowRight size={13} style={{color:C.g300}}/>
+                  </button>
+                  <button onClick={()=>{setShowSellAssetMenu(false); navigate('/sell-usdt');}}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-3 text-left hover:bg-gray-50 transition border-t"
+                    style={{borderColor:C.g100}}>
+                    <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-black text-xs text-white"
+                      style={{background:'#26A17B'}}>₮</span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-xs font-black" style={{color:C.g800}}>Tether</span>
+                      <span className="block text-[10px] font-semibold" style={{color:C.g400}}>USDT · TRC-20</span>
+                    </span>
+                    <ArrowRight size={13} style={{color:C.g300}}/>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
           {[
-            {label:'Buy USDT',  path:'/buy-usdt',    active:true,  color:'#1B4332'},
-            {label:'Sell',      path:'/sell-usdt',   active:false, color:'#D97706'},
-            {label:'Buy BTC',   path:'/buy-bitcoin', active:false, color:'#1B4332'},
             {label:'Gift Cards', path:'/gift-cards', active:false, color:'#0D9488'},
           ].map(tab=>(
             <Link key={tab.path} to={tab.path}

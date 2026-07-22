@@ -1195,8 +1195,11 @@ export default function ModeratorDashboard({ user }) {
 
   useEffect(() => {
     const t = localStorage.getItem('mod_token');
-    if (t) { setLoggedIn(true); setModName(user?.username || 'PRAQEN Moderator'); }
-  }, []);
+    // `mod_token` alone is just a marker written by client-side JS — it proves nothing on
+    // its own. Only trust it once `user` (populated from the server's own /profile response)
+    // confirms real is_admin/is_moderator, so editing localStorage can't fake this gate.
+    if (t && (user?.is_moderator || user?.is_admin)) { setLoggedIn(true); setModName(user?.username || 'PRAQEN Moderator'); }
+  }, [user]);
   useEffect(() => {
     if ((user?.is_moderator || user?.is_admin) && !loggedIn) {
       const tok = localStorage.getItem('token');

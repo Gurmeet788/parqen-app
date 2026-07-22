@@ -1288,14 +1288,14 @@ export default function TradeDetail({user}) {
   // - While DISPUTED: ONLY the person who opened the dispute can cancel it — the
   //   other side can't cancel their way out of a dispute filed against them, and
   //   legacy disputes with no recorded opener can't be self-cancelled by anyone.
-  // - Otherwise (not yet disputed): either party can cancel before payment is
-  //   confirmed; once confirmed, only the seller can still cancel (protects the
-  //   seller if the buyer's payment claim turns out to be fake) — the buyer must
-  //   open a dispute instead of unilaterally backing out after claiming to pay.
+  // - Otherwise (not yet disputed): only the BUYER can cancel. Sellers hold the
+  //   escrowed BTC — letting them cancel on demand would let a dishonest seller
+  //   pocket a payment and still reclaim the BTC, or strong-arm the buyer. A
+  //   seller who wants out must open a dispute instead.
   const showCancelBtn = isActive && (isBuyer || isSeller) && (
     isDisputed
       ? !!trade?.disputed_by && String(trade.disputed_by) === String(user?.id)
-      : (isSeller || !trade?.buyer_confirmed)
+      : isBuyer
   );
 
   // Read receipts: timestamp of the last message the counterparty sent
