@@ -21,22 +21,22 @@ const C = {
 };
 
 const PHONE_CODES = [
-  { flag: '🇵🇰', code: '+92',  name: 'Pakistan' },
+  { flag: '🇵🇰', code: '+92', name: 'Pakistan' },
   { flag: '🇬🇭', code: '+233', name: 'Ghana' },
   { flag: '🇳🇬', code: '+234', name: 'Nigeria' },
   { flag: '🇰🇪', code: '+254', name: 'Kenya' },
-  { flag: '🇿🇦', code: '+27',  name: 'South Africa' },
+  { flag: '🇿🇦', code: '+27', name: 'South Africa' },
   { flag: '🇺🇬', code: '+256', name: 'Uganda' },
   { flag: '🇹🇿', code: '+255', name: 'Tanzania' },
   { flag: '🇷🇼', code: '+250', name: 'Rwanda' },
-  { flag: '🇺🇸', code: '+1',   name: 'United States' },
-  { flag: '🇬🇧', code: '+44',  name: 'United Kingdom' },
-  { flag: '🇩🇪', code: '+49',  name: 'Germany' },
-  { flag: '🇫🇷', code: '+33',  name: 'France' },
+  { flag: '🇺🇸', code: '+1', name: 'United States' },
+  { flag: '🇬🇧', code: '+44', name: 'United Kingdom' },
+  { flag: '🇩🇪', code: '+49', name: 'Germany' },
+  { flag: '🇫🇷', code: '+33', name: 'France' },
   { flag: '🇸🇦', code: '+966', name: 'Saudi Arabia' },
   { flag: '🇦🇪', code: '+971', name: 'UAE' },
-  { flag: '🇮🇳', code: '+91',  name: 'India' },
-  { flag: '🇦🇺', code: '+61',  name: 'Australia' },
+  { flag: '🇮🇳', code: '+91', name: 'India' },
+  { flag: '🇦🇺', code: '+61', name: 'Australia' },
   { flag: '🇨🇲', code: '+237', name: 'Cameroon' },
   { flag: '🇸🇳', code: '+221', name: 'Senegal' },
 ];
@@ -45,7 +45,7 @@ const PW_CHECKS = [
   { label: 'At least 8 characters', test: p => p.length >= 8 },
   { label: 'Uppercase letter (A–Z)', test: p => /[A-Z]/.test(p) },
   { label: 'Lowercase letter (a–z)', test: p => /[a-z]/.test(p) },
-  { label: 'Number (0–9)',           test: p => /\d/.test(p) },
+  { label: 'Number (0–9)', test: p => /\d/.test(p) },
 ];
 
 const STATS = [
@@ -75,7 +75,7 @@ function PwStrength({ password }) {
     <div style={{ marginTop: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
         <div style={{ display: 'flex', gap: 4, flex: 1 }}>
-          {[1,2,3,4].map(i => (
+          {[1, 2, 3, 4].map(i => (
             <div key={i} style={{
               height: 4, flex: 1, borderRadius: 99,
               background: i <= passed ? colors[passed] : '#E2E8F0',
@@ -121,12 +121,12 @@ function OTPInput({ value, onChange, hasError }) {
   const handleKey = (i, e) => {
     if (e.key === 'Backspace') {
       onChange(value.slice(0, Math.max(0, i)));
-      if (i > 0) refs[i-1].current?.focus();
+      if (i > 0) refs[i - 1].current?.focus();
     } else if (/^\d$/.test(e.key)) {
       const arr = (value + '      ').slice(0, 6).split('');
       arr[i] = e.key;
       onChange(arr.join('').replace(/\s/g, ''));
-      if (i < 5) refs[i+1].current?.focus();
+      if (i < 5) refs[i + 1].current?.focus();
     }
     e.preventDefault();
   };
@@ -145,7 +145,7 @@ function OTPInput({ value, onChange, hasError }) {
           value={d === ' ' ? '' : d}
           onKeyDown={e => handleKey(i, e)}
           onPaste={handlePaste}
-          onChange={() => {}}
+          onChange={() => { }}
           style={{
             width: 44, height: 52, borderRadius: 12,
             textAlign: 'center', fontSize: 20, fontWeight: 800,
@@ -164,28 +164,28 @@ function OTPInput({ value, onChange, hasError }) {
 export default function Register({ onLogin }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const [mode, setMode]               = useState('register');
-  const [step, setStep]               = useState(1);
-  const [method, setMethod]           = useState('email');
-  const [showPw, setShowPw]           = useState(false);
+  const [mode, setMode] = useState('register');
+  const [step, setStep] = useState(1);
+  const [method, setMethod] = useState('email');
+  const [showPw, setShowPw] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [loading, setLoading]         = useState(false);
-  const [otpTimer, setOtpTimer]       = useState(0);
-  const [phoneCode, setPhoneCode]     = useState(PHONE_CODES[0]);
-  const [showCodes, setShowCodes]     = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [otpTimer, setOtpTimer] = useState(0);
+  const [phoneCode, setPhoneCode] = useState(PHONE_CODES[0]);
+  const [showCodes, setShowCodes] = useState(false);
   const [globalError, setGlobalError] = useState('');
   const [currentTestimonial, setCurrentTestimonial] = useState(0);
 
-  const [email, setEmail]       = useState('');
-  const [phone, setPhone]       = useState('');
-  const [otp, setOtp]           = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [otp, setOtp] = useState('');
   const [otpError, setOtpError] = useState('');
   const [username, setUsername] = useState('');
   const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
-  const [confirm, setConfirm]   = useState('');
-  const [agreed, setAgreed]     = useState(false);
-  const [errs, setErrs]         = useState({});
+  const [confirm, setConfirm] = useState('');
+  const [agreed, setAgreed] = useState(false);
+  const [errs, setErrs] = useState({});
   const [referralCode, setReferralCode] = useState('');
   const [referrerInfo, setReferrerInfo] = useState(null);
 
@@ -205,7 +205,7 @@ export default function Register({ onLogin }) {
     if (!referralCode) { setReferrerInfo(null); return; }
     axios.get(`${API_URL}/auth/referrer?code=${encodeURIComponent(referralCode)}`)
       .then(r => { if (r.data.success) setReferrerInfo(r.data.referrer); })
-      .catch(() => {});
+      .catch(() => { });
   }, [referralCode]);
 
   useEffect(() => {
@@ -314,7 +314,7 @@ export default function Register({ onLogin }) {
     setLoading(true); setGlobalError('');
     try {
       const channel = method === 'email' ? 'email' : 'sms';
-      const body    = method === 'email' ? { email: contact, channel } : { phone: contact, channel };
+      const body = method === 'email' ? { email: contact, channel } : { phone: contact, channel };
       const r = await axios.post(`${API_URL}/auth/send-otp`, { ...body, purpose: 'forgot-password' });
       setStep('f2'); setOtpTimer(60);
       // Dev mode: if email/SMS delivery failed, auto-fill the OTP
@@ -958,13 +958,13 @@ export default function Register({ onLogin }) {
           <div className="hero-bg-pattern" />
           <div className="hero-glow-1" />
           <div className="hero-glow-2" />
-          
+
           <div className="hero-content">
             <div className="hero-badge">
               <Bitcoin size={22} className="pulse-gold" style={{ color: '#F4A422' }} />
-              <span style={{ 
-                color: 'white', 
-                fontWeight: 800, 
+              <span style={{
+                color: 'white',
+                fontWeight: 800,
                 letterSpacing: '4px',
                 fontSize: 15,
                 textTransform: 'uppercase'
@@ -1014,7 +1014,7 @@ export default function Register({ onLogin }) {
                 </div>
                 <div className="testimonial-dots">
                   {TESTIMONIALS.map((_, i) => (
-                    <div 
+                    <div
                       key={i}
                       className={`testimonial-dot ${i === currentTestimonial ? 'active' : ''}`}
                       onClick={() => setCurrentTestimonial(i)}
@@ -1036,10 +1036,10 @@ export default function Register({ onLogin }) {
           <div style={{ width: '100%', maxWidth: 460 }}>
             {/* Mobile Hero Strip */}
             <div className="mobile-hero-strip">
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 10, 
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
                 marginBottom: 12,
                 flexWrap: 'wrap'
               }}>
@@ -1052,9 +1052,9 @@ export default function Register({ onLogin }) {
                   background: 'linear-gradient(135deg, #1B4332, #2D6A4F)',
                 }}>
                   <Bitcoin size={16} style={{ color: '#F4A422' }} />
-                  <span style={{ 
-                    color: 'white', 
-                    fontWeight: 700, 
+                  <span style={{
+                    color: 'white',
+                    fontWeight: 700,
                     fontSize: 12,
                     letterSpacing: '2px'
                   }}>
@@ -1073,7 +1073,7 @@ export default function Register({ onLogin }) {
                   4.9/5 · 50K+ traders
                 </div>
               </div>
-              
+
               <div className="mobile-benefits-strip">
                 {BENEFITS.map(({ icon: Icon, title }) => (
                   <div key={title} className="mobile-benefit-pill">
@@ -1171,14 +1171,14 @@ export default function Register({ onLogin }) {
 
                     {/* Method Toggle */}
                     <div className="method-toggle">
-                      <button 
+                      <button
                         onClick={() => { setMethod('email'); setErrs({}); }}
                         className={`method-btn ${method === 'email' ? 'active' : ''}`}
                       >
                         <Mail size={14} />
                         Email
                       </button>
-                      <button 
+                      <button
                         onClick={() => { setMethod('phone'); setErrs({}); }}
                         className={`method-btn ${method === 'phone' ? 'active' : ''}`}
                       >
@@ -1205,8 +1205,8 @@ export default function Register({ onLogin }) {
                         </label>
                         <div style={{ position: 'relative' }}>
                           <Mail size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', pointerEvents: 'none', zIndex: 1 }} />
-                          <input 
-                            type="email" 
+                          <input
+                            type="email"
                             value={email}
                             placeholder="you@example.com"
                             onChange={e => setEmail(e.target.value)}
@@ -1227,7 +1227,7 @@ export default function Register({ onLogin }) {
                         </label>
                         <div style={{ display: 'flex', gap: 8 }}>
                           <div style={{ position: 'relative', flexShrink: 0 }}>
-                            <button 
+                            <button
                               onClick={() => setShowCodes(!showCodes)}
                               style={{
                                 display: 'flex', alignItems: 'center', gap: 6,
@@ -1276,7 +1276,7 @@ export default function Register({ onLogin }) {
                           </div>
                           <div style={{ flex: 1, position: 'relative' }}>
                             <Phone size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', pointerEvents: 'none', zIndex: 1 }} />
-                            <input 
+                            <input
                               type="tel"
                               value={phone}
                               placeholder="244 123 4567"
@@ -1301,7 +1301,7 @@ export default function Register({ onLogin }) {
                       </label>
                       <div style={{ position: 'relative' }}>
                         <User size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', pointerEvents: 'none', zIndex: 1 }} />
-                        <input 
+                        <input
                           type="text"
                           value={fullName}
                           placeholder="John Doe"
@@ -1324,7 +1324,7 @@ export default function Register({ onLogin }) {
                       </label>
                       <div style={{ position: 'relative' }}>
                         <AtSign size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', pointerEvents: 'none', zIndex: 1 }} />
-                        <input 
+                        <input
                           type="text"
                           value={username}
                           placeholder="john_doe"
@@ -1347,7 +1347,7 @@ export default function Register({ onLogin }) {
                       </label>
                       <div style={{ position: 'relative' }}>
                         <Lock size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', pointerEvents: 'none', zIndex: 1 }} />
-                        <input 
+                        <input
                           type={showPw ? 'text' : 'password'}
                           value={password}
                           placeholder="••••••••"
@@ -1355,7 +1355,7 @@ export default function Register({ onLogin }) {
                           className="form-input-focus"
                           style={inputWithRightIcon(!!password, errs.password)}
                         />
-                        <button 
+                        <button
                           type="button"
                           onClick={() => setShowPw(!showPw)}
                           style={{
@@ -1383,7 +1383,7 @@ export default function Register({ onLogin }) {
                       </label>
                       <div style={{ position: 'relative' }}>
                         <Lock size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', pointerEvents: 'none', zIndex: 1 }} />
-                        <input 
+                        <input
                           type={showConfirm ? 'text' : 'password'}
                           value={confirm}
                           placeholder="Repeat your password"
@@ -1391,7 +1391,7 @@ export default function Register({ onLogin }) {
                           className="form-input-focus"
                           style={inputWithRightIcon(!!confirm, errs.confirm)}
                         />
-                        <button 
+                        <button
                           type="button"
                           onClick={() => setShowConfirm(!showConfirm)}
                           style={{
@@ -1413,10 +1413,10 @@ export default function Register({ onLogin }) {
 
                     {/* Terms */}
                     <div>
-                      <div 
+                      <div
                         onClick={() => setAgreed(!agreed)}
-                        style={{ 
-                          display: 'flex', alignItems: 'flex-start', gap: 10, 
+                        style={{
+                          display: 'flex', alignItems: 'flex-start', gap: 10,
                           cursor: 'pointer', padding: 4, borderRadius: 10,
                           transition: 'background 0.2s'
                         }}
@@ -1450,7 +1450,7 @@ export default function Register({ onLogin }) {
                     </div>
 
                     {/* Submit */}
-                    <button 
+                    <button
                       onClick={handleRegister}
                       disabled={loading}
                       className="submit-btn"

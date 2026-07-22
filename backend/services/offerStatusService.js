@@ -26,28 +26,27 @@ async function updateOfferStatus(userId) {
 
     const { data: offers } = await supabaseAdmin
       .from('listings')
-      .select('id, status, listing_type, asset')
+      .select('id, status, listing_type')
       .eq('seller_id', userId)
       .in('listing_type', BTC_REQUIRED_TYPES)
       .in('status', ['ACTIVE', 'PAUSED']);
 
     if (!offers || offers.length === 0) return { paused: 0, reactivated: 0 };
 
-    const balUsdFor = (o) => (o.asset === 'USDT' ? usdtBalUsd : btcBalUsd);
-    const toPause      = offers.filter(o => o.status === 'ACTIVE'  && balUsdFor(o) < MIN_USD).map(o => o.id);
-    const toReactivate = offers.filter(o => o.status === 'PAUSED'  && balUsdFor(o) >= MIN_USD).map(o => o.id);
+    const toPause      = offers.filter(o => o.status === 'ACTIVE'  && btcBalUsd < MIN_USD).map(o => o.id);
+    const toReactivate = offers.filter(o => o.status === 'PAUSED'  && btcBalUsd >= MIN_USD).map(o => o.id);
 
     if (toPause.length > 0) {
       await supabaseAdmin.from('listings')
         .update({ status: 'PAUSED', updated_at: new Date().toISOString() })
         .in('id', toPause);
-      console.log(`[offerStatus] Paused ${toPause.length} offer(s) for user ${userId} (balance $${balUsd.toFixed(2)})`);
+      console.log(`[offerStatus] Paused ${toPause.length} offer(s) for user ${userId} (balance $${btcBalUsd.toFixed(2)})`);
     }
     if (toReactivate.length > 0) {
       await supabaseAdmin.from('listings')
         .update({ status: 'ACTIVE', updated_at: new Date().toISOString() })
         .in('id', toReactivate);
-      console.log(`[offerStatus] Reactivated ${toReactivate.length} offer(s) for user ${userId} (balance $${balUsd.toFixed(2)})`);
+      console.log(`[offerStatus] Reactivated ${toReactivate.length} offer(s) for user ${userId} (balance $${btcBalUsd.toFixed(2)})`);
     }
 
     return { paused: toPause.length, reactivated: toReactivate.length };
@@ -66,7 +65,7 @@ async function syncAllOfferStatuses() {
     // Fetch all ACTIVE and PAUSED BTC/USDT-required listings (include limits for cap logic)
     const { data: listings, error } = await supabaseAdmin
       .from('listings')
-      .select('id, seller_id, status, listing_type, asset, bitcoin_price, min_limit_usd, max_limit_usd, max_limit_local')
+      .select('id, seller_id, status, listing_type, bitcoin_price, min_limit_usd, max_limit_usd, max_limit_local')
       .in('listing_type', BTC_REQUIRED_TYPES)
       .in('status', ['ACTIVE', 'PAUSED']);
 
@@ -92,11 +91,8 @@ async function syncAllOfferStatuses() {
     const toReactivate = [];
 
     for (const listing of listings) {
-      const isUsdt    = listing.asset === 'USDT';
       const btcPrice  = parseFloat(listing.bitcoin_price) || BTC_PRICE_APPROX;
-      const balUsd    = isUsdt
-        ? (usdtBalMap[listing.seller_id] || 0) // 1 USDT ≈ $1
-        : (balMap[listing.seller_id] || 0) * btcPrice;
+      const balUsd    = (balMap[listing.seller_id] || 0) * btcPrice; // default to BTC balance
       const minUsd    = parseFloat(listing.min_limit_usd || 0);
       const maxUsd    = parseFloat(listing.max_limit_usd || 0);
       const maxLocal  = parseFloat(listing.max_limit_local || 0);
