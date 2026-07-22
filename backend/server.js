@@ -269,7 +269,10 @@ app.use('/api/hd-wallet', hdWalletRoutes);
 // NOTE: walletRoutes removed — wallet routes are defined inline below
 // to avoid Supabase-not-initialized errors in external route files.
 
-const JWT_SECRET = process.env.JWT_SECRET || 'praqen-secret-change-in-production';
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is not set. Refusing to start with an insecure default secret.');
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 const otpStore          = new Map();
 const verificationCodes = new Map();
 
@@ -8209,6 +8212,22 @@ async function requireAdmin(req, res) {
   return u;
 }
 
+// Helper: record a privilege/verification change in admin_audit_log.
+// Never let a logging failure break the underlying admin action.
+async function logAdminAction(req, action, targetId, details) {
+  try {
+    await supabaseAdmin.from('admin_audit_log').insert({
+      admin_id:   req.userId,
+      target_id:  targetId,
+      action,
+      details:    details || null,
+      ip_address: req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || null,
+    });
+  } catch (e) {
+    console.error('[admin_audit_log] failed to record action:', action, e.message);
+  }
+}
+
 // GET /api/admin/stats — full platform overview
 app.get('/api/admin/stats', verifyToken, async (req, res) => {
   try {
@@ -8302,6 +8321,7 @@ app.put('/api/admin/users/:id', verifyToken, async (req, res) => {
     updates.updated_at = new Date();
     const { data, error } = await supabaseAdmin.from('users').update(updates).eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
+    logAdminAction(req, 'USER_UPDATE', req.params.id, updates).catch(() => {});
     res.json({ success: true, user: data });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -8413,6 +8433,7 @@ app.put('/api/admin/kyc/:userId/approve', verifyToken, async (req, res) => {
       .single();
     if (error) return res.status(400).json({ error: error.message });
     if (!updated) return res.status(404).json({ error: 'User not found' });
+    logAdminAction(req, 'KYC_APPROVE', req.params.userId, null).catch(() => {});
     try {
       await createNotification(req.params.userId, 'kyc', '✅ KYC Approved', 'Your identity has been verified. You now have full access to all PRAQEN features.', '/settings');
       sendSystemAlert(req.params.userId, '🪪 KYC Approved!', 'Your identity has been verified. Full access to all PRAQEN features is now unlocked!', 'https://praqen.com/settings').catch(() => {});
@@ -8819,6 +8840,7 @@ app.put('/api/admin/users/:id/verify-email', verifyToken, async (req, res) => {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { data, error } = await supabaseAdmin.from('users').update({ is_email_verified: true, updated_at: new Date() }).eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
+    logAdminAction(req, 'VERIFY_EMAIL', req.params.id, null).catch(() => {});
     await createNotification(req.params.id, 'system', '📧 Email Verified', 'Your email address has been manually verified by an admin.', '/settings');
     res.json({ success: true, user: data });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -8830,6 +8852,7 @@ app.put('/api/admin/users/:id/verify-phone', verifyToken, async (req, res) => {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { data, error } = await supabaseAdmin.from('users').update({ is_phone_verified: true, phone_verified: true, updated_at: new Date() }).eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
+    logAdminAction(req, 'VERIFY_PHONE', req.params.id, null).catch(() => {});
     // Update request row if it exists
     await supabaseAdmin.from('phone_verification_requests')
       .update({ status: 'approved', reviewed_at: new Date().toISOString(), reviewed_by: req.userId })
@@ -9079,6 +9102,7 @@ app.put('/api/admin/users/:id/ban', verifyToken, async (req, res) => {
     if (req.params.id === req.userId) return res.status(400).json({ error: 'Cannot ban your own account' });
     const { data, error } = await supabaseAdmin.from('users').update({ account_status: 'banned', updated_at: new Date() }).eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
+    logAdminAction(req, 'BAN', req.params.id, { reason }).catch(() => {});
     if (reason) await createNotification(req.params.id, 'security', '🚫 Account Banned', `Your account has been banned. Reason: ${reason}`, '/');
     res.json({ success: true, user: data });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -9090,6 +9114,7 @@ app.put('/api/admin/users/:id/unban', verifyToken, async (req, res) => {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { data, error } = await supabaseAdmin.from('users').update({ account_status: 'active', updated_at: new Date() }).eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
+    logAdminAction(req, 'UNBAN', req.params.id, null).catch(() => {});
     await createNotification(req.params.id, 'system', '✅ Account Reinstated', 'Your account ban has been lifted. Welcome back to PRAQEN!', '/dashboard');
     res.json({ success: true, user: data });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -9103,6 +9128,7 @@ app.put('/api/admin/users/:id/make-admin', verifyToken, async (req, res) => {
     const newVal = !cur?.is_admin;
     const { data, error } = await supabaseAdmin.from('users').update({ is_admin: newVal, updated_at: new Date() }).eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
+    logAdminAction(req, 'MAKE_ADMIN', req.params.id, { is_admin: newVal }).catch(() => {});
     res.json({ success: true, user: data, is_admin: newVal });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
