@@ -639,7 +639,10 @@ export default function Settings({ user, setUser }) {
     const errs = {};
     if (!passwordForm.currentPassword) errs.currentPassword = 'Current password is required';
     if (!passwordForm.newPassword) errs.newPassword = 'New password is required';
-    else if (passwordForm.newPassword.length < 6) errs.newPassword = 'Password must be at least 6 characters';
+    else if (passwordForm.newPassword.length < 8) errs.newPassword = 'Password must be at least 8 characters';
+    else if (!/[A-Z]/.test(passwordForm.newPassword)) errs.newPassword = 'Password must include at least one uppercase letter';
+    else if (!/\d/.test(passwordForm.newPassword)) errs.newPassword = 'Password must include at least one number';
+    else if (!/[^a-zA-Z0-9]/.test(passwordForm.newPassword)) errs.newPassword = 'Password must include at least one special character';
     else if (passwordForm.newPassword === passwordForm.currentPassword) errs.newPassword = 'New password must be different from current password';
     if (!passwordForm.confirmPassword) errs.confirmPassword = 'Please confirm your new password';
     else if (passwordForm.newPassword !== passwordForm.confirmPassword) errs.confirmPassword = 'Passwords do not match';
@@ -1913,11 +1916,43 @@ export default function Settings({ user, setUser }) {
                             const hasUpper = /[A-Z]/.test(passwordForm.newPassword);
                             const hasNum = /\d/.test(passwordForm.newPassword);
                             const hasSpec = /[^a-zA-Z0-9]/.test(passwordForm.newPassword);
-                            const score = (len >= 8 ? 1 : 0) + (len >= 12 ? 1 : 0) + (hasUpper && hasNum ? 1 : 0) + (hasSpec ? 1 : 0);
-                            const color = score <= 1 ? C.danger : score === 2 ? C.warn : score === 3 ? C.paid : C.success;
-                            return <div key={i} className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: i <= score ? color : C.g200 }} />;
+                            let metCount = 0;
+                            if (len >= 8) metCount++;
+                            if (hasUpper) metCount++;
+                            if (hasNum) metCount++;
+                            if (hasSpec) metCount++;
+                            const strengthLabel = metCount <= 1 ? 'Weak' : metCount === 2 ? 'Medium' : 'Strong';
+                            const color = metCount <= 1 ? C.danger : metCount === 2 ? C.warn : C.success;
+                            return <div key={i} className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: i <= metCount ? color : C.g200 }} />;
                           })}
                         </div>
+                        <p className="text-xs font-bold mt-1" style={{
+                          color: (() => {
+                            const len = passwordForm.newPassword.length;
+                            const hasUpper = /[A-Z]/.test(passwordForm.newPassword);
+                            const hasNum = /\d/.test(passwordForm.newPassword);
+                            const hasSpec = /[^a-zA-Z0-9]/.test(passwordForm.newPassword);
+                            let m = 0;
+                            if (len >= 8) m++;
+                            if (hasUpper) m++;
+                            if (hasNum) m++;
+                            if (hasSpec) m++;
+                            return m <= 1 ? C.danger : m === 2 ? C.warn : C.success;
+                          })()
+                        }}>
+                          {(() => {
+                            const len = passwordForm.newPassword.length;
+                            const hasUpper = /[A-Z]/.test(passwordForm.newPassword);
+                            const hasNum = /\d/.test(passwordForm.newPassword);
+                            const hasSpec = /[^a-zA-Z0-9]/.test(passwordForm.newPassword);
+                            let m = 0;
+                            if (len >= 8) m++;
+                            if (hasUpper) m++;
+                            if (hasNum) m++;
+                            if (hasSpec) m++;
+                            return m <= 1 ? 'Weak' : m === 2 ? 'Medium' : 'Strong';
+                          })()}
+                        </p>
                       </div>
                     )}
                     <button type="submit" disabled={loading}

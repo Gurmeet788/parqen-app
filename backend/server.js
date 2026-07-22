@@ -326,6 +326,32 @@ function phoneToCountryCode(phone) {
   return null;
 }
 
+const disposableDomains = require('disposable-email-domains');
+
+async function validateEmailForRegistration(email) {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return { valid: false, error: 'Enter a valid email address.' };
+  }
+
+  const domain = email.split('@')[1].toLowerCase();
+  if (disposableDomains.includes(domain)) {
+    return { valid: false, error: 'Disposable or temporary email addresses are not allowed. Please use a permanent email.' };
+  }
+
+  try {
+    const dns = require('dns').promises;
+    const mxRecords = await dns.resolveMx(domain);
+    if (!mxRecords || mxRecords.length === 0) {
+      return { valid: false, error: 'This email domain does not appear to accept mail. Please check your email address.' };
+    }
+  } catch (e) {
+    return { valid: false, error: 'This email domain could not be verified. Please check your email address.' };
+  }
+
+  return { valid: true };
+}
+
 // Resolve client IP + phone → ISO country code (fire-and-forget, never blocks login)
 // Priority: KYC country > phone number > IP geolocation — NEVER default to any country
 async function detectAndSaveCountry(userId, req, phoneNumber) {
@@ -1452,6 +1478,26 @@ function optionalAuth(req, res, next) {
   next();
 }
 
+async function requireEmailVerified(req, res, next) {
+  try {
+    const { data: user } = await supabaseAdmin
+      .from('users')
+      .select('is_email_verified, email_verified')
+      .eq('id', req.userId)
+      .single();
+    const verified = !!(user?.is_email_verified || user?.email_verified);
+    if (!verified) {
+      return res.status(403).json({
+        error: 'Please verify your email address before trading.',
+        requireVerification: 'email',
+      });
+    }
+    next();
+  } catch (e) {
+    return res.status(500).json({ error: 'Could not verify account status. Please try again.' });
+  }
+}
+
 // ============================================================
 // HEALTH CHECK
 // ============================================================
@@ -1789,6 +1835,14 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     }
     if (password.length < 6) {
       return res.status(400).json({ error: E.PASSWORD_TOO_SHORT });
+    }
+
+    // ── Email format + disposable domain + MX validation ───────────────────
+    if (email) {
+      const emailCheck = await validateEmailForRegistration(email.toLowerCase().trim());
+      if (!emailCheck.valid) {
+        return res.status(400).json({ error: emailCheck.error });
+      }
     }
 
     // ── Check uniqueness (fast DB lookups) ─────────────────────────────────
@@ -3378,7 +3432,11 @@ app.post('/api/auth/change-password', verifyToken, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Current and new password required' });
-    if (newPassword.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    if (newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    if (!/[A-Z]/.test(newPassword)) return res.status(400).json({ error: 'Password must include at least one uppercase letter' });
+    if (!/\d/.test(newPassword)) return res.status(400).json({ error: 'Password must include at least one number' });
+    if (!/[^a-zA-Z0-9]/.test(newPassword)) return res.status(400).json({ error: 'Password must include at least one special character' });
+    if (currentPassword === newPassword) return res.status(400).json({ error: 'New password must be different from current password' });
     const { data: user, error } = await supabaseAdmin.from('users').select('password_hash').eq('id', req.userId).single();
     if (error || !user) return res.status(404).json({ error: 'User not found' });
     const valid = await bcrypt.compare(currentPassword, user.password_hash);
@@ -6255,7 +6313,7 @@ app.post('/api/quotes', async (req, res) => {
   }
 });
 
-app.post('/api/trades', verifyToken, async (req, res) => {
+app.post('/api/trades', verifyToken, requireEmailVerified, async (req, res) => {
   try {
     const { offerId: rawOfferId, listingId: rawListingId, amountBtc, amount, paymentMethod, trade_type, amountLocal, currency, currencySymbol, quoteId } = req.body;
     const listingId = rawOfferId || rawListingId;
@@ -9678,7 +9736,7 @@ app.post('/api/wallet/check-payment', verifyToken, async (req, res) => {
   }
 });
 
-app.post('/api/wallet/withdraw', verifyToken, async (req, res) => {
+app.post('/api/wallet/withdraw', verifyToken, requireEmailVerified, async (req, res) => {
   try {
     const { address, amountBtc } = req.body;
     if (!address || !amountBtc || amountBtc <= 0) return res.status(400).json({ error: 'Invalid withdrawal request' });
@@ -9928,7 +9986,7 @@ app.post('/api/wallet/internal-transfer', verifyToken, async (req, res) => {
   }
 });
 
-app.post('/api/wallet/send', verifyToken, async (req, res) => {
+app.post('/api/wallet/send', verifyToken, requireEmailVerified, async (req, res) => {
   try {
     const { address, amountBtc } = req.body;
 
