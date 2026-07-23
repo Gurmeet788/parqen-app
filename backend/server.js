@@ -220,6 +220,12 @@ app.use(cors({
   maxAge:           86400, // browser caches preflight for 24 hours
 }));
 
+// Webhook signature verification needs the exact raw bytes Coinbase signed — must be
+// captured BEFORE the global JSON parser below consumes the request stream. body-parser
+// sets req._body once it runs, so express.json() will see that and skip re-parsing,
+// leaving req.body as this Buffer for that one path only.
+app.use('/api/wallet/webhook', express.raw({ type: '*/*' }));
+
 app.use(express.json({ limit: '6mb' })); // raised from 2mb — KYC route needs headroom for 2 compressed base64 images (~1.1–1.9mb each after canvas compression)
 
 // ── Rate Limiters ──────────────────────────────────────────────────────────
@@ -1717,25 +1723,15 @@ app.post('/api/auth/google', authLimiter, async (req, res) => {
       emailService.sendWelcomeEmail({ id: newUser.id, email: normalizedEmail, username })
         .catch(e => console.error('[Google Auth] Welcome email failed:', e.message));
 
-      // Provision HD wallet address
+      // Provision a real HD wallet address, mirrored to every table the deposit
+      // monitors read from (see hdWalletService.ensureWalletExists).
       Promise.resolve().then(async () => {
         try {
-          const hdAddrData = hdWalletService.generateUserAddress(newUser.id);
-          await supabaseAdmin.from('users').update({
-            bitcoin_wallet_address: hdAddrData.address,
-            updated_at: new Date().toISOString(),
-          }).eq('id', newUser.id);
-          await supabaseAdmin.from('user_wallets').upsert({
-            user_id:     newUser.id,
-            btc_address:  hdAddrData.address,
-            network:     'mainnet',
-            balance_btc:  0,
-            created_at:  new Date().toISOString(),
-          });
-          console.log(`[Google Auth] HD wallet generated for ${newUser.username}: ${hdAddrData.address}`);
-          realtimeDepositService.subscribeAddress(newUser.id, hdAddrData.address);
+          const { address } = await hdWalletService.ensureWalletExists(newUser.id);
+          console.log(`[Google Auth] Wallet ensured for ${newUser.username}: ${address}`);
+          realtimeDepositService.subscribeAddress(newUser.id, address);
         } catch (e) {
-          console.error('[Google Auth] HD wallet generation failed:', e.message);
+          console.error('[Google Auth] Wallet provisioning failed:', e.message);
         }
       });
 
@@ -1988,26 +1984,18 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
         .catch(e => console.warn('[Register] SMS OTP DB backup failed:', e.message));
     }
 
-    // 2. Generate HD wallet address for this user
+    // 2. Generate a real HD wallet address for this user and mirror it to every
+    //    table the deposit monitors read from. ensureWalletExists() uses
+    //    select-then-insert (not upsert) so it can't silently no-op the way the
+    //    old duplicated blocks here did.
     Promise.resolve().then(async () => {
       try {
-        const hdAddrData = hdWalletService.generateUserAddress(newUser.id);
-        await supabaseAdmin.from('users').update({
-          bitcoin_wallet_address: hdAddrData.address,
-          updated_at: new Date().toISOString(),
-        }).eq('id', newUser.id);
-        await supabaseAdmin.from('user_wallets').upsert({
-          user_id:    newUser.id,
-          btc_address: hdAddrData.address,
-          network:    'mainnet',
-          balance_btc: 0,
-          created_at: new Date().toISOString(),
-        });
-        console.log(`[Register] HD wallet generated for ${newUser.username}: ${hdAddrData.address}`);
+        const { address } = await hdWalletService.ensureWalletExists(newUser.id);
+        console.log(`[Register] Wallet ensured for ${newUser.username}: ${address}`);
         // Subscribe to real-time WebSocket monitoring immediately
-        realtimeDepositService.subscribeAddress(newUser.id, hdAddrData.address);
+        realtimeDepositService.subscribeAddress(newUser.id, address);
       } catch (e) {
-        console.error('[Register] HD wallet generation failed:', e.message);
+        console.error('[Register] Wallet provisioning failed:', e.message);
       }
     });
 
@@ -2030,35 +2018,6 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
           console.error('[Register] Referral count update failed:', e.message);
         }
       })();
-    }
-
-    // 4. HD wallet address — assign immediately on registration
-    try {
-      const hdWallet  = require('./services/hdWalletService');
-      const addrData  = hdWallet.generateUserAddress(newUser.id);
-      await Promise.all([
-        supabaseAdmin.from('users').update({
-          bitcoin_wallet_address: addrData.address,
-          wallet_created_at:      new Date().toISOString(),
-        }).eq('id', newUser.id),
-        supabaseAdmin.from('user_wallets').upsert({
-          user_id:          newUser.id,
-          btc_address:      addrData.address,
-          balance_btc:      0,
-          last_onchain_btc: 0,
-          updated_at:       new Date().toISOString(),
-        }, { onConflict: 'user_id' }),
-        supabaseAdmin.from('wallets').upsert({
-          user_id:            newUser.id,
-          address:            addrData.address,
-          balance_btc:        0,
-          locked_balance_btc: 0,
-          updated_at:         new Date().toISOString(),
-        }, { onConflict: 'user_id' }),
-      ]);
-      console.log(`[Register] HD wallet address assigned for ${newUser.username}: ${addrData.address}`);
-    } catch (e) {
-      console.error('[Register] HD wallet address failed (non-critical):', e.message);
     }
 
   } catch (error) {
@@ -2701,18 +2660,28 @@ app.post('/api/team/setup-account', authLimiter, async (req, res) => {
     }
     const newUser = inserted[0];
 
-    await Promise.all([
-      supabaseAdmin.from('user_balances').insert([{ user_id: newUser.id, balance_btc: 0, balance_usd: 0 }]),
-      supabaseAdmin.from('wallets').insert({ user_id: newUser.id, balance_btc: 0, locked_balance_btc: 0, updated_at: new Date().toISOString() }),
-    ]).catch(() => {});
+    await supabaseAdmin.from('user_balances').insert([{ user_id: newUser.id, balance_btc: 0, balance_usd: 0 }]).then(null, () => {});
 
     const token = jwt.sign({ userId: newUser.id, email }, JWT_SECRET, { expiresIn: '7d' });
-    return res.json({
+    res.json({
       success: true, token,
       user: { id: newUser.id, email, username: newUser.username, full_name: newUser.full_name,
         is_moderator: true, is_admin: false, avatar_url: null,
         average_rating: 0, total_trades: 0, referral_code: referralCode, total_referrals: 0, referral_earnings_btc: 0 },
     });
+
+    // Provision a real HD wallet address, mirrored to every table the deposit
+    // monitors read from (see hdWalletService.ensureWalletExists).
+    Promise.resolve().then(async () => {
+      try {
+        const { address } = await hdWalletService.ensureWalletExists(newUser.id);
+        console.log(`[Team Setup] Wallet ensured for ${newUser.username}: ${address}`);
+        realtimeDepositService.subscribeAddress(newUser.id, address);
+      } catch (e) {
+        console.error('[Team Setup] Wallet provisioning failed:', e.message);
+      }
+    });
+    return;
   } catch (err) {
     console.error('team/setup-account error:', err);
     res.status(500).json({ error: 'Server error' });
@@ -4123,7 +4092,7 @@ app.post('/api/users/resend-verification', verifyToken, async (req, res) => {
 });
 
 // POST /api/users/verify-email-code — verify code entered from profile
-app.post('/api/users/verify-email-code', verifyToken, async (req, res) => {
+app.post('/api/users/verify-email-code', verifyToken, otpLimiter, async (req, res) => {
   try {
     const { code } = req.body;
     if (!code || String(code).length !== 6) return res.status(400).json({ error: 'Enter the full 6-digit code' });
@@ -7764,7 +7733,7 @@ app.get('/api/referral/leaderboard', async (req, res) => {
   }
 });
 
-app.post('/api/referral/withdraw', verifyToken, async (req, res) => {
+app.post('/api/referral/withdraw', verifyToken, authLimiter, async (req, res) => {
   try {
     const { data: earnings, error } = await supabaseAdmin
       .from('affiliate_earnings')
@@ -8376,6 +8345,13 @@ app.put('/api/admin/users/:id', verifyToken, async (req, res) => {
     const updates = {};
     for (const k of allowed) { if (req.body[k] !== undefined) updates[k] = req.body[k]; }
     if (!Object.keys(updates).length) return res.status(400).json({ error: 'No valid fields' });
+    // Only a FULL admin (not a moderator) may grant/revoke admin or moderator role —
+    // requireAdmin() treats is_moderator as sufficient for admin-panel access in general,
+    // but role changes themselves must not be self-serviceable by moderators.
+    if ('is_admin' in updates || 'is_moderator' in updates) {
+      const isFullAdmin = admin.is_admin || admin.email === ADMIN_EMAIL;
+      if (!isFullAdmin) return res.status(403).json({ error: 'Only a full admin can change admin/moderator role.' });
+    }
     updates.updated_at = new Date();
     const { data, error } = await supabaseAdmin.from('users').update(updates).eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
@@ -9182,6 +9158,8 @@ app.put('/api/admin/users/:id/unban', verifyToken, async (req, res) => {
 app.put('/api/admin/users/:id/make-admin', verifyToken, async (req, res) => {
   try {
     const admin = await requireAdmin(req, res); if (!admin) return;
+    const isFullAdmin = admin.is_admin || admin.email === ADMIN_EMAIL;
+    if (!isFullAdmin) return res.status(403).json({ error: 'Only a full admin can change admin role.' });
     const { data: cur } = await supabaseAdmin.from('users').select('is_admin').eq('id', req.params.id).single();
     const newVal = !cur?.is_admin;
     const { data, error } = await supabaseAdmin.from('users').update({ is_admin: newVal, updated_at: new Date() }).eq('id', req.params.id).select().single();
@@ -9736,7 +9714,7 @@ app.post('/api/wallet/check-payment', verifyToken, async (req, res) => {
   }
 });
 
-app.post('/api/wallet/withdraw', verifyToken, requireEmailVerified, async (req, res) => {
+app.post('/api/wallet/withdraw', verifyToken, authLimiter, requireEmailVerified, async (req, res) => {
   try {
     const { address, amountBtc } = req.body;
     if (!address || !amountBtc || amountBtc <= 0) return res.status(400).json({ error: 'Invalid withdrawal request' });
@@ -9986,83 +9964,40 @@ app.post('/api/wallet/internal-transfer', verifyToken, async (req, res) => {
   }
 });
 
+// DISABLED: this legacy route broadcast real BTC with only email verification —
+// no 2FA action-code, no phone/ID (KYC) checks — unlike the current live withdrawal
+// route (/api/hd-wallet/send in routes/hdWalletRoutes.js) which requires both.
+// It is not called by the frontend (confirmed via grep). Left in place, disabled,
+// rather than deleted, so any stale client hitting it gets a clear error instead of
+// a 404 that looks like a routing bug.
 app.post('/api/wallet/send', verifyToken, requireEmailVerified, async (req, res) => {
-  try {
-    const { address, amountBtc } = req.body;
-
-    if (!address || !amountBtc || parseFloat(amountBtc) <= 0) {
-      return res.status(400).json({ error: 'Address and a positive amount are required' });
-    }
-
-    // SECURITY: Mainnet-only validation. tb1/m/n/2 are testnet — blocked permanently.
-    // Sending real BTC to a testnet address causes permanent, unrecoverable fund loss.
-    const btcAddressRe = /^(bc1[a-z0-9]{25,87}|[13][a-zA-HJ-NP-Z1-9]{25,34})$/;
-    if (!btcAddressRe.test(address)) {
-      return res.status(400).json({ error: 'Invalid Bitcoin address. Only mainnet addresses accepted (bc1..., 1..., 3...).' });
-    }
-
-    const amount = parseFloat(amountBtc);
-
-    // Check user balance
-    const { data: bal, error: balErr } = await supabaseAdmin
-      .from('user_balances')
-      .select('balance_btc')
-      .eq('user_id', req.userId)
-      .single();
-    if (balErr) throw balErr;
-
-    const available = parseFloat(bal?.balance_btc || 0);
-    if (available < amount) {
-      return res.status(400).json({
-        error: `Insufficient balance. Available: ${available.toFixed(8)} BTC, Requested: ${amount.toFixed(8)} BTC`
-      });
-    }
-
-    // Broadcast on-chain via HD wallet
-    const result = await hdWalletService.sendBitcoin(`user_${req.userId}`, address, amount);
-
-    // Deduct from user_balances
-    const newBalance = parseFloat((available - amount).toFixed(8));
-    await supabaseAdmin
-      .from('user_balances')
-      .update({ balance_btc: newBalance, updated_at: new Date().toISOString() })
-      .eq('user_id', req.userId);
-
-    // Record transaction
-    await supabaseAdmin
-      .from('wallet_transactions')
-      .insert({
-        user_id:             req.userId,
-        type:                'WITHDRAWAL',
-        amount_btc:          amount,
-        status:              'CONFIRMED',
-        tx_hash:             result.txid,
-        destination_address: address,
-        created_at:          new Date().toISOString(),
-      });
-
-    console.log(`[wallet/send] User ${req.userId.slice(0,8)} sent ${amount} BTC → ${address} | txid: ${result.txid}`);
-
-    res.json({
-      success:     true,
-      txid:        result.txid,
-      amount_btc:  amount,
-      to:          address,
-      fee_sats:    result.fee_sats,
-      new_balance: newBalance,
-      explorer:    result.explorer_url,
-      message:     `${amount} BTC sent successfully`,
-    });
-  } catch (error) {
-    console.error('[POST /api/wallet/send]', error.message);
-    res.status(500).json({ error: error.message });
-  }
+  res.status(410).json({ error: 'This endpoint has been retired. Use /api/hd-wallet/send.' });
 });
 
+// SECURITY: this endpoint credits real BTC to a user_id taken from the request body.
+// It MUST verify the caller is actually Coinbase Commerce before trusting anything in
+// it — otherwise anyone can POST a forged "charge:confirmed" event and mint free BTC
+// for any account. Fails closed: if the webhook secret isn't configured, or the
+// signature doesn't match, the event is rejected and nothing is credited.
 app.post('/api/wallet/webhook', async (req, res) => {
   try {
-    const event = req.body;
-    console.log(`[Webhook] Event: ${event.event?.type}`);
+    const secret = process.env.COINBASE_COMMERCE_WEBHOOK_SECRET;
+    if (!secret) {
+      console.error('[Webhook] COINBASE_COMMERCE_WEBHOOK_SECRET not configured — rejecting all events');
+      return res.status(503).json({ error: 'Webhook not configured' });
+    }
+
+    const signature = req.headers['x-cc-webhook-signature'];
+    const rawBody    = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
+    const expected   = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+
+    if (!signature || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+      console.warn('[Webhook] Invalid or missing signature — rejected');
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+
+    const event = JSON.parse(rawBody.toString('utf8'));
+    console.log(`[Webhook] Verified event: ${event.event?.type}`);
     if (event.event?.type === 'charge:confirmed') {
       const charge = event.event.data;
       const userId = charge.metadata?.user_id;
@@ -10076,6 +10011,7 @@ app.post('/api/wallet/webhook', async (req, res) => {
     }
     res.json({ received: true });
   } catch (error) {
+    console.error('[Webhook] error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });

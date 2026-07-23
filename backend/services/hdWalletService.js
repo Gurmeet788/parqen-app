@@ -9,8 +9,14 @@ const ecc    = require('tiny-secp256k1');
 const { ECPairFactory } = require('ecpair');
 const crypto = require('crypto');
 const axios  = require('axios');
+const { createClient } = require('@supabase/supabase-js');
 
 const ECPair = ECPairFactory(ecc);
+
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
+);
 
 // ── PRAQEN company fee wallet identifier ─────────────────────────────────────
 const PRAQEN_FEE_IDENTIFIER        = 'praqen_company_fee_wallet';
@@ -129,6 +135,78 @@ class HDWalletService {
 
   generateEscrowAddress(tradeId) {
     return this.generateAddress(`escrow_${tradeId}`);
+  }
+
+  // ── Guarantee a user has a REAL wallet address on every table that reads one ──
+  // Safe to call any number of times (registration, login, backfill script).
+  // Uses select-then-insert/update — NEVER upsert — because `wallets.user_id`
+  // has no unique constraint on this DB, so ON CONFLICT upserts fail silently
+  // and were the actual cause of users ending up with no wallet row.
+  // Never generates a fake address: the address always comes from generateUserAddress(),
+  // which deterministically derives a real, spendable Native SegWit (bc1q) address
+  // from the master MNEMONIC — the private key is never stored, only recomputed on demand.
+  async ensureWalletExists(userId) {
+    this.initialize();
+    const { address } = this.generateUserAddress(userId);
+    const nowIso = new Date().toISOString();
+
+    // ── wallets — single source of truth for balances ──────────────────────
+    const { data: walletRow } = await supabaseAdmin
+      .from('wallets').select('user_id, address').eq('user_id', userId).maybeSingle();
+
+    if (!walletRow) {
+      const { error } = await supabaseAdmin.from('wallets').insert({
+        user_id:             userId,
+        address,
+        private_key:         'placeholder_private_key', // never read back — keys are re-derived from MNEMONIC on demand
+        balance_btc:         0,
+        locked_balance_btc:  0,
+        balance_usdt:        0,
+        locked_balance_usdt: 0,
+        updated_at:          nowIso,
+      });
+      if (error && !error.message?.includes('duplicate')) {
+        console.error(`[ensureWalletExists] wallets insert failed for ${userId}:`, error.message);
+      }
+    } else if (!walletRow.address) {
+      const { error } = await supabaseAdmin.from('wallets')
+        .update({ address, updated_at: nowIso }).eq('user_id', userId);
+      if (error) console.error(`[ensureWalletExists] wallets address backfill failed for ${userId}:`, error.message);
+    }
+
+    // ── user_wallets — read by depositMonitor / realtimeDepositService to find addresses ──
+    const { data: uwRow } = await supabaseAdmin
+      .from('user_wallets').select('user_id, btc_address').eq('user_id', userId).maybeSingle();
+
+    if (!uwRow) {
+      const { error } = await supabaseAdmin.from('user_wallets').insert({
+        user_id:     userId,
+        btc_address: address,
+        network:     'mainnet',
+        balance_btc: 0,
+        created_at:  nowIso,
+        updated_at:  nowIso,
+      });
+      if (error && !error.message?.includes('duplicate')) {
+        console.error(`[ensureWalletExists] user_wallets insert failed for ${userId}:`, error.message);
+      }
+    } else if (!uwRow.btc_address) {
+      const { error } = await supabaseAdmin.from('user_wallets')
+        .update({ btc_address: address, updated_at: nowIso }).eq('user_id', userId);
+      if (error) console.error(`[ensureWalletExists] user_wallets address backfill failed for ${userId}:`, error.message);
+    }
+
+    // ── users.bitcoin_wallet_address — legacy fallback source also read by depositMonitor ──
+    const { data: uRow } = await supabaseAdmin
+      .from('users').select('id, bitcoin_wallet_address').eq('id', userId).maybeSingle();
+
+    if (uRow && !uRow.bitcoin_wallet_address) {
+      const { error } = await supabaseAdmin.from('users')
+        .update({ bitcoin_wallet_address: address, updated_at: nowIso }).eq('id', userId);
+      if (error) console.error(`[ensureWalletExists] users address backfill failed for ${userId}:`, error.message);
+    }
+
+    return { address, isNew: !walletRow };
   }
 
   getPraqenFeeAddress() {
