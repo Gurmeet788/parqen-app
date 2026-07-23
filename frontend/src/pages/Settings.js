@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { requestNotificationPermission, getNotificationPermission, isPushSupported } from '../utils/notifications';
@@ -358,6 +358,23 @@ export default function Settings({ user, setUser }) {
   // Security
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [showPw, setShowPw] = useState({ current: false, new: false, confirm: false });
+  const [passwordErrors, setPasswordErrors] = useState({});
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+  const [logoutConfirm, setLogoutConfirm] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  // 2FA state
+  const [twoFAEnabled, setTwoFAEnabled] = useState(user?.two_factor_enabled || false);
+  const [twoFAMethod, setTwoFAMethod] = useState(user?.two_factor_method || null);
+  const [twoFAStep, setTwoFAStep] = useState('idle'); // idle | method | sending | otp | verifying | done
+  const [twoFACode, setTwoFACode] = useState('');
+  const [twoFAError, setTwoFAError] = useState('');
+  const [twoFALoading, setTwoFALoading] = useState(false);
+  const [showDisableInput, setShowDisableInput] = useState(false);
+  const [disablePassword, setDisablePassword] = useState('');
+  const [disableLoading, setDisableLoading] = useState(false);
+  const [selected2FAMethod, setSelected2FAMethod] = useState('email');
+  const TIMEOUT_MS = 15000;
 
   // Preferences — lazy-init from localStorage so selections survive navigation/re-renders
   const [prefs, setPrefs] = useState(() => ({
@@ -618,16 +635,40 @@ export default function Settings({ user, setUser }) {
     finally { setLoading(false); }
   };
 
+  const validatePasswordForm = () => {
+    const errs = {};
+    if (!passwordForm.currentPassword) errs.currentPassword = 'Current password is required';
+    if (!passwordForm.newPassword) errs.newPassword = 'New password is required';
+    else if (passwordForm.newPassword.length < 8) errs.newPassword = 'Password must be at least 8 characters';
+    else if (!/[A-Z]/.test(passwordForm.newPassword)) errs.newPassword = 'Password must include at least one uppercase letter';
+    else if (!/\d/.test(passwordForm.newPassword)) errs.newPassword = 'Password must include at least one number';
+    else if (!/[^a-zA-Z0-9]/.test(passwordForm.newPassword)) errs.newPassword = 'Password must include at least one special character';
+    else if (passwordForm.newPassword === passwordForm.currentPassword) errs.newPassword = 'New password must be different from current password';
+    if (!passwordForm.confirmPassword) errs.confirmPassword = 'Please confirm your new password';
+    else if (passwordForm.newPassword !== passwordForm.confirmPassword) errs.confirmPassword = 'Passwords do not match';
+    setPasswordErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
   const handlePasswordChange = async (e) => {
     e.preventDefault();
-    if (passwordForm.newPassword !== passwordForm.confirmPassword) { toast.error('Passwords do not match'); return; }
-    if (passwordForm.newPassword.length < 6) { toast.error('Password must be at least 6 characters'); return; }
+    setPasswordSuccess(false);
+    if (!validatePasswordForm()) return;
     setLoading(true);
     try {
       await axios.post(`${API_URL}/auth/change-password`, { currentPassword: passwordForm.currentPassword, newPassword: passwordForm.newPassword }, { headers: authH() });
-      toast.success('Password changed!');
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-    } catch (e) { toast.error(e?.response?.data?.error || 'Failed to change password'); }
+      setPasswordErrors({});
+      setPasswordSuccess(true);
+      setTimeout(() => setPasswordSuccess(false), 3000);
+    } catch (e) {
+      const msg = e?.response?.data?.error || 'Failed to change password';
+      if (msg.toLowerCase().includes('incorrect')) {
+        setPasswordErrors({ currentPassword: msg });
+      } else {
+        setPasswordErrors({ form: msg });
+      }
+    }
     finally { setLoading(false); }
   };
 
@@ -640,9 +681,20 @@ export default function Settings({ user, setUser }) {
     finally { setLoading(false); }
   };
 
+  const handleLogoutConfirm = async () => {
+    setLoggingOut(true);
+    await new Promise(r => setTimeout(r, 400));
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('praqen_kyc');
+    toast.info('Logged out');
+    setLogoutConfirm(false);
+    setLoggingOut(false);
+    navigate('/login');
+  };
+
   const handleLogout = () => {
-    localStorage.removeItem('token'); localStorage.removeItem('user'); localStorage.removeItem('praqen_kyc');
-    toast.info('Logged out'); navigate('/login');
+    setLogoutConfirm(true);
   };
 
   const handleSendPhoneOtp = async () => {
@@ -1713,12 +1765,12 @@ export default function Settings({ user, setUser }) {
               <div className="space-y-5">
 
                 {/* ── Account Security Info ── */}
-                <div className="bg-white rounded-2xl shadow-sm border p-5" style={{ borderColor: C.g200 }}>
+                <div className="bg-white rounded-2xl shadow-sm border p-5 md:p-6" style={{ borderColor: C.g200 }}>
                   <h2 className="text-lg font-black mb-4" style={{ color: C.forest }}>Account Security</h2>
-                  <div className="space-y-2.5">
+                  <div className="space-y-2">
 
                     {/* Registered Country */}
-                    <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
+                    <div className="flex items-center gap-3 p-2.5 md:p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
                       <Globe size={16} style={{ color: C.forest, flexShrink: 0 }} />
                       <div className="min-w-0">
                         <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.g500 }}>Registered Country</p>
@@ -1734,7 +1786,7 @@ export default function Settings({ user, setUser }) {
                     </div>
 
                     {/* IP Address */}
-                    <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
+                    <div className="flex items-center gap-3 p-2.5 md:p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
                       <Shield size={16} style={{ color: C.forest, flexShrink: 0 }} />
                       <div className="min-w-0">
                         <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.g500 }}>IP Address</p>
@@ -1746,17 +1798,39 @@ export default function Settings({ user, setUser }) {
                       </div>
                     </div>
 
-                    {/* Last Active */}
-                    <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
+                    {/* Last Active — with pulsing online dot */}
+                    <div className="flex items-center gap-3 p-2.5 md:p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
                       <Clock size={16} style={{ color: C.forest, flexShrink: 0 }} />
                       <div className="min-w-0">
                         <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.g500 }}>Last Active</p>
-                        <p className="text-sm font-black" style={{ color: C.success }}>🟢 Online now</p>
+                        <p className="text-sm font-black flex items-center gap-1.5" style={{ color: C.success }}>
+                          <span className="relative flex h-2.5 w-2.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+                          </span>
+                          Online now
+                        </p>
                       </div>
                     </div>
 
+                    {/* Last Login (only shown when data exists) */}
+                    {user?.last_login && (
+                      <div className="flex items-center gap-3 p-2.5 md:p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
+                        <LogOut size={16} style={{ color: C.forest, flexShrink: 0 }} />
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.g500 }}>Last Login</p>
+                          <p className="text-sm font-black" style={{ color: C.g800 }}>
+                            {new Date(user.last_login).toLocaleDateString('en-US', {
+                              year: 'numeric', month: 'short', day: 'numeric',
+                              hour: '2-digit', minute: '2-digit'
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Device Access */}
-                    <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
+                    <div className="flex items-center gap-3 p-2.5 md:p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
                       <Smartphone size={16} style={{ color: C.forest, flexShrink: 0 }} />
                       <div className="min-w-0">
                         <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.g500 }}>Device Access</p>
@@ -1765,7 +1839,7 @@ export default function Settings({ user, setUser }) {
                     </div>
 
                     {/* Language */}
-                    <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
+                    <div className="flex items-center gap-3 p-2.5 md:p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
                       <Languages size={16} style={{ color: C.forest, flexShrink: 0 }} />
                       <div className="min-w-0">
                         <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.g500 }}>Language</p>
@@ -1776,8 +1850,29 @@ export default function Settings({ user, setUser }) {
                   </div>
                 </div>
 
+                {/* ── Change Password ── */}
                 <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: C.g200 }}>
                   <h2 className="text-lg font-black mb-5" style={{ color: C.forest }}>Change Password</h2>
+
+                  {/* Success banner */}
+                  {passwordSuccess && (
+                    <div className="mb-5 flex items-center gap-2.5 p-3 rounded-xl border" style={{ backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }}>
+                      <CheckCircle size={18} style={{ color: C.success, flexShrink: 0 }} />
+                      <div>
+                        <p className="text-sm font-black" style={{ color: '#065F46' }}>Password changed successfully!</p>
+                        <p className="text-xs mt-0.5" style={{ color: '#059669' }}>Your password has been updated. Use your new password next time you log in.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* General form error */}
+                  {passwordErrors.form && (
+                    <div className="mb-4 flex items-center gap-2 p-3 rounded-xl border" style={{ backgroundColor: '#FEF2F2', borderColor: '#FECACA' }}>
+                      <AlertCircle size={16} style={{ color: C.danger, flexShrink: 0 }} />
+                      <p className="text-xs font-bold" style={{ color: '#991B1B' }}>{passwordErrors.form}</p>
+                    </div>
+                  )}
+
                   <form onSubmit={handlePasswordChange} className="space-y-4">
                     {[
                       { key: 'currentPassword', label: 'Current Password', show: showPw.current, toggle: () => setShowPw({ ...showPw, current: !showPw.current }) },
@@ -1787,17 +1882,32 @@ export default function Settings({ user, setUser }) {
                       <div key={key}>
                         <label className={labelCls}>{label}</label>
                         <div className="relative">
-                          <input type={show ? 'text' : 'password'} value={passwordForm[key]}
-                            onChange={e => setPasswordForm({ ...passwordForm, [key]: e.target.value })}
-                            className={inputCls + " pr-10"} style={inputStyle(passwordForm[key])} required />
-                          <button type="button" onClick={toggle} className="absolute right-3 top-3 text-gray-400 hover:text-gray-600">
+                          <input
+                            type={show ? 'text' : 'password'}
+                            value={passwordForm[key]}
+                            onChange={e => {
+                              setPasswordForm({ ...passwordForm, [key]: e.target.value });
+                              if (passwordErrors[key]) setPasswordErrors(prev => { const n = { ...prev }; delete n[key]; return n; });
+                            }}
+                            className={`${inputCls} pr-10 ${passwordErrors[key] ? 'border-red-400' : ''}`}
+                            style={passwordErrors[key] ? { borderColor: C.danger, color: C.g800 } : inputStyle(passwordForm[key])}
+                            required
+                          />
+                          <button type="button" onClick={toggle} className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 transition">
                             {show ? <EyeOff size={16} /> : <Eye size={16} />}
                           </button>
                         </div>
+                        {/* Inline error message */}
+                        {passwordErrors[key] && (
+                          <p className="flex items-center gap-1 text-xs font-bold mt-1" style={{ color: C.danger }}>
+                            <AlertCircle size={11} />
+                            {passwordErrors[key]}
+                          </p>
+                        )}
                       </div>
                     ))}
-                    {/* Password strength */}
-                    {passwordForm.newPassword && (
+                    {/* Password strength — shown only when typing a new password and no success */}
+                    {passwordForm.newPassword && !passwordSuccess && (
                       <div>
                         <p className="text-xs text-gray-500 mb-1">Password strength</p>
                         <div className="flex gap-1">
@@ -1806,43 +1916,329 @@ export default function Settings({ user, setUser }) {
                             const hasUpper = /[A-Z]/.test(passwordForm.newPassword);
                             const hasNum = /\d/.test(passwordForm.newPassword);
                             const hasSpec = /[^a-zA-Z0-9]/.test(passwordForm.newPassword);
-                            const score = (len >= 8 ? 1 : 0) + (len >= 12 ? 1 : 0) + (hasUpper && hasNum ? 1 : 0) + (hasSpec ? 1 : 0);
-                            const color = score <= 1 ? C.danger : score === 2 ? C.warn : score === 3 ? C.paid : C.success;
-                            return <div key={i} className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: i <= score ? color : C.g200 }} />;
+                            let metCount = 0;
+                            if (len >= 8) metCount++;
+                            if (hasUpper) metCount++;
+                            if (hasNum) metCount++;
+                            if (hasSpec) metCount++;
+                            const strengthLabel = metCount <= 1 ? 'Weak' : metCount === 2 ? 'Medium' : 'Strong';
+                            const color = metCount <= 1 ? C.danger : metCount === 2 ? C.warn : C.success;
+                            return <div key={i} className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: i <= metCount ? color : C.g200 }} />;
                           })}
                         </div>
+                        <p className="text-xs font-bold mt-1" style={{
+                          color: (() => {
+                            const len = passwordForm.newPassword.length;
+                            const hasUpper = /[A-Z]/.test(passwordForm.newPassword);
+                            const hasNum = /\d/.test(passwordForm.newPassword);
+                            const hasSpec = /[^a-zA-Z0-9]/.test(passwordForm.newPassword);
+                            let m = 0;
+                            if (len >= 8) m++;
+                            if (hasUpper) m++;
+                            if (hasNum) m++;
+                            if (hasSpec) m++;
+                            return m <= 1 ? C.danger : m === 2 ? C.warn : C.success;
+                          })()
+                        }}>
+                          {(() => {
+                            const len = passwordForm.newPassword.length;
+                            const hasUpper = /[A-Z]/.test(passwordForm.newPassword);
+                            const hasNum = /\d/.test(passwordForm.newPassword);
+                            const hasSpec = /[^a-zA-Z0-9]/.test(passwordForm.newPassword);
+                            let m = 0;
+                            if (len >= 8) m++;
+                            if (hasUpper) m++;
+                            if (hasNum) m++;
+                            if (hasSpec) m++;
+                            return m <= 1 ? 'Weak' : m === 2 ? 'Medium' : 'Strong';
+                          })()}
+                        </p>
                       </div>
                     )}
                     <button type="submit" disabled={loading}
-                      className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-white font-bold text-sm hover:opacity-90 disabled:opacity-50"
+                      className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-white font-bold text-sm hover:opacity-90 disabled:opacity-50 transition-all"
                       style={{ backgroundColor: C.green }}>
                       {loading ? <><RefreshCw size={15} className="animate-spin" /> Updating…</> : <><Lock size={15} /> Update Password</>}
                     </button>
                   </form>
                 </div>
 
-                {/* Active sessions */}
+                {/* Account Actions */}
                 <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: C.g200 }}>
                   <h2 className="text-lg font-black mb-4" style={{ color: C.forest }}>Account Actions</h2>
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 rounded-xl border" style={{ borderColor: C.g100 }}>
-                      <div>
-                        <p className="text-sm font-bold text-gray-800">Two-Factor Authentication</p>
-                        <p className="text-xs text-gray-400">Add extra security to your account</p>
+                    {/* ── 2FA UI ──────────────────────────────────────────── */}
+                    {!twoFAEnabled ? (
+                      <div className="rounded-xl border" style={{ borderColor: C.g100 }}>
+                        {twoFAStep === 'idle' && (
+                          <div className="flex items-center justify-between p-3">
+                            <div className="flex items-start gap-3">
+                              <Shield size={18} style={{ color: C.g400, flexShrink: 0, marginTop: 2 }} />
+                              <div>
+                                <p className="text-sm font-bold" style={{ color: C.g800 }}>Two-Factor Authentication</p>
+                                <p className="text-xs mt-0.5" style={{ color: C.g500 }}>Add extra security to your account</p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => setTwoFAStep('method')}
+                              className="text-xs font-bold px-3 py-1.5 rounded-lg transition hover:opacity-80"
+                              style={{ backgroundColor: C.green, color: '#fff' }}>
+                              Enable
+                            </button>
+                          </div>
+                        )}
+
+                        {twoFAStep === 'method' && (
+                          <div className="p-4 space-y-3">
+                            <p className="text-xs font-bold" style={{ color: C.g500, marginBottom: 8 }}>Choose your 2FA method:</p>
+
+                            {/* EMAIL Option */}
+                            <button
+                              disabled={!emailVerified || twoFALoading}
+                              onClick={async () => {
+                                setSelected2FAMethod('email');
+                                setTwoFAError('');
+                                setTwoFAStep('sending');
+                                setTwoFALoading(true);
+                                try {
+                                  await axios.post(`${API_URL}/auth/send-otp`,
+                                    { email: user?.email, channel: 'email' },
+                                    { timeout: TIMEOUT_MS, headers: authH() }
+                                  );
+                                  setTwoFAStep('otp');
+                                } catch (e) {
+                                  const msg = e?.response?.data?.error || (e.code === 'ECONNABORTED' ? 'Request timed out — please try again' : 'Failed to send code — please try again');
+                                  setTwoFAError(msg);
+                                  setTwoFAStep('method');
+                                } finally {
+                                  setTwoFALoading(false);
+                                }
+                              }}
+                              className={`w-full flex items-center gap-2 px-3 py-3 rounded-xl text-xs font-bold transition border-2 ${!emailVerified ? 'opacity-40 cursor-not-allowed' : 'hover:border-green-500'}`}
+                              style={{ borderColor: C.green, backgroundColor: `${C.green}08` }}>
+                              <Mail size={16} style={{ color: C.green, flexShrink: 0 }} />
+                              <div className="text-left">
+                                <p className="text-xs font-bold" style={{ color: C.g800 }}>Email</p>
+                                <p className="text-[10px]" style={{ color: C.g500 }}>{emailVerified ? maskEmail(user?.email || '') : 'Verify email first'}</p>
+                              </div>
+                              {twoFALoading ? <RefreshCw size={14} className="animate-spin ml-auto" style={{ color: C.green }} /> : null}
+                            </button>
+                            {!emailVerified && (
+                              <p className="text-xs" style={{ color: C.warn }}>Verify your email address in the Verification tab first.</p>
+                            )}
+
+
+                            <button onClick={() => setTwoFAStep('idle')} disabled={twoFALoading} className="text-xs font-semibold" style={{ color: C.g400 }}>← Cancel</button>
+                          </div>
+                        )}
+
+                        {(twoFAStep === 'sending' || twoFAStep === 'otp' || twoFAStep === 'verifying') && (
+                          <div className="p-4 space-y-3">
+                            <div className="flex items-center gap-3 mb-3">
+                              <Shield size={18} style={{ color: C.green, flexShrink: 0 }} />
+                              <div>
+                                <p className="text-sm font-bold" style={{ color: C.g800 }}>Verify 2FA Setup</p>
+                                <p className="text-xs" style={{ color: C.g500 }}>
+                                  {twoFAStep === 'sending'
+                                    ? 'Sending code to your email…'
+                                    : twoFAStep === 'verifying'
+                                    ? 'Verifying code…'
+                                    : `Code sent to ${maskEmail(user?.email || '')}`}
+                                </p>
+                              </div>
+                            </div>
+
+                            {twoFAError && (
+                              <div className="flex items-center gap-2 p-2.5 rounded-xl text-xs font-medium" style={{ backgroundColor: '#FEF2F2', color: C.danger, border: `1px solid #FECACA` }}>
+                                <AlertCircle size={13} /> {twoFAError}
+                                <button onClick={() => setTwoFAError('')} className="ml-auto" style={{ color: C.g400 }}><X size={14} /></button>
+                              </div>
+                            )}
+
+                            {twoFAStep !== 'sending' && (
+                              <>
+                                <div className="text-center">
+                                  <label className="block text-xs font-bold mb-2" style={{ color: C.g500 }}>Enter 6-digit code</label>
+                                  <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+                                    {Array.from({ length: 6 }, (_, i) => (
+                                      <input key={i} type="text" inputMode="numeric" maxLength={1}
+                                        value={twoFACode[i] || ''}
+                                        onChange={e => {
+                                          const d = e.target.value.replace(/\D/g, '').slice(-1);
+                                          const arr = [...twoFACode.padEnd(6, '').slice(0, 6)];
+                                          arr[i] = d;
+                                          const val = arr.join('');
+                                          setTwoFACode(val);
+                                          setTwoFAError('');
+                                          if (d && i < 5) {
+                                            const next = document.querySelector(`[data-2fa-idx="${i + 1}"]`);
+                                            next?.focus();
+                                          }
+                                        }}
+                                        onKeyDown={e => {
+                                          if (e.key === 'Backspace' && !twoFACode[i] && i > 0) {
+                                            const arr = [...twoFACode.padEnd(6, '').slice(0, 6)];
+                                            arr[i - 1] = '';
+                                            setTwoFACode(arr.join(''));
+                                            const prev = document.querySelector(`[data-2fa-idx="${i - 1}"]`);
+                                            prev?.focus();
+                                          }
+                                        }}
+                                        onPaste={e => {
+                                          const p = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+                                          setTwoFACode(p);
+                                          const last = document.querySelector(`[data-2fa-idx="${Math.min(p.length, 5)}"]`);
+                                          last?.focus();
+                                          e.preventDefault();
+                                        }}
+                                        data-2fa-idx={i}
+                                        style={{
+                                          width: 38, height: 44, borderRadius: 10,
+                                          textAlign: 'center', fontSize: 16, fontWeight: 800,
+                                          border: `2px solid ${twoFACode[i] ? C.green : C.g200}`,
+                                          color: C.forest, background: twoFACode[i] ? `${C.green}08` : '#fff',
+                                          outline: 'none', transition: 'all 0.15s',
+                                          fontFamily: "'DM Sans',sans-serif",
+                                        }} />
+                                    ))}
+                                  </div>
+                                </div>
+
+                                <button
+                                  onClick={async () => {
+                                    if (twoFACode.length < 6) { setTwoFAError('Enter the full 6-digit code'); return; }
+                                    setTwoFALoading(true);
+                                    setTwoFAError('');
+                                    setTwoFAStep('verifying');
+                                    try {
+                                      // Verify OTP via existing verify-otp endpoint
+                                      await axios.post(`${API_URL}/auth/verify-otp`,
+                                        { email: user?.email, code: twoFACode, channel: 'email' },
+                                        { timeout: TIMEOUT_MS, headers: authH() }
+                                      );
+                                      // OTP correct — now toggle 2FA on
+                                      await axios.patch(`${API_URL}/users/toggle-2fa`,
+                                        { two_factor_enabled: true, two_factor_method: selected2FAMethod },
+                                        { timeout: TIMEOUT_MS, headers: authH() }
+                                      );
+                                      setTwoFAEnabled(true);
+                                      setTwoFAMethod(selected2FAMethod);
+                                      setTwoFAStep('done');
+                                      setTwoFACode('');
+                                      if (setUser) setUser(u => ({ ...u, two_factor_enabled: true, two_factor_method: selected2FAMethod }));
+                                      const stored = JSON.parse(localStorage.getItem('user') || '{}');
+                                      localStorage.setItem('user', JSON.stringify({ ...stored, two_factor_enabled: true, two_factor_method: selected2FAMethod }));
+                                      toast.success(`2FA enabled via ${selected2FAMethod}! ✅`);
+                                    } catch (e) {
+                                      const msg = e?.response?.data?.error || (e.code === 'ECONNABORTED' ? 'Request timed out — please try again' : 'Invalid or expired code');
+                                      setTwoFAError(msg);
+                                      setTwoFAStep('otp');
+                                    } finally {
+                                      setTwoFALoading(false);
+                                    }
+                                  }}
+                                  disabled={twoFALoading || twoFACode.length < 6}
+                                  className="w-full py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-40"
+                                  style={{ backgroundColor: C.green, color: '#fff' }}>
+                                  {twoFALoading ? <><RefreshCw size={13} className="animate-spin" /> Verifying…</> : 'Confirm & Enable 2FA'}
+                                </button>
+
+                                <button onClick={() => { setTwoFAStep('method'); setTwoFACode(''); setTwoFAError(''); }} disabled={twoFALoading}
+                                  className="text-xs font-semibold" style={{ color: C.g400 }}>← Back</button>
+                              </>
+                            )}
+                          </div>
+                        )}
+
+                        {twoFAStep === 'done' && (
+                          <div className="flex items-center justify-between p-3 rounded-xl" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                            <div className="flex items-center gap-3">
+                              <CheckCircle size={18} style={{ color: C.success, flexShrink: 0 }} />
+                              <div>
+                                <p className="text-sm font-bold" style={{ color: '#065F46' }}>2FA is ON ✓</p>
+                                <p className="text-xs" style={{ color: '#059669' }}>via Email</p>
+                              </div>
+                            </div>
+                            <span className="text-xs font-black px-2 py-1 rounded-full" style={{ backgroundColor: '#D1FAE5', color: '#065F46' }}>Active</span>
+                          </div>
+                        )}
                       </div>
-                      <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-orange-100 text-orange-700">Coming Soon</span>
-                    </div>
-                    <div className="flex items-center justify-between p-3 rounded-xl border border-red-100 bg-red-50">
-                      <div>
-                        <p className="text-sm font-bold text-red-700">Log Out</p>
-                        <p className="text-xs text-red-400">Sign out of your account on this device</p>
+                    ) : (
+                      <div className="rounded-xl" style={{ borderColor: C.g100 }}>
+                        <div className="flex items-center justify-between p-3 rounded-xl" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                          <div className="flex items-center gap-3">
+                            <Shield size={18} style={{ color: C.success, flexShrink: 0 }} />
+                            <div>
+                              <p className="text-sm font-bold" style={{ color: '#065F46' }}>Two-Factor Authentication</p>
+                              <p className="text-xs" style={{ color: '#059669' }}>Secured via {twoFAMethod === 'email' ? 'Email' : twoFAMethod}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black px-2.5 py-1 rounded-full flex items-center gap-1" style={{ backgroundColor: '#D1FAE5', color: '#065F46' }}>
+                              <CheckCircle size={11} /> ON
+                            </span>
+                            <button onClick={() => setShowDisableInput(true)}
+                              className="text-xs font-bold px-2.5 py-1.5 rounded-lg transition hover:opacity-80"
+                              style={{ backgroundColor: '#FEF2F2', color: C.danger }}>Disable</button>
+                          </div>
+                        </div>
+                        {showDisableInput && (
+                          <div className="p-3 space-y-2.5" style={{ borderTop: `1px solid ${C.g100}` }}>
+                            <div className="flex items-center gap-2">
+                              <Lock size={14} style={{ color: C.g400 }} />
+                              <input type="password" placeholder="Enter current password to disable"
+                                value={disablePassword}
+                                onChange={e => setDisablePassword(e.target.value)}
+                                className="flex-1 px-3 py-2 border-2 rounded-xl text-xs focus:outline-none"
+                                style={{ borderColor: C.g200, fontFamily: "'DM Sans',sans-serif" }} />
+                            </div>
+                            <div className="flex gap-2">
+                              <button disabled={!disablePassword || disableLoading}
+                                onClick={async () => {
+                                  setDisableLoading(true);
+                                  try {
+                                    await axios.patch(`${API_URL}/users/toggle-2fa`,
+                                      { two_factor_enabled: false, password: disablePassword },
+                                      { timeout: TIMEOUT_MS, headers: authH() }
+                                    );
+                                    setTwoFAEnabled(false);
+                                    setTwoFAMethod(null);
+                                    setDisablePassword('');
+                                    setShowDisableInput(false);
+                                    if (setUser) setUser(u => ({ ...u, two_factor_enabled: false, two_factor_method: null }));
+                                    const stored = JSON.parse(localStorage.getItem('user') || '{}');
+                                    localStorage.setItem('user', JSON.stringify({ ...stored, two_factor_enabled: false, two_factor_method: null }));
+                                    toast.success('2FA disabled');
+                                  } catch (e) {
+                                    toast.error(e?.response?.data?.error || 'Failed to disable 2FA');
+                                  } finally { setDisableLoading(false); }
+                                }}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold text-white transition hover:opacity-80 disabled:opacity-40 flex items-center gap-1"
+                                style={{ backgroundColor: C.danger }}>
+                                {disableLoading ? <><RefreshCw size={12} className="animate-spin" /> Disabling…</> : 'Disable 2FA'}
+                              </button>
+                              <button onClick={() => { setShowDisableInput(false); setDisablePassword(''); }}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold"
+                                style={{ color: C.g400 }}>Cancel</button>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <button onClick={handleLogout} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-white text-xs font-bold" style={{ backgroundColor: C.danger }}>
-                        <LogOut size={13} /> Log Out
+                    )}
+                    <div className="flex items-center justify-between p-3 rounded-xl border" style={{ borderColor: '#FECACA', backgroundColor: '#FEF2F2' }}>
+                      <div>
+                        <p className="text-sm font-bold" style={{ color: '#991B1B' }}>Log Out</p>
+                        <p className="text-xs" style={{ color: '#DC2626' }}>Sign out of your account on this device</p>
+                      </div>
+                      <button onClick={handleLogout} disabled={loggingOut || logoutConfirm}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-white text-xs font-bold hover:opacity-90 disabled:opacity-50 transition-all"
+                        style={{ backgroundColor: C.danger }}>
+                        {loggingOut ? <><RefreshCw size={13} className="animate-spin" /> Logging out…</> : <><LogOut size={13} /> Log Out</>}
                       </button>
                     </div>
                   </div>
                 </div>
+
               </div>
             )}
 
@@ -2020,6 +2416,33 @@ export default function Settings({ user, setUser }) {
                     style={{ backgroundColor: C.green }}>
                     <Save size={15} /> Save Preferences
                   </button>
+                </div>
+              </div>
+            )}
+
+            {/* ── Logout Confirm Modal — rendered globally for all tabs ── */}
+            {logoutConfirm && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+                <div className="bg-white rounded-2xl shadow-xl border max-w-sm w-full p-6" style={{ borderColor: C.g200 }}>
+                  <div className="text-center mb-5">
+                    <div className="mx-auto w-12 h-12 rounded-full flex items-center justify-center mb-3" style={{ backgroundColor: '#FEF2F2' }}>
+                      <LogOut size={22} style={{ color: C.danger }} />
+                    </div>
+                    <h3 className="text-lg font-black mb-1" style={{ color: C.forest }}>Log Out?</h3>
+                    <p className="text-sm" style={{ color: C.g500 }}>Are you sure you want to log out? You'll need to sign in again to access your account.</p>
+                  </div>
+                  <div className="flex gap-3">
+                    <button onClick={() => setLogoutConfirm(false)} disabled={loggingOut}
+                      className="flex-1 py-2.5 rounded-xl font-bold text-sm transition hover:opacity-80 disabled:opacity-50"
+                      style={{ backgroundColor: C.g100, color: C.g700 }}>
+                      Cancel
+                    </button>
+                    <button onClick={handleLogoutConfirm} disabled={loggingOut}
+                      className="flex-1 py-2.5 rounded-xl font-bold text-sm text-white transition hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+                      style={{ backgroundColor: C.danger }}>
+                      {loggingOut ? <><RefreshCw size={14} className="animate-spin" /> Logging out…</> : <>Yes, Log Out</>}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
