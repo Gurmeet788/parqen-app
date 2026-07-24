@@ -12,15 +12,29 @@ const depositMonitor         = require('../services/depositMonitor');
 const realtimeDepositService = require('../services/realtimeDepositService');
 const { updateOfferStatus }  = require('../services/offerStatusService');
 const { createClient } = require('@supabase/supabase-js');
+const rateLimit = require('express-rate-limit');
 
 const supabaseAdmin = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
 );
 
+// On-chain sends are irreversible — cap attempts independent of balance checks,
+// which are vulnerable to a check-then-act race if hit rapidly in parallel.
+const sendLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many withdrawal attempts. Please try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // ── Auth middleware — reads token from Authorization header ──────────────────
 const jwt = require('jsonwebtoken');
-const JWT_SECRET = process.env.JWT_SECRET || 'praqen-secret-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('❌ JWT_SECRET not set — refusing to start hdWalletRoutes with an insecure fallback secret');
+}
 
 function verifyToken(req, res, next) {
   const token = req.headers.authorization?.split(' ')[1];
@@ -384,7 +398,7 @@ async function pauseSellOffersIfEmpty(sellerId) {
   } catch (err) { console.error('[pauseSellOffersIfEmpty withdrawal]', err.message); }
 }
 
-router.post('/send', verifyToken, async (req, res) => {
+router.post('/send', verifyToken, sendLimiter, async (req, res) => {
   try {
     const { toAddress: rawAddress, amountBtc, actionCode, force } = req.body;
     const toAddress = (rawAddress || '').trim();
