@@ -119,7 +119,7 @@ async function _warmListingsCache() {
   try {
     const { data: rawListings } = await Promise.race([
       supabaseAdmin.from('listings').select(
-        'id, seller_id, listing_type, gift_card_brand, status, bitcoin_price, margin, pricing_type, currency, currency_symbol, country, country_name, payment_method, payment_methods, amount_usd, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local, time_limit, trade_instructions, listing_terms, description, created_at, card_values, card_type, face_value'
+          'id, seller_id, listing_type, gift_card_brand, status, bitcoin_price, margin, pricing_type, currency, currency_symbol, country, country_name, payment_method, payment_methods, amount_usd, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local, time_limit, trade_instructions, listing_terms, description, created_at, card_values, card_type, face_value'
       ).eq('status', 'ACTIVE').order('created_at', { ascending: false }).limit(200),
       new Promise(resolve => setTimeout(() => resolve({ data: [] }), 6000)),
     ]);
@@ -130,7 +130,7 @@ async function _warmListingsCache() {
 
     const { data: usersData } = await Promise.race([
       supabaseAdmin.from('users').select(
-        'id, username, full_name, average_rating, total_trades, completion_rate, is_id_verified, is_email_verified, last_login, last_seen_at, total_feedback_count, positive_feedback, negative_feedback, country, bio, badge, avatar_url'
+          'id, username, full_name, average_rating, total_trades, completion_rate, is_id_verified, is_email_verified, last_login, last_seen_at, total_feedback_count, positive_feedback, negative_feedback, country, bio, badge, avatar_url'
       ).in('id', sellerIdSet),
       new Promise(resolve => setTimeout(() => resolve({ data: [] }), 5000)),
     ]);
@@ -144,11 +144,11 @@ async function _warmListingsCache() {
 
     // Only include listings whose seller data was successfully fetched
     const listings = rawListings
-      .filter(l => userMap[l.seller_id]) // skip any listing with no user data
-      .map(l => {
-        const u = userMap[l.seller_id];
-        return { ...l, users: { ...u, display_name: computeDisplayName(u), country: u.country || null } };
-      });
+        .filter(l => userMap[l.seller_id]) // skip any listing with no user data
+        .map(l => {
+          const u = userMap[l.seller_id];
+          return { ...l, users: { ...u, display_name: computeDisplayName(u), country: u.country || null } };
+        });
 
     if (listings.length === 0) return; // nothing valid to cache
     setCached('listings|||', listings);
@@ -175,8 +175,8 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 // ── 3. Initialize Supabase BEFORE any route files ──────────────────────────
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const supabaseAdmin = createClient(
-  SUPABASE_URL,
-  SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY
+    SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY
 );
 
 // ── 4. Other services ──────────────────────────────────────────────────────
@@ -200,7 +200,7 @@ app.use(helmet({
 
 // CORS — only allow requests from our own frontend domain
 const _allowedOrigins = (process.env.FRONTEND_URL || 'https://praqen.com')
-  .split(',').map(o => o.trim());
+    .split(',').map(o => o.trim());
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -270,6 +270,11 @@ const actionCodeService     = require('./services/actionCodeService');
 const balanceIntegrity      = require('./services/balanceIntegrityService');
 const { checkAndAwardBadges } = require('./services/badgeService');
 const { syncAllOfferStatuses, deactivateStaleOffers } = require('./services/offerStatusService');
+
+// ── ✅ NOTIFICATION ROUTES IMPORT ──────────────────────────────────────────
+// ✅ ADD THIS LINE: Import notification routes
+const notificationRoutes = require('./routes/notificationRoutes');
+
 app.use('/api/hd-wallet', hdWalletRoutes);
 
 // NOTE: walletRoutes removed — wallet routes are defined inline below
@@ -366,24 +371,24 @@ async function detectAndSaveCountry(userId, req, phoneNumber) {
 
     // Fetch current stored values
     const { data: existing } = await supabaseAdmin
-      .from('users').select('country, phone').eq('id', userId).single();
+        .from('users').select('country, phone').eq('id', userId).single();
 
     // ── Priority 1: Phone country code ────────────────────────────────────
     const phone  = phoneNumber || existing?.phone;
     const phoneCC = phoneToCountryCode(phone);
     if (phoneCC && !existing?.country) {
       await supabaseAdmin.from('users')
-        .update({ country: phoneCC })
-        .eq('id', userId)
-        .or('country.is.null,country.eq.');
+          .update({ country: phoneCC })
+          .eq('id', userId)
+          .or('country.is.null,country.eq.');
       console.log(`[GeoIP] user ${String(userId).slice(0,8)} → ${phoneCC} (phone)`);
     }
 
     // ── Priority 3: IP geolocation ────────────────────────────────────────
     const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
-      || req.headers['x-real-ip']
-      || req.socket?.remoteAddress
-      || '';
+        || req.headers['x-real-ip']
+        || req.socket?.remoteAddress
+        || '';
     // Skip loopback / private / empty (avoids looking up server's own IP)
     if (!ip || ip === '::1' || ip.startsWith('127.') || ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('::ffff:')) return;
 
@@ -397,14 +402,14 @@ async function detectAndSaveCountry(userId, req, phoneNumber) {
 
       // Always refresh city/name/location (UI always benefits from fresh geo data)
       await supabaseAdmin.from('users')
-        .update({ city, country_name: name, last_seen_location: loc })
-        .eq('id', userId);
+          .update({ city, country_name: name, last_seen_location: loc })
+          .eq('id', userId);
 
       // Set country code only if not already set by phone
       await supabaseAdmin.from('users')
-        .update({ country: cc })
-        .eq('id', userId)
-        .or('country.is.null,country.eq.');
+          .update({ country: cc })
+          .eq('id', userId)
+          .or('country.is.null,country.eq.');
 
       console.log(`[GeoIP] user ${String(userId).slice(0,8)} → ${cc}${city ? ` / ${city}` : ''} (IP: ${ip})`);
     }
@@ -851,11 +856,11 @@ async function getCurrentBTCPrice() {
   // Try Binance first (most reliable, real-time), then Coinbase, then CoinGecko
   const sources = [
     () => fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT', { signal: AbortSignal.timeout(5000) })
-            .then(r => r.json()).then(d => parseFloat(d.price)),
+        .then(r => r.json()).then(d => parseFloat(d.price)),
     () => fetch('https://api.coinbase.com/v2/prices/BTC-USD/spot', { signal: AbortSignal.timeout(5000) })
-            .then(r => r.json()).then(d => parseFloat(d.data.amount)),
+        .then(r => r.json()).then(d => parseFloat(d.data.amount)),
     () => fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd', { signal: AbortSignal.timeout(5000) })
-            .then(r => r.json()).then(d => parseFloat(d.bitcoin.usd)),
+        .then(r => r.json()).then(d => parseFloat(d.bitcoin.usd)),
   ];
   for (const src of sources) {
     try {
@@ -1065,8 +1070,8 @@ app.post('/api/ai-chat', async (req, res) => {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     const isSupportChat = mode === 'support';
     const systemPrompt = isSupportChat
-      ? PRAQEN_SUPPORT_AGENT_CONTEXT + (chatUser ? `\n\nYou are speaking with: ${chatUser.username}` : '')
-      : PRAQEN_CONTEXT + (section ? `\n\nThe user selected topic: "${section}". Focus your answer on this area.` : '') +
+        ? PRAQEN_SUPPORT_AGENT_CONTEXT + (chatUser ? `\n\nYou are speaking with: ${chatUser.username}` : '')
+        : PRAQEN_CONTEXT + (section ? `\n\nThe user selected topic: "${section}". Focus your answer on this area.` : '') +
         (chatUser ? `\n\nUser: ${chatUser.username}` : '');
 
     if (apiKey) {
@@ -1118,7 +1123,7 @@ app.post('/api/ai-chat', async (req, res) => {
         ];
         reply = greetings[turn % 3];
 
-      // ── Acknowledgment / closure ──
+        // ── Acknowledgment / closure ──
       } else if (/thank|thanks|okay|ok\b|great|perfect|got it|cool|nice/.test(q)) {
         const pool = [
           'Happy to help! Let me know if anything else comes up.',
@@ -1127,7 +1132,7 @@ app.post('/api/ai-chat', async (req, res) => {
         ];
         reply = pool[turn % 3];
 
-      // ── Wait time / status check ──
+        // ── Wait time / status check ──
       } else if (/how long|wait|still|not yet|any news|update/.test(q)) {
         const pool = [
           'I understand — the team is actively on your case. We aim to resolve tickets within 24 hours. Any updates from your side?',
@@ -1136,10 +1141,10 @@ app.post('/api/ai-chat', async (req, res) => {
         ];
         reply = pool[turn % 3];
 
-      // ── Factual Q&A: knowledge base answers ──
-      // These answer the user directly instead of defaulting to escalation.
-      // IMPORTANT: This block MUST come before the payment-reporting branch
-      // so informational "how do I..." questions get factual answers first.
+        // ── Factual Q&A: knowledge base answers ──
+        // These answer the user directly instead of defaulting to escalation.
+        // IMPORTANT: This block MUST come before the payment-reporting branch
+        // so informational "how do I..." questions get factual answers first.
 
       } else if (/forgot password|reset password|change password|forgot my password/.test(q)) {
         reply = `No worries! To reset your password, go to the login page and tap **Forgot Password**. A reset link will be sent to your email within a few minutes. If you don't see it, check your spam folder.`;
@@ -1164,7 +1169,7 @@ app.post('/api/ai-chat', async (req, res) => {
       } else if (/cancel.*trade|time.*limit|expire/.test(q)) {
         reply = 'Each trade has a time limit set by the seller. If the buyer doesn\'t complete payment within that time, the seller can cancel the trade and the escrow is returned. Buyers can also request cancellation from the seller.';
 
-      // ── Payment-related update (user telling us they paid, not asking how) ──
+        // ── Payment-related update (user telling us they paid, not asking how) ──
       } else if (/^(i )?(just )?(paid|sent|transferred|made.*payment)\b|payment.*(sent|made|done|confirmed)/.test(q)) {
         const pool = [
           'Thanks for the update — I\'ve noted the payment on your ticket. Has the other party confirmed receipt?',
@@ -1181,7 +1186,7 @@ app.post('/api/ai-chat', async (req, res) => {
         ];
         reply = pool[turn % 3];
 
-      // ── Genuine problem / not answered by knowledge base → escalate ──
+        // ── Genuine problem / not answered by knowledge base → escalate ──
       } else if (turn === 0) {
         reply = `Thanks for reaching out${name}! I\'ve received your ticket. Can you tell me a bit more about what you need help with today?`;
       } else if (turn <= 2) {
@@ -1252,8 +1257,8 @@ async function getModeratorUserIds() {
 // Full moderator/admin identities (for vote-seat rendering and name/email attribution).
 async function getModeratorsFull() {
   const { data, error } = await supabaseAdmin.from('users')
-    .select('id, username, full_name, email, is_admin, is_moderator')
-    .or('is_moderator.eq.true,is_admin.eq.true');
+      .select('id, username, full_name, email, is_admin, is_moderator')
+      .or('is_moderator.eq.true,is_admin.eq.true');
   if (error) { console.error('Error fetching moderators:', error); return []; }
   return data || [];
 }
@@ -1262,8 +1267,8 @@ async function notifyModerators(tradeId, trade, reason) {
   const ids = await getModeratorUserIds();
   for (const id of ids) {
     await createNotification(id, 'dispute', '🚨 New Dispute Opened',
-      `Dispute opened for trade #${tradeId.slice(0, 8)}. Reason: ${reason.substring(0, 100)}`,
-      `/admin/disputes/${tradeId}`);
+        `Dispute opened for trade #${tradeId.slice(0, 8)}. Reason: ${reason.substring(0, 100)}`,
+        `/admin/disputes/${tradeId}`);
   }
   console.log(`✅ Notified ${ids.length} moderators about dispute on trade ${tradeId}`);
 }
@@ -1346,11 +1351,11 @@ async function createAffiliateEarning(tradeId, buyerId, tradeAmountBtc, tradeAmo
     const btcDisplay = commissionBtc < 0.0001 ? commissionBtc.toFixed(8) : commissionBtc.toFixed(6);
     const referralUsername = buyerInfo?.username || 'Your referral';
     await createNotification(
-      buyer.referred_by,
-      'referral',
-      '💰 Commission Earned!',
-      `${referralUsername} completed a trade — you earned ₿${btcDisplay} (${commissionRate}% commission). Total: ₿${newTotal.toFixed(6)}`,
-      '/dashboard?tab=affiliate'
+        buyer.referred_by,
+        'referral',
+        '💰 Commission Earned!',
+        `${referralUsername} completed a trade — you earned ₿${btcDisplay} (${commissionRate}% commission). Total: ₿${newTotal.toFixed(6)}`,
+        '/dashboard?tab=affiliate'
     ).catch(() => {});
   } catch (error) {
     console.error('Create affiliate earning error:', error);
@@ -1369,9 +1374,9 @@ async function payReferralCommissions(tradeId, buyerId, sellerId, amountBtc, amo
     if (commissionBtc <= 0) return;
 
     const { data: traders } = await supabaseAdmin
-      .from('users')
-      .select('id, referred_by')
-      .in('id', [buyerId, sellerId]);
+        .from('users')
+        .select('id, referred_by')
+        .in('id', [buyerId, sellerId]);
 
     if (!traders || traders.length === 0) return;
 
@@ -1421,7 +1426,7 @@ async function payReferralCommissions(tradeId, buyerId, sellerId, amountBtc, amo
 
 async function ensureWallet(userId, username) {
   const { data: user, error } = await supabaseAdmin.from('users')
-    .select('bitcoin_wallet_address, username').eq('id', userId).single();
+      .select('bitcoin_wallet_address, username').eq('id', userId).single();
   if (error) throw new Error('User not found');
 
   // Always use HD wallet — derive address from master seed + userId
@@ -1559,10 +1564,10 @@ app.get('/api/auth/referrer', async (req, res) => {
     const code = (req.query.code || '').toLowerCase().trim();
     if (!code) return res.json({ success: false });
     const { data } = await supabaseAdmin
-      .from('users')
-      .select('username, full_name, avatar_url, total_trades, badge, total_referrals')
-      .eq('referral_code', code)
-      .maybeSingle();
+        .from('users')
+        .select('username, full_name, avatar_url, total_trades, badge, total_referrals')
+        .eq('referral_code', code)
+        .maybeSingle();
     if (!data) return res.json({ success: false });
     res.json({
       success: true,
@@ -1614,10 +1619,10 @@ app.post('/api/auth/google', authLimiter, async (req, res) => {
 
     // 2. Lookup existing user
     let { data: existingUser, error: findError } = await supabaseAdmin
-      .from('users')
-      .select('*')
-      .eq('email', normalizedEmail)
-      .maybeSingle();
+        .from('users')
+        .select('*')
+        .eq('email', normalizedEmail)
+        .maybeSingle();
 
     if (findError) {
       console.error('[Google Auth] DB lookup error:', findError);
@@ -1632,11 +1637,11 @@ app.post('/api/auth/google', authLimiter, async (req, res) => {
       // Update email verification status if not verified
       if (!existingUser.is_email_verified || !existingUser.email_verified) {
         const { data: updatedUser } = await supabaseAdmin
-          .from('users')
-          .update({ is_email_verified: true, email_verified: true })
-          .eq('id', existingUser.id)
-          .select()
-          .single();
+            .from('users')
+            .update({ is_email_verified: true, email_verified: true })
+            .eq('id', existingUser.id)
+            .select()
+            .single();
         if (updatedUser) {
           userToAuth = updatedUser;
         }
@@ -1646,12 +1651,12 @@ app.post('/api/auth/google', authLimiter, async (req, res) => {
       let baseUsername = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '');
       if (baseUsername.length < 3) baseUsername = 'user';
       let username = baseUsername;
-      
+
       const { data: uCheck } = await supabaseAdmin
-        .from('users')
-        .select('id')
-        .eq('username', username)
-        .maybeSingle();
+          .from('users')
+          .select('id')
+          .eq('username', username)
+          .maybeSingle();
 
       if (uCheck) {
         username = `${baseUsername}_${Math.floor(1000 + Math.random() * 9000)}`;
@@ -1665,39 +1670,39 @@ app.post('/api/auth/google', authLimiter, async (req, res) => {
       if (referralCode) {
         const normalizedRef = referralCode.toLowerCase().trim();
         const { data: referrer } = await supabaseAdmin
-          .from('users')
-          .select('id')
-          .eq('referral_code', normalizedRef)
-          .maybeSingle();
+            .from('users')
+            .select('id')
+            .eq('referral_code', normalizedRef)
+            .maybeSingle();
         if (referrer) {
           referrerId = referrer.id;
         }
       }
 
       const { data: insertData, error: insertError } = await supabaseAdmin
-        .from('users')
-        .insert([{
-          email:                  normalizedEmail,
-          phone:                  null,
-          password_hash:          passwordHash,
-          username:               username,
-          full_name:              name || username,
-          bitcoin_wallet_address: null,
-          is_email_verified:      true,
-          email_verified:         true,
-          average_rating:         0,
-          total_trades:           0,
-          completion_rate:        100,
-          account_status:         'ACTIVE',
-          created_at:             new Date(),
-          avatar_url:             picture || null,
-          is_admin:               false,
-          is_moderator:           false,
-          referred_by:            referrerId,
-          referral_code:          referralCodeValue,
-          badge:                  'BEGINNER',
-        }])
-        .select();
+          .from('users')
+          .insert([{
+            email:                  normalizedEmail,
+            phone:                  null,
+            password_hash:          passwordHash,
+            username:               username,
+            full_name:              name || username,
+            bitcoin_wallet_address: null,
+            is_email_verified:      true,
+            email_verified:         true,
+            average_rating:         0,
+            total_trades:           0,
+            completion_rate:        100,
+            account_status:         'ACTIVE',
+            created_at:             new Date(),
+            avatar_url:             picture || null,
+            is_admin:               false,
+            is_moderator:           false,
+            referred_by:            referrerId,
+            referral_code:          referralCodeValue,
+            badge:                  'BEGINNER',
+          }])
+          .select();
 
       if (insertError) {
         console.error('[Google Auth] User insertion failed:', insertError);
@@ -1716,12 +1721,12 @@ app.post('/api/auth/google', authLimiter, async (req, res) => {
       // Background tasks
       const bonusExpires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
       supabaseAdmin.from('users').update({ bonus_step: 1, bonus_expires_at: bonusExpires })
-        .eq('id', newUser.id).then(null, () => {});
+          .eq('id', newUser.id).then(null, () => {});
 
       detectAndSaveCountry(newUser.id, req).catch(() => {});
 
       emailService.sendWelcomeEmail({ id: newUser.id, email: normalizedEmail, username })
-        .catch(e => console.error('[Google Auth] Welcome email failed:', e.message));
+          .catch(e => console.error('[Google Auth] Welcome email failed:', e.message));
 
       // Provision a real HD wallet address, mirrored to every table the deposit
       // monitors read from (see hdWalletService.ensureWalletExists).
@@ -1791,9 +1796,9 @@ app.post('/api/auth/google', authLimiter, async (req, res) => {
 
     // 5. Sign JWT
     const token = jwt.sign(
-      { userId: userToAuth.id, email: userToAuth.email },
-      JWT_SECRET,
-      { expiresIn: '7d' }
+        { userId: userToAuth.id, email: userToAuth.email },
+        JWT_SECRET,
+        { expiresIn: '7d' }
     );
 
     res.json({
@@ -1844,18 +1849,18 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     // ── Check uniqueness (fast DB lookups) ─────────────────────────────────
     if (email) {
       const { data: existingUser } = await supabaseAdmin
-        .from('users').select('email').eq('email', email.toLowerCase().trim()).single();
+          .from('users').select('email').eq('email', email.toLowerCase().trim()).single();
       if (existingUser) return res.status(400).json({ error: E.EMAIL_TAKEN });
     }
 
     if (phone) {
       const { data: existingPhone } = await supabaseAdmin
-        .from('users').select('id').eq('phone', phone.trim()).single();
+          .from('users').select('id').eq('phone', phone.trim()).single();
       if (existingPhone) return res.status(400).json({ error: 'An account with this phone number already exists. Try logging in or use a different number.' });
     }
 
     const { data: existingUsername } = await supabaseAdmin
-      .from('users').select('id').eq('username', username.trim()).single();
+        .from('users').select('id').eq('username', username.trim()).single();
     if (existingUsername) return res.status(400).json({ error: E.USERNAME_TAKEN });
 
     // ── Referral lookup ────────────────────────────────────────────────────
@@ -1863,7 +1868,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     if (referralCode) {
       const normalized = referralCode.toLowerCase().trim();
       const { data: referrer } = await supabaseAdmin
-        .from('users').select('id').eq('referral_code', normalized).maybeSingle();
+          .from('users').select('id').eq('referral_code', normalized).maybeSingle();
       if (referrer) {
         referrerId = referrer.id;
         console.log(`[Register] Referral matched: code=${normalized} → referrer=${referrerId}`);
@@ -1909,7 +1914,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     // ── Seed balance rows — both tables must exist before any trade ───────
     await Promise.all([
       supabaseAdmin.from('user_balances').insert([{ user_id: newUser.id, balance_btc: 0, balance_usd: 0 }])
-        .then(null, () => {}),
+          .then(null, () => {}),
       supabaseAdmin.from('wallets').insert({
         user_id: newUser.id, balance_btc: 0, locked_balance_btc: 0, updated_at: new Date().toISOString(),
       }).then(null, () => {}), // ignore duplicate if row already exists
@@ -1963,7 +1968,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     // 1. Welcome bonus — step 1 (registered, awaiting verification), 30-day window
     const bonusExpires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
     supabaseAdmin.from('users').update({ bonus_step: 1, bonus_expires_at: bonusExpires })
-      .eq('id', newUser.id).then(null, () => {});
+        .eq('id', newUser.id).then(null, () => {});
 
     // 2. Detect and save country from IP (fire and forget)
     detectAndSaveCountry(newUser.id, req).catch(() => {});
@@ -1971,17 +1976,17 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     // 2. Send verification + welcome email (email users only)
     if (email && emailVerifyCode) {
       emailService.sendVerificationEmail(email, emailVerifyCode, newUser.id)
-        .catch(e => console.error('[Register] Verification email failed:', e.message));
+          .catch(e => console.error('[Register] Verification email failed:', e.message));
       emailService.sendWelcomeEmail({ id: newUser.id, email, username })
-        .catch(e => console.error('[Register] Welcome email failed:', e.message));
+          .catch(e => console.error('[Register] Welcome email failed:', e.message));
     }
 
     if (phone && phoneOtpCode && phoneE164) {
       sendSmsOtp(phoneE164, `Your PRAQEN verification code is: ${phoneOtpCode}. Valid 10 min. Do not share.`)
-        .then(() => console.log(`[Register] SMS OTP sent to ${phoneE164}`))
-        .catch(e => console.error('[Register] SMS OTP send failed:', e.message));
+          .then(() => console.log(`[Register] SMS OTP sent to ${phoneE164}`))
+          .catch(e => console.error('[Register] SMS OTP send failed:', e.message));
       storeOtp(phoneE164, phoneOtpCode)
-        .catch(e => console.warn('[Register] SMS OTP DB backup failed:', e.message));
+          .catch(e => console.warn('[Register] SMS OTP DB backup failed:', e.message));
     }
 
     // 2. Generate a real HD wallet address for this user and mirror it to every
@@ -2008,11 +2013,11 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
           await supabaseAdmin.from('users').update({ total_referrals: newCount }).eq('id', referrerId);
           console.log(`[Register] Referral count updated for ${referrerId}: ${newCount}`);
           await createNotification(
-            referrerId,
-            'referral',
-            '🎉 New Referral!',
-            `${username} just joined PRAQEN via your referral link — you now have ${newCount} referral${newCount !== 1 ? 's' : ''}!`,
-            '/dashboard?tab=affiliate'
+              referrerId,
+              'referral',
+              '🎉 New Referral!',
+              `${username} just joined PRAQEN via your referral link — you now have ${newCount} referral${newCount !== 1 ? 's' : ''}!`,
+              '/dashboard?tab=affiliate'
           );
         } catch (e) {
           console.error('[Register] Referral count update failed:', e.message);
@@ -2133,8 +2138,8 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 
     // Send OTP email (non-blocking — but we await to catch send failures)
     emailService.sendLoginOtpEmail(
-      { id: data.id, email: data.email, username: data.username },
-      loginOtp
+        { id: data.id, email: data.email, username: data.username },
+        loginOtp
     ).catch(err => console.error('[login-otp] email send failed:', err.message));
 
     return res.json({ success: true, requiresOtp: true, email: data.email });
@@ -2237,7 +2242,7 @@ app.post('/api/auth/verify-login-otp', authLimiter, async (req, res) => {
     });
 
     emailService.sendLoginAlertEmail({ id: data.id, email: data.email, username: data.username })
-      .catch(() => {});
+        .catch(() => {});
   } catch (err) {
     console.error('[verify-login-otp] error:', err);
     res.status(500).json({ error: 'Verification failed. Please try again.' });
@@ -2617,10 +2622,10 @@ app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
     const normalizedEmail = email.toLowerCase().trim();
 
     const { data: user } = await supabaseAdmin
-      .from('users')
-      .select('id, email')
-      .eq('email', normalizedEmail)
-      .maybeSingle();
+        .from('users')
+        .select('id, email')
+        .eq('email', normalizedEmail)
+        .maybeSingle();
 
     if (!user) {
       console.log(`[forgot-password] No account for ${normalizedEmail}`);
@@ -2631,12 +2636,12 @@ app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
     const tokenExpires = new Date(Date.now() + 60 * 60 * 1000);
 
     const { error: updateError } = await supabaseAdmin
-      .from('users')
-      .update({
-        reset_password_token: resetToken,
-        reset_password_expires: tokenExpires.toISOString(),
-      })
-      .eq('id', user.id);
+        .from('users')
+        .update({
+          reset_password_token: resetToken,
+          reset_password_expires: tokenExpires.toISOString(),
+        })
+        .eq('id', user.id);
 
     if (updateError) {
       console.error('[forgot-password] DB update error:', updateError.message);
@@ -2647,8 +2652,8 @@ app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
     const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}&email=${encodeURIComponent(normalizedEmail)}`;
 
     sendPasswordResetEmail(normalizedEmail, resetUrl)
-      .then(() => console.log(`[forgot-password] Reset email sent to ${normalizedEmail}`))
-      .catch(e => console.error('[forgot-password] Email send failed:', e.message));
+        .then(() => console.log(`[forgot-password] Reset email sent to ${normalizedEmail}`))
+        .catch(e => console.error('[forgot-password] Email send failed:', e.message));
 
     return res.json({ success: true, message: 'If an account exists with that email, a reset link has been sent.' });
 
@@ -2674,10 +2679,10 @@ app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
     const normalizedEmail = email.toLowerCase().trim();
 
     const { data: user, error: fetchError } = await supabaseAdmin
-      .from('users')
-      .select('id, email, reset_password_token, reset_password_expires, password_hash')
-      .eq('email', normalizedEmail)
-      .maybeSingle();
+        .from('users')
+        .select('id, email, reset_password_token, reset_password_expires, password_hash')
+        .eq('email', normalizedEmail)
+        .maybeSingle();
 
     if (fetchError || !user) {
       console.error('[reset-password] DB fetch error:', fetchError?.message);
@@ -2700,14 +2705,14 @@ app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
     const passwordHash = await bcrypt.hash(newPassword, 10);
 
     const { error: updateError } = await supabaseAdmin
-      .from('users')
-      .update({
-        password_hash: passwordHash,
-        reset_password_token: null,
-        reset_password_expires: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', user.id);
+        .from('users')
+        .update({
+          password_hash: passwordHash,
+          reset_password_token: null,
+          reset_password_expires: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
 
     if (updateError) {
       console.error('[reset-password] DB update error:', updateError.message);
@@ -2883,19 +2888,19 @@ app.get('/api/team/escrow-fees', verifyToken, async (req, res) => {
     // Real fee transactions from wallet_transactions (type=FEE for the company account)
     // Also pull DEPOSIT rows whose notes start with "Platform fee" (legacy records)
     const { data: feeTxs } = await supabaseAdmin
-      .from('wallet_transactions')
-      .select('id, amount_btc, notes, created_at, status, tx_hash')
-      .eq('user_id', COMPANY_WALLET_ID)
-      .or('type.eq.FEE,and(type.eq.DEPOSIT,notes.ilike.Platform fee%)')
-      .order('created_at', { ascending: false })
-      .limit(500);
+        .from('wallet_transactions')
+        .select('id, amount_btc, notes, created_at, status, tx_hash')
+        .eq('user_id', COMPANY_WALLET_ID)
+        .or('type.eq.FEE,and(type.eq.DEPOSIT,notes.ilike.Platform fee%)')
+        .order('created_at', { ascending: false })
+        .limit(500);
 
     // Company wallet balance lives in the `wallets` table (updated by tradeEscrowService)
     const { data: walletBal } = await supabaseAdmin
-      .from('wallets')
-      .select('balance_btc, locked_balance_btc')
-      .eq('user_id', COMPANY_WALLET_ID)
-      .maybeSingle();
+        .from('wallets')
+        .select('balance_btc, locked_balance_btc')
+        .eq('user_id', COMPANY_WALLET_ID)
+        .maybeSingle();
 
     const txs = feeTxs || [];
 
@@ -3088,7 +3093,7 @@ app.get('/api/team/staff', verifyToken, async (req, res) => {
   try {
     const t = await requireTeam(req, res); if (!t) return;
     const { data, error } = await supabaseAdmin
-      .from('company_staff').select('*').order('start_date', { ascending: false });
+        .from('company_staff').select('*').order('start_date', { ascending: false });
     if (error) return res.status(400).json({ error: error.message });
     res.json({ staff: data || [] });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -3540,11 +3545,11 @@ app.get('/api/team/active-offers', verifyToken, async (req, res) => {
     const t = await requireTeam(req, res); if (!t) return;
 
     const { data: listings, error } = await supabaseAdmin
-      .from('listings')
-      .select('id, seller_id, listing_type, gift_card_brand, card_type, bitcoin_price, margin, pricing_type, currency, currency_symbol, country_name, payment_method, payment_methods, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local, time_limit, created_at, view_count')
-      .eq('status', 'ACTIVE')
-      .order('created_at', { ascending: false })
-      .limit(500);
+        .from('listings')
+        .select('id, seller_id, listing_type, gift_card_brand, card_type, bitcoin_price, margin, pricing_type, currency, currency_symbol, country_name, payment_method, payment_methods, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local, time_limit, created_at, view_count')
+        .eq('status', 'ACTIVE')
+        .order('created_at', { ascending: false })
+        .limit(500);
 
     if (error) return res.status(400).json({ error: error.message });
 
@@ -3552,9 +3557,9 @@ app.get('/api/team/active-offers', verifyToken, async (req, res) => {
     let usersMap = {};
     if (sellerIds.length > 0) {
       const { data: sellers } = await supabaseAdmin
-        .from('users')
-        .select('id, username, full_name, avatar_url, average_rating, total_trades, completion_rate, badge, country, last_seen_at, account_status')
-        .in('id', sellerIds);
+          .from('users')
+          .select('id, username, full_name, avatar_url, average_rating, total_trades, completion_rate, badge, country, last_seen_at, account_status')
+          .in('id', sellerIds);
       (sellers || []).forEach(u => { usersMap[u.id] = u; });
     }
 
@@ -3638,8 +3643,8 @@ app.get('/api/auth/twilio-check', verifyToken, async (req, res) => {
 async function storeOtp(contact, otp) {
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
   const { error } = await supabaseAdmin
-    .from('otp_codes')
-    .insert({ phone: contact, code: otp, expires_at: expiresAt, used: false });
+      .from('otp_codes')
+      .insert({ phone: contact, code: otp, expires_at: expiresAt, used: false });
   if (error) throw new Error(`OTP store failed: ${error.message}`);
 }
 
@@ -3721,15 +3726,15 @@ async function sendSmsOtp(phone, message) {
 
 async function checkOtp(contact, token) {
   const { data, error } = await supabaseAdmin
-    .from('otp_codes')
-    .select('*')
-    .eq('phone', contact)
-    .eq('code', token)
-    .eq('used', false)
-    .gte('expires_at', new Date().toISOString())
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
+      .from('otp_codes')
+      .select('*')
+      .eq('phone', contact)
+      .eq('code', token)
+      .eq('used', false)
+      .gte('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
   if (error || !data) return null;
   // mark used immediately so replay attacks fail
   await supabaseAdmin.from('otp_codes').update({ used: true }).eq('id', data.id);
@@ -3823,10 +3828,10 @@ app.post('/api/auth/send-phone-otp', otpLimiter, async (req, res) => {
 
     // Block only if this phone is already verified by an account — not if it's merely saved/unverified
     const { data: existing } = await supabaseAdmin
-      .from('users').select('id')
-      .eq('phone', contact)
-      .eq('is_phone_verified', true)
-      .maybeSingle();
+        .from('users').select('id')
+        .eq('phone', contact)
+        .eq('is_phone_verified', true)
+        .maybeSingle();
     if (existing) return res.status(400).json({ error: 'This phone number is already verified by another account.' });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -3884,8 +3889,8 @@ app.post('/api/auth/verify-otp', otpLimiter, async (req, res) => {
     if (ch !== 'email') {
       try {
         await supabaseAdmin.from('users')
-          .update({ phone_verified: true, phone: normalizedContact })
-          .eq('phone', normalizedContact);
+            .update({ phone_verified: true, phone: normalizedContact })
+            .eq('phone', normalizedContact);
       } catch (_) {}
     }
 
@@ -3922,7 +3927,7 @@ app.post('/api/auth/send-action-code', otpLimiter, verifyToken, async (req, res)
     }
 
     const { data: user } = await supabaseAdmin
-      .from('users').select('email, username').eq('id', req.userId).single();
+        .from('users').select('email, username').eq('id', req.userId).single();
     if (!user?.email) {
       return res.status(400).json({ error: 'No email address on your account. Please add one in Settings.' });
     }
@@ -3933,7 +3938,7 @@ app.post('/api/auth/send-action-code', otpLimiter, verifyToken, async (req, res)
     const label = actionLabels[action] || action;
 
     await sendVerificationEmail(user.email, code,
-      `PRAQEN Security Code — ${label}`);
+        `PRAQEN Security Code — ${label}`);
 
     console.log(`[2FA] Action code sent to ${user.email} for action=${action} user=${req.userId.slice(0,8)}`);
     res.json({ success: true, message: `Security code sent to ${user.email}` });
@@ -4010,9 +4015,9 @@ app.post('/api/auth/verify-code', async (req, res) => {
     // ── Tier 2: users table (verification_code column) ────────────────────
     if (!verified) {
       const { data: dbUser } = await supabaseAdmin
-        .from('users')
-        .select('verification_code, verification_code_expires, is_email_verified')
-        .eq('email', email).single();
+          .from('users')
+          .select('verification_code, verification_code_expires, is_email_verified')
+          .eq('email', email).single();
 
       if (!dbUser) return res.status(400).json({ error: 'Account not found.' });
       if (dbUser.is_email_verified) return res.json({ success: true, message: 'Already verified. Please login.' });
@@ -4040,9 +4045,9 @@ app.post('/api/auth/verify-code', async (req, res) => {
 
     // Mark user verified and clear the stored code
     await supabaseAdmin
-      .from('users')
-      .update({ is_email_verified: true, verification_code: null, verification_code_expires: null })
-      .eq('email', email);
+        .from('users')
+        .update({ is_email_verified: true, verification_code: null, verification_code_expires: null })
+        .eq('email', email);
 
     const { data: user } = await supabaseAdmin.from('users').select('*').eq('email', email).single();
     const token = user ? jwt.sign({ userId: user.id, email }, JWT_SECRET, { expiresIn: '7d' }) : null;
@@ -4232,7 +4237,7 @@ app.post('/api/users/2fa/totp/confirm', verifyToken, async (req, res) => {
 app.post('/api/users/resend-verification', verifyToken, async (req, res) => {
   try {
     const { data: user } = await supabaseAdmin
-      .from('users').select('email, is_email_verified').eq('id', req.userId).single();
+        .from('users').select('email, is_email_verified').eq('id', req.userId).single();
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (user.is_email_verified) return res.json({ success: true, message: 'Email already verified' });
     if (!user.email) return res.status(400).json({ error: 'No email address on your account.' });
@@ -4281,9 +4286,9 @@ app.post('/api/users/verify-email-code', verifyToken, otpLimiter, async (req, re
     if (!code || String(code).length !== 6) return res.status(400).json({ error: 'Enter the full 6-digit code' });
 
     const { data: user } = await supabaseAdmin
-      .from('users')
-      .select('email, verification_code, verification_code_expires, is_email_verified')
-      .eq('id', req.userId).single();
+        .from('users')
+        .select('email, verification_code, verification_code_expires, is_email_verified')
+        .eq('id', req.userId).single();
 
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (user.is_email_verified) return res.json({ success: true, message: 'Already verified' });
@@ -4343,7 +4348,7 @@ app.post('/api/users/send-phone-otp', otpLimiter, verifyToken, async (req, res) 
 
     // Block only if THIS number is VERIFIED on another account (unverified is OK)
     const { data: claimedByOther } = await supabaseAdmin.from('users')
-      .select('id').eq('phone', e164).eq('is_phone_verified', true).neq('id', req.userId).maybeSingle();
+        .select('id').eq('phone', e164).eq('is_phone_verified', true).neq('id', req.userId).maybeSingle();
     if (claimedByOther) {
       return res.status(400).json({ error: 'This phone number is already verified on another account.' });
     }
@@ -4365,7 +4370,7 @@ app.post('/api/users/send-phone-otp', otpLimiter, verifyToken, async (req, res) 
     // ── Email ──────────────────────────────────────────────────────────────────
     if (method === 'email') {
       const { data: userRow, error: userErr } = await supabaseAdmin
-        .from('users').select('email').eq('id', req.userId).single();
+          .from('users').select('email').eq('id', req.userId).single();
       if (userErr) {
         console.error('[send-phone-otp] DB lookup failed:', userErr.message);
         return res.status(500).json({ error: 'Could not look up your account. Please try again.' });
@@ -4416,7 +4421,7 @@ app.post('/api/users/send-phone-otp', otpLimiter, verifyToken, async (req, res) 
       } catch (smsErr) {
         console.error('[send-phone-otp] SMS error:', smsErr.message);
         return res.status(500).json({
-          error: 'SMS delivery failed. Please try the email option instead.',
+          error: 'SMS delivery failed. Please use the email option instead.',
           devCode: isDev ? otp : undefined,
         });
       }
@@ -4484,7 +4489,7 @@ app.post('/api/users/submit-phone', verifyToken, async (req, res) => {
 
     // Check if THIS user already has a phone saved — once submitted, it cannot be changed
     const { data: currentUser, error: fetchErr } = await supabaseAdmin
-      .from('users').select('id, phone, is_phone_verified').eq('id', req.userId).maybeSingle();
+        .from('users').select('id, phone, is_phone_verified').eq('id', req.userId).maybeSingle();
     if (fetchErr) {
       console.error('[submit-phone] fetch user failed:', fetchErr.message);
       return res.status(500).json({ error: 'Could not verify account. Please try again.' });
@@ -4493,8 +4498,8 @@ app.post('/api/users/submit-phone', verifyToken, async (req, res) => {
       if (currentUser.phone === e164) {
         // Idempotent: same number already saved — ensure request row exists and return success
         await supabaseAdmin.from('phone_verification_requests').upsert(
-          { user_id: req.userId, phone: e164, status: currentUser.is_phone_verified ? 'approved' : 'pending' },
-          { onConflict: 'user_id', ignoreDuplicates: true }
+            { user_id: req.userId, phone: e164, status: currentUser.is_phone_verified ? 'approved' : 'pending' },
+            { onConflict: 'user_id', ignoreDuplicates: true }
         ).then(null, () => {});
         return res.json({ success: true });
       }
@@ -4503,16 +4508,16 @@ app.post('/api/users/submit-phone', verifyToken, async (req, res) => {
 
     // One phone = one account — block if number belongs to someone else
     const { data: existing } = await supabaseAdmin
-      .from('users').select('id').eq('phone', e164).neq('id', req.userId).maybeSingle();
+        .from('users').select('id').eq('phone', e164).neq('id', req.userId).maybeSingle();
     if (existing) return res.status(400).json({ error: 'This number is already registered to another account.' });
 
     // ── Step 1: Save phone to users table ───────────────────────────────────
     const { data: savedUser, error: updateErr } = await supabaseAdmin
-      .from('users')
-      .update({ phone: e164, updated_at: new Date().toISOString() })
-      .eq('id', req.userId)
-      .select('id, phone')
-      .single();
+        .from('users')
+        .update({ phone: e164, updated_at: new Date().toISOString() })
+        .eq('id', req.userId)
+        .select('id, phone')
+        .single();
 
     if (updateErr) {
       console.error('[submit-phone] users.update failed:', updateErr.message, '| code:', updateErr.code);
@@ -4525,11 +4530,11 @@ app.post('/api/users/submit-phone', verifyToken, async (req, res) => {
 
     // ── Step 2: Track in phone_verification_requests ──────────────────────
     const { error: reqErr } = await supabaseAdmin
-      .from('phone_verification_requests')
-      .upsert(
-        { user_id: req.userId, phone: e164, status: 'pending', submitted_at: new Date().toISOString() },
-        { onConflict: 'user_id', ignoreDuplicates: false }
-      );
+        .from('phone_verification_requests')
+        .upsert(
+            { user_id: req.userId, phone: e164, status: 'pending', submitted_at: new Date().toISOString() },
+            { onConflict: 'user_id', ignoreDuplicates: false }
+        );
     if (reqErr) {
       // Table may not exist yet — log but don't fail the request
       console.warn('[submit-phone] phone_verification_requests upsert failed (table may not exist yet):', reqErr.message);
@@ -4538,10 +4543,10 @@ app.post('/api/users/submit-phone', verifyToken, async (req, res) => {
     // ── Step 3: In-app notification ───────────────────────────────────────
     try {
       await createNotification(
-        req.userId, 'kyc',
-        '📱 Phone Number Received',
-        `We've received your number (${e164}) and it's now under review. You'll be notified once it's approved — usually within 24 hours.`,
-        '/settings?tab=verification'
+          req.userId, 'kyc',
+          '📱 Phone Number Received',
+          `We've received your number (${e164}) and it's now under review. You'll be notified once it's approved — usually within 24 hours.`,
+          '/settings?tab=verification'
       );
     } catch (_) {}
 
@@ -4582,7 +4587,7 @@ app.post('/api/users/verify-phone-otp', verifyToken, async (req, res) => {
     if (tvPending && TWILIO_ENABLED && twilioVerifySid) {
       try {
         const check = await getTwilioClient().verify.v2.services(twilioVerifySid)
-          .verificationChecks.create({ to: e164, code });
+            .verificationChecks.create({ to: e164, code });
         if (check.status === 'approved') {
           twilioVerifyPending.delete(e164);
           verified = true;
@@ -4648,12 +4653,12 @@ app.post('/api/kyc/upload', express.json({ limit: '25mb' }), verifyToken, async 
     // Try Supabase Storage upload (bucket: kyc-documents)
     try {
       const { error: idErr } = await supabaseAdmin.storage
-        .from('kyc-documents')
-        .upload(`${userId}/id_front_${timestamp}.jpg`, toBuffer(idImage), { contentType: 'image/jpeg', upsert: true });
+          .from('kyc-documents')
+          .upload(`${userId}/id_front_${timestamp}.jpg`, toBuffer(idImage), { contentType: 'image/jpeg', upsert: true });
 
       const { error: idBackErr } = await supabaseAdmin.storage
-        .from('kyc-documents')
-        .upload(`${userId}/id_back_${timestamp}.jpg`, toBuffer(idImageBack), { contentType: 'image/jpeg', upsert: true });
+          .from('kyc-documents')
+          .upload(`${userId}/id_back_${timestamp}.jpg`, toBuffer(idImageBack), { contentType: 'image/jpeg', upsert: true });
 
       if (!idErr) {
         const { data: { publicUrl } } = supabaseAdmin.storage.from('kyc-documents').getPublicUrl(`${userId}/id_front_${timestamp}.jpg`);
@@ -4717,12 +4722,12 @@ app.post('/api/kyc/upload', express.json({ limit: '25mb' }), verifyToken, async 
 app.get('/api/kyc/status', verifyToken, async (req, res) => {
   try {
     let { data, error } = await supabaseAdmin.from('users')
-      .select('kyc_status, id_type, kyc_submitted_at, id_front_url, id_back_url, kyc_rejection_reason, is_id_verified')
-      .eq('id', req.userId).single();
+        .select('kyc_status, id_type, kyc_submitted_at, id_front_url, id_back_url, kyc_rejection_reason, is_id_verified')
+        .eq('id', req.userId).single();
     if (error) {
       const fallback = await supabaseAdmin.from('users')
-        .select('is_id_verified, kyc_status')
-        .eq('id', req.userId).single();
+          .select('is_id_verified, kyc_status')
+          .eq('id', req.userId).single();
       if (fallback.error) return res.status(500).json({ error: fallback.error.message });
       data = fallback.data;
     }
@@ -4789,9 +4794,9 @@ app.post('/api/users/check-badges', verifyToken, async (req, res) => {
   try {
     await checkAndAwardBadges(req.userId);
     const { data } = await supabaseAdmin
-      .from('user_badges')
-      .select('badge_name, is_unlocked, unlocked_at')
-      .eq('user_id', req.userId);
+        .from('user_badges')
+        .select('badge_name, is_unlocked, unlocked_at')
+        .eq('user_id', req.userId);
     res.json({ success: true, badges: data || [] });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -4801,8 +4806,8 @@ app.post('/api/users/check-badges', verifyToken, async (req, res) => {
 app.post('/api/users/heartbeat', verifyToken, async (req, res) => {
   try {
     await supabaseAdmin.from('users')
-      .update({ last_seen_at: new Date().toISOString() })
-      .eq('id', req.userId);
+        .update({ last_seen_at: new Date().toISOString() })
+        .eq('id', req.userId);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -4829,25 +4834,25 @@ app.get('/api/users/online-status', async (req, res) => {
 app.get('/api/me/security', verifyToken, async (req, res) => {
   try {
     const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
-      || req.headers['x-real-ip']
-      || req.socket?.remoteAddress
-      || '';
+        || req.headers['x-real-ip']
+        || req.socket?.remoteAddress
+        || '';
 
     // Strip IPv6 loopback wrapper
     const cleanIp = ip.replace(/^::ffff:/, '');
 
     const isPrivate = !cleanIp || cleanIp === '::1'
-      || cleanIp.startsWith('127.')
-      || cleanIp.startsWith('192.168.')
-      || cleanIp.startsWith('10.')
-      || cleanIp.startsWith('172.');
+        || cleanIp.startsWith('127.')
+        || cleanIp.startsWith('192.168.')
+        || cleanIp.startsWith('10.')
+        || cleanIp.startsWith('172.');
 
     if (isPrivate) {
       // Running locally — return stored user data instead
       const { data: u } = await supabaseAdmin
-        .from('users')
-        .select('country, country_name, city, last_seen_location')
-        .eq('id', req.userId).single();
+          .from('users')
+          .select('country, country_name, city, last_seen_location')
+          .eq('id', req.userId).single();
       return res.json({
         ip: cleanIp || '127.0.0.1 (local)',
         country_code: u?.country || null,
@@ -4870,19 +4875,19 @@ app.get('/api/me/security', verifyToken, async (req, res) => {
 
       // Save fresh geo to user profile in background
       supabaseAdmin.from('users')
-        .update({ city, country_name: name, last_seen_location: loc, country: cc })
-        .eq('id', req.userId)
-        .or('country.is.null,country.eq.')
-        .then(() => {}).catch(() => {});
+          .update({ city, country_name: name, last_seen_location: loc, country: cc })
+          .eq('id', req.userId)
+          .or('country.is.null,country.eq.')
+          .then(() => {}).catch(() => {});
 
       return res.json({ ip: cleanIp, country_code: cc, country: name, city, location: loc, source: 'live' });
     }
 
     // ipapi.co gave no result — return stored data
     const { data: u } = await supabaseAdmin
-      .from('users')
-      .select('country, country_name, city, last_seen_location')
-      .eq('id', req.userId).single();
+        .from('users')
+        .select('country, country_name, city, last_seen_location')
+        .eq('id', req.userId).single();
     res.json({
       ip: cleanIp,
       country_code: u?.country || null,
@@ -4900,8 +4905,8 @@ app.get('/api/me/security', verifyToken, async (req, res) => {
 app.get('/api/bonus/status', verifyToken, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin.from('users')
-      .select('bonus_step, bonus_expires_at, bonus_unlocked_at')
-      .eq('id', req.userId).single();
+        .select('bonus_step, bonus_expires_at, bonus_unlocked_at')
+        .eq('id', req.userId).single();
     if (error && error.code === 'PGRST116') {
       // User not in bonus programme — return default bonus state
       return res.json({ step: 0, bonus_expires_at: null, bonus_unlocked_at: null, expired: true, ms_remaining: 0, btc_price: 88000, locked_btc: 0, unlocked_btc: 0 });
@@ -4949,8 +4954,8 @@ app.get('/api/users/profile', verifyToken, async (req, res) => {
     // Core columns — confirmed to exist in every PRAQEN DB schema
     const coreCols = 'id, email, username, full_name, bio, location, website, phone, avatar_url, average_rating, total_trades, completion_rate, created_at, is_admin, is_moderator, is_id_verified, is_email_verified, is_phone_verified, total_feedback_count, positive_feedback, negative_feedback, last_login, last_seen_at, badge, country';
     let { data, error } = await supabaseAdmin.from('users')
-      .select(coreCols)
-      .eq('id', req.userId).single();
+        .select(coreCols)
+        .eq('id', req.userId).single();
     // Fallback if a column doesn't exist in the DB (e.g. is_phone_verified, badge, country)
     if (error && (error.code === '42703' || (error.message && error.message.includes('does not exist')))) {
       const essential = 'id, email, username, full_name, avatar_url, average_rating, total_trades, completion_rate, created_at, is_admin, is_moderator, is_id_verified, is_email_verified, total_feedback_count, positive_feedback, negative_feedback, last_login';
@@ -4969,8 +4974,8 @@ app.get('/api/users/profile', verifyToken, async (req, res) => {
     let extraFields = {};
     try {
       const { data: extra } = await supabaseAdmin.from('users')
-        .select('email_verified, is_phone_verified, phone_verified, kyc_verified, kyc_status, id_type, kyc_submitted_at, id_front_url, id_back_url, selfie_url, kyc_rejection_reason, username_changed, preferred_currency, preferred_language, timezone, hide_full_name, name_display, city, country_name, last_seen_location, referral_code, total_referrals, referral_earnings_btc')
-        .eq('id', req.userId).single();
+          .select('email_verified, is_phone_verified, phone_verified, kyc_verified, kyc_status, id_type, kyc_submitted_at, id_front_url, id_back_url, selfie_url, kyc_rejection_reason, username_changed, preferred_currency, preferred_language, timezone, hide_full_name, name_display, city, country_name, last_seen_location, referral_code, total_referrals, referral_earnings_btc')
+          .eq('id', req.userId).single();
       if (extra) extraFields = extra;
     } catch {}
 
@@ -5030,9 +5035,9 @@ app.get('/api/users/:userId', async (req, res) => {
     let referral_trade_count = 0;
     try {
       const { count } = await supabaseAdmin
-        .from('affiliate_earnings')
-        .select('*', { count: 'exact', head: true })
-        .eq('referrer_id', data.id);
+          .from('affiliate_earnings')
+          .select('*', { count: 'exact', head: true })
+          .eq('referrer_id', data.id);
       if (count != null) referral_trade_count = count;
     } catch {}
 
@@ -5058,8 +5063,8 @@ app.get('/api/users/:userId', async (req, res) => {
     try {
       // No .limit() — fetch all reviews so counts are never cut short
       const { data: rv } = await supabaseAdmin.from('reviews')
-        .select('*, reviewer:reviewer_id(id, username)').eq('reviewee_id', data.id)
-        .order('created_at', { ascending: false });
+          .select('*, reviewer:reviewer_id(id, username)').eq('reviewee_id', data.id)
+          .order('created_at', { ascending: false });
       reviews = rv || [];
       if (reviews.length > 0) {
         const computedPos = reviews.filter(r => r.rating >= 4 || r.is_positive === true).length;
@@ -5148,7 +5153,7 @@ app.put('/api/users/profile', verifyToken, async (req, res) => {
     // Retry up to 3 times, stripping any column the DB says doesn't exist
     for (let i = 0; i < 3 && error; i++) {
       const missing = error.message?.match(/['"]?([\w_]+)['"]?\s+column[^']*(?:schema cache|not found|does not exist)/i) ||
-                     error.message?.match(/find the ['"]?([\w_]+)['"]?\s+column/i);
+          error.message?.match(/find the ['"]?([\w_]+)['"]?\s+column/i);
       if (!missing) break;
       const col = missing[1];
       if (!updateData[col]) break;
@@ -5173,7 +5178,7 @@ app.post('/api/users/:userId/trust', verifyToken, async (req, res) => {
     if (targetId === req.userId) return res.status(400).json({ error: 'You cannot trust yourself.' });
 
     const { data: existing } = await supabaseAdmin
-      .from('user_trust').select('id').eq('user_id', req.userId).eq('target_id', targetId).eq('type', 'trust').maybeSingle();
+        .from('user_trust').select('id').eq('user_id', req.userId).eq('target_id', targetId).eq('type', 'trust').maybeSingle();
 
     if (existing) {
       // Untrust — remove record then recount
@@ -5198,7 +5203,7 @@ app.post('/api/users/:userId/trust', verifyToken, async (req, res) => {
 app.get('/api/users/:userId/relationship', verifyToken, async (req, res) => {
   try {
     const { data } = await supabaseAdmin
-      .from('user_trust').select('type').eq('user_id', req.userId).eq('target_id', req.params.userId);
+        .from('user_trust').select('type').eq('user_id', req.userId).eq('target_id', req.params.userId);
     res.json({
       is_trusted: data?.some(r => r.type === 'trust') || false,
       is_blocked: data?.some(r => r.type === 'block') || false,
@@ -5232,8 +5237,8 @@ app.post('/api/users/upload-avatar', verifyToken, async (req, res) => {
     if (!image) return res.status(400).json({ error: 'No image provided' });
     if (!image.startsWith('data:image/')) return res.status(400).json({ error: 'Invalid image format' });
     const { data, error } = await supabaseAdmin.from('users')
-      .update({ avatar_url: image, updated_at: new Date().toISOString() })
-      .eq('id', req.userId).select('id, username, avatar_url').single();
+        .update({ avatar_url: image, updated_at: new Date().toISOString() })
+        .eq('id', req.userId).select('id, username, avatar_url').single();
     if (error) return res.status(500).json({ error: error.message });
     if (!data) return res.status(404).json({ error: 'User not found' });
     // Bust the per-user avatar cache so the new photo shows immediately
@@ -5263,8 +5268,8 @@ app.get('/api/users/:userId/avatar', async (req, res) => {
 app.get('/api/users/:userId/reviews', async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin.from('reviews')
-      .select('*, reviewer:reviewer_id(username)').eq('reviewee_id', req.params.userId)
-      .order('created_at', { ascending: false });
+        .select('*, reviewer:reviewer_id(username)').eq('reviewee_id', req.params.userId)
+        .order('created_at', { ascending: false });
     if (error) return res.json({ reviews: [] });
     res.json({ reviews: data || [] });  // ← FIXED: was `reviews` (undefined), now `data`
   } catch { res.json({ reviews: [] }); }
@@ -5274,7 +5279,7 @@ app.get('/api/users/:userId/reviews', async (req, res) => {
 app.get('/api/users/:userId/listings', async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin.from('listings').select(
-      'id, seller_id, listing_type, gift_card_brand, status, bitcoin_price, margin, pricing_type, currency, currency_symbol, country, country_name, payment_method, payment_methods, amount_usd, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local, time_limit, card_type, face_value, created_at'
+        'id, seller_id, listing_type, gift_card_brand, status, bitcoin_price, margin, pricing_type, currency, currency_symbol, country, country_name, payment_method, payment_methods, amount_usd, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local, time_limit, card_type, face_value, created_at'
     ).eq('seller_id', req.params.userId).eq('status', 'ACTIVE').order('created_at', { ascending: false });
     if (error) return res.json({ listings: [] });
     res.json({ listings: data || [] });
@@ -5300,18 +5305,18 @@ app.post('/api/users/:userId/view-profile', async (req, res) => {
 
     // Increment profile_views counter (safe even if column doesn't exist yet — will just error silently)
     const { data: cur } = await supabaseAdmin
-      .from('users').select('profile_views').eq('id', profileOwnerId).maybeSingle();
+        .from('users').select('profile_views').eq('id', profileOwnerId).maybeSingle();
     const next = (parseInt(cur?.profile_views) || 0) + 1;
     await supabaseAdmin.from('users').update({ profile_views: next }).eq('id', profileOwnerId);
 
     // Send notification — throttle to max 1 per viewer per 24h to avoid spam
     const alreadyNotified = viewerId
-      ? (await supabaseAdmin.from('notifications')
-          .select('id').eq('user_id', profileOwnerId).eq('type', 'profile_view')
-          .eq('action', `/profile/${viewerId}`)
-          .gte('created_at', new Date(Date.now() - 24*60*60*1000).toISOString())
-          .maybeSingle()).data
-      : null;
+        ? (await supabaseAdmin.from('notifications')
+            .select('id').eq('user_id', profileOwnerId).eq('type', 'profile_view')
+            .eq('action', `/profile/${viewerId}`)
+            .gte('created_at', new Date(Date.now() - 24*60*60*1000).toISOString())
+            .maybeSingle()).data
+        : null;
 
     if (!alreadyNotified) {
       // Resolve viewer's display name and ID if logged in
@@ -5319,18 +5324,18 @@ app.post('/api/users/:userId/view-profile', async (req, res) => {
       let viewerProfilePath = null;
       if (viewerId) {
         const { data: vUser } = await supabaseAdmin
-          .from('users').select('username').eq('id', viewerId).maybeSingle();
+            .from('users').select('username').eq('id', viewerId).maybeSingle();
         if (vUser?.username) {
           viewerLabel = vUser.username;
           viewerProfilePath = `/profile/${viewerId}`;
         }
       }
       await createNotification(
-        profileOwnerId,
-        'profile_view',
-        '👀 Profile View',
-        `${viewerLabel} just viewed your profile`,
-        viewerProfilePath || '/notifications'
+          profileOwnerId,
+          'profile_view',
+          '👀 Profile View',
+          `${viewerLabel} just viewed your profile`,
+          viewerProfilePath || '/notifications'
       );
     }
 
@@ -5391,15 +5396,15 @@ app.post('/api/listings', verifyToken, async (req, res) => {
     // ── Verification level checks ──────────────────────────────────────────────
     // Use only columns confirmed to exist in the DB schema
     const { data: listingUser, error: listingUserErr } = await supabaseAdmin
-      .from('users').select('is_email_verified, is_phone_verified, is_id_verified, phone')
-      .eq('id', req.userId).single();
+        .from('users').select('is_email_verified, is_phone_verified, is_id_verified, phone')
+        .eq('id', req.userId).single();
 
     let hasEmail = false, hasPhone = false, hasKyc = false;
     if (listingUserErr) {
       // Fallback: column mismatch — try bare minimum safe columns
       const { data: safeUser } = await supabaseAdmin
-        .from('users').select('is_email_verified, is_id_verified, phone')
-        .eq('id', req.userId).single();
+          .from('users').select('is_email_verified, is_id_verified, phone')
+          .eq('id', req.userId).single();
       hasEmail = !!(safeUser?.is_email_verified);
       hasKyc   = !!(safeUser?.is_id_verified);
       hasPhone = !!(safeUser?.phone);
@@ -5436,7 +5441,7 @@ app.post('/api/listings', verifyToken, async (req, res) => {
     // BUY_GIFT_CARD offers lock BTC in escrow — creator must have >= $10 BTC
     if (listingType === 'BUY_GIFT_CARD') {
       const { data: creatorWallet } = await supabaseAdmin
-        .from('wallets').select('balance_btc').eq('user_id', req.userId).maybeSingle();
+          .from('wallets').select('balance_btc').eq('user_id', req.userId).maybeSingle();
       const creatorBalUsd = parseFloat(creatorWallet?.balance_btc || 0) * 88000;
       if (creatorBalUsd < 10) {
         return res.status(400).json({
@@ -5448,21 +5453,21 @@ app.post('/api/listings', verifyToken, async (req, res) => {
     // Block duplicate offers: same payment method + same currency + same type (skip gift cards)
     if (!isGiftCard) {
       const { data: dupCheck } = await supabaseAdmin
-        .from('listings')
-        .select('id, status')
-        .eq('seller_id', req.userId)
-        .eq('payment_method', payMethod)
-        .eq('listing_type', listingType)
-        .eq('currency', b.currency || 'USD')
-        .in('status', ['ACTIVE', 'PAUSED'])
-        .limit(1);
+          .from('listings')
+          .select('id, status')
+          .eq('seller_id', req.userId)
+          .eq('payment_method', payMethod)
+          .eq('listing_type', listingType)
+          .eq('currency', b.currency || 'USD')
+          .in('status', ['ACTIVE', 'PAUSED'])
+          .limit(1);
       if (dupCheck && dupCheck.length > 0) {
         const existing = dupCheck[0];
         const isPaused = existing.status === 'PAUSED';
         return res.status(400).json({
           error: isPaused
-            ? `You already have a paused ${payMethod} (${b.currency || 'USD'}) offer. Activate it from your Dashboard instead.`
-            : `You already have an active ${payMethod} (${b.currency || 'USD'}) offer. Edit it from your Dashboard instead.`,
+              ? `You already have a paused ${payMethod} (${b.currency || 'USD'}) offer. Activate it from your Dashboard instead.`
+              : `You already have an active ${payMethod} (${b.currency || 'USD'}) offer. Edit it from your Dashboard instead.`,
           existingOfferId: existing.id,
           existingOfferStatus: existing.status,
         });
@@ -5484,8 +5489,8 @@ app.post('/api/listings', verifyToken, async (req, res) => {
       trade_instructions: b.trade_instructions || '', listing_terms: b.listing_terms || '',
       description: b.description || `${brand} via ${payMethod}`,
       card_values: Array.isArray(b.card_values) && b.card_values.length > 0
-        ? b.card_values.map(v => String(parseFloat(v))).filter(v => !isNaN(parseFloat(v)) && parseFloat(v) > 0)
-        : null,
+          ? b.card_values.map(v => String(parseFloat(v))).filter(v => !isNaN(parseFloat(v)) && parseFloat(v) > 0)
+          : null,
       card_type:   b.card_type || 'both',
       face_value:  b.face_value || (Array.isArray(b.card_values) && b.card_values[0] ? parseFloat(b.card_values[0]) : null) || null,
     }]).select();
@@ -5505,17 +5510,17 @@ app.get('/api/featured-offers', async (req, res) => {
 
     // Try last 7 days first, fall back to last 30 days so MVP always has data
     let { data: trades } = await supabaseAdmin
-      .from('trades')
-      .select('seller_id, amount_usd, created_at')
-      .eq('status', 'COMPLETED')
-      .gte('created_at', weekAgo);
-
-    if (!trades || !trades.length) {
-      const { data: older } = await supabaseAdmin
         .from('trades')
         .select('seller_id, amount_usd, created_at')
         .eq('status', 'COMPLETED')
-        .gte('created_at', monthAgo);
+        .gte('created_at', weekAgo);
+
+    if (!trades || !trades.length) {
+      const { data: older } = await supabaseAdmin
+          .from('trades')
+          .select('seller_id, amount_usd, created_at')
+          .eq('status', 'COMPLETED')
+          .gte('created_at', monthAgo);
       trades = older || [];
     }
 
@@ -5531,10 +5536,10 @@ app.get('/api/featured-offers', async (req, res) => {
 
     // Fetch ALL active listings (BTC + gift cards)
     const { data: listings } = await supabaseAdmin
-      .from('listings')
-      .select('*')
-      .eq('status', 'ACTIVE')
-      .limit(300);
+        .from('listings')
+        .select('*')
+        .eq('status', 'ACTIVE')
+        .limit(300);
 
     if (!listings || !listings.length) return res.json({ featured: [] });
 
@@ -5545,7 +5550,7 @@ app.get('/api/featured-offers', async (req, res) => {
     if (allSellerIds.length > 0) {
       const [profilesResult, avatarResult] = await Promise.all([
         supabaseAdmin.from('users').select(
-          'id, username, full_name, average_rating, total_trades, completion_rate, is_id_verified, is_email_verified, last_login, last_seen_at, total_feedback_count, positive_feedback, negative_feedback, country, bio, badge'
+            'id, username, full_name, average_rating, total_trades, completion_rate, is_id_verified, is_email_verified, last_login, last_seen_at, total_feedback_count, positive_feedback, negative_feedback, country, bio, badge'
         ).in('id', allSellerIds),
         supabaseAdmin.from('users').select('id, avatar_url').in('id', allSellerIds),
       ]);
@@ -5580,13 +5585,13 @@ app.get('/api/featured-offers', async (req, res) => {
     const gcPool = (gcSellerIds.length ? gcSellerIds : allSellerIds).filter(id => id !== activeSellerId);
     // fast_responder: gift card seller with most positive feedback (best trust score)
     const [fastSellerId] = gcPool.sort((a, b) =>
-      (userMap[b]?.positive_feedback || 0) - (userMap[a]?.positive_feedback || 0)
+        (userMap[b]?.positive_feedback || 0) - (userMap[a]?.positive_feedback || 0)
     );
 
     // Winner 3: highest volume
     const [hotSellerId] = rank(
-      allSellerIds.filter(id => id !== activeSellerId && id !== fastSellerId),
-      'volume'
+        allSellerIds.filter(id => id !== activeSellerId && id !== fastSellerId),
+        'volume'
     );
 
     const featured = [];
@@ -5623,7 +5628,7 @@ app.get('/api/listings', async (req, res) => {
 
     // Step 1: fetch listings only (no join) — fast
     let listingsQ = supabaseAdmin.from('listings').select(
-      'id, seller_id, listing_type, asset, gift_card_brand, status, bitcoin_price, margin, pricing_type, currency, currency_symbol, country, country_name, payment_method, payment_methods, amount_usd, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local, time_limit, trade_instructions, listing_terms, description, created_at, card_values, card_type, face_value'
+        'id, seller_id, listing_type, asset, gift_card_brand, status, bitcoin_price, margin, pricing_type, currency, currency_symbol, country, country_name, payment_method, payment_methods, amount_usd, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local, time_limit, trade_instructions, listing_terms, description, created_at, card_values, card_type, face_value'
     ).eq('status', 'ACTIVE').order('created_at', { ascending: false }).limit(200);
     if (brand)    listingsQ = listingsQ.ilike('gift_card_brand', `%${brand}%`);
     if (minPrice) listingsQ = listingsQ.gte('bitcoin_price', parseFloat(minPrice));
@@ -5661,16 +5666,16 @@ app.get('/api/listings', async (req, res) => {
       const [usersResult, walletsResult] = await Promise.all([
         Promise.race([
           supabaseAdmin.from('users').select(
-            'id, username, full_name, average_rating, total_trades, completion_rate, is_id_verified, is_email_verified, last_login, last_seen_at, total_feedback_count, positive_feedback, negative_feedback, country, bio, badge, avatar_url'
+              'id, username, full_name, average_rating, total_trades, completion_rate, is_id_verified, is_email_verified, last_login, last_seen_at, total_feedback_count, positive_feedback, negative_feedback, country, bio, badge, avatar_url'
           ).in('id', sellerIdSet),
           new Promise(resolve => setTimeout(() => resolve({ data: [] }), 10000)),
         ]),
         btcSellerIds.length > 0
-          ? Promise.race([
+            ? Promise.race([
               supabaseAdmin.from('wallets').select('user_id, balance_btc, balance_usdt').in('user_id', btcSellerIds),
               new Promise(resolve => setTimeout(() => resolve({ data: [] }), 4000)),
             ])
-          : Promise.resolve({ data: [] }),
+            : Promise.resolve({ data: [] }),
       ]);
       if (usersResult.error || !usersResult.data || usersResult.data.length === 0) {
         const stale = getCachedStale(cacheKey);
@@ -5700,8 +5705,8 @@ app.get('/api/listings', async (req, res) => {
       });
       // 1 USDT ≈ $1 — no external price lookup needed
       const balanceUsdFor = (l) => (l.asset === 'USDT')
-        ? (usdtBalMap[l.seller_id] || 0)
-        : (balMap[l.seller_id] || 0) * (parseFloat(l.bitcoin_price) || 88000);
+          ? (usdtBalMap[l.seller_id] || 0)
+          : (balMap[l.seller_id] || 0) * (parseFloat(l.bitcoin_price) || 88000);
 
       // For SELL offers: cap displayed limits to seller's actual balance
       listings = listings.map(l => {
@@ -5824,7 +5829,7 @@ app.get('/api/listings/:id', async (req, res) => {
           const posCount   = reviews.filter(r => r.rating >= 4).length;
           const negCount   = reviews.filter(r => r.rating <= 2).length;
           const avgRating  = reviews.length > 0
-            ? reviews.reduce((s, r) => s + parseFloat(r.rating || 0), 0) / reviews.length : 0;
+              ? reviews.reduce((s, r) => s + parseFloat(r.rating || 0), 0) / reviews.length : 0;
           enrichedSeller = {
             ...seller,
             total_trades:         realTrades > seller.total_trades ? realTrades : seller.total_trades,
@@ -5839,8 +5844,8 @@ app.get('/api/listings/:id', async (req, res) => {
 
     const btcPriceVal     = parseFloat(listing.bitcoin_price) || 88000;
     const effectiveMaxUsd = sellerBalanceBtc > 0
-      ? Math.min(sellerBalanceBtc * btcPriceVal, parseFloat(listing.max_limit_usd || 0) || sellerBalanceBtc * btcPriceVal)
-      : parseFloat(listing.max_limit_usd || 0);
+        ? Math.min(sellerBalanceBtc * btcPriceVal, parseFloat(listing.max_limit_usd || 0) || sellerBalanceBtc * btcPriceVal)
+        : parseFloat(listing.max_limit_usd || 0);
 
     res.json({ listing: { ...listing, users: enrichedSeller.id ? [enrichedSeller] : [], seller_balance_btc: sellerBalanceBtc, effective_max_usd: effectiveMaxUsd } });
   } catch (error) {
@@ -5863,7 +5868,7 @@ app.put('/api/listings/:id', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { margin, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local,
-            payment_method, trade_instructions, listing_terms, time_limit, status } = req.body;
+      payment_method, trade_instructions, listing_terms, time_limit, status } = req.body;
     const { data: listing, error: findError } = await supabaseAdmin.from('listings').select('seller_id, listing_type, asset').eq('id', id).single();
     if (findError || !listing) return res.status(404).json({ error: 'Listing not found' });
     if (listing.seller_id !== req.userId) return res.status(403).json({ error: 'You can only edit your own listings' });
@@ -5875,8 +5880,10 @@ app.put('/api/listings/:id', verifyToken, async (req, res) => {
       const isSellListing = ['SELL', 'SELL_BITCOIN'].includes((listing.listing_type || '').toUpperCase());
       if (isSellListing) {
         const { data: sellerWallet } = await supabaseAdmin
-          .from('wallets').select('balance_btc, balance_usdt').eq('user_id', req.userId).maybeSingle();
-        const sellerBalUsd = parseFloat(sellerWallet?.balance_btc || 0) * 88000;
+            .from('wallets').select('balance_btc, balance_usdt').eq('user_id', req.userId).maybeSingle();
+        const sellerBalUsd = listing.asset === 'USDT'
+            ? parseFloat(sellerWallet?.balance_usdt || 0) // 1 USDT ≈ $1
+            : parseFloat(sellerWallet?.balance_btc || 0) * 88000;
         if (parseFloat(max_limit_usd) > sellerBalUsd && sellerBalUsd > 0) {
           return res.status(400).json({
             error: `Maximum trade limit ($${parseFloat(max_limit_usd).toFixed(0)}) exceeds your wallet balance ($${sellerBalUsd.toFixed(0)}). Please top up or lower the maximum.`,
@@ -5926,7 +5933,7 @@ app.post('/api/listings/:id/view', optionalAuth, async (req, res) => {
     const viewerId = req.userId || null;
 
     const { data: row } = await supabaseAdmin
-      .from('listings').select('view_count, seller_id').eq('id', listingId).maybeSingle();
+        .from('listings').select('view_count, seller_id').eq('id', listingId).maybeSingle();
 
     const next = (parseInt(row?.view_count) || 0) + 1;
     await supabaseAdmin.from('listings').update({ view_count: next }).eq('id', listingId);
@@ -5939,17 +5946,17 @@ app.post('/api/listings/:id/view', optionalAuth, async (req, res) => {
       let viewerProfilePath = null;
       if (viewerId) {
         const { data: vUser } = await supabaseAdmin
-          .from('users').select('username').eq('id', viewerId).maybeSingle();
+            .from('users').select('username').eq('id', viewerId).maybeSingle();
         if (vUser?.username) {
           viewerLabel = vUser.username;
           viewerProfilePath = `/profile/${viewerId}`;
         }
       }
       await createNotification(
-        sellerId, 'offer_view',
-        '👀 Someone Viewed Your Offer',
-        `${viewerLabel} just viewed your offer`,
-        viewerProfilePath || `/listing/${listingId}`
+          sellerId, 'offer_view',
+          '👀 Someone Viewed Your Offer',
+          `${viewerLabel} just viewed your offer`,
+          viewerProfilePath || `/listing/${listingId}`
       );
     }
 
@@ -5969,15 +5976,15 @@ app.patch('/api/listings/:id/status', verifyToken, async (req, res) => {
     if (!validStatuses.includes(status)) return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
 
     const { data: listing, error: findError } = await supabaseAdmin
-      .from('listings')
-      .select('seller_id, listing_type, min_limit_usd, bitcoin_price')
-      .eq('id', id).single();
+        .from('listings')
+        .select('seller_id, listing_type, min_limit_usd, bitcoin_price')
+        .eq('id', id).single();
     if (findError || !listing) return res.status(404).json({ error: 'Listing not found' });
     if (listing.seller_id !== req.userId) return res.status(403).json({ error: 'Unauthorized' });
 
     // No balance check needed — offers are just preferences, escrow locks at trade time.
     const { data, error } = await supabaseAdmin
-      .from('listings').update({ status, updated_at: new Date().toISOString() }).eq('id', id).select().single();
+        .from('listings').update({ status, updated_at: new Date().toISOString() }).eq('id', id).select().single();
     if (error) return res.status(400).json({ error: error.message });
     bustCache();
     res.json({ success: true, listing: data });
@@ -5999,17 +6006,17 @@ app.get('/api/offers', async (req, res) => {
     const assetFilter = asset ? asset.toUpperCase() : null;
 
     let query = supabaseAdmin
-      .from('listings')
-      .select('*')
-      .eq('status', 'ACTIVE');
+        .from('listings')
+        .select('*')
+        .eq('status', 'ACTIVE');
 
     if (listingTypeFilter) query = query.eq('listing_type', listingTypeFilter);
     if (country) query = query.eq('country', country);
     if (assetFilter) query = query.eq('asset', assetFilter);
 
     const { data: listings, error } = await query
-      .order('created_at', { ascending: false })
-      .limit(parseInt(limit));
+        .order('created_at', { ascending: false })
+        .limit(parseInt(limit));
 
     if (error) throw error;
 
@@ -6018,17 +6025,17 @@ app.get('/api/offers', async (req, res) => {
     if (userIds.length === 0) { setCached(cacheKey, []); return res.json({ success: true, offers: [] }); }
 
     let { data: users, error: userError } = await supabaseAdmin
-      .from('users')
-      .select('id, username, full_name, name_display, hide_full_name, badge, country, country_name, city, total_trades, positive_feedback, negative_feedback, average_rating, avatar_url, last_seen_at, last_login, completion_rate')
-      .in('id', userIds);
+        .from('users')
+        .select('id, username, full_name, name_display, hide_full_name, badge, country, country_name, city, total_trades, positive_feedback, negative_feedback, average_rating, avatar_url, last_seen_at, last_login, completion_rate')
+        .in('id', userIds);
 
     if (userError) {
       // Retry without unmigrated columns
       console.warn('[offers] Retrying users select without optional columns:', userError.message);
       ({ data: users, error: userError } = await supabaseAdmin
-        .from('users')
-        .select('id, username, full_name, badge, country, total_trades, positive_feedback, negative_feedback, average_rating, avatar_url, last_seen_at, last_login, completion_rate')
-        .in('id', userIds));
+          .from('users')
+          .select('id, username, full_name, badge, country, total_trades, positive_feedback, negative_feedback, average_rating, avatar_url, last_seen_at, last_login, completion_rate')
+          .in('id', userIds));
       if (userError) throw userError;
     }
 
@@ -6040,15 +6047,15 @@ app.get('/api/offers', async (req, res) => {
 
     // Fetch balances for SELL offer owners so we can hide low-balance offers
     const sellSellerIds = [...new Set(
-      (listings || [])
-        .filter(l => l.listing_type === 'SELL' || l.listing_type === 'SELL_BITCOIN')
-        .map(l => l.seller_id)
+        (listings || [])
+            .filter(l => l.listing_type === 'SELL' || l.listing_type === 'SELL_BITCOIN')
+            .map(l => l.seller_id)
     )];
     let balMap = {};
     let usdtBalMap = {};
     if (sellSellerIds.length > 0) {
       const { data: walBals } = await supabaseAdmin
-        .from('wallets').select('user_id, balance_btc, balance_usdt').in('user_id', sellSellerIds);
+          .from('wallets').select('user_id, balance_btc, balance_usdt').in('user_id', sellSellerIds);
       (walBals || []).forEach(b => {
         balMap[b.user_id] = parseFloat(b.balance_btc || 0);
         usdtBalMap[b.user_id] = parseFloat(b.balance_usdt || 0);
@@ -6056,25 +6063,25 @@ app.get('/api/offers', async (req, res) => {
     }
 
     const offers = (listings || [])
-      .filter(l => {
-        // Hide SELL offers where seller has < $10 worth of the offer's asset — offer stays
-        // ACTIVE in DB and reappears automatically once they top up their wallet.
-        if (l.listing_type !== 'SELL' && l.listing_type !== 'SELL_BITCOIN') return true;
-        if ((l.asset || 'BTC') === 'USDT') {
-          return (usdtBalMap[l.seller_id] || 0) >= 10; // 1 USDT ≈ $1
-        }
-        const sellerBtc   = balMap[l.seller_id] || 0;
-        const btcPriceVal = parseFloat(l.bitcoin_price) || 88000;
-        return sellerBtc * btcPriceVal >= 10;
-      })
-      .map(l => ({
-        ...l,
-        type: (l.listing_type || '').toLowerCase(),
-        user_id: l.seller_id,
-        seller_balance_btc: balMap[l.seller_id] || undefined,
-        seller_balance_usdt: usdtBalMap[l.seller_id] || undefined,
-        users: userMap[l.seller_id] || null,
-      }));
+        .filter(l => {
+          // Hide SELL offers where seller has < $10 worth of the offer's asset — offer stays
+          // ACTIVE in DB and reappears automatically once they top up their wallet.
+          if (l.listing_type !== 'SELL' && l.listing_type !== 'SELL_BITCOIN') return true;
+          if ((l.asset || 'BTC') === 'USDT') {
+            return (usdtBalMap[l.seller_id] || 0) >= 10; // 1 USDT ≈ $1
+          }
+          const sellerBtc   = balMap[l.seller_id] || 0;
+          const btcPriceVal = parseFloat(l.bitcoin_price) || 88000;
+          return sellerBtc * btcPriceVal >= 10;
+        })
+        .map(l => ({
+          ...l,
+          type: (l.listing_type || '').toLowerCase(),
+          user_id: l.seller_id,
+          seller_balance_btc: balMap[l.seller_id] || undefined,
+          seller_balance_usdt: usdtBalMap[l.seller_id] || undefined,
+          users: userMap[l.seller_id] || null,
+        }));
 
     setCached(cacheKey, offers);
     res.json({ success: true, offers });
@@ -6089,20 +6096,20 @@ app.get('/api/offers/:id', async (req, res) => {
     const { id } = req.params;
 
     const { data: offer, error: offerError } = await supabaseAdmin
-      .from('listings')
-      .select('*')
-      .eq('id', id)
-      .single();
+        .from('listings')
+        .select('*')
+        .eq('id', id)
+        .single();
 
     if (offerError || !offer) {
       return res.status(404).json({ error: 'Offer not found' });
     }
 
     const { data: seller } = await supabaseAdmin
-      .from('users')
-      .select('id, username, badge, country, average_rating, total_trades, completion_rate, avatar_url, created_at, total_feedback_count, positive_feedback, negative_feedback, last_login, last_seen_at, is_id_verified, is_email_verified, is_phone_verified, bio')
-      .eq('id', offer.seller_id)
-      .single();
+        .from('users')
+        .select('id, username, badge, country, average_rating, total_trades, completion_rate, avatar_url, created_at, total_feedback_count, positive_feedback, negative_feedback, last_login, last_seen_at, is_id_verified, is_email_verified, is_phone_verified, bio')
+        .eq('id', offer.seller_id)
+        .single();
 
     res.json({ offer: { ...offer, type: (offer.listing_type || '').toLowerCase(), user_id: offer.seller_id, seller } });
   } catch (err) {
@@ -6117,7 +6124,7 @@ app.post('/api/offers/:id/view', optionalAuth, async (req, res) => {
     const viewerId = req.userId || null;
 
     const { data: row } = await supabaseAdmin
-      .from('listings').select('view_count, seller_id').eq('id', listingId).maybeSingle();
+        .from('listings').select('view_count, seller_id').eq('id', listingId).maybeSingle();
 
     const next = (parseInt(row?.view_count) || 0) + 1;
     await supabaseAdmin.from('listings').update({ view_count: next }).eq('id', listingId);
@@ -6130,17 +6137,17 @@ app.post('/api/offers/:id/view', optionalAuth, async (req, res) => {
       let viewerProfilePath = null;
       if (viewerId) {
         const { data: vUser } = await supabaseAdmin
-          .from('users').select('username').eq('id', viewerId).maybeSingle();
+            .from('users').select('username').eq('id', viewerId).maybeSingle();
         if (vUser?.username) {
           viewerLabel = vUser.username;
           viewerProfilePath = `/profile/${viewerId}`;
         }
       }
       await createNotification(
-        sellerId, 'offer_view',
-        '👀 Someone Viewed Your Offer',
-        `${viewerLabel} just viewed your offer`,
-        viewerProfilePath || `/listing/${listingId}`
+          sellerId, 'offer_view',
+          '👀 Someone Viewed Your Offer',
+          `${viewerLabel} just viewed your offer`,
+          viewerProfilePath || `/listing/${listingId}`
       );
     }
 
@@ -6203,14 +6210,14 @@ app.post('/api/offers', verifyToken, async (req, res) => {
 
     // Verify user has at least 1 verification
     const { data: listingUser, error: listingUserErr } = await supabaseAdmin
-      .from('users').select('is_email_verified, is_phone_verified, is_id_verified, phone')
-      .eq('id', userId).single();
+        .from('users').select('is_email_verified, is_phone_verified, is_id_verified, phone')
+        .eq('id', userId).single();
 
     let hasEmail = false, hasPhone = false, hasKyc = false;
     if (listingUserErr) {
       const { data: safeUser } = await supabaseAdmin
-        .from('users').select('is_email_verified, is_id_verified, phone')
-        .eq('id', userId).single();
+          .from('users').select('is_email_verified, is_id_verified, phone')
+          .eq('id', userId).single();
       hasEmail = !!(safeUser?.is_email_verified);
       hasKyc   = !!(safeUser?.is_id_verified);
       hasPhone = !!(safeUser?.phone);
@@ -6243,10 +6250,10 @@ app.post('/api/offers', verifyToken, async (req, res) => {
     // For SELL offers: max_limit_usd must not exceed the seller's wallet balance for the chosen asset
     if ((mappedType === 'SELL' || mappedType === 'SELL_BITCOIN') && max_limit_usd) {
       const { data: sellerWallet } = await supabaseAdmin
-        .from('wallets').select('balance_btc, balance_usdt').eq('user_id', userId).maybeSingle();
+          .from('wallets').select('balance_btc, balance_usdt').eq('user_id', userId).maybeSingle();
       const sellerBalUsd = offerAsset === 'USDT'
-        ? parseFloat(sellerWallet?.balance_usdt || 0) // 1 USDT ≈ $1
-        : parseFloat(sellerWallet?.balance_btc || 0) * 88000; // approximate BTC price for cap
+          ? parseFloat(sellerWallet?.balance_usdt || 0) // 1 USDT ≈ $1
+          : parseFloat(sellerWallet?.balance_btc || 0) * 88000; // approximate BTC price for cap
       if (parseFloat(max_limit_usd) > sellerBalUsd && sellerBalUsd > 0) {
         return res.status(400).json({
           error: `Maximum trade limit ($${parseFloat(max_limit_usd).toFixed(0)}) exceeds your wallet balance ($${sellerBalUsd.toFixed(0)}). Please top up or lower the maximum.`,
@@ -6257,15 +6264,15 @@ app.post('/api/offers', verifyToken, async (req, res) => {
     // Block duplicate active offers: same payment method + same currency + same asset + same type (skip gift cards)
     if (mappedType !== 'BUY_GIFT_CARD') {
       const { data: dupCheck2 } = await supabaseAdmin
-        .from('listings')
-        .select('id')
-        .eq('seller_id', userId)
-        .eq('payment_method', payment_method)
-        .eq('listing_type', mappedType)
-        .eq('currency', currency || 'USD')
-        .eq('asset', offerAsset)
-        .eq('status', 'ACTIVE')
-        .limit(1);
+          .from('listings')
+          .select('id')
+          .eq('seller_id', userId)
+          .eq('payment_method', payment_method)
+          .eq('listing_type', mappedType)
+          .eq('currency', currency || 'USD')
+          .eq('asset', offerAsset)
+          .eq('status', 'ACTIVE')
+          .limit(1);
       if (dupCheck2 && dupCheck2.length > 0) {
         return res.status(400).json({
           error: `You already have an active ${offerAsset} ${mappedType} offer for ${payment_method} in ${currency || 'USD'}. Edit it from your Dashboard instead.`,
@@ -6275,36 +6282,36 @@ app.post('/api/offers', verifyToken, async (req, res) => {
 
     // Create offer in listings table (single source of truth for all marketplace pages)
     const { data, error } = await supabaseAdmin
-      .from('listings')
-      .insert({
-        seller_id:           userId,
-        listing_type:        mappedType,
-        asset:               offerAsset,
-        gift_card_brand:     gift_card_brand || brandDefault,
-        status:              'ACTIVE',
-        bitcoin_price:       bitcoin_price || 88000,
-        margin:              margin || 0,
-        pricing_type:        pricing_type || 'market',
-        currency:            cur,
-        currency_symbol:     curSym,
-        country:             country || 'GH',
-        payment_method:      payment_method,
-        amount_usd:          amount_usd || min_limit_usd || 100,
-        min_limit_usd:       min_limit_usd || amount_usd || 10,
-        max_limit_usd:       max_limit_usd || amount_usd || 100000,
-        min_limit_local:     min_limit_local || 10,
-        max_limit_local:     max_limit_local || 100000,
-        time_limit:          time_limit || 30,
-        trade_instructions:  trade_instructions || description || '',
-        listing_terms:       listing_terms || '',
-        card_values:         Array.isArray(card_values) && card_values.length > 0 ? card_values.map(Number) : null,
-        card_type:           card_type || 'both',
-        face_value:          Array.isArray(card_values) && card_values[0] ? parseFloat(card_values[0]) : null,
-        gift_card_currencies: Array.isArray(gift_card_currencies) && gift_card_currencies.length > 0 ? gift_card_currencies : null,
-        created_at:          new Date().toISOString(),
-      })
-      .select()
-      .single();
+        .from('listings')
+        .insert({
+          seller_id:           userId,
+          listing_type:        mappedType,
+          asset:               offerAsset,
+          gift_card_brand:     gift_card_brand || brandDefault,
+          status:              'ACTIVE',
+          bitcoin_price:       bitcoin_price || 88000,
+          margin:              margin || 0,
+          pricing_type:        pricing_type || 'market',
+          currency:            cur,
+          currency_symbol:     curSym,
+          country:             country || 'GH',
+          payment_method:      payment_method,
+          amount_usd:          amount_usd || min_limit_usd || 100,
+          min_limit_usd:       min_limit_usd || amount_usd || 10,
+          max_limit_usd:       max_limit_usd || amount_usd || 100000,
+          min_limit_local:     min_limit_local || 10,
+          max_limit_local:     max_limit_local || 100000,
+          time_limit:          time_limit || 30,
+          trade_instructions:  trade_instructions || description || '',
+          listing_terms:       listing_terms || '',
+          card_values:         Array.isArray(card_values) && card_values.length > 0 ? card_values.map(Number) : null,
+          card_type:           card_type || 'both',
+          face_value:          Array.isArray(card_values) && card_values[0] ? parseFloat(card_values[0]) : null,
+          gift_card_currencies: Array.isArray(gift_card_currencies) && gift_card_currencies.length > 0 ? gift_card_currencies : null,
+          created_at:          new Date().toISOString(),
+        })
+        .select()
+        .single();
 
     if (error) {
       console.error('Offer creation error:', error);
@@ -6323,8 +6330,8 @@ app.post('/api/offers', verifyToken, async (req, res) => {
 app.get('/api/debug/listings', async (req, res) => {
   try {
     const { data } = await supabaseAdmin.from('listings')
-      .select('id,listing_type,gift_card_brand,margin,currency,currency_symbol,payment_method,min_limit_local,max_limit_local,min_limit_usd,max_limit_usd,time_limit,bitcoin_price,status,created_at')
-      .order('created_at', { ascending: false }).limit(10);
+        .select('id,listing_type,gift_card_brand,margin,currency,currency_symbol,payment_method,min_limit_local,max_limit_local,min_limit_usd,max_limit_usd,time_limit,bitcoin_price,status,created_at')
+        .order('created_at', { ascending: false }).limit(10);
     res.json({ count: data?.length, listings: data });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -6354,19 +6361,19 @@ app.get('/api/my-trades', verifyToken, async (req, res) => {
     const offset = (page - 1) * limit;
 
     const { data, error, count } = await supabaseAdmin.from('trades')
-      .select(
-        `id, status, trade_type, trade_ref, amount_btc, amount_usd, amount_local,
+        .select(
+            `id, status, trade_type, trade_ref, amount_btc, amount_usd, amount_local,
          local_currency, currency_symbol, payment_method, gift_card_brand,
          buyer_id, seller_id, created_at, expires_at, completed_at, cancelled_at,
          buyer_confirmed, cancel_reason,
          listing:listing_id(id, listing_type, gift_card_brand, payment_method, time_limit, currency, currency_symbol),
          buyer:buyer_id(id, username, avatar_url, badge, total_trades, completion_rate, positive_feedback, negative_feedback, last_login, last_seen_at, country),
          seller:seller_id(id, username, avatar_url, badge, total_trades, completion_rate, positive_feedback, negative_feedback, last_login, last_seen_at, country)`,
-        { count: 'exact' }
-      )
-      .or(`buyer_id.eq.${req.userId},seller_id.eq.${req.userId}`)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+            { count: 'exact' }
+        )
+        .or(`buyer_id.eq.${req.userId},seller_id.eq.${req.userId}`)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1);
 
     if (error) return res.status(400).json({ error: error.message });
     res.json({ trades: data || [], total: count || 0, page, limit });
@@ -6378,12 +6385,12 @@ app.get('/api/my-trades', verifyToken, async (req, res) => {
 app.get('/api/trades/active', verifyToken, async (req, res) => {
   try {
     const { data: trades, error } = await supabaseAdmin
-      .from('trades')
-      .select(`*, listing:listing_id(id, time_limit, payment_method, listing_type, gift_card_brand), buyer:buyer_id(id, username, badge, completion_rate, positive_feedback, negative_feedback, country, avatar_url, total_trades, average_rating), seller:seller_id(id, username, badge, completion_rate, positive_feedback, negative_feedback, country, avatar_url, total_trades, average_rating)`)
-      .or(`buyer_id.eq.${req.userId},seller_id.eq.${req.userId}`)
-      .in('status', ['CREATED', 'FUNDS_LOCKED', 'PAYMENT_SENT', 'DISPUTED'])
-      .order('created_at', { ascending: false })
-      .limit(50);
+        .from('trades')
+        .select(`*, listing:listing_id(id, time_limit, payment_method, listing_type, gift_card_brand), buyer:buyer_id(id, username, badge, completion_rate, positive_feedback, negative_feedback, country, avatar_url, total_trades, average_rating), seller:seller_id(id, username, badge, completion_rate, positive_feedback, negative_feedback, country, avatar_url, total_trades, average_rating)`)
+        .or(`buyer_id.eq.${req.userId},seller_id.eq.${req.userId}`)
+        .in('status', ['CREATED', 'FUNDS_LOCKED', 'PAYMENT_SENT', 'DISPUTED'])
+        .order('created_at', { ascending: false })
+        .limit(50);
 
     if (error) return res.status(400).json({ error: error.message });
 
@@ -6430,8 +6437,8 @@ app.get('/api/trades/:id', verifyToken, async (req, res) => {
     const timeout5s = () => new Promise(resolve => setTimeout(() => resolve({ data: null }), 5000));
     const [listingRes, buyerRes, sellerRes, reviewRes] = await Promise.allSettled([
       data.listing_id
-        ? Promise.race([supabaseAdmin.from('listings').select('*').eq('id', data.listing_id).single(), timeout5s()])
-        : Promise.resolve({ data: null }),
+          ? Promise.race([supabaseAdmin.from('listings').select('*').eq('id', data.listing_id).single(), timeout5s()])
+          : Promise.resolve({ data: null }),
       Promise.race([supabaseAdmin.from('users').select(USER_COLS).eq('id', data.buyer_id).single(), timeout5s()]),
       Promise.race([supabaseAdmin.from('users').select(USER_COLS).eq('id', data.seller_id).single(), timeout5s()]),
       Promise.race([supabaseAdmin.from('reviews').select('id').eq('trade_id', req.params.id).eq('reviewer_id', req.userId).maybeSingle(), timeout5s()]),
@@ -6537,8 +6544,8 @@ app.post('/api/trades', verifyToken, requireEmailVerified, async (req, res) => {
     const frontendRateLocal   = parseFloat(req.body.sellerRateLocal) || 0; // rate buyer saw on listing page
     const frontendRateUsd     = parseFloat(req.body.sellerRateUsd)   || 0;
     const tradeCur      = (currency && currency !== 'USD') ? currency
-                        : (listing.currency && listing.currency !== 'USD') ? listing.currency
-                        : currency || listing.currency || null;
+        : (listing.currency && listing.currency !== 'USD') ? listing.currency
+            : currency || listing.currency || null;
     const tradeSym      = currencySymbol || listing.currency_symbol || (tradeCur ? null : null);
 
     let tradeAmountUsd, verifiedAmountBtc;
@@ -6572,15 +6579,15 @@ app.post('/api/trades', verifyToken, requireEmailVerified, async (req, res) => {
       const tradeCurRate  = (tradeCur && fxRates[tradeCur]) ? fxRates[tradeCur] : 1;
 
       tradeAmountUsd = tradeLocalAmt > 0
-        ? parseFloat((tradeLocalAmt / (frontendRateUsd > 0 ? (frontendRateLocal / frontendRateUsd) : tradeCurRate)).toFixed(2))
-        : parseFloat(listing.amount_usd || 0);
+          ? parseFloat((tradeLocalAmt / (frontendRateUsd > 0 ? (frontendRateLocal / frontendRateUsd) : tradeCurRate)).toFixed(2))
+          : parseFloat(listing.amount_usd || 0);
 
       verifiedAmountBtc = parsedAmountBtc;
       if (tradeLocalAmt > 0 && !listingTypeUpper.includes('GIFT_CARD')) {
         const listingMargin        = parseFloat(listing.margin || 0);
         const backendSellerRateUSD = (listing.pricing_type === 'fixed' && parseFloat(listing.bitcoin_price || 0) > 100)
-          ? parseFloat(listing.bitcoin_price)
-          : marketRateUSD * (1 + listingMargin / 100);
+            ? parseFloat(listing.bitcoin_price)
+            : marketRateUSD * (1 + listingMargin / 100);
         const backendSellerRateLocal = backendSellerRateUSD * tradeCurRate;
 
         let finalSellerRateLocal = backendSellerRateLocal;
@@ -6604,28 +6611,28 @@ app.post('/api/trades', verifyToken, requireEmailVerified, async (req, res) => {
     // Pre-check: ensure BTC provider has enough balance before creating the trade.
     // wallets is the single source of truth — read only from there.
     const { data: providerWallet } = await supabaseAdmin
-      .from('wallets').select('balance_btc').eq('user_id', btcProviderId).maybeSingle();
+        .from('wallets').select('balance_btc').eq('user_id', btcProviderId).maybeSingle();
     const availableBtc = parseFloat(providerWallet?.balance_btc || 0);
     if (availableBtc < verifiedAmountBtc) {
       const isOwnBalance = btcProviderId === req.userId;
       // Auto-pause the offer if the balance problem is on the offer creator's side
       if (!isOwnBalance) {
         supabaseAdmin.from('listings')
-          .update({ status: 'PAUSED', updated_at: new Date().toISOString() })
-          .eq('id', listingId)
-          .then(() => {}).catch(() => {});
+            .update({ status: 'PAUSED', updated_at: new Date().toISOString() })
+            .eq('id', listingId)
+            .then(() => {}).catch(() => {});
       }
       const availableUsd = (availableBtc * (verifiedAmountBtc > 0 ? (tradeAmountUsd / verifiedAmountBtc) : 88000)).toFixed(2);
       const msg = isOwnBalance
-        ? `You don't have enough Bitcoin in your PRAQEN wallet to open this trade. You need ${verifiedAmountBtc.toFixed(6)} BTC. Please top up your wallet first.`
-        : `This seller doesn't have enough Bitcoin to complete this trade right now. Their offer has been paused automatically. Please choose a different offer.`;
+          ? `You don't have enough Bitcoin in your PRAQEN wallet to open this trade. You need ${verifiedAmountBtc.toFixed(6)} BTC. Please top up your wallet first.`
+          : `This seller doesn't have enough Bitcoin to complete this trade right now. Their offer has been paused automatically. Please choose a different offer.`;
       return res.status(400).json({ error: msg });
     }
 
     // Large trades ($10k+) require KYC to protect the platform
     if (tradeAmountUsd >= 10000) {
       const { data: bigTrader } = await supabaseAdmin
-        .from('users').select('is_id_verified').eq('id', req.userId).single();
+          .from('users').select('is_id_verified').eq('id', req.userId).single();
       if (!bigTrader?.is_id_verified) {
         return res.status(403).json({
           error: 'Trades of $10,000 or more require ID verification. Please complete KYC in your profile.',
@@ -6660,24 +6667,24 @@ app.post('/api/trades', verifyToken, requireEmailVerified, async (req, res) => {
       const sellerName = sellerRes.data?.username || 'Seller';
       const fmtN       = n => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(n || 0);
       const localDisp  = tradeLocalAmt > 0 && tradeCur
-        ? `${tradeSym || ''}${fmtN(tradeLocalAmt)} ${tradeCur}`
-        : `$${fmtN(tradeAmountUsd)} USD`;
+          ? `${tradeSym || ''}${fmtN(tradeLocalAmt)} ${tradeCur}`
+          : `$${fmtN(tradeAmountUsd)} USD`;
       const pmDisp     = paymentMethod || listing.payment_method || 'Mobile Money';
       const isGiftCardListing = (listing.listing_type || '').toUpperCase() === 'BUY_GIFT_CARD';
       const assetLabel = isGiftCardListing && listing.gift_card_brand
-        ? `${listing.gift_card_brand} Gift Card` : 'Bitcoin';
+          ? `${listing.gift_card_brand} Gift Card` : 'Bitcoin';
       const btcDisp    = `₿${parseFloat(trade[0].amount_btc || 0).toFixed(8)}`;
 
       const tradeUUID = trade[0].id;
       await Promise.allSettled([
         createNotification(sellerId, 'trade', '💰 New Trade Request',
-          `${buyerName} wants to buy ${assetLabel} · ${btcDisp} · ${localDisp} via ${pmDisp}`,
-          `/trade/${tradeUUID}`,
-          { actor_id: buyerId, direction: 'sell', trade_id: tradeUUID, payment_method: pmDisp }),
+            `${buyerName} wants to buy ${assetLabel} · ${btcDisp} · ${localDisp} via ${pmDisp}`,
+            `/trade/${tradeUUID}`,
+            { actor_id: buyerId, direction: 'sell', trade_id: tradeUUID, payment_method: pmDisp }),
         createNotification(buyerId, 'trade', '🔒 Trade Started',
-          `Your trade with ${sellerName} is now open · ${btcDisp} · ${localDisp} via ${pmDisp}`,
-          `/trade/${tradeUUID}`,
-          { actor_id: sellerId, direction: 'buy', trade_id: tradeUUID, payment_method: pmDisp }),
+            `Your trade with ${sellerName} is now open · ${btcDisp} · ${localDisp} via ${pmDisp}`,
+            `/trade/${tradeUUID}`,
+            { actor_id: sellerId, direction: 'buy', trade_id: tradeUUID, payment_method: pmDisp }),
         sendTradeAlert(sellerId, trade[0], 'new_trade').catch(() => {}),
         sendTradeAlert(buyerId,  trade[0], 'new_trade').catch(() => {}),
         notifyUserSMS(sellerId, `PRAQEN: New trade request — ${btcDisp} (${localDisp}) via ${pmDisp}. Open the app to respond.`).catch(() => {}),
@@ -6736,7 +6743,7 @@ app.post('/api/trades', verifyToken, requireEmailVerified, async (req, res) => {
 app.post('/api/trades/:id/mark-paid', tradeLimiter, verifyToken, async (req, res) => {
   try {
     const { data: trade, error: fetchError } = await supabaseAdmin
-      .from('trades').select('*').eq('id', req.params.id).single();
+        .from('trades').select('*').eq('id', req.params.id).single();
     if (fetchError || !trade) return res.status(404).json({ error: 'Trade not found' });
 
     // Detect gift card trade from listing_type (authoritative — never use gift_card_brand alone)
@@ -6744,14 +6751,14 @@ app.post('/api/trades/:id/mark-paid', tradeLimiter, verifyToken, async (req, res
     let listingCreatorId = '';
     if (trade.listing_id) {
       const { data: listing } = await supabaseAdmin
-        .from('listings').select('listing_type, seller_id').eq('id', trade.listing_id).single();
+          .from('listings').select('listing_type, seller_id').eq('id', trade.listing_id).single();
       listingType      = listing?.listing_type  || '';
       listingCreatorId = listing?.seller_id     || '';
     }
     const isGiftCardTrade = listingType.toUpperCase().includes('GIFT_CARD');
 
     const isParticipant    = String(trade.buyer_id)  === String(req.userId) ||
-                             String(trade.seller_id) === String(req.userId);
+        String(trade.seller_id) === String(req.userId);
     const isListingCreator = listingCreatorId && String(listingCreatorId) === String(req.userId);
 
     console.log(`[mark-paid] trade=${req.params.id.slice(0,8)} isGiftCard=${isGiftCardTrade} buyer=${String(trade.buyer_id).slice(0,8)} seller=${String(trade.seller_id).slice(0,8)} reqUser=${String(req.userId).slice(0,8)}`);
@@ -6778,10 +6785,10 @@ app.post('/api/trades/:id/mark-paid', tradeLimiter, verifyToken, async (req, res
     // Prevents a race where auto-cancel fires between our status check above and this write.
     // expires_at is cleared so no cron job or timer can ever expire a paid trade.
     const { data, error } = await supabaseAdmin.from('trades')
-      .update({ status: 'PAYMENT_SENT', buyer_confirmed: true, buyer_confirmed_at: new Date(), expires_at: null })
-      .eq('id', req.params.id)
-      .in('status', allowedStatuses)
-      .select().single();
+        .update({ status: 'PAYMENT_SENT', buyer_confirmed: true, buyer_confirmed_at: new Date(), expires_at: null })
+        .eq('id', req.params.id)
+        .in('status', allowedStatuses)
+        .select().single();
     if (!data) return res.status(409).json({ error: 'Trade status changed before payment could be confirmed. Please refresh and try again.' });
     if (error) return res.status(400).json({ error: error.message });
 
@@ -6801,16 +6808,16 @@ app.post('/api/trades/:id/mark-paid', tradeLimiter, verifyToken, async (req, res
     setImmediate(async () => {
       try {
         const notifyMsg = isGiftCardTrade
-          ? `${actorName} sent the gift card code · Verify and release Bitcoin`
-          : `${actorName} sent ${paidDisp} via ${paidPM} · Verify and release Bitcoin`;
+            ? `${actorName} sent the gift card code · Verify and release Bitcoin`
+            : `${actorName} sent ${paidDisp} via ${paidPM} · Verify and release Bitcoin`;
         await createNotification(notifyId, 'payment', '💳 Payment Sent', notifyMsg, `/trade/${req.params.id}`);
         sendTradeAlert(notifyId, trade, 'payment_sent').catch(() => {});
         // Email only the party who needs to act next (seller for BTC trade, buyer for gift card)
         const { data: notifyEmailUser } = await supabaseAdmin
-          .from('users').select('id, email, username').eq('id', notifyId).single();
+            .from('users').select('id, email, username').eq('id', notifyId).single();
         if (notifyEmailUser?.email)
           emailService.sendPaymentSentEmail(notifyEmailUser, trade)
-            .catch(e => console.error('[mark-paid] notify email:', e.message));
+              .catch(e => console.error('[mark-paid] notify email:', e.message));
       } catch (e) { console.error('[mark-paid] Background notify failed:', e.message); }
     });
   } catch (error) {
@@ -6844,17 +6851,17 @@ app.post('/api/trades/:id/release', tradeLimiter, verifyToken, async (req, res) 
           // Welcome bonus: buyer at step 2 → step 3, credit $2 in BTC
           try {
             const { data: bonusBuyer } = await supabaseAdmin.from('users')
-              .select('id, bonus_step, bonus_expires_at')
-              .eq('id', releasedTrade.buyer_id).single();
+                .select('id, bonus_step, bonus_expires_at')
+                .eq('id', releasedTrade.buyer_id).single();
             if (bonusBuyer?.bonus_step === 2 && bonusBuyer?.bonus_expires_at &&
                 new Date(bonusBuyer.bonus_expires_at) > new Date()) {
               const btcPx = await getCurrentBTCPrice();
               const bonusBtc = parseFloat((2 / btcPx).toFixed(8));
               const { data: wal } = await supabaseAdmin.from('wallets')
-                .select('balance_btc').eq('user_id', releasedTrade.buyer_id).maybeSingle();
+                  .select('balance_btc').eq('user_id', releasedTrade.buyer_id).maybeSingle();
               const newBal = parseFloat((parseFloat(wal?.balance_btc || 0) + bonusBtc).toFixed(8));
               await supabaseAdmin.from('wallets').update({ balance_btc: newBal, updated_at: new Date().toISOString() })
-                .eq('user_id', releasedTrade.buyer_id);
+                  .eq('user_id', releasedTrade.buyer_id);
               await supabaseAdmin.from('users').update({
                 bonus_step: 3, bonus_unlocked_at: new Date().toISOString(),
               }).eq('id', releasedTrade.buyer_id);
@@ -6862,11 +6869,11 @@ app.post('/api/trades/:id/release', tradeLimiter, verifyToken, async (req, res) 
             }
           } catch (e) { console.error('[bonus] Credit failed:', e.message); }
           payReferralCommissions(
-            releasedTrade.id,
-            releasedTrade.buyer_id,
-            releasedTrade.seller_id,
-            releasedTrade.amount_btc,
-            releasedTrade.amount_usd
+              releasedTrade.id,
+              releasedTrade.buyer_id,
+              releasedTrade.seller_id,
+              releasedTrade.amount_btc,
+              releasedTrade.amount_usd
           ).catch(() => {});
           sendTradeAlert(releasedTrade.buyer_id, releasedTrade, 'btc_released').catch(() => {});
           // Fetch buyer and seller with emails, then send role-specific completion emails in parallel
@@ -6878,10 +6885,10 @@ app.post('/api/trades/:id/release', tradeLimiter, verifyToken, async (req, res) 
           const sellerRelUser = sellerRel.value?.data;
           if (buyerRelUser?.email)
             emailService.sendTradeConfirmationEmail(buyerRelUser,  releasedTrade, 'buyer')
-              .catch(e => console.error('[release] buyer email:', e.message));
+                .catch(e => console.error('[release] buyer email:', e.message));
           if (sellerRelUser?.email)
             emailService.sendTradeConfirmationEmail(sellerRelUser, releasedTrade, 'seller')
-              .catch(e => console.error('[release] seller email:', e.message));
+                .catch(e => console.error('[release] seller email:', e.message));
           notifyUserSMS(releasedTrade.buyer_id,  `PRAQEN: Trade complete! ₿${parseFloat(releasedTrade.amount_btc || 0).toFixed(8)} has been released to your wallet.`).catch(() => {});
           notifyUserSMS(releasedTrade.seller_id, `PRAQEN: Trade complete! Payment confirmed and Bitcoin released successfully.`).catch(() => {});
         } catch (e) { console.error('[release] Background notify failed:', e.message); }
@@ -6959,10 +6966,10 @@ app.post('/api/trades/:id/cancel', tradeLimiter, verifyToken, async (req, res) =
     setImmediate(async () => {
       try {
         await createNotification(otherId, 'cancelled', '❌ Trade Cancelled', cancelMsg, `/trade/${req.params.id}`,
-          { trade_id: req.params.id, direction: req.userId === trade.buyer_id ? 'sell' : 'buy', actor_id: req.userId });
+            { trade_id: req.params.id, direction: req.userId === trade.buyer_id ? 'sell' : 'buy', actor_id: req.userId });
         await createNotification(req.userId, 'cancelled', '❌ Trade Cancelled',
-          `You cancelled the trade · ${cDisp} via ${cPM}`, `/trade/${req.params.id}`,
-          { trade_id: req.params.id, direction: req.userId === trade.buyer_id ? 'buy' : 'sell', actor_id: otherId });
+            `You cancelled the trade · ${cDisp} via ${cPM}`, `/trade/${req.params.id}`,
+            { trade_id: req.params.id, direction: req.userId === trade.buyer_id ? 'buy' : 'sell', actor_id: otherId });
         sendTradeAlert([trade.buyer_id, trade.seller_id].filter(Boolean), trade, 'trade_cancelled').catch(() => {});
         // Email both parties about the cancellation
         const [buyerCancel, sellerCancel] = await Promise.allSettled([
@@ -6973,10 +6980,10 @@ app.post('/api/trades/:id/cancel', tradeLimiter, verifyToken, async (req, res) =
         const sellerCancelUser = sellerCancel.value?.data;
         if (buyerCancelUser?.email)
           emailService.sendTradeCancelledEmail(buyerCancelUser,  trade, reason)
-            .catch(e => console.error('[cancel] buyer email:', e.message));
+              .catch(e => console.error('[cancel] buyer email:', e.message));
         if (sellerCancelUser?.email)
           emailService.sendTradeCancelledEmail(sellerCancelUser, trade, reason)
-            .catch(e => console.error('[cancel] seller email:', e.message));
+              .catch(e => console.error('[cancel] seller email:', e.message));
         notifyUserSMS(trade.buyer_id,  `PRAQEN: Your trade was cancelled${reason ? ` — ${reason}` : ''}. Any locked BTC has been refunded.`).catch(() => {});
         notifyUserSMS(trade.seller_id, `PRAQEN: Your trade was cancelled${reason ? ` — ${reason}` : ''}. Any locked BTC has been refunded.`).catch(() => {});
       } catch (e) { console.error('[cancel] Background notify failed:', e.message); }
@@ -7054,20 +7061,20 @@ app.post('/api/messages', verifyToken, async (req, res) => {
           const preview    = message.length > 60 ? message.slice(0, 60) + '…' : message;
           const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
           const { data: recent } = await supabaseAdmin
-            .from('notifications')
-            .select('id')
-            .eq('user_id', recipientId)
-            .eq('type', 'message')
-            .eq('action', `/trade/${tradeId}`)
-            .gte('created_at', fiveMinAgo)
-            .maybeSingle();
+              .from('notifications')
+              .select('id')
+              .eq('user_id', recipientId)
+              .eq('type', 'message')
+              .eq('action', `/trade/${tradeId}`)
+              .gte('created_at', fiveMinAgo)
+              .maybeSingle();
           if (!recent) {
             await createNotification(
-              recipientId,
-              'message',
-              `💬 New Message in Trade #${tradeRef}`,
-              `${senderName}: ${preview}`,
-              `/trade/${tradeId}`
+                recipientId,
+                'message',
+                `💬 New Message in Trade #${tradeRef}`,
+                `${senderName}: ${preview}`,
+                `/trade/${tradeId}`
             );
           }
         } catch (e) {
@@ -7097,7 +7104,7 @@ app.post('/api/trades/:id/upload-image', verifyToken, async (req, res) => {
     const { image, type } = req.body;
     if (!image) return res.status(400).json({ error: 'No image provided' });
     const { data, error } = await supabaseAdmin.from('trade_images')
-      .insert({ trade_id: req.params.id, user_id: req.userId, image_url: image, image_type: type || 'proof', created_at: new Date() }).select();
+        .insert({ trade_id: req.params.id, user_id: req.userId, image_url: image, image_type: type || 'proof', created_at: new Date() }).select();
     if (error) return res.json({ success: true });
     res.json({ success: true, image: data[0] });
   } catch { res.json({ success: true }); }
@@ -7123,7 +7130,7 @@ app.post('/api/trades/:id/typing', verifyToken, async (req, res) => {
 app.get('/api/trades/:id/typing', verifyToken, async (req, res) => {
   const now = Date.now();
   const isTyping = Object.entries(typingState).some(
-    ([k, v]) => k.startsWith(req.params.id + ':') && !k.endsWith(':' + req.userId) && v > now
+      ([k, v]) => k.startsWith(req.params.id + ':') && !k.endsWith(':' + req.userId) && v > now
   );
   res.json({ isTyping });
 });
@@ -7146,14 +7153,14 @@ app.post('/api/trades/:id/dispute', tradeLimiter, verifyToken, async (req, res) 
     // it later (POST /api/trades/:id/cancel); the other side can't unilaterally
     // cancel their way out of a dispute filed against them.
     const { data, error } = await supabaseAdmin.from('trades')
-      .update({
-        status: 'DISPUTED',
-        disputed_at: new Date(),
-        disputed_by: req.userId,
-        dispute_reason: reason || 'User opened a dispute',
-        expires_at: null,
-      })
-      .eq('id', req.params.id).select().single();
+        .update({
+          status: 'DISPUTED',
+          disputed_at: new Date(),
+          disputed_by: req.userId,
+          dispute_reason: reason || 'User opened a dispute',
+          expires_at: null,
+        })
+        .eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
     res.json({ success: true, trade: data });
 
@@ -7201,7 +7208,7 @@ const DISPUTE_SLA_HOURS = 48;      // hours of inactivity before admin override 
 
 async function hasSignedOath(userId) {
   const { data } = await supabaseAdmin.from('moderator_oaths')
-    .select('id').eq('user_id', userId).eq('oath_version', CURRENT_OATH_VERSION).maybeSingle();
+      .select('id').eq('user_id', userId).eq('oath_version', CURRENT_OATH_VERSION).maybeSingle();
   return !!data;
 }
 
@@ -7232,8 +7239,8 @@ app.post('/api/team/oath/sign', verifyToken, async (req, res) => {
     if (updateErr) return res.status(400).json({ error: updateErr.message });
 
     const { error } = await supabaseAdmin.from('moderator_oaths')
-      .upsert({ user_id: req.userId, oath_version: CURRENT_OATH_VERSION, signed_at: new Date() },
-        { onConflict: 'user_id,oath_version', ignoreDuplicates: true });
+        .upsert({ user_id: req.userId, oath_version: CURRENT_OATH_VERSION, signed_at: new Date() },
+            { onConflict: 'user_id,oath_version', ignoreDuplicates: true });
     if (error) return res.status(400).json({ error: error.message });
     res.json({ success: true, signed: true, version: CURRENT_OATH_VERSION, full_name, email });
   } catch (error) { res.status(500).json({ error: error.message }); }
@@ -7256,22 +7263,22 @@ app.get('/api/admin/team-activity', verifyToken, async (req, res) => {
     if (!isFullAdmin) return res.status(403).json({ error: 'Admins only' });
 
     const { data: mods, error } = await supabaseAdmin.from('users')
-      .select('id, username, full_name, email, is_admin, is_moderator, last_login, last_seen_at, created_at')
-      .or('is_moderator.eq.true,is_admin.eq.true')
-      .order('last_seen_at', { ascending: false, nullsFirst: false });
+        .select('id, username, full_name, email, is_admin, is_moderator, last_login, last_seen_at, created_at')
+        .or('is_moderator.eq.true,is_admin.eq.true')
+        .order('last_seen_at', { ascending: false, nullsFirst: false });
     if (error) return res.status(400).json({ error: error.message });
 
     const ids = (mods || []).map(m => m.id);
     const { data: oaths } = ids.length
-      ? await supabaseAdmin.from('moderator_oaths').select('user_id, signed_at').in('user_id', ids).eq('oath_version', CURRENT_OATH_VERSION)
-      : { data: [] };
+        ? await supabaseAdmin.from('moderator_oaths').select('user_id, signed_at').in('user_id', ids).eq('oath_version', CURRENT_OATH_VERSION)
+        : { data: [] };
     const oathByUser = {};
     for (const o of oaths || []) oathByUser[o.user_id] = o;
 
     // Votes cast + overrides made — a quick activity signal alongside login times.
     const { data: votes } = ids.length
-      ? await supabaseAdmin.from('dispute_votes').select('moderator_id').in('moderator_id', ids)
-      : { data: [] };
+        ? await supabaseAdmin.from('dispute_votes').select('moderator_id').in('moderator_id', ids)
+        : { data: [] };
     const voteCounts = {};
     for (const v of votes || []) voteCounts[v.moderator_id] = (voteCounts[v.moderator_id] || 0) + 1;
 
@@ -7298,10 +7305,10 @@ app.get('/api/admin/users/:userId/dispute-history', verifyToken, async (req, res
 
     const targetId = req.params.userId;
     const { data: trades, error } = await supabaseAdmin.from('trades')
-      .select('id, buyer_id, seller_id, dispute_resolution, dispute_reason, disputed_at, resolved_at, resolved_via')
-      .or(`buyer_id.eq.${targetId},seller_id.eq.${targetId}`)
-      .not('dispute_resolution', 'is', null)
-      .order('resolved_at', { ascending: false });
+        .select('id, buyer_id, seller_id, dispute_resolution, dispute_reason, disputed_at, resolved_at, resolved_via')
+        .or(`buyer_id.eq.${targetId},seller_id.eq.${targetId}`)
+        .not('dispute_resolution', 'is', null)
+        .order('resolved_at', { ascending: false });
     if (error) return res.status(400).json({ error: error.message });
 
     let wins = 0, losses = 0, neutral = 0;
@@ -7326,10 +7333,10 @@ app.get('/api/admin/users/:userId/dispute-history', verifyToken, async (req, res
 // their own vote on that same trade (or if they're a full admin).
 async function attachVoteState(trade, requesterId, isFullAdmin) {
   const { data: votes } = await supabaseAdmin.from('dispute_votes')
-    .select('id, moderator_id, vote, reasoning, created_at, moderator:moderator_id(username, full_name, email)')
-    .eq('trade_id', trade.id);
+      .select('id, moderator_id, vote, reasoning, created_at, moderator:moderator_id(username, full_name, email)')
+      .eq('trade_id', trade.id);
   const { count: commentCount } = await supabaseAdmin.from('dispute_comments')
-    .select('id', { count: 'exact', head: true }).eq('trade_id', trade.id);
+      .select('id', { count: 'exact', head: true }).eq('trade_id', trade.id);
 
   const iVoted = (votes || []).some(v => v.moderator_id === requesterId);
   const myVote = (votes || []).find(v => v.moderator_id === requesterId)?.vote || null;
@@ -7384,11 +7391,11 @@ app.get('/api/admin/disputes', verifyToken, async (req, res) => {
     const resolvedIds = resolvedTrades.map(t => t.id);
     const [{ data: resolvedVotes }, { data: resolvers }] = await Promise.all([
       resolvedIds.length
-        ? supabaseAdmin.from('dispute_votes').select('trade_id, vote, moderator:moderator_id(full_name, email)').in('trade_id', resolvedIds)
-        : Promise.resolve({ data: [] }),
+          ? supabaseAdmin.from('dispute_votes').select('trade_id, vote, moderator:moderator_id(full_name, email)').in('trade_id', resolvedIds)
+          : Promise.resolve({ data: [] }),
       resolvedIds.length
-        ? supabaseAdmin.from('users').select('id, full_name, email').in('id', [...new Set(resolvedTrades.map(t => t.resolved_by).filter(Boolean))])
-        : Promise.resolve({ data: [] }),
+          ? supabaseAdmin.from('users').select('id, full_name, email').in('id', [...new Set(resolvedTrades.map(t => t.resolved_by).filter(Boolean))])
+          : Promise.resolve({ data: [] }),
     ]);
     const votesByTrade = {};
     for (const v of resolvedVotes || []) (votesByTrade[v.trade_id] ||= []).push(v);
@@ -7456,7 +7463,7 @@ app.post('/api/admin/disputes/:id/resolve', verifyToken, async (req, res) => {
     if (trade.dispute_resolution) return res.status(400).json({ error: 'This dispute has already been resolved.' });
 
     const { error: voteErr } = await supabaseAdmin.from('dispute_votes')
-      .upsert({ trade_id: trade.id, moderator_id: req.userId, vote: resolution, reasoning: notes || null, created_at: new Date() }, { onConflict: 'trade_id,moderator_id' });
+        .upsert({ trade_id: trade.id, moderator_id: req.userId, vote: resolution, reasoning: notes || null, created_at: new Date() }, { onConflict: 'trade_id,moderator_id' });
     if (voteErr) return res.status(400).json({ error: voteErr.message });
 
     const { data: allVotes } = await supabaseAdmin.from('dispute_votes').select('moderator_id, vote').eq('trade_id', trade.id);
@@ -7588,8 +7595,8 @@ app.get('/api/admin/disputes/:id/comments', verifyToken, async (req, res) => {
     const isAdmin = userData?.is_admin || userData?.is_moderator || userData?.email === ADMIN_EMAIL;
     if (!isAdmin) return res.status(403).json({ error: 'Access denied' });
     const { data, error } = await supabaseAdmin.from('dispute_comments')
-      .select('id, trade_id, parent_id, message, is_admin_override, created_at, author:author_id(username, full_name, email)')
-      .eq('trade_id', req.params.id).order('created_at', { ascending: true });
+        .select('id, trade_id, parent_id, message, is_admin_override, created_at, author:author_id(username, full_name, email)')
+        .eq('trade_id', req.params.id).order('created_at', { ascending: true });
     if (error) return res.status(400).json({ error: error.message });
     res.json({ comments: data || [] });
   } catch (error) { res.status(500).json({ error: error.message }); }
@@ -7605,8 +7612,8 @@ app.post('/api/admin/disputes/:id/comments', verifyToken, async (req, res) => {
     if (!(await hasSignedOath(req.userId))) return res.status(403).json({ error: 'Sign the Moderator Oath of Trust first — visit /moderator.' });
 
     const { data, error } = await supabaseAdmin.from('dispute_comments')
-      .insert({ trade_id: req.params.id, author_id: req.userId, parent_id: parent_id || null, message: message.trim() })
-      .select('id, trade_id, parent_id, message, is_admin_override, created_at, author:author_id(username, full_name, email)').single();
+        .insert({ trade_id: req.params.id, author_id: req.userId, parent_id: parent_id || null, message: message.trim() })
+        .select('id, trade_id, parent_id, message, is_admin_override, created_at, author:author_id(username, full_name, email)').single();
     if (error) return res.status(400).json({ error: error.message });
 
     const ids = (await getModeratorUserIds()).filter(id => id !== req.userId);
@@ -7665,9 +7672,9 @@ app.post('/api/trades/:id/feedback', verifyToken, async (req, res) => {
       // RPC not yet deployed — fall back to safe increment
       console.warn('[feedback] praqen_add_feedback RPC not found, using fallback:', rpcErr.message);
       const { data: recipientUser } = await supabaseAdmin
-        .from('users')
-        .select('positive_feedback, negative_feedback, total_feedback_count, average_rating')
-        .eq('id', toUserId).single();
+          .from('users')
+          .select('positive_feedback, negative_feedback, total_feedback_count, average_rating')
+          .eq('id', toUserId).single();
       const prevPos   = parseInt(recipientUser?.positive_feedback    || 0);
       const prevNeg   = parseInt(recipientUser?.negative_feedback     || 0);
       const prevCount = parseInt(recipientUser?.total_feedback_count  || 0);
@@ -7703,7 +7710,7 @@ app.get('/api/affiliate/stats', verifyToken, async (req, res) => {
     const userData  = userResult.data || {};
     // Use referral_earnings_btc from users table as authoritative total (updated on each trade)
     const totalEarnings = parseFloat(userData.referral_earnings_btc || 0) ||
-                          earnings.reduce((sum, e) => sum + parseFloat(e.commission_btc || 0), 0);
+        earnings.reduce((sum, e) => sum + parseFloat(e.commission_btc || 0), 0);
     res.json({
       success: true,
       stats: {
@@ -7723,8 +7730,8 @@ app.get('/api/affiliate/stats', verifyToken, async (req, res) => {
 app.get('/api/affiliate/earnings', verifyToken, async (req, res) => {
   try {
     const { data: earnings, error } = await supabaseAdmin.from('affiliate_earnings')
-      .select(`id, commission_btc, trade_amount_btc, trade_amount_usd, commission_rate, status, created_at, trade_id, referred_user_id, referrer:referrer_id(id, username), referred:referred_user_id(id, username)`)
-      .eq('referrer_id', req.userId).order('created_at', { ascending: false });
+        .select(`id, commission_btc, trade_amount_btc, trade_amount_usd, commission_rate, status, created_at, trade_id, referred_user_id, referrer:referrer_id(id, username), referred:referred_user_id(id, username)`)
+        .eq('referrer_id', req.userId).order('created_at', { ascending: false });
     if (error) throw error;
     res.json({ success: true, earnings: earnings || [] });
   } catch (error) {
@@ -7741,27 +7748,27 @@ app.get('/api/referral/earnings', verifyToken, async (req, res) => {
     // Also fetch a plain COUNT separately — this is the authoritative Ref. Trades number.
     const [earningsResult, userResult, signupsResult, countResult] = await Promise.allSettled([
       supabaseAdmin
-        .from('affiliate_earnings')
-        .select('id, commission_btc, trade_amount_btc, trade_amount_usd, commission_rate, status, created_at, trade_id, referred_user_id')
-        .eq('referrer_id', userId)
-        .order('created_at', { ascending: false }),
+          .from('affiliate_earnings')
+          .select('id, commission_btc, trade_amount_btc, trade_amount_usd, commission_rate, status, created_at, trade_id, referred_user_id')
+          .eq('referrer_id', userId)
+          .order('created_at', { ascending: false }),
 
       supabaseAdmin
-        .from('users')
-        .select('total_referrals, referral_earnings_btc')
-        .eq('id', userId)
-        .single(),
+          .from('users')
+          .select('total_referrals, referral_earnings_btc')
+          .eq('id', userId)
+          .single(),
 
       supabaseAdmin
-        .from('users')
-        .select('id, username, avatar_url, created_at, total_trades, badge')
-        .eq('referred_by', userId)
-        .order('created_at', { ascending: false }),
+          .from('users')
+          .select('id, username, avatar_url, created_at, total_trades, badge')
+          .eq('referred_by', userId)
+          .order('created_at', { ascending: false }),
 
       supabaseAdmin
-        .from('affiliate_earnings')
-        .select('*', { count: 'exact', head: true })
-        .eq('referrer_id', userId),
+          .from('affiliate_earnings')
+          .select('*', { count: 'exact', head: true })
+          .eq('referrer_id', userId),
     ]);
 
     const rawEarnings  = (earningsResult.status === 'fulfilled' ? earningsResult.value.data  : null) || [];
@@ -7775,9 +7782,9 @@ app.get('/api/referral/earnings', verifyToken, async (req, res) => {
     let referredUserMap = {};
     if (uniqueRefIds.length > 0) {
       const { data: refUsers } = await supabaseAdmin
-        .from('users')
-        .select('id, username, avatar_url, created_at, total_trades, badge')
-        .in('id', uniqueRefIds);
+          .from('users')
+          .select('id, username, avatar_url, created_at, total_trades, badge')
+          .in('id', uniqueRefIds);
       (refUsers || []).forEach(u => { referredUserMap[u.id] = u; });
     }
 
@@ -7846,8 +7853,8 @@ app.get('/api/referral/leaderboard', async (req, res) => {
   try {
     // Step 1: earnings from affiliate_earnings (authoritative for BTC earned)
     const { data: earningsRows } = await supabaseAdmin
-      .from('affiliate_earnings')
-      .select('referrer_id, commission_btc');
+        .from('affiliate_earnings')
+        .select('referrer_id, commission_btc');
 
     const earningsMap    = {};
     const allReferrerIds = new Set();
@@ -7860,9 +7867,9 @@ app.get('/api/referral/leaderboard', async (req, res) => {
     // Step 2: fetch ALL referred users with their referrer + trade count
     // This lets us count BOTH signups AND actual trades in one pass
     const { data: signupRows } = await supabaseAdmin
-      .from('users')
-      .select('id, referred_by, total_trades')
-      .not('referred_by', 'is', null);
+        .from('users')
+        .select('id, referred_by, total_trades')
+        .not('referred_by', 'is', null);
 
     const signupCountMap = {}; // referrerId -> signup count (from referred_by)
     const tradeCountMap  = {}; // referrerId -> sum of all trades by their referrals
@@ -7880,9 +7887,9 @@ app.get('/api/referral/leaderboard', async (req, res) => {
 
     // Step 3: fetch referrer profiles + their cached total_referrals counter
     const { data: referrerUsers } = await supabaseAdmin
-      .from('users')
-      .select('id, username, badge, total_referrals')
-      .in('id', [...allReferrerIds]);
+        .from('users')
+        .select('id, username, badge, total_referrals')
+        .in('id', [...allReferrerIds]);
 
     const userMap = {};
     (referrerUsers || []).forEach(u => { userMap[u.id] = u; });
@@ -7890,25 +7897,25 @@ app.get('/api/referral/leaderboard', async (req, res) => {
     // Step 4: build leaderboard — use MAX of DB count vs cached counter for referrals
     // so old signups that missed the referred_by field still count
     const leaderboard = [...allReferrerIds]
-      .filter(rid => (signupCountMap[rid] || 0) > 0 || (earningsMap[rid] || 0) > 0)
-      .map(rid => {
-        const cachedRefs  = userMap[rid]?.total_referrals || 0;
-        const actualRefs  = signupCountMap[rid] || 0;
-        return {
-          id:               rid,
-          username:         userMap[rid]?.username || 'Trader',
-          badge:            userMap[rid]?.badge    || 'BEGINNER',
-          earned_btc:       parseFloat((earningsMap[rid] || 0).toFixed(8)),
-          // Take the larger value — cached counter may include old signups
-          // that predate the referred_by field being saved reliably
-          referrals:        Math.max(actualRefs, cachedRefs),
-          // Sum of total_trades across all referred users = real activity count
-          affiliate_trades: tradeCountMap[rid] || 0,
-        };
-      })
-      .sort((a, b) => b.earned_btc - a.earned_btc || b.referrals - a.referrals)
-      .slice(0, 10)
-      .map((u, i) => ({ ...u, rank: i + 1 }));
+        .filter(rid => (signupCountMap[rid] || 0) > 0 || (earningsMap[rid] || 0) > 0)
+        .map(rid => {
+          const cachedRefs  = userMap[rid]?.total_referrals || 0;
+          const actualRefs  = signupCountMap[rid] || 0;
+          return {
+            id:               rid,
+            username:         userMap[rid]?.username || 'Trader',
+            badge:            userMap[rid]?.badge    || 'BEGINNER',
+            earned_btc:       parseFloat((earningsMap[rid] || 0).toFixed(8)),
+            // Take the larger value — cached counter may include old signups
+            // that predate the referred_by field being saved reliably
+            referrals:        Math.max(actualRefs, cachedRefs),
+            // Sum of total_trades across all referred users = real activity count
+            affiliate_trades: tradeCountMap[rid] || 0,
+          };
+        })
+        .sort((a, b) => b.earned_btc - a.earned_btc || b.referrals - a.referrals)
+        .slice(0, 10)
+        .map((u, i) => ({ ...u, rank: i + 1 }));
 
     res.json({ success: true, leaderboard });
   } catch (err) {
@@ -7919,10 +7926,10 @@ app.get('/api/referral/leaderboard', async (req, res) => {
 app.post('/api/referral/withdraw', verifyToken, authLimiter, async (req, res) => {
   try {
     const { data: earnings, error } = await supabaseAdmin
-      .from('affiliate_earnings')
-      .select('id, commission_btc')
-      .eq('referrer_id', req.userId)
-      .neq('status', 'WITHDRAWN');
+        .from('affiliate_earnings')
+        .select('id, commission_btc')
+        .eq('referrer_id', req.userId)
+        .neq('status', 'WITHDRAWN');
     if (error) throw error;
 
     const totalEarnings = (earnings || []).reduce((sum, e) => sum + parseFloat(e.commission_btc || 0), 0);
@@ -7943,31 +7950,31 @@ app.post('/api/referral/withdraw', verifyToken, authLimiter, async (req, res) =>
     // The old code wrote to user_balances which is NOT read by the wallet page,
     // causing referral withdrawals to silently disappear from the user's view.
     const { data: walletRow, error: walletReadErr } = await supabaseAdmin
-      .from('wallets')
-      .select('balance_btc, locked_balance_btc')
-      .eq('user_id', req.userId)
-      .maybeSingle();
+        .from('wallets')
+        .select('balance_btc, locked_balance_btc')
+        .eq('user_id', req.userId)
+        .maybeSingle();
 
     if (walletReadErr) throw walletReadErr;
 
     const newBalance = parseFloat((parseFloat(walletRow?.balance_btc || 0) + totalEarnings).toFixed(8));
 
     const { error: balErr } = await supabaseAdmin
-      .from('wallets')
-      .update({
-        balance_btc:        newBalance,
-        locked_balance_btc: parseFloat(walletRow?.locked_balance_btc || 0),
-        updated_at:         new Date().toISOString(),
-      })
-      .eq('user_id', req.userId);
+        .from('wallets')
+        .update({
+          balance_btc:        newBalance,
+          locked_balance_btc: parseFloat(walletRow?.locked_balance_btc || 0),
+          updated_at:         new Date().toISOString(),
+        })
+        .eq('user_id', req.userId);
     if (balErr) throw balErr;
 
     // Mark all pending earnings as withdrawn
     const ids = earnings.map(e => e.id);
     const { error: updErr } = await supabaseAdmin
-      .from('affiliate_earnings')
-      .update({ status: 'WITHDRAWN' })
-      .in('id', ids);
+        .from('affiliate_earnings')
+        .update({ status: 'WITHDRAWN' })
+        .in('id', ids);
     if (updErr) throw updErr;
 
     // Audit trail
@@ -7993,9 +8000,9 @@ app.post('/api/referral/withdraw', verifyToken, authLimiter, async (req, res) =>
 app.get('/api/notifications', verifyToken, async (req, res) => {
   try {
     const { data: notifs, error } = await supabaseAdmin
-      .from('notifications').select('*')
-      .eq('user_id', req.userId)
-      .order('created_at', { ascending: false }).limit(50);
+        .from('notifications').select('*')
+        .eq('user_id', req.userId)
+        .order('created_at', { ascending: false }).limit(50);
     if (error) return res.json({ notifications: [] });
 
     // Extract trade lookup keys from every notification:
@@ -8025,29 +8032,29 @@ app.get('/api/notifications', verifyToken, async (req, res) => {
     let tradeMap = {};
     if (uniqUUIDs.length > 0) {
       const { data: trades, error: tradeErr } = await supabaseAdmin
-        .from('trades').select(tradeSelect).in('id', uniqUUIDs);
+          .from('trades').select(tradeSelect).in('id', uniqUUIDs);
       if (tradeErr) console.error('[Notifications] trade UUID fetch error:', tradeErr.message);
       (trades || []).forEach(t => { tradeMap[t.id] = t; });
     }
     if (uniqRefs.length > 0) {
       const { data: trades2 } = await supabaseAdmin
-        .from('trades').select(tradeSelect).in('trade_ref', uniqRefs);
+          .from('trades').select(tradeSelect).in('trade_ref', uniqRefs);
       (trades2 || []).forEach(t => { tradeMap[t.id] = t; if (t.trade_ref) tradeMap[t.trade_ref] = t; });
     }
 
     // Extract unique actor IDs — from /profile/<uuid> URLs AND data.actor_id field
     const actorIds = [...new Set(
-      (notifs || [])
-        .map(n => n.action?.match(/\/profile\/([0-9a-f-]{8,})/i)?.[1] || n.data?.actor_id)
-        .filter(Boolean)
+        (notifs || [])
+            .map(n => n.action?.match(/\/profile\/([0-9a-f-]{8,})/i)?.[1] || n.data?.actor_id)
+            .filter(Boolean)
     )];
 
     let actorMap = {};
     if (actorIds.length > 0) {
       const { data: actors } = await supabaseAdmin
-        .from('users')
-        .select('id, username, full_name, avatar_url, country')
-        .in('id', actorIds);
+          .from('users')
+          .select('id, username, full_name, avatar_url, country')
+          .in('id', actorIds);
       (actors || []).forEach(u => { actorMap[u.id] = u; });
     }
 
@@ -8062,7 +8069,7 @@ app.get('/api/notifications', verifyToken, async (req, res) => {
       if (n.data?.direction)            result = { ...result, direction: n.data.direction };
       // Payment method: prefer live trade data, then stored in data, then parse from message
       const pm = trade?.payment_method || n.data?.payment_method
-        || n.message?.match(/\bvia\s+([^·\n]+?)(?:\s*·|\s*$)/i)?.[1]?.trim();
+          || n.message?.match(/\bvia\s+([^·\n]+?)(?:\s*·|\s*$)/i)?.[1]?.trim();
       if (pm)                           result = { ...result, payment_method: pm };
       return result;
     });
@@ -8096,28 +8103,28 @@ app.get('/api/my-referrals', verifyToken, async (req, res) => {
 
     // Primary: users where referred_by = my user ID (UUID stored directly)
     const { data: signups } = await supabaseAdmin
-      .from('users')
-      .select('id, username, avatar_url, country, created_at, total_trades')
-      .eq('referred_by', userId)
-      .order('created_at', { ascending: false });
+        .from('users')
+        .select('id, username, avatar_url, country, created_at, total_trades')
+        .eq('referred_by', userId)
+        .order('created_at', { ascending: false });
 
     // Legacy: also pull from affiliate_earnings in case referred_by wasn't set
     const { data: earnings } = await supabaseAdmin
-      .from('affiliate_earnings')
-      .select('referred_user_id')
-      .eq('referrer_id', userId);
+        .from('affiliate_earnings')
+        .select('referred_user_id')
+        .eq('referrer_id', userId);
 
     const seenIds = new Set((signups || []).map(u => u.id));
     const extraIds = [...new Set(
-      (earnings || []).map(e => e.referred_user_id).filter(id => id && !seenIds.has(id))
+        (earnings || []).map(e => e.referred_user_id).filter(id => id && !seenIds.has(id))
     )];
 
     let extraUsers = [];
     if (extraIds.length > 0) {
       const { data: eu } = await supabaseAdmin
-        .from('users')
-        .select('id, username, avatar_url, country, created_at, total_trades')
-        .in('id', extraIds);
+          .from('users')
+          .select('id, username, avatar_url, country, created_at, total_trades')
+          .in('id', extraIds);
       extraUsers = eu || [];
     }
 
@@ -8128,18 +8135,18 @@ app.get('/api/my-referrals', verifyToken, async (req, res) => {
 
     // Also return who referred the current user so they can chat back
     const { data: myInfo } = await supabaseAdmin
-      .from('users')
-      .select('referred_by')
-      .eq('id', userId)
-      .single();
+        .from('users')
+        .select('referred_by')
+        .eq('id', userId)
+        .single();
 
     let myReferrer = null;
     if (myInfo?.referred_by) {
       const { data: referrerData } = await supabaseAdmin
-        .from('users')
-        .select('id, username, avatar_url, country, created_at, total_trades')
-        .eq('id', myInfo.referred_by)
-        .single();
+          .from('users')
+          .select('id, username, avatar_url, country, created_at, total_trades')
+          .eq('id', myInfo.referred_by)
+          .single();
       if (referrerData) myReferrer = { ...referrerData, trade_count: referrerData.total_trades || 0 };
     }
 
@@ -8157,18 +8164,18 @@ app.get('/api/referral-messages/:userId', verifyToken, async (req, res) => {
     const otherId = req.params.userId;
 
     const { data: msgs } = await supabaseAdmin
-      .from('referral_messages')
-      .select('*')
-      .or(`and(sender_id.eq.${myId},recipient_id.eq.${otherId}),and(sender_id.eq.${otherId},recipient_id.eq.${myId})`)
-      .order('created_at', { ascending: true });
+        .from('referral_messages')
+        .select('*')
+        .or(`and(sender_id.eq.${myId},recipient_id.eq.${otherId}),and(sender_id.eq.${otherId},recipient_id.eq.${myId})`)
+        .order('created_at', { ascending: true });
 
     // Mark incoming messages as read
     await supabaseAdmin
-      .from('referral_messages')
-      .update({ is_read: true })
-      .eq('sender_id', otherId)
-      .eq('recipient_id', myId)
-      .eq('is_read', false);
+        .from('referral_messages')
+        .update({ is_read: true })
+        .eq('sender_id', otherId)
+        .eq('recipient_id', myId)
+        .eq('is_read', false);
 
     res.json({ messages: msgs || [] });
   } catch (e) {
@@ -8187,10 +8194,10 @@ app.post('/api/referral-messages/:userId', verifyToken, async (req, res) => {
     if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
 
     const { data: msg, error } = await supabaseAdmin
-      .from('referral_messages')
-      .insert({ sender_id: senderId, recipient_id: recipientId, message: message.trim() })
-      .select()
-      .single();
+        .from('referral_messages')
+        .insert({ sender_id: senderId, recipient_id: recipientId, message: message.trim() })
+        .select()
+        .single();
 
     if (error) return res.status(500).json({ error: error.message });
 
@@ -8236,14 +8243,14 @@ app.get('/api/admin/profits', verifyToken, async (req, res) => {
 app.post('/api/admin/send-welcome-emails', verifyToken, async (req, res) => {
   try {
     const { data: admin } = await supabaseAdmin
-      .from('users').select('is_admin').eq('id', req.userId).single();
+        .from('users').select('is_admin').eq('id', req.userId).single();
     if (!admin?.is_admin) return res.status(403).json({ error: 'Admin access required' });
 
     const { data: users } = await supabaseAdmin
-      .from('users')
-      .select('id, email, username, referral_code')
-      .is('welcome_email_sent', false)
-      .limit(100);
+        .from('users')
+        .select('id, email, username, referral_code')
+        .is('welcome_email_sent', false)
+        .limit(100);
 
     if (!users || users.length === 0)
       return res.json({ success: true, message: 'No users to send to', sent: 0 });
@@ -8296,12 +8303,12 @@ app.post('/api/admin/send-welcome-emails', verifyToken, async (req, res) => {
                 <p style="color:#1B4332;font-size:13px;font-weight:700;margin:0 0 12px 0;text-transform:uppercase;letter-spacing:0.5px;">🏆 Commission Tiers</p>
                 <table width="100%" style="border-collapse:collapse;">
                   ${[
-                    ['1–9 trades',    '0.10%'],
-                    ['10–24 trades',  '0.15%'],
-                    ['25–49 trades',  '0.20%'],
-                    ['50–99 trades',  '0.25%'],
-                    ['100+ trades',   '0.30%'],
-                  ].map(([tier, rate], i) => `
+        ['1–9 trades',    '0.10%'],
+        ['10–24 trades',  '0.15%'],
+        ['25–49 trades',  '0.20%'],
+        ['50–99 trades',  '0.25%'],
+        ['100+ trades',   '0.30%'],
+      ].map(([tier, rate], i) => `
                   <tr style="background:${i % 2 === 0 ? '#FFFFFF' : 'transparent'};">
                     <td style="padding:6px 10px;font-size:13px;color:#475569;">${tier}</td>
                     <td style="padding:6px 10px;font-size:13px;font-weight:700;color:#1B4332;text-align:right;">${rate}</td>
@@ -8506,9 +8513,9 @@ app.get('/api/admin/users', verifyToken, async (req, res) => {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { search = '', status = '', country = '', page = 1, limit = 50 } = req.query;
     let query = supabaseAdmin.from('users')
-      .select('*', { count: 'exact' })
-      .order('created_at', { ascending: false })
-      .range((page - 1) * limit, page * limit - 1);
+        .select('*', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range((page - 1) * limit, page * limit - 1);
     if (search) query = query.or(`username.ilike.%${search}%,email.ilike.%${search}%,full_name.ilike.%${search}%,phone.ilike.%${search}%`);
     if (status === 'phone_pending') query = query.not('phone', 'is', null).eq('is_phone_verified', false);
     else if (status === 'kyc_pending') query = query.eq('kyc_status', 'pending');
@@ -8560,9 +8567,9 @@ app.get('/api/admin/trades/all', verifyToken, async (req, res) => {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { status = '', page = 1, limit = 50, search = '' } = req.query;
     let query = supabaseAdmin.from('trades')
-      .select('*, buyer:buyer_id(id, username, email), seller:seller_id(id, username, email)', { count: 'exact' })
-      .order('created_at', { ascending: false })
-      .range((page - 1) * limit, page * limit - 1);
+        .select('*, buyer:buyer_id(id, username, email), seller:seller_id(id, username, email)', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range((page - 1) * limit, page * limit - 1);
     if (status) query = query.eq('status', status);
     if (search) query = query.or(`id.ilike.%${search}%,trade_ref.ilike.%${search}%`);
     const { data, error, count } = await query;
@@ -8593,8 +8600,8 @@ app.get('/api/admin/kyc', verifyToken, async (req, res) => {
     const { status = 'pending' } = req.query;
 
     let query = supabaseAdmin.from('users')
-      .select('*')
-      .order('kyc_submitted_at', { ascending: true, nullsFirst: false });
+        .select('*')
+        .order('kyc_submitted_at', { ascending: true, nullsFirst: false });
 
     if (status === 'all') {
       query = query.or('id_front_url.not.is.null,kyc_status.not.is.null');
@@ -8610,10 +8617,10 @@ app.get('/api/admin/kyc', verifyToken, async (req, res) => {
       // KYC columns likely haven't been migrated yet — fall back to basic query
       console.warn('[admin/kyc] Column error (run admin_columns.sql):', error.message);
       const { data: fallback } = await supabaseAdmin.from('users')
-        .select('id, email, username, created_at, country, is_id_verified')
-        .eq('is_id_verified', false)
-        .order('created_at', { ascending: false })
-        .limit(50);
+          .select('id, email, username, created_at, country, is_id_verified')
+          .eq('is_id_verified', false)
+          .order('created_at', { ascending: false })
+          .limit(50);
       return res.json({
         submissions: (fallback || []).map(u => ({ ...u, kyc_status: null, _migration_needed: true })),
         migration_needed: true,
@@ -8630,10 +8637,10 @@ app.post('/api/admin/backfill-kyc', verifyToken, async (req, res) => {
   try {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { data, error } = await supabaseAdmin.from('users')
-      .update({ kyc_status: 'pending', updated_at: new Date() })
-      .not('id_front_url', 'is', null)
-      .is('kyc_status', null)
-      .select('id, username');
+        .update({ kyc_status: 'pending', updated_at: new Date() })
+        .not('id_front_url', 'is', null)
+        .is('kyc_status', null)
+        .select('id, username');
     if (error) return res.status(400).json({ error: error.message });
     res.json({ success: true, updated: (data || []).length, users: data || [] });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -8644,10 +8651,10 @@ app.put('/api/admin/kyc/:userId/approve', verifyToken, async (req, res) => {
   try {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { data: updated, error } = await supabaseAdmin.from('users')
-      .update({ kyc_status: 'approved', is_id_verified: true, kyc_approved_at: new Date(), updated_at: new Date() })
-      .eq('id', req.params.userId)
-      .select('id, username, kyc_status, is_id_verified')
-      .single();
+        .update({ kyc_status: 'approved', is_id_verified: true, kyc_approved_at: new Date(), updated_at: new Date() })
+        .eq('id', req.params.userId)
+        .select('id, username, kyc_status, is_id_verified')
+        .single();
     if (error) return res.status(400).json({ error: error.message });
     if (!updated) return res.status(404).json({ error: 'User not found' });
     logAdminAction(req, 'KYC_APPROVE', req.params.userId, null).catch(() => {});
@@ -8665,10 +8672,10 @@ app.put('/api/admin/kyc/:userId/reject', verifyToken, async (req, res) => {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { reason = 'Documents unclear or invalid' } = req.body;
     const { data: updated, error } = await supabaseAdmin.from('users')
-      .update({ kyc_status: 'rejected', is_id_verified: false, kyc_rejection_reason: reason, updated_at: new Date() })
-      .eq('id', req.params.userId)
-      .select('id, username, kyc_status, is_id_verified')
-      .single();
+        .update({ kyc_status: 'rejected', is_id_verified: false, kyc_rejection_reason: reason, updated_at: new Date() })
+        .eq('id', req.params.userId)
+        .select('id, username, kyc_status, is_id_verified')
+        .single();
     if (error) return res.status(400).json({ error: error.message });
     if (!updated) return res.status(404).json({ error: 'User not found' });
     try {
@@ -8686,10 +8693,10 @@ app.get('/api/admin/kyc/:userId/image', verifyToken, async (req, res) => {
     const { type = 'front' } = req.query;
 
     const { data: user, error: userErr } = await supabaseAdmin
-      .from('users')
-      .select('id_front_url, id_back_url')
-      .eq('id', userId)
-      .single();
+        .from('users')
+        .select('id_front_url, id_back_url')
+        .eq('id', userId)
+        .single();
 
     if (userErr || !user) return res.status(404).json({ error: 'User not found' });
 
@@ -8709,8 +8716,8 @@ app.get('/api/admin/kyc/:userId/image', verifyToken, async (req, res) => {
 
       // Try: download directly via service role (bypasses bucket RLS)
       const { data: fileData, error: dlErr } = await supabaseAdmin.storage
-        .from('kyc-documents')
-        .download(storagePath);
+          .from('kyc-documents')
+          .download(storagePath);
 
       if (!dlErr && fileData) {
         const buffer = Buffer.from(await fileData.arrayBuffer());
@@ -8721,8 +8728,8 @@ app.get('/api/admin/kyc/:userId/image', verifyToken, async (req, res) => {
 
       // Try: signed URL (works for private buckets)
       const { data: signedData } = await supabaseAdmin.storage
-        .from('kyc-documents')
-        .createSignedUrl(storagePath, 300);
+          .from('kyc-documents')
+          .createSignedUrl(storagePath, 300);
 
       if (signedData?.signedUrl) {
         // Fetch the signed URL server-side and stream to admin
@@ -8754,9 +8761,9 @@ app.get('/api/admin/listings/all', verifyToken, async (req, res) => {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { status = '', page = 1, limit = 50 } = req.query;
     let query = supabaseAdmin.from('listings')
-      .select('*, seller:seller_id(id, username, email)', { count: 'exact' })
-      .order('created_at', { ascending: false })
-      .range((page - 1) * limit, page * limit - 1);
+        .select('*, seller:seller_id(id, username, email)', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range((page - 1) * limit, page * limit - 1);
     if (status) query = query.eq('status', status);
     const { data, error, count } = await query;
     if (error) return res.status(400).json({ error: error.message });
@@ -8803,7 +8810,7 @@ app.post('/api/admin/broadcast', verifyToken, async (req, res) => {
 
     // ── Push notification to ALL subscribed devices (one OneSignal call) ──
     sendBroadcastPush(title, message, url || 'https://praqen.com').catch(e =>
-      console.error('[broadcast] push failed:', e.message)
+        console.error('[broadcast] push failed:', e.message)
     );
 
     res.json({ success: true, sent: users.length });
@@ -8838,9 +8845,9 @@ app.post('/api/admin/broadcast/eid-bonus', verifyToken, async (req, res) => {
 
     // Count eligible users first so we can respond immediately
     const { count, error: countErr } = await supabaseAdmin
-      .from('users')
-      .select('id', { count: 'exact', head: true })
-      .not('email', 'is', null);
+        .from('users')
+        .select('id', { count: 'exact', head: true })
+        .not('email', 'is', null);
 
     if (countErr) return res.status(500).json({ error: 'Failed to count users: ' + countErr.message });
 
@@ -8859,11 +8866,11 @@ app.post('/api/admin/broadcast/eid-bonus', verifyToken, async (req, res) => {
       try {
         while (true) {
           const { data: users, error: fetchErr } = await supabaseAdmin
-            .from('users')
-            .select('id, email, username, referral_code')
-            .not('email', 'is', null)
-            .not('email', 'eq', '')
-            .range(page * PAGE, page * PAGE + PAGE - 1);
+              .from('users')
+              .select('id, email, username, referral_code')
+              .not('email', 'is', null)
+              .not('email', 'eq', '')
+              .range(page * PAGE, page * PAGE + PAGE - 1);
 
           if (fetchErr) { console.error('[eid-bonus] Fetch error:', fetchErr.message); break; }
           if (!users || users.length === 0) break;
@@ -8910,9 +8917,9 @@ app.post('/api/admin/broadcast/usdt-announcement', verifyToken, async (req, res)
     const admin = await requireAdmin(req, res); if (!admin) return;
 
     const { count, error: countErr } = await supabaseAdmin
-      .from('users')
-      .select('id', { count: 'exact', head: true })
-      .not('email', 'is', null);
+        .from('users')
+        .select('id', { count: 'exact', head: true })
+        .not('email', 'is', null);
 
     if (countErr) return res.status(500).json({ error: 'Failed to count users: ' + countErr.message });
 
@@ -8930,11 +8937,11 @@ app.post('/api/admin/broadcast/usdt-announcement', verifyToken, async (req, res)
       try {
         while (true) {
           const { data: users, error: fetchErr } = await supabaseAdmin
-            .from('users')
-            .select('id, email, username, referral_code')
-            .not('email', 'is', null)
-            .not('email', 'eq', '')
-            .range(page * PAGE, page * PAGE + PAGE - 1);
+              .from('users')
+              .select('id, email, username, referral_code')
+              .not('email', 'is', null)
+              .not('email', 'eq', '')
+              .range(page * PAGE, page * PAGE + PAGE - 1);
 
           if (fetchErr) { console.error('[usdt-announcement] Fetch error:', fetchErr.message); break; }
           if (!users || users.length === 0) break;
@@ -8997,19 +9004,19 @@ app.get('/api/admin/transfers', verifyToken, async (req, res) => {
       { data: escrowBal },
     ] = await Promise.all([
       supabaseAdmin.from('wallet_transactions')
-        .select('id, user_id, amount_btc, notes, created_at, tx_hash')
-        .eq('type', 'TRANSFER_OUT')
-        .order('created_at', { ascending: false })
-        .limit(200),
+          .select('id, user_id, amount_btc, notes, created_at, tx_hash')
+          .eq('type', 'TRANSFER_OUT')
+          .order('created_at', { ascending: false })
+          .limit(200),
       supabaseAdmin.from('wallet_transactions')
-        .select('id, user_id, amount_btc, status, notes, created_at')
-        .eq('type', 'WITHDRAWAL')
-        .order('created_at', { ascending: false })
-        .limit(200),
+          .select('id, user_id, amount_btc, status, notes, created_at')
+          .eq('type', 'WITHDRAWAL')
+          .order('created_at', { ascending: false })
+          .limit(200),
       supabaseAdmin.from('user_balances')
-        .select('balance_btc, available_btc')
-        .eq('user_id', COMPANY_WALLET_ID)
-        .single(),
+          .select('balance_btc, available_btc')
+          .eq('user_id', COMPANY_WALLET_ID)
+          .single(),
     ]);
 
     // Pull sender usernames for internal transfers
@@ -9017,7 +9024,7 @@ app.get('/api/admin/transfers', verifyToken, async (req, res) => {
     const withdrawalUserIds = [...new Set((withdrawals || []).map(t => t.user_id))];
     const allUserIds = [...new Set([...senderIds, ...withdrawalUserIds])];
     const { data: usersRaw } = await supabaseAdmin.from('users')
-      .select('id, username, full_name').in('id', allUserIds);
+        .select('id, username, full_name').in('id', allUserIds);
     const userMap = Object.fromEntries((usersRaw || []).map(u => [u.id, u.username || u.full_name || u.id.slice(0,8)]));
 
     // Parse recipient from notes: "Internal transfer → @alice · No fee"
@@ -9072,8 +9079,8 @@ app.put('/api/admin/users/:id/verify-phone', verifyToken, async (req, res) => {
     logAdminAction(req, 'VERIFY_PHONE', req.params.id, null).catch(() => {});
     // Update request row if it exists
     await supabaseAdmin.from('phone_verification_requests')
-      .update({ status: 'approved', reviewed_at: new Date().toISOString(), reviewed_by: req.userId })
-      .eq('user_id', req.params.id).then(null, () => {});
+        .update({ status: 'approved', reviewed_at: new Date().toISOString(), reviewed_by: req.userId })
+        .eq('user_id', req.params.id).then(null, () => {});
     await createNotification(req.params.id, 'system', '📱 Phone Number Verified!', 'Great news! Your phone number has been verified by our team. Your trade limit has been upgraded. You can now continue trading.', '/settings?tab=verification');
     sendSystemAlert(req.params.id, '📱 Phone Verified!', 'Your phone number has been verified. Trade limits upgraded!', 'https://praqen.com/settings?tab=verification').catch(() => {});
     res.json({ success: true, user: data });
@@ -9091,10 +9098,10 @@ app.get('/api/admin/phone-verifications/pending', verifyToken, async (req, res) 
     const to   = from + parseInt(limit) - 1;
 
     let query = supabaseAdmin
-      .from('phone_verification_requests')
-      .select('id, user_id, phone, status, submitted_at, reviewed_at, rejection_reason', { count: 'exact' })
-      .order('submitted_at', { ascending: false })
-      .range(from, to);
+        .from('phone_verification_requests')
+        .select('id, user_id, phone, status, submitted_at, reviewed_at, rejection_reason', { count: 'exact' })
+        .order('submitted_at', { ascending: false })
+        .range(from, to);
 
     if (status && status !== 'all') query = query.eq('status', status);
 
@@ -9106,9 +9113,9 @@ app.get('/api/admin/phone-verifications/pending', verifyToken, async (req, res) 
     let usersMap = {};
     if (userIds.length > 0) {
       const { data: users } = await supabaseAdmin
-        .from('users')
-        .select('id, username, email, full_name, avatar_url, is_phone_verified, created_at')
-        .in('id', userIds);
+          .from('users')
+          .select('id, username, email, full_name, avatar_url, is_phone_verified, created_at')
+          .in('id', userIds);
       (users || []).forEach(u => { usersMap[u.id] = u; });
     }
 
@@ -9123,31 +9130,31 @@ app.put('/api/admin/phone-verifications/:id/approve', verifyToken, async (req, r
     const admin = await requireAdmin(req, res); if (!admin) return;
 
     const { data: request, error: fetchErr } = await supabaseAdmin
-      .from('phone_verification_requests')
-      .select('*').eq('id', req.params.id).single();
+        .from('phone_verification_requests')
+        .select('*').eq('id', req.params.id).single();
     if (fetchErr || !request) return res.status(404).json({ error: 'Verification request not found' });
 
     // Mark request as approved
     const { error: reqErr } = await supabaseAdmin
-      .from('phone_verification_requests')
-      .update({ status: 'approved', reviewed_at: new Date().toISOString(), reviewed_by: req.userId })
-      .eq('id', req.params.id);
+        .from('phone_verification_requests')
+        .update({ status: 'approved', reviewed_at: new Date().toISOString(), reviewed_by: req.userId })
+        .eq('id', req.params.id);
     if (reqErr) return res.status(400).json({ error: reqErr.message });
 
     // Mark user as phone-verified
     const { error: userErr } = await supabaseAdmin
-      .from('users')
-      .update({ is_phone_verified: true, phone_verified: true, phone: request.phone, updated_at: new Date().toISOString() })
-      .eq('id', request.user_id);
+        .from('users')
+        .update({ is_phone_verified: true, phone_verified: true, phone: request.phone, updated_at: new Date().toISOString() })
+        .eq('id', request.user_id);
     if (userErr) return res.status(400).json({ error: userErr.message });
 
     // Notify the user
     await createNotification(request.user_id, 'system', '📱 Phone Number Verified!',
-      `Your number ${request.phone} has been verified. Your trade limits have been upgraded!`,
-      '/settings?tab=verification').catch(() => {});
+        `Your number ${request.phone} has been verified. Your trade limits have been upgraded!`,
+        '/settings?tab=verification').catch(() => {});
     sendSystemAlert(request.user_id, '📱 Phone Verified!',
-      'Your phone number has been verified. Trade limits upgraded!',
-      'https://praqen.com/settings?tab=verification').catch(() => {});
+        'Your phone number has been verified. Trade limits upgraded!',
+        'https://praqen.com/settings?tab=verification').catch(() => {});
 
     console.log(`[phone-verif] ✅ Admin ${req.userId.slice(0,8)} approved ${request.phone} for user ${request.user_id.slice(0,8)}`);
     res.json({ success: true });
@@ -9161,27 +9168,27 @@ app.put('/api/admin/phone-verifications/:id/reject', verifyToken, async (req, re
     const { reason = 'Phone number could not be verified' } = req.body;
 
     const { data: request, error: fetchErr } = await supabaseAdmin
-      .from('phone_verification_requests')
-      .select('*').eq('id', req.params.id).single();
+        .from('phone_verification_requests')
+        .select('*').eq('id', req.params.id).single();
     if (fetchErr || !request) return res.status(404).json({ error: 'Verification request not found' });
 
     // Mark request as rejected
     const { error: reqErr } = await supabaseAdmin
-      .from('phone_verification_requests')
-      .update({ status: 'rejected', reviewed_at: new Date().toISOString(), reviewed_by: req.userId, rejection_reason: reason })
-      .eq('id', req.params.id);
+        .from('phone_verification_requests')
+        .update({ status: 'rejected', reviewed_at: new Date().toISOString(), reviewed_by: req.userId, rejection_reason: reason })
+        .eq('id', req.params.id);
     if (reqErr) return res.status(400).json({ error: reqErr.message });
 
     // Clear the phone from users table so they can re-submit
     await supabaseAdmin
-      .from('users')
-      .update({ phone: null, updated_at: new Date().toISOString() })
-      .eq('id', request.user_id).then(null, () => {});
+        .from('users')
+        .update({ phone: null, updated_at: new Date().toISOString() })
+        .eq('id', request.user_id).then(null, () => {});
 
     // Notify the user
     await createNotification(request.user_id, 'system', '📱 Phone Verification Failed',
-      `We could not verify ${request.phone}. Reason: ${reason}. Please submit a valid number.`,
-      '/settings?tab=verification').catch(() => {});
+        `We could not verify ${request.phone}. Reason: ${reason}. Please submit a valid number.`,
+        '/settings?tab=verification').catch(() => {});
 
     console.log(`[phone-verif] ❌ Admin ${req.userId.slice(0,8)} rejected ${request.phone} for user ${request.user_id.slice(0,8)}`);
     res.json({ success: true });
@@ -9198,24 +9205,24 @@ app.get('/api/admin/phone/pending', verifyToken, async (req, res) => {
     // Fetch pending users and their submission timestamps in parallel
     const [usersRes, reqsRes] = await Promise.all([
       supabaseAdmin
-        .from('users')
-        .select('id, username, full_name, email, phone, is_phone_verified, created_at, last_login, country, avatar_url')
-        .not('phone', 'is', null)
-        .neq('phone', '')
-        .eq('is_phone_verified', false)
-        .order('created_at', { ascending: false })
-        .limit(200),
+          .from('users')
+          .select('id, username, full_name, email, phone, is_phone_verified, created_at, last_login, country, avatar_url')
+          .not('phone', 'is', null)
+          .neq('phone', '')
+          .eq('is_phone_verified', false)
+          .order('created_at', { ascending: false })
+          .limit(200),
       supabaseAdmin
-        .from('phone_verification_requests')
-        .select('user_id, submitted_at, status')
-        .eq('status', 'pending'),
+          .from('phone_verification_requests')
+          .select('user_id, submitted_at, status')
+          .eq('status', 'pending'),
     ]);
 
     if (usersRes.error) return res.status(400).json({ error: usersRes.error.message });
 
     // Map submission timestamps by user_id
     const submittedAt = new Map(
-      (reqsRes.data || []).map(r => [r.user_id, r.submitted_at])
+        (reqsRes.data || []).map(r => [r.user_id, r.submitted_at])
     );
 
     const enriched = (usersRes.data || []).map(u => ({
@@ -9243,37 +9250,37 @@ app.post('/api/admin/phone/approve', verifyToken, async (req, res) => {
 
     // If users.phone is null (submission bug), recover it from phone_verification_requests
     const { data: existingUser } = await supabaseAdmin
-      .from('users').select('phone').eq('id', userId).single();
+        .from('users').select('phone').eq('id', userId).single();
     if (!existingUser?.phone) {
       const { data: pvr } = await supabaseAdmin
-        .from('phone_verification_requests').select('phone').eq('user_id', userId).single();
+          .from('phone_verification_requests').select('phone').eq('user_id', userId).single();
       if (pvr?.phone) {
         await supabaseAdmin.from('users')
-          .update({ phone: pvr.phone }).eq('id', userId).then(null, () => {});
+            .update({ phone: pvr.phone }).eq('id', userId).then(null, () => {});
         console.log(`[phone/approve] recovered missing phone ${pvr.phone} for user ${userId.slice(0,8)}`);
       }
     }
 
     const { data: user, error } = await supabaseAdmin
-      .from('users')
-      .update({ is_phone_verified: true, phone_verified: true, updated_at: new Date().toISOString() })
-      .eq('id', userId)
-      .select('id, username, phone')
-      .single();
+        .from('users')
+        .update({ is_phone_verified: true, phone_verified: true, updated_at: new Date().toISOString() })
+        .eq('id', userId)
+        .select('id, username, phone')
+        .single();
     if (error) return res.status(400).json({ error: error.message });
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     // Also mark any pending request row as approved
     await supabaseAdmin.from('phone_verification_requests')
-      .update({ status: 'approved', reviewed_at: new Date().toISOString(), reviewed_by: req.userId })
-      .eq('user_id', userId).then(null, () => {});
+        .update({ status: 'approved', reviewed_at: new Date().toISOString(), reviewed_by: req.userId })
+        .eq('user_id', userId).then(null, () => {});
 
     await createNotification(userId, 'system', '📱 Phone Number Verified!',
-      'Your phone number has been verified by our team. Your trade limits have been upgraded!',
-      '/settings?tab=verification').catch(() => {});
+        'Your phone number has been verified by our team. Your trade limits have been upgraded!',
+        '/settings?tab=verification').catch(() => {});
     sendSystemAlert(userId, '📱 Phone Verified!',
-      'Your phone number has been verified. Trade limits upgraded!',
-      'https://praqen.com/settings?tab=verification').catch(() => {});
+        'Your phone number has been verified. Trade limits upgraded!',
+        'https://praqen.com/settings?tab=verification').catch(() => {});
 
     console.log(`[phone/approve] ✅ Admin ${req.userId.slice(0,8)} approved ${user.phone} for user ${userId.slice(0,8)}`);
     res.json({ success: true, user });
@@ -9289,22 +9296,22 @@ app.post('/api/admin/phone/reject', verifyToken, async (req, res) => {
 
     // Get the phone number before clearing it
     const { data: existing } = await supabaseAdmin
-      .from('users').select('phone').eq('id', userId).single();
+        .from('users').select('phone').eq('id', userId).single();
     const phone = existing?.phone || 'unknown';
 
     const { error } = await supabaseAdmin
-      .from('users')
-      .update({ phone: null, is_phone_verified: false, phone_verified: false, updated_at: new Date().toISOString() })
-      .eq('id', userId);
+        .from('users')
+        .update({ phone: null, is_phone_verified: false, phone_verified: false, updated_at: new Date().toISOString() })
+        .eq('id', userId);
     if (error) return res.status(400).json({ error: error.message });
 
     await supabaseAdmin.from('phone_verification_requests')
-      .update({ status: 'rejected', reviewed_at: new Date().toISOString(), reviewed_by: req.userId, rejection_reason: reason })
-      .eq('user_id', userId).then(null, () => {});
+        .update({ status: 'rejected', reviewed_at: new Date().toISOString(), reviewed_by: req.userId, rejection_reason: reason })
+        .eq('user_id', userId).then(null, () => {});
 
     await createNotification(userId, 'system', '📱 Phone Verification Failed',
-      `Your phone number (${phone}) could not be verified. Reason: ${reason}. Please submit a valid number.`,
-      '/settings?tab=verification').catch(() => {});
+        `Your phone number (${phone}) could not be verified. Reason: ${reason}. Please submit a valid number.`,
+        '/settings?tab=verification').catch(() => {});
 
     console.log(`[phone/reject] ❌ Admin ${req.userId.slice(0,8)} rejected ${phone} for user ${userId.slice(0,8)}`);
     res.json({ success: true });
@@ -9358,9 +9365,9 @@ app.get('/api/admin/users/new', verifyToken, async (req, res) => {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const { data, error, count } = await supabaseAdmin.from('users')
-      .select('id, email, username, full_name, avatar_url, account_status, is_email_verified, is_phone_verified, is_id_verified, total_trades, country, created_at, last_login', { count: 'exact' })
-      .gte('created_at', since)
-      .order('created_at', { ascending: false });
+        .select('id, email, username, full_name, avatar_url, account_status, is_email_verified, is_phone_verified, is_id_verified, total_trades, country, created_at, last_login', { count: 'exact' })
+        .gte('created_at', since)
+        .order('created_at', { ascending: false });
     if (error) return res.status(400).json({ error: error.message });
     res.json({ users: data || [], total: count || 0 });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -9372,14 +9379,14 @@ app.get('/api/admin/reports', verifyToken, async (req, res) => {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const [feedbackR, disputesR] = await Promise.all([
       supabaseAdmin.from('trade_feedback')
-        .select('id, rating, comment, created_at, reviewer:reviewer_id(username, email), reviewed:reviewed_id(username, email), trade:trade_id(id, trade_ref, status, amount_usd)')
-        .order('created_at', { ascending: false })
-        .limit(100),
+          .select('id, rating, comment, created_at, reviewer:reviewer_id(username, email), reviewed:reviewed_id(username, email), trade:trade_id(id, trade_ref, status, amount_usd)')
+          .order('created_at', { ascending: false })
+          .limit(100),
       supabaseAdmin.from('trades')
-        .select('id, trade_ref, status, amount_usd, amount_btc, dispute_reason, disputed_at, created_at, buyer:buyer_id(username, email), seller:seller_id(username, email)')
-        .eq('status', 'DISPUTED')
-        .order('disputed_at', { ascending: false })
-        .limit(50),
+          .select('id, trade_ref, status, amount_usd, amount_btc, dispute_reason, disputed_at, created_at, buyer:buyer_id(username, email), seller:seller_id(username, email)')
+          .eq('status', 'DISPUTED')
+          .order('disputed_at', { ascending: false })
+          .limit(50),
     ]);
     res.json({ feedback: feedbackR.data || [], disputes: disputesR.data || [] });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -9391,9 +9398,9 @@ app.get('/api/admin/reviews', verifyToken, async (req, res) => {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { page = 1, limit = 30, rating = '' } = req.query;
     let query = supabaseAdmin.from('reviews')
-      .select('*, reviewer:reviewer_id(id, username, average_rating), reviewee:reviewee_id(id, username, total_trades)', { count: 'exact' })
-      .order('created_at', { ascending: false })
-      .range((page - 1) * limit, page * limit - 1);
+        .select('*, reviewer:reviewer_id(id, username, average_rating), reviewee:reviewee_id(id, username, total_trades)', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range((page - 1) * limit, page * limit - 1);
     if (rating) query = query.eq('rating', parseInt(rating));
     const { data, error, count } = await query;
     if (error) return res.status(400).json({ error: error.message });
@@ -9409,10 +9416,10 @@ app.get('/api/admin/top-traders', verifyToken, async (req, res) => {
 
     // Fetch users sorted by trade count first
     const { data: users, error } = await supabaseAdmin.from('users')
-      .select('id, username, email, full_name, total_trades, completion_rate, average_rating, total_feedback_count, positive_feedback, negative_feedback, badge, country, created_at, account_status, last_seen_at, avatar_url')
-      .gt('total_trades', 0)
-      .order('total_trades', { ascending: false, nullsFirst: false })
-      .limit(100);
+        .select('id, username, email, full_name, total_trades, completion_rate, average_rating, total_feedback_count, positive_feedback, negative_feedback, badge, country, created_at, account_status, last_seen_at, avatar_url')
+        .gt('total_trades', 0)
+        .order('total_trades', { ascending: false, nullsFirst: false })
+        .limit(100);
     if (error) return res.status(400).json({ error: error.message });
 
     let traders = users || [];
@@ -9422,10 +9429,10 @@ app.get('/api/admin/top-traders', verifyToken, async (req, res) => {
       const ids = traders.map(u => u.id);
       if (ids.length > 0) {
         const { data: tradeSums } = await supabaseAdmin
-          .from('trades')
-          .select('buyer_id, seller_id, btc_amount')
-          .eq('status', 'COMPLETED')
-          .or(ids.map(id => `buyer_id.eq.${id},seller_id.eq.${id}`).join(','));
+            .from('trades')
+            .select('buyer_id, seller_id, btc_amount')
+            .eq('status', 'COMPLETED')
+            .or(ids.map(id => `buyer_id.eq.${id},seller_id.eq.${id}`).join(','));
         const volMap = {};
         (tradeSums || []).forEach(t => {
           const amt = parseFloat(t.btc_amount || 0);
@@ -9433,7 +9440,7 @@ app.get('/api/admin/top-traders', verifyToken, async (req, res) => {
           volMap[t.seller_id] = (volMap[t.seller_id] || 0) + amt;
         });
         traders = traders.map(u => ({ ...u, volume_btc: volMap[u.id] || 0 }))
-          .sort((a, b) => b.volume_btc - a.volume_btc);
+            .sort((a, b) => b.volume_btc - a.volume_btc);
       }
     } else {
       traders = traders.map(u => ({ ...u, volume_btc: 0 }));
@@ -9448,10 +9455,10 @@ app.get('/api/admin/activity', verifyToken, async (req, res) => {
   try {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { data, error } = await supabaseAdmin.from('users')
-      .select('id, username, email, last_login, last_seen_at, created_at, total_trades, account_status, country, is_email_verified, is_phone_verified, is_id_verified')
-      .not('last_seen_at', 'is', null)
-      .order('last_seen_at', { ascending: false })
-      .limit(100);
+        .select('id, username, email, last_login, last_seen_at, created_at, total_trades, account_status, country, is_email_verified, is_phone_verified, is_id_verified')
+        .not('last_seen_at', 'is', null)
+        .order('last_seen_at', { ascending: false })
+        .limit(100);
     if (error) return res.status(400).json({ error: error.message });
     res.json({ activity: data || [] });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -9475,10 +9482,10 @@ app.get('/api/suggestions', optionalAuth, async (req, res) => {
     const offset = (page - 1) * limit;
 
     let query = supabaseAdmin.from('suggestions')
-      .select('*, users!suggestions_user_id_fkey(id, username)', { count: 'exact' })
-      .order('is_pinned', { ascending: false })
-      .order(sort === 'votes' ? 'upvotes' : 'created_at', { ascending: false })
-      .range(offset, offset + parseInt(limit) - 1);
+        .select('*, users!suggestions_user_id_fkey(id, username)', { count: 'exact' })
+        .order('is_pinned', { ascending: false })
+        .order(sort === 'votes' ? 'upvotes' : 'created_at', { ascending: false })
+        .range(offset, offset + parseInt(limit) - 1);
 
     if (category) query = query.eq('category', category);
     if (status)   query = query.eq('status', status);
@@ -9491,9 +9498,9 @@ app.get('/api/suggestions', optionalAuth, async (req, res) => {
     if (req.userId && data?.length) {
       const ids = data.map(s => s.id);
       const { data: votes } = await supabaseAdmin.from('suggestion_votes')
-        .select('suggestion_id')
-        .eq('user_id', req.userId)
-        .in('suggestion_id', ids);
+          .select('suggestion_id')
+          .eq('user_id', req.userId)
+          .in('suggestion_id', ids);
       votedSet = new Set((votes || []).map(v => v.suggestion_id));
     }
 
@@ -9515,7 +9522,7 @@ app.post('/api/suggestions', verifyToken, async (req, res) => {
     const safeCategory = VALID_CATS.includes(category) ? category : 'other';
 
     const { data: user } = await supabaseAdmin.from('users')
-      .select('username, account_status').eq('id', req.userId).single();
+        .select('username, account_status').eq('id', req.userId).single();
     if (user?.account_status === 'banned') return res.status(403).json({ error: 'Account suspended' });
 
     // Insert without username — we join users table on read
@@ -9541,28 +9548,28 @@ app.post('/api/suggestions/:id/vote', verifyToken, async (req, res) => {
     const { id } = req.params;
 
     const { data: existing } = await supabaseAdmin.from('suggestion_votes')
-      .select('id').eq('suggestion_id', id).eq('user_id', req.userId).maybeSingle();
+        .select('id').eq('suggestion_id', id).eq('user_id', req.userId).maybeSingle();
 
     const { data: current } = await supabaseAdmin.from('suggestions')
-      .select('upvotes').eq('id', id).single();
+        .select('upvotes').eq('id', id).single();
 
     let voted;
     if (existing) {
       await supabaseAdmin.from('suggestion_votes')
-        .delete().eq('suggestion_id', id).eq('user_id', req.userId);
+          .delete().eq('suggestion_id', id).eq('user_id', req.userId);
       await supabaseAdmin.from('suggestions')
-        .update({ upvotes: Math.max(0, (current?.upvotes || 1) - 1), updated_at: new Date() }).eq('id', id);
+          .update({ upvotes: Math.max(0, (current?.upvotes || 1) - 1), updated_at: new Date() }).eq('id', id);
       voted = false;
     } else {
       await supabaseAdmin.from('suggestion_votes')
-        .insert({ suggestion_id: id, user_id: req.userId, created_at: new Date() });
+          .insert({ suggestion_id: id, user_id: req.userId, created_at: new Date() });
       await supabaseAdmin.from('suggestions')
-        .update({ upvotes: (current?.upvotes || 0) + 1, updated_at: new Date() }).eq('id', id);
+          .update({ upvotes: (current?.upvotes || 0) + 1, updated_at: new Date() }).eq('id', id);
       voted = true;
     }
 
     const { data: updated } = await supabaseAdmin.from('suggestions')
-      .select('upvotes').eq('id', id).single();
+        .select('upvotes').eq('id', id).single();
 
     res.json({ success: true, voted, upvotes: updated?.upvotes || 0 });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -9576,10 +9583,10 @@ app.get('/api/admin/suggestions', verifyToken, async (req, res) => {
     const offset = (page - 1) * limit;
 
     let query = supabaseAdmin.from('suggestions')
-      .select('*, users!suggestions_user_id_fkey(id, username)', { count: 'exact' })
-      .order('is_pinned', { ascending: false })
-      .order(sort === 'votes' ? 'upvotes' : 'created_at', { ascending: false })
-      .range(offset, offset + parseInt(limit) - 1);
+        .select('*, users!suggestions_user_id_fkey(id, username)', { count: 'exact' })
+        .order('is_pinned', { ascending: false })
+        .order(sort === 'votes' ? 'upvotes' : 'created_at', { ascending: false })
+        .range(offset, offset + parseInt(limit) - 1);
 
     if (category) query = query.eq('category', category);
     if (status)   query = query.eq('status', status);
@@ -9604,17 +9611,17 @@ app.put('/api/admin/suggestions/:id', verifyToken, async (req, res) => {
     }
 
     const { data, error } = await supabaseAdmin.from('suggestions')
-      .update(updates).eq('id', req.params.id)
-      .select('*, users!suggestions_user_id_fkey(id, username)').single();
+        .update(updates).eq('id', req.params.id)
+        .select('*, users!suggestions_user_id_fkey(id, username)').single();
     if (error) return res.status(400).json({ error: error.message });
 
     // Notify user when admin replies
     if (admin_reply !== undefined && data?.user_id && admin_reply.trim()) {
       await createNotification(
-        data.user_id, 'system',
-        '💬 PRAQEN Team replied to your idea',
-        `Your suggestion "${(data.title || '').slice(0, 60)}" got a response from the team. Check it out!`,
-        '/'
+          data.user_id, 'system',
+          '💬 PRAQEN Team replied to your idea',
+          `Your suggestion "${(data.title || '').slice(0, 60)}" got a response from the team. Check it out!`,
+          '/'
       );
     }
 
@@ -9644,14 +9651,14 @@ app.post('/api/support/tickets', verifyToken, async (req, res) => {
     if (!message?.trim()) return res.status(400).json({ error: 'Message is required' });
 
     const { data: ticket, error: tErr } = await supabaseAdmin
-      .from('support_tickets')
-      .insert({ user_id: req.userId, subject: subject.trim(), category: category || 'general', status: 'open' })
-      .select().single();
+        .from('support_tickets')
+        .insert({ user_id: req.userId, subject: subject.trim(), category: category || 'general', status: 'open' })
+        .select().single();
     if (tErr) return res.status(400).json({ error: tErr.message });
 
     const { error: mErr } = await supabaseAdmin
-      .from('support_messages')
-      .insert({ ticket_id: ticket.id, sender_id: req.userId, is_admin: false, message: message.trim() });
+        .from('support_messages')
+        .insert({ ticket_id: ticket.id, sender_id: req.userId, is_admin: false, message: message.trim() });
     if (mErr) return res.status(400).json({ error: mErr.message });
 
     res.json({ success: true, ticket });
@@ -9662,10 +9669,10 @@ app.post('/api/support/tickets', verifyToken, async (req, res) => {
 app.get('/api/support/tickets', verifyToken, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
-      .from('support_tickets')
-      .select('*')
-      .eq('user_id', req.userId)
-      .order('updated_at', { ascending: false });
+        .from('support_tickets')
+        .select('*')
+        .eq('user_id', req.userId)
+        .order('updated_at', { ascending: false });
     if (error) return res.status(400).json({ error: error.message });
     res.json({ tickets: data || [] });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -9694,8 +9701,8 @@ app.post('/api/support/tickets/:id/messages', verifyToken, async (req, res) => {
     if (ticket.user_id !== req.userId) return res.status(403).json({ error: 'Not authorized' });
     if (ticket.status === 'closed') return res.status(400).json({ error: 'Ticket is closed' });
     const { data: msg, error } = await supabaseAdmin.from('support_messages')
-      .insert({ ticket_id: req.params.id, sender_id: req.userId, is_admin: false, message: message.trim() })
-      .select().single();
+        .insert({ ticket_id: req.params.id, sender_id: req.userId, is_admin: false, message: message.trim() })
+        .select().single();
     if (error) return res.status(400).json({ error: error.message });
     await supabaseAdmin.from('support_tickets').update({ updated_at: new Date() }).eq('id', req.params.id);
     res.json({ success: true, message: msg });
@@ -9709,9 +9716,9 @@ app.get('/api/admin/support/tickets', verifyToken, async (req, res) => {
     const { status = '', page = 1, limit = 100 } = req.query;
     const offset = (page - 1) * limit;
     let query = supabaseAdmin.from('support_tickets')
-      .select('*, users!support_tickets_user_id_fkey(id, username, full_name, email, avatar_url, phone_number, country, created_at)', { count: 'exact' })
-      .order('updated_at', { ascending: false })
-      .range(offset, offset + parseInt(limit) - 1);
+        .select('*, users!support_tickets_user_id_fkey(id, username, full_name, email, avatar_url, phone_number, country, created_at)', { count: 'exact' })
+        .order('updated_at', { ascending: false })
+        .range(offset, offset + parseInt(limit) - 1);
     if (status) query = query.eq('status', status);
     const { data, error, count } = await query;
     if (error) return res.status(400).json({ error: error.message });
@@ -9736,8 +9743,8 @@ app.get('/api/admin/support/tickets/:id/messages', verifyToken, async (req, res)
   try {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { data: ticket } = await supabaseAdmin.from('support_tickets')
-      .select('*, users!support_tickets_user_id_fkey(id, username, full_name, email, avatar_url, phone_number, country, created_at)')
-      .eq('id', req.params.id).single();
+        .select('*, users!support_tickets_user_id_fkey(id, username, full_name, email, avatar_url, phone_number, country, created_at)')
+        .eq('id', req.params.id).single();
     if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
     const { data: messages } = await supabaseAdmin.from('support_messages').select('*').eq('ticket_id', req.params.id).order('created_at', { ascending: true });
     res.json({
@@ -9765,15 +9772,15 @@ app.post('/api/admin/support/tickets/:id/reply', verifyToken, async (req, res) =
     const { data: ticket } = await supabaseAdmin.from('support_tickets').select('user_id, subject').eq('id', req.params.id).single();
     if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
     const { data: msg, error } = await supabaseAdmin.from('support_messages')
-      .insert({ ticket_id: req.params.id, sender_id: req.userId, is_admin: true, message: message.trim() })
-      .select().single();
+        .insert({ ticket_id: req.params.id, sender_id: req.userId, is_admin: true, message: message.trim() })
+        .select().single();
     if (error) return res.status(400).json({ error: error.message });
     await supabaseAdmin.from('support_tickets').update({ updated_at: new Date(), status: 'active' }).eq('id', req.params.id);
     await createNotification(
-      ticket.user_id, 'system',
-      '💬 Support team replied to your ticket',
-      `Your ticket "${(ticket.subject || '').slice(0, 60)}" has a new reply. Open Community Board → Support to read it.`,
-      '/'
+        ticket.user_id, 'system',
+        '💬 Support team replied to your ticket',
+        `Your ticket "${(ticket.subject || '').slice(0, 60)}" has a new reply. Open Community Board → Support to read it.`,
+        '/'
     );
     res.json({ success: true, message: msg });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -9800,8 +9807,8 @@ app.post('/api/trades/:id/send-code', verifyToken, async (req, res) => {
     const { giftCardCode } = req.body;
     if (!giftCardCode) return res.status(400).json({ error: 'Code is required' });
     const { data, error } = await supabaseAdmin.from('trades')
-      .update({ gift_card_code_encrypted: encryptCode(giftCardCode), code_sent_at: new Date() })
-      .eq('id', req.params.id).eq('seller_id', req.userId).select();
+        .update({ gift_card_code_encrypted: encryptCode(giftCardCode), code_sent_at: new Date() })
+        .eq('id', req.params.id).eq('seller_id', req.userId).select();
     if (error) return res.status(400).json({ error: error.message });
     res.json({ success: true });
   } catch (error) {
@@ -9816,7 +9823,7 @@ app.post('/api/trades/:id/send-code', verifyToken, async (req, res) => {
 app.get('/api/wallet', verifyToken, async (req, res) => {
   try {
     const { data: user, error: userError } = await supabaseAdmin.from('users')
-      .select('id, username, coinbase_wallet_id, bitcoin_wallet_address, coinbase_wallet_address, wallet_created_at').eq('id', req.userId).single();
+        .select('id, username, coinbase_wallet_id, bitcoin_wallet_address, coinbase_wallet_address, wallet_created_at').eq('id', req.userId).single();
     if (userError && userError.code === 'PGRST116') {
       // User not found in DB — genuine 404
       return res.status(404).json({ error: 'User not found' });
@@ -9842,9 +9849,9 @@ app.get('/api/wallet', verifyToken, async (req, res) => {
       }
     }
     const { data: recentTrades } = await supabaseAdmin.from('trades')
-      .select('id, amount_btc, amount_usd, status, created_at, completed_at')
-      .or(`buyer_id.eq.${req.userId},seller_id.eq.${req.userId}`).eq('status', 'COMPLETED')
-      .order('completed_at', { ascending: false }).limit(10);
+        .select('id, amount_btc, amount_usd, status, created_at, completed_at')
+        .or(`buyer_id.eq.${req.userId},seller_id.eq.${req.userId}`).eq('status', 'COMPLETED')
+        .order('completed_at', { ascending: false }).limit(10);
     res.json({
       success: true,
       wallet: { address, walletId, created_at: user.wallet_created_at, balance_btc: parseFloat(balance?.balance_btc || 0), locked_balance_btc: parseFloat(balance?.locked_balance_btc || 0), balance_usd: parseFloat(balanceUsd?.balance_usd || 0), has_address: !!address },
@@ -9889,8 +9896,8 @@ app.post('/api/wallet/check-payment', verifyToken, async (req, res) => {
       balance_btc: result.balance_btc,
       address:     result.address,
       message:     result.balance_btc > 0
-        ? `Balance: ${result.balance_btc.toFixed(8)} BTC`
-        : 'No confirmed deposits yet. Bitcoin confirmations take 10–60 minutes.',
+          ? `Balance: ${result.balance_btc.toFixed(8)} BTC`
+          : 'No confirmed deposits yet. Bitcoin confirmations take 10–60 minutes.',
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -9904,8 +9911,8 @@ app.post('/api/wallet/withdraw', verifyToken, authLimiter, requireEmailVerified,
 
     // Level 2: Email + phone required to withdraw
     const { data: withdrawUser } = await supabaseAdmin
-      .from('users').select('is_email_verified, is_phone_verified')
-      .eq('id', req.userId).single();
+        .from('users').select('is_email_verified, is_phone_verified')
+        .eq('id', req.userId).single();
     if (!withdrawUser?.is_email_verified || !withdrawUser?.is_phone_verified) {
       return res.status(403).json({
         error: 'Please verify your email and phone to withdraw Bitcoin.',
@@ -9945,7 +9952,7 @@ app.post('/api/wallet/internal-transfer', verifyToken, async (req, res) => {
 
     if (toUsername) {
       const { data: recipient } = await supabaseAdmin
-        .from('users').select('id, username, email').eq('username', toUsername.trim()).single();
+          .from('users').select('id, username, email').eq('username', toUsername.trim()).single();
       if (!recipient) return res.status(404).json({ error: `@${toUsername} not found on PRAQEN` });
       recipientId       = recipient.id;
       recipientUsername = recipient.username;
@@ -9954,7 +9961,7 @@ app.post('/api/wallet/internal-transfer', verifyToken, async (req, res) => {
     } else {
       // Look up BTC address in user_wallets — if found it is an internal PRAQEN address
       const { data: wallet } = await supabaseAdmin
-        .from('user_wallets').select('user_id').eq('btc_address', toAddress.trim()).single();
+          .from('user_wallets').select('user_id').eq('btc_address', toAddress.trim()).single();
       if (!wallet) {
         return res.status(404).json({
           error: 'Address not registered on PRAQEN. Use on-chain send for external addresses.',
@@ -9973,7 +9980,7 @@ app.post('/api/wallet/internal-transfer', verifyToken, async (req, res) => {
 
     // ── Check sender balance (wallets = source of truth) ──────────────────
     const { data: senderWallet } = await supabaseAdmin
-      .from('wallets').select('balance_btc').eq('user_id', req.userId).maybeSingle();
+        .from('wallets').select('balance_btc').eq('user_id', req.userId).maybeSingle();
 
     const available = parseFloat(senderWallet?.balance_btc || 0);
     if (available < amount) {
@@ -9986,36 +9993,36 @@ app.post('/api/wallet/internal-transfer', verifyToken, async (req, res) => {
     const newSenderBalance = parseFloat((available - amount).toFixed(8));
     // wallets first (source of truth), then keep secondary tables in sync
     await supabaseAdmin.from('wallets')
-      .update({ balance_btc: newSenderBalance, updated_at: new Date().toISOString() })
-      .eq('user_id', req.userId);
+        .update({ balance_btc: newSenderBalance, updated_at: new Date().toISOString() })
+        .eq('user_id', req.userId);
     await supabaseAdmin.from('user_balances')
-      .update({ balance_btc: newSenderBalance, updated_at: new Date().toISOString() })
-      .eq('user_id', req.userId);
+        .update({ balance_btc: newSenderBalance, updated_at: new Date().toISOString() })
+        .eq('user_id', req.userId);
     await supabaseAdmin.from('user_wallets')
-      .update({ balance_btc: newSenderBalance, updated_at: new Date().toISOString() })
-      .eq('user_id', req.userId);
+        .update({ balance_btc: newSenderBalance, updated_at: new Date().toISOString() })
+        .eq('user_id', req.userId);
 
     // ── Credit recipient ───────────────────────────────────────────────────
     const { data: recipWallet } = await supabaseAdmin
-      .from('wallets').select('balance_btc').eq('user_id', recipientId).maybeSingle();
+        .from('wallets').select('balance_btc').eq('user_id', recipientId).maybeSingle();
     const newRecipientBalance = parseFloat((parseFloat(recipWallet?.balance_btc || 0) + amount).toFixed(8));
     // wallets first (source of truth)
     await supabaseAdmin.from('wallets')
-      .update({ balance_btc: newRecipientBalance, updated_at: new Date().toISOString() })
-      .eq('user_id', recipientId);
+        .update({ balance_btc: newRecipientBalance, updated_at: new Date().toISOString() })
+        .eq('user_id', recipientId);
     // keep secondary tables in sync
     await supabaseAdmin.from('user_balances')
-      .upsert({ user_id: recipientId, balance_btc: newRecipientBalance, updated_at: new Date().toISOString() });
+        .upsert({ user_id: recipientId, balance_btc: newRecipientBalance, updated_at: new Date().toISOString() });
     await supabaseAdmin.from('user_wallets')
-      .update({ balance_btc: newRecipientBalance, updated_at: new Date().toISOString() })
-      .eq('user_id', recipientId);
+        .update({ balance_btc: newRecipientBalance, updated_at: new Date().toISOString() })
+        .eq('user_id', recipientId);
 
     // ── Generate transfer reference ────────────────────────────────────────
     const crypto = require('crypto');
     const txRef  = 'INT_' + crypto
-      .createHash('sha256')
-      .update(`${req.userId}:${recipientId}:${amount}:${Date.now()}`)
-      .digest('hex').slice(0, 20).toUpperCase();
+        .createHash('sha256')
+        .update(`${req.userId}:${recipientId}:${amount}:${Date.now()}`)
+        .digest('hex').slice(0, 20).toUpperCase();
 
     // ── Fetch sender info before logging ──────────────────────────────────
     const { data: senderUser } = await supabaseAdmin.from('users').select('username, email').eq('id', req.userId).single();
@@ -10049,20 +10056,20 @@ app.post('/api/wallet/internal-transfer', verifyToken, async (req, res) => {
 
     // ── Notify recipient (in-app) ──────────────────────────────────────────
     await createNotification(
-      recipientId,
-      'system',
-      '₿ Bitcoin Received!',
-      `@${senderName} sent you ₿${amount.toFixed(8)} — arrived instantly, zero fees.`,
-      '/wallet'
+        recipientId,
+        'system',
+        '₿ Bitcoin Received!',
+        `@${senderName} sent you ₿${amount.toFixed(8)} — arrived instantly, zero fees.`,
+        '/wallet'
     ).catch(() => {});
 
     // ── Notify sender (in-app receipt) ────────────────────────────────────
     await createNotification(
-      req.userId,
-      'system',
-      '✅ Transfer Sent',
-      `₿${amount.toFixed(8)} sent to @${recipientUsername} — instant & free. Ref: ${txRef.slice(0, 16)}`,
-      '/wallet'
+        req.userId,
+        'system',
+        '✅ Transfer Sent',
+        `₿${amount.toFixed(8)} sent to @${recipientUsername} — instant & free. Ref: ${txRef.slice(0, 16)}`,
+        '/wallet'
     ).catch(() => {});
 
     // ── Email notifications (fire-and-forget) ──────────────────────────────
@@ -10174,13 +10181,66 @@ app.post('/api/wallet/webhook', async (req, res) => {
     const rawBody    = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
     const expected   = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
 
-    if (!signature || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
-      console.warn('[Webhook] Invalid or missing signature — rejected');
-      return res.status(401).json({ error: 'Invalid signature' });
+    // Check user balance
+    const { data: bal, error: balErr } = await supabaseAdmin
+        .from('user_balances')
+        .select('balance_btc')
+        .eq('user_id', req.userId)
+        .single();
+    if (balErr) throw balErr;
+
+    const available = parseFloat(bal?.balance_btc || 0);
+    if (available < amount) {
+      return res.status(400).json({
+        error: `Insufficient balance. Available: ${available.toFixed(8)} BTC, Requested: ${amount.toFixed(8)} BTC`
+      });
     }
 
-    const event = JSON.parse(rawBody.toString('utf8'));
-    console.log(`[Webhook] Verified event: ${event.event?.type}`);
+    // Broadcast on-chain via HD wallet
+    const result = await hdWalletService.sendBitcoin(`user_${req.userId}`, address, amount);
+
+    // Deduct from user_balances
+    const newBalance = parseFloat((available - amount).toFixed(8));
+    await supabaseAdmin
+        .from('user_balances')
+        .update({ balance_btc: newBalance, updated_at: new Date().toISOString() })
+        .eq('user_id', req.userId);
+
+    // Record transaction
+    await supabaseAdmin
+        .from('wallet_transactions')
+        .insert({
+          user_id:             req.userId,
+          type:                'WITHDRAWAL',
+          amount_btc:          amount,
+          status:              'CONFIRMED',
+          tx_hash:             result.txid,
+          destination_address: address,
+          created_at:          new Date().toISOString(),
+        });
+
+    console.log(`[wallet/send] User ${req.userId.slice(0,8)} sent ${amount} BTC → ${address} | txid: ${result.txid}`);
+
+    res.json({
+      success:     true,
+      txid:        result.txid,
+      amount_btc:  amount,
+      to:          address,
+      fee_sats:    result.fee_sats,
+      new_balance: newBalance,
+      explorer:    result.explorer_url,
+      message:     `${amount} BTC sent successfully`,
+    });
+  } catch (error) {
+    console.error('[POST /api/wallet/send]', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/wallet/webhook', async (req, res) => {
+  try {
+    const event = req.body;
+    console.log(`[Webhook] Event: ${event.event?.type}`);
     if (event.event?.type === 'charge:confirmed') {
       const charge = event.event.data;
       const userId = charge.metadata?.user_id;
@@ -10207,7 +10267,7 @@ app.post('/api/admin/upgrade-wallets', verifyToken, async (req, res) => {
     if (!me?.is_admin) return res.status(403).json({ error: 'Admin only' });
 
     const { data: users } = await supabaseAdmin
-      .from('users').select('id, username, bitcoin_wallet_address');
+        .from('users').select('id, username, bitcoin_wallet_address');
 
     let upgraded = 0;
     let skipped  = 0;
@@ -10282,16 +10342,16 @@ app.get('/api/support/trade/:ref', verifyToken, async (req, res) => {
   try {
     const ref = (req.params.ref || '').toUpperCase();
     const { data: trade, error } = await supabaseAdmin
-      .from('trades')
-      .select(`
+        .from('trades')
+        .select(`
         id, trade_ref, status, amount_btc, amount_usd, amount_local,
         local_currency, currency_symbol, payment_method, created_at,
         completed_at, cancelled_at,
         buyer:buyer_id(id, username),
         seller:seller_id(id, username)
       `)
-      .eq('trade_ref', ref)
-      .single();
+        .eq('trade_ref', ref)
+        .single();
     if (error || !trade) return res.status(404).json({ success: false, error: 'Trade not found' });
     res.json({ success: true, trade });
   } catch (err) {
@@ -10310,10 +10370,10 @@ app.get('/api/ref/:username', async (req, res) => {
     if (!username) return res.json({ success: false, referral_code: null });
 
     const { data: user } = await supabaseAdmin
-      .from('users')
-      .select('referral_code, username')
-      .ilike('username', username)
-      .single();
+        .from('users')
+        .select('referral_code, username')
+        .ilike('username', username)
+        .single();
 
     if (user?.referral_code) {
       return res.json({ success: true, referral_code: user.referral_code });
@@ -10335,10 +10395,10 @@ async function backfillCountriesFromPhone() {
 
     while (true) {
       const { data: users, error } = await supabaseAdmin
-        .from('users')
-        .select('id, phone')
-        .or('country.is.null,country.eq.')
-        .range(from, from + batchSize - 1);
+          .from('users')
+          .select('id, phone')
+          .or('country.is.null,country.eq.')
+          .range(from, from + batchSize - 1);
 
       if (error) { console.error('[Backfill] select error:', error.message); break; }
       if (!users?.length) break;
@@ -10347,10 +10407,10 @@ async function backfillCountriesFromPhone() {
         const cc = phoneToCountryCode(u.phone);
         if (!cc) continue;
         const { error: upErr } = await supabaseAdmin
-          .from('users')
-          .update({ country: cc })
-          .eq('id', u.id)
-          .or('country.is.null,country.eq.'); // never overwrite if already set
+            .from('users')
+            .update({ country: cc })
+            .eq('id', u.id)
+            .or('country.is.null,country.eq.'); // never overwrite if already set
         if (!upErr) fixed++;
       }
 
@@ -10383,14 +10443,14 @@ app.get('/api/wallet/usdt', verifyToken, async (req, res) => {
 
     // Persist tron_address to user_wallets so the deposit monitor can scan it
     const { error: upsertErr } = await supabaseAdmin.from('user_wallets').upsert(
-      { user_id: req.userId, tron_address: tronAddress, updated_at: new Date().toISOString() },
-      { onConflict: 'user_id' }
+        { user_id: req.userId, tron_address: tronAddress, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id' }
     );
     if (upsertErr) console.warn('[GET /wallet/usdt] user_wallets upsert failed:', upsertErr.message);
 
     // Read USDT balance from wallets table (single source of truth)
     const { data: walRow } = await supabaseAdmin
-      .from('wallets').select('balance_usdt, locked_balance_usdt').eq('user_id', req.userId).maybeSingle();
+        .from('wallets').select('balance_usdt, locked_balance_usdt').eq('user_id', req.userId).maybeSingle();
 
     res.json({
       success:             true,
@@ -10436,9 +10496,9 @@ app.post('/api/wallet/usdt/send', verifyToken, async (req, res) => {
 
     // ── KYC gate: all 3 steps required ───────────────────────────────────
     const { data: kycUser } = await supabaseAdmin
-      .from('users')
-      .select('is_email_verified, email_verified, is_phone_verified, phone_verified, is_id_verified, kyc_verified')
-      .eq('id', req.userId).single();
+        .from('users')
+        .select('is_email_verified, email_verified, is_phone_verified, phone_verified, is_id_verified, kyc_verified')
+        .eq('id', req.userId).single();
 
     const kycEmail = !!(kycUser?.is_email_verified || kycUser?.email_verified);
     const kycPhone = !!(kycUser?.is_phone_verified  || kycUser?.phone_verified);
@@ -10475,12 +10535,12 @@ app.post('/api/wallet/usdt/send', verifyToken, async (req, res) => {
     const withdrawalFee = calcFee(sendAmount);
     const totalDeduct   = parseFloat((sendAmount + withdrawalFee).toFixed(6));
     const feeLabel      = sendAmount <= 50
-      ? `₮${withdrawalFee.toFixed(2)} flat`
-      : `${(FEE_PERCENT * 100).toFixed(0)}% (₮${withdrawalFee.toFixed(2)})`;
+        ? `₮${withdrawalFee.toFixed(2)} flat`
+        : `${(FEE_PERCENT * 100).toFixed(0)}% (₮${withdrawalFee.toFixed(2)})`;
 
     // ── Check user balance (must cover amount + fee) ──────────────────────
     const { data: walRow } = await supabaseAdmin
-      .from('wallets').select('balance_usdt').eq('user_id', req.userId).maybeSingle();
+        .from('wallets').select('balance_usdt').eq('user_id', req.userId).maybeSingle();
     const available = parseFloat(walRow?.balance_usdt || 0);
 
     if (available < totalDeduct) {
@@ -10494,10 +10554,10 @@ app.post('/api/wallet/usdt/send', verifyToken, async (req, res) => {
     // that already modified the balance will return 0 rows and be rejected.
     const newBalance = parseFloat((available - totalDeduct).toFixed(6));
     const { data: deductRows, error: deductErr } = await supabaseAdmin.from('wallets')
-      .update({ balance_usdt: newBalance, updated_at: new Date().toISOString() })
-      .eq('user_id', req.userId)
-      .eq('balance_usdt', available)   // optimistic lock
-      .select('balance_usdt');
+        .update({ balance_usdt: newBalance, updated_at: new Date().toISOString() })
+        .eq('user_id', req.userId)
+        .eq('balance_usdt', available)   // optimistic lock
+        .select('balance_usdt');
     if (deductErr) {
       return res.status(500).json({ error: 'Failed to reserve USDT — please try again' });
     }
@@ -10507,8 +10567,8 @@ app.post('/api/wallet/usdt/send', verifyToken, async (req, res) => {
 
     // ── Step 2: Credit fee to company wallet (internal ledger) ───────────
     await tronHotWallet.creditFeeToCompany(
-      withdrawalFee,
-      `withdrawal fee (${feeLabel}) from ${req.userId.slice(0, 8)}`
+        withdrawalFee,
+        `withdrawal fee (${feeLabel}) from ${req.userId.slice(0, 8)}`
     );
 
     // ── Step 3: Send net amount from hot wallet on-chain ──────────────────
@@ -10520,18 +10580,18 @@ app.post('/api/wallet/usdt/send', verifyToken, async (req, res) => {
       console.error('[USDT Send] Hot wallet broadcast failed — rolling back:', broadcastErr.message);
 
       const { error: restoreErr } = await supabaseAdmin.from('wallets')
-        .update({ balance_usdt: available, updated_at: new Date().toISOString() })
-        .eq('user_id', req.userId);
+          .update({ balance_usdt: available, updated_at: new Date().toISOString() })
+          .eq('user_id', req.userId);
       if (restoreErr) {
         console.error('[USDT Send] CRITICAL: user balance restore failed!', restoreErr.message, 'user:', req.userId, 'amount:', totalDeduct);
       }
 
       const { data: cw, error: cwErr } = await supabaseAdmin
-        .from('wallets').select('balance_usdt').eq('user_id', COMPANY_WALLET_ID).maybeSingle();
+          .from('wallets').select('balance_usdt').eq('user_id', COMPANY_WALLET_ID).maybeSingle();
       if (!cwErr) {
         const { error: feeRestoreErr } = await supabaseAdmin.from('wallets')
-          .update({ balance_usdt: Math.max(0, parseFloat(cw?.balance_usdt || 0) - withdrawalFee), updated_at: new Date().toISOString() })
-          .eq('user_id', COMPANY_WALLET_ID);
+            .update({ balance_usdt: Math.max(0, parseFloat(cw?.balance_usdt || 0) - withdrawalFee), updated_at: new Date().toISOString() })
+            .eq('user_id', COMPANY_WALLET_ID);
         if (feeRestoreErr) {
           console.error('[USDT Send] CRITICAL: company fee reverse failed!', feeRestoreErr.message);
         }
@@ -10650,11 +10710,11 @@ app.post('/api/swap/usdt-to-btc', verifyToken, async (req, res) => {
 app.get('/api/swap/history', verifyToken, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
-      .from('swap_transactions')
-      .select('*')
-      .eq('user_id', req.userId)
-      .order('created_at', { ascending: false })
-      .limit(50);
+        .from('swap_transactions')
+        .select('*')
+        .eq('user_id', req.userId)
+        .order('created_at', { ascending: false })
+        .limit(50);
     if (error) throw error;
     res.json({ success: true, swaps: data || [] });
   } catch (error) {
@@ -10683,15 +10743,15 @@ app.get('/api/wallet/usdt/check', verifyToken, async (req, res) => {
 
     // Persist to user_wallets (best-effort — scan still works even if this fails)
     const { error: upsertErr } = await supabaseAdmin.from('user_wallets').upsert(
-      { user_id: req.userId, tron_address: derivedAddress, updated_at: new Date().toISOString() },
-      { onConflict: 'user_id' }
+        { user_id: req.userId, tron_address: derivedAddress, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id' }
     );
     if (upsertErr) console.warn('[/wallet/usdt/check] upsert error (non-fatal):', upsertErr.message);
 
     // Read last_onchain_usdt if available (for idempotent deposit detection)
     let lastOnchainUsdt = 0;
     const { data: walletRow, error: fetchErr } = await supabaseAdmin
-      .from('user_wallets').select('last_onchain_usdt').eq('user_id', req.userId).maybeSingle();
+        .from('user_wallets').select('last_onchain_usdt').eq('user_id', req.userId).maybeSingle();
     if (!fetchErr && walletRow?.last_onchain_usdt != null) {
       lastOnchainUsdt = parseFloat(walletRow.last_onchain_usdt);
     }
@@ -10704,7 +10764,7 @@ app.get('/api/wallet/usdt/check', verifyToken, async (req, res) => {
     });
 
     const { data: wal } = await supabaseAdmin
-      .from('wallets').select('balance_usdt').eq('user_id', req.userId).maybeSingle();
+        .from('wallets').select('balance_usdt').eq('user_id', req.userId).maybeSingle();
 
     res.json({
       success:      true,
@@ -10737,7 +10797,7 @@ app.post('/api/wallet/usdt/internal-transfer', verifyToken, async (req, res) => 
 
     if (toUsername) {
       const { data: u } = await supabaseAdmin
-        .from('users').select('id, username, email').eq('username', toUsername.trim().replace(/^@/, '')).single();
+          .from('users').select('id, username, email').eq('username', toUsername.trim().replace(/^@/, '')).single();
       if (!u) return res.status(404).json({ error: `@${toUsername} not found on PRAQEN. Check the username and try again.` });
       recipient = u;
 
@@ -10748,7 +10808,7 @@ app.post('/api/wallet/usdt/internal-transfer', verifyToken, async (req, res) => 
         return res.status(400).json({ error: 'Invalid Tron address format. Tron addresses start with T and are 34 characters.' });
       }
       const { data: walletRow } = await supabaseAdmin
-        .from('user_wallets').select('user_id').eq('tron_address', addr).maybeSingle();
+          .from('user_wallets').select('user_id').eq('tron_address', addr).maybeSingle();
       if (!walletRow) {
         return res.status(404).json({
           error: 'This Tron address is not registered on PRAQEN. For external sends use the Send (on-chain) button.',
@@ -10756,7 +10816,7 @@ app.post('/api/wallet/usdt/internal-transfer', verifyToken, async (req, res) => 
         });
       }
       const { data: u } = await supabaseAdmin
-        .from('users').select('id, username, email').eq('id', walletRow.user_id).single();
+          .from('users').select('id, username, email').eq('id', walletRow.user_id).single();
       if (!u) return res.status(404).json({ error: 'Recipient account not found.' });
       recipient = u;
     }
@@ -10767,14 +10827,14 @@ app.post('/api/wallet/usdt/internal-transfer', verifyToken, async (req, res) => 
 
     // ── Ensure recipient has a wallets row ────────────────────────────────
     const { data: recipWallet } = await supabaseAdmin
-      .from('wallets').select('balance_usdt').eq('user_id', recipient.id).maybeSingle();
+        .from('wallets').select('balance_usdt').eq('user_id', recipient.id).maybeSingle();
     if (!recipWallet) {
       return res.status(400).json({ error: 'Recipient wallet not initialised. Ask them to open the PRAQEN wallet page first.' });
     }
 
     // ── Check sender USDT balance ─────────────────────────────────────────
     const { data: senderWallet } = await supabaseAdmin
-      .from('wallets').select('balance_usdt').eq('user_id', req.userId).maybeSingle();
+        .from('wallets').select('balance_usdt').eq('user_id', req.userId).maybeSingle();
     const available = parseFloat(senderWallet?.balance_usdt || 0);
     if (available < amount) {
       return res.status(400).json({
@@ -10785,11 +10845,11 @@ app.post('/api/wallet/usdt/internal-transfer', verifyToken, async (req, res) => 
     // ── Deduct from sender (optimistic lock: reject if balance changed since read) ──
     const newSenderBal = parseFloat((available - amount).toFixed(6));
     const { data: deductRows, error: deductErr } = await supabaseAdmin
-      .from('wallets')
-      .update({ balance_usdt: newSenderBal, updated_at: new Date().toISOString() })
-      .eq('user_id', req.userId)
-      .eq('balance_usdt', available)   // optimistic lock — fails if concurrent tx modified it
-      .select('balance_usdt');
+        .from('wallets')
+        .update({ balance_usdt: newSenderBal, updated_at: new Date().toISOString() })
+        .eq('user_id', req.userId)
+        .eq('balance_usdt', available)   // optimistic lock — fails if concurrent tx modified it
+        .select('balance_usdt');
     if (deductErr) {
       return res.status(500).json({ error: 'Transfer failed — please try again' });
     }
@@ -10800,22 +10860,22 @@ app.post('/api/wallet/usdt/internal-transfer', verifyToken, async (req, res) => 
     // ── Credit recipient (rollback sender on failure) ─────────────────────
     const newRecipBal = parseFloat((parseFloat(recipWallet.balance_usdt || 0) + amount).toFixed(6));
     const { error: creditErr } = await supabaseAdmin
-      .from('wallets')
-      .update({ balance_usdt: newRecipBal, updated_at: new Date().toISOString() })
-      .eq('user_id', recipient.id);
+        .from('wallets')
+        .update({ balance_usdt: newRecipBal, updated_at: new Date().toISOString() })
+        .eq('user_id', recipient.id);
     if (creditErr) {
       // Rollback sender deduction so no funds are lost
       await supabaseAdmin.from('wallets')
-        .update({ balance_usdt: available, updated_at: new Date().toISOString() })
-        .eq('user_id', req.userId);
+          .update({ balance_usdt: available, updated_at: new Date().toISOString() })
+          .eq('user_id', req.userId);
       return res.status(500).json({ error: 'Transfer failed — your balance has been restored' });
     }
 
     // ── Generate transfer reference ────────────────────────────────────────
     const txRef = 'UINT_' + require('crypto')
-      .createHash('sha256')
-      .update(`${req.userId}:${recipient.id}:${amount}:${Date.now()}`)
-      .digest('hex').slice(0, 16).toUpperCase();
+        .createHash('sha256')
+        .update(`${req.userId}:${recipient.id}:${amount}:${Date.now()}`)
+        .digest('hex').slice(0, 16).toUpperCase();
 
     const { data: senderUser } = await supabaseAdmin.from('users').select('username, email').eq('id', req.userId).single();
     const senderName = senderUser?.username || 'a PRAQEN user';
@@ -10855,12 +10915,12 @@ app.post('/api/wallet/usdt/internal-transfer', verifyToken, async (req, res) => 
 
     // ── In-app notifications ──────────────────────────────────────────────
     await createNotification(
-      recipient.id, 'system', '₮ USDT Received!',
-      `@${senderName} sent you ₮${amount.toFixed(2)} USDT — instant & free.`, '/wallet'
+        recipient.id, 'system', '₮ USDT Received!',
+        `@${senderName} sent you ₮${amount.toFixed(2)} USDT — instant & free.`, '/wallet'
     ).catch(() => {});
     await createNotification(
-      req.userId, 'system', '✅ USDT Transfer Sent',
-      `₮${amount.toFixed(2)} USDT sent to @${recipient.username} instantly. Ref: ${txRef}`, '/wallet'
+        req.userId, 'system', '✅ USDT Transfer Sent',
+        `₮${amount.toFixed(2)} USDT sent to @${recipient.username} instantly. Ref: ${txRef}`, '/wallet'
     ).catch(() => {});
 
     // ── Email notifications (fire-and-forget) ──────────────────────────────
@@ -11002,13 +11062,17 @@ app.post('/api/admin/hot-wallet/collect-fees', verifyToken, async (req, res) => 
   }
 });
 
+// ── ✅ NOTIFICATION ROUTES REGISTER ──────────────────────────────────────────
+// ✅ ADD THIS LINE: Register notification routes after all other routes
+app.use('/api/user', notificationRoutes);
+
 // START SERVER
 // ============================================================
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`✅ PRAQEN Backend running on http://localhost:${PORT}`);
-  console.log('📋 Routes: /api/auth, /api/users, /api/listings, /api/trades, /api/my-trades, /api/wallet, /api/hd-wallet, /api/notifications');
+  console.log('📋 Routes: /api/auth, /api/users, /api/listings, /api/trades, /api/my-trades, /api/wallet, /api/hd-wallet, /api/notifications, /api/user/notification-preferences');
 
   // Log hot wallet address so admin knows where to fund TRX + USDT
   tronHotWallet.logStartup();
@@ -11037,7 +11101,7 @@ app.listen(PORT, () => {
     // Real-time deposit detection via mempool.space WebSocket
     // Detects deposits within 1-3 seconds of entering mempool, credits on confirmation
     realtimeDepositService.start().catch(err =>
-      console.error('[RealtimeDeposit] Startup error:', err.message)
+        console.error('[RealtimeDeposit] Startup error:', err.message)
     );
 
     // 5-minute scanner kept as safety net (catches anything WebSocket misses on reconnect)

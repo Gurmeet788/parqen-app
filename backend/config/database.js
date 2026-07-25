@@ -1,3 +1,5 @@
+// backend/config/database.js
+
 const { createClient } = require('@supabase/supabase-js');
 
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -9,30 +11,47 @@ if (!supabaseUrl || !supabaseKey) {
     console.warn('⚠️ Supabase credentials missing in .env');
 }
 
+// ✅ Create Supabase clients
 const supabase = createClient(supabaseUrl, supabaseKey);
+const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 
-// Export as db for compatibility with our service
-module.exports = {
-    query: async (text, params) => {
-        // This is a simplified wrapper - for complex queries use supabase directly
-        console.log('📝 DB Query:', text.substring(0, 100));
-        
-        // For SELECT queries
+// ✅ Simple query wrapper - for compatibility with existing code
+const query = async (text, params) => {
+    console.log('📝 DB Query:', text.substring(0, 100));
+
+    try {
+        // For SELECT queries - try to execute via RPC if available
         if (text.trim().toUpperCase().startsWith('SELECT')) {
-            const { data, error } = await supabase.rpc('execute_sql', { 
-                query_text: text,
-                query_params: params 
-            }).catch(() => ({ data: null, error: null }));
-            
-            if (error) {
-                // Fallback for simple queries
-                return { rows: [], rowCount: 0 };
+            try {
+                const { data, error } = await supabase.rpc('execute_sql', {
+                    query_text: text,
+                    query_params: params || []
+                });
+
+                if (!error && data) {
+                    return { rows: data, rowCount: data.length || 0 };
+                }
+            } catch (rpcError) {
+                // RPC not available - return empty result
+                console.warn('⚠️ execute_sql RPC not available, using fallback');
             }
-            return { rows: data || [], rowCount: data?.length || 0 };
+
+            // Fallback: return empty result
+            return { rows: [], rowCount: 0 };
         }
-        
-        // For UPDATE/INSERT/DELETE
+
+        // For INSERT/UPDATE/DELETE
         return { rows: [], rowCount: 0 };
-    },
-    supabase // Export raw supabase client for direct use
+    } catch (error) {
+        console.error('Query error:', error);
+        return { rows: [], rowCount: 0 };
+    }
+};
+
+module.exports = {
+    query,
+    supabase,
+    supabaseAdmin,
+    // ✅ Direct access methods
+    from: (table) => supabase.from(table),
 };

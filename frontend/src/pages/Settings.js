@@ -36,30 +36,49 @@ const maskEmail = (email) => {
 // ─── Verification Step ────────────────────────────────────────────────────────
 function VerifStep({ n, title, desc, done, active, badge }) {
   return (
-    <div className={`flex items-start gap-4 p-4 rounded-xl border transition ${done ? 'bg-green-50 border-green-200' : active ? 'border-blue-200 bg-blue-50' : 'bg-gray-50 border-gray-100'}`}>
-      <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0 ${done ? 'bg-green-500 text-white' : active ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
-        {done ? <CheckCircle size={18} /> : n}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <p className={`font-bold text-sm ${done ? 'text-green-800' : active ? 'text-blue-800' : 'text-gray-600'}`}>{title}</p>
-          {badge && <span className={`text-xs font-black px-2 py-0.5 rounded-full ${done ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-600'}`}>{badge}</span>}
+      <div className={`flex items-start gap-4 p-4 rounded-xl border transition ${done ? 'bg-green-50 border-green-200' : active ? 'border-blue-200 bg-blue-50' : 'bg-gray-50 border-gray-100'}`}>
+        <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0 ${done ? 'bg-green-500 text-white' : active ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
+          {done ? <CheckCircle size={18} /> : n}
         </div>
-        <p className={`text-xs mt-0.5 ${done ? 'text-green-600' : active ? 'text-blue-600' : 'text-gray-400'}`}>{desc}</p>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className={`font-bold text-sm ${done ? 'text-green-800' : active ? 'text-blue-800' : 'text-gray-600'}`}>{title}</p>
+            {badge && <span className={`text-xs font-black px-2 py-0.5 rounded-full ${done ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-600'}`}>{badge}</span>}
+          </div>
+          <p className={`text-xs mt-0.5 ${done ? 'text-green-600' : active ? 'text-blue-600' : 'text-gray-400'}`}>{desc}</p>
+        </div>
+        {done ? <CheckCircle size={16} className="text-green-500 flex-shrink-0 mt-0.5" /> :
+            active ? <span className="text-xs font-bold text-blue-600 flex-shrink-0 mt-0.5">Required →</span> :
+                <Clock size={16} className="text-gray-300 flex-shrink-0 mt-0.5" />}
       </div>
-      {done ? <CheckCircle size={16} className="text-green-500 flex-shrink-0 mt-0.5" /> :
-        active ? <span className="text-xs font-bold text-blue-600 flex-shrink-0 mt-0.5">Required →</span> :
-        <Clock size={16} className="text-gray-300 flex-shrink-0 mt-0.5" />}
-    </div>
   );
 }
 
-// ─── Toggle Switch ────────────────────────────────────────────────────────────
+// ─── Toggle Switch (FIXED ✅) ─────────────────────────────────────────────────
 function Toggle({ checked, onChange }) {
   return (
-    <button onClick={() => onChange(!checked)} className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${checked ? 'bg-green-500' : 'bg-gray-200'}`}>
-      <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${checked ? 'translate-x-5' : 'translate-x-0.5'}`} />
-    </button>
+      <button
+          onClick={() => onChange(!checked)}
+          className={`relative inline-flex items-center h-6 rounded-full transition-colors duration-200 ease-in-out focus:outline-none flex-shrink-0 ${
+              checked ? 'bg-green-500' : 'bg-gray-300'
+          }`}
+          style={{
+            width: '44px',
+            border: 'none',
+            cursor: 'pointer',
+            boxShadow: checked ? '0 0 0 2px rgba(45, 106, 79, 0.25)' : 'none',
+          }}
+      >
+      <span
+          className={`inline-block w-5 h-5 transform bg-white rounded-full shadow-md transition-transform duration-200 ease-in-out ${
+              checked ? 'translate-x-5' : 'translate-x-0.5'
+          }`}
+          style={{
+            boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+            margin: '2px',
+          }}
+      />
+      </button>
   );
 }
 
@@ -74,74 +93,74 @@ function PushEnableCard() {
 
   if (permission === 'unsupported') {
     return (
-      <div className="rounded-2xl border p-4 flex items-start gap-3" style={{ borderColor: '#FED7AA', backgroundColor: '#FFF7ED' }}>
-        <span className="text-xl flex-shrink-0">📵</span>
-        <div>
-          <p className="text-sm font-black" style={{ color: '#92400E' }}>Push not supported</p>
-          <p className="text-xs mt-0.5" style={{ color: '#B45309' }}>Your browser doesn't support push notifications. Use Chrome or Safari for the best experience.</p>
+        <div className="rounded-2xl border p-4 flex items-start gap-3" style={{ borderColor: '#FED7AA', backgroundColor: '#FFF7ED' }}>
+          <span className="text-xl flex-shrink-0">📵</span>
+          <div>
+            <p className="text-sm font-black" style={{ color: '#92400E' }}>Push not supported</p>
+            <p className="text-xs mt-0.5" style={{ color: '#B45309' }}>Your browser doesn't support push notifications. Use Chrome or Safari for the best experience.</p>
+          </div>
         </div>
-      </div>
     );
   }
 
   if (permission === 'granted') {
     return (
-      <div className="rounded-2xl border p-4 flex items-center gap-3" style={{ borderColor: '#A7F3D0', backgroundColor: '#ECFDF5' }}>
-        <span className="text-xl">🔔</span>
-        <div className="flex-1">
-          <p className="text-sm font-black" style={{ color: '#065F46' }}>Push notifications are ON</p>
-          <p className="text-xs mt-0.5" style={{ color: '#059669' }}>You'll get instant alerts for trades, payments and messages — even when the browser is closed.</p>
+        <div className="rounded-2xl border p-4 flex items-center gap-3" style={{ borderColor: '#A7F3D0', backgroundColor: '#ECFDF5' }}>
+          <span className="text-xl">🔔</span>
+          <div className="flex-1">
+            <p className="text-sm font-black" style={{ color: '#065F46' }}>Push notifications are ON</p>
+            <p className="text-xs mt-0.5" style={{ color: '#059669' }}>You'll get instant alerts for trades, payments and messages — even when the browser is closed.</p>
+          </div>
+          <span className="text-xs font-black px-2 py-1 rounded-full" style={{ backgroundColor: '#D1FAE5', color: '#065F46' }}>✓ Active</span>
         </div>
-        <span className="text-xs font-black px-2 py-1 rounded-full" style={{ backgroundColor: '#D1FAE5', color: '#065F46' }}>✓ Active</span>
-      </div>
     );
   }
 
   if (permission === 'denied') {
     return (
-      <div className="rounded-2xl border p-4 flex items-start gap-3" style={{ borderColor: '#FECACA', backgroundColor: '#FEF2F2' }}>
-        <span className="text-xl flex-shrink-0">🚫</span>
-        <div>
-          <p className="text-sm font-black" style={{ color: '#991B1B' }}>Notifications blocked</p>
-          <p className="text-xs mt-1" style={{ color: '#B91C1C' }}>
-            You've blocked notifications for this site. To re-enable:
-            click the 🔒 lock icon in your browser address bar → Site settings → Notifications → Allow.
-          </p>
+        <div className="rounded-2xl border p-4 flex items-start gap-3" style={{ borderColor: '#FECACA', backgroundColor: '#FEF2F2' }}>
+          <span className="text-xl flex-shrink-0">🚫</span>
+          <div>
+            <p className="text-sm font-black" style={{ color: '#991B1B' }}>Notifications blocked</p>
+            <p className="text-xs mt-1" style={{ color: '#B91C1C' }}>
+              You've blocked notifications for this site. To re-enable:
+              click the 🔒 lock icon in your browser address bar → Site settings → Notifications → Allow.
+            </p>
+          </div>
         </div>
-      </div>
     );
   }
 
   return (
-    <div className="rounded-2xl border p-4" style={{ borderColor: '#A5F3FC', backgroundColor: '#ECFEFF' }}>
-      <div className="flex items-start gap-3 mb-3">
-        <span className="text-2xl flex-shrink-0">🔔</span>
-        <div>
-          <p className="text-sm font-black" style={{ color: '#164E63' }}>Enable Instant Trade Alerts</p>
-          <p className="text-xs mt-0.5" style={{ color: '#0891B2' }}>
-            Get notified the moment someone opens a trade with you, sends payment, or releases Bitcoin — even when you're not on the site.
-          </p>
-          <p className="text-xs mt-1" style={{ color: '#0891B2' }}>
-            Works on Android &amp; iPhone (add to home screen for iOS).
-          </p>
+      <div className="rounded-2xl border p-4" style={{ borderColor: '#A5F3FC', backgroundColor: '#ECFEFF' }}>
+        <div className="flex items-start gap-3 mb-3">
+          <span className="text-2xl flex-shrink-0">🔔</span>
+          <div>
+            <p className="text-sm font-black" style={{ color: '#164E63' }}>Enable Instant Trade Alerts</p>
+            <p className="text-xs mt-0.5" style={{ color: '#0891B2' }}>
+              Get notified the moment someone opens a trade with you, sends payment, or releases Bitcoin — even when you're not on the site.
+            </p>
+            <p className="text-xs mt-1" style={{ color: '#0891B2' }}>
+              Works on Android &amp; iPhone (add to home screen for iOS).
+            </p>
+          </div>
         </div>
+        <button
+            disabled={requesting}
+            onClick={async () => {
+              setRequesting(true);
+              const granted = await requestNotificationPermission();
+              setPermission(granted ? 'granted' : 'denied');
+              setRequesting(false);
+              if (granted) toast.success('🔔 Trade alerts enabled! You\'ll never miss a trade.');
+              else toast.info('Notifications not enabled. You can turn them on later.');
+            }}
+            className="w-full py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
+            style={{ backgroundColor: '#0E7490', color: '#fff' }}>
+          <Bell size={15} />
+          {requesting ? 'Requesting permission…' : '🔔 Enable Instant Trade Alerts'}
+        </button>
       </div>
-      <button
-        disabled={requesting}
-        onClick={async () => {
-          setRequesting(true);
-          const granted = await requestNotificationPermission();
-          setPermission(granted ? 'granted' : 'denied');
-          setRequesting(false);
-          if (granted) toast.success('🔔 Trade alerts enabled! You\'ll never miss a trade.');
-          else toast.info('Notifications not enabled. You can turn them on later.');
-        }}
-        className="w-full py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
-        style={{ backgroundColor: '#0E7490', color: '#fff' }}>
-        <Bell size={15} />
-        {requesting ? 'Requesting permission…' : '🔔 Enable Instant Trade Alerts'}
-      </button>
-    </div>
   );
 }
 
@@ -341,15 +360,45 @@ const TIMEZONE_GROUPS = {
 export default function Settings({ user, setUser }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const [activeTab, setActiveTab] = useState('account');
 
-  // Read ?tab= URL param so Profile can deep-link to a specific tab
+  // State initialization from URL + localStorage
+  const [activeTab, setActiveTab] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab');
+    const validTabs = ['account', 'verification', 'security', 'preferences', 'payment', 'notifications'];
+    if (tabParam && validTabs.includes(tabParam)) {
+      return tabParam;
+    }
+    const savedTab = localStorage.getItem('praqen_active_tab');
+    if (savedTab && validTabs.includes(savedTab)) {
+      return savedTab;
+    }
+    return 'account';
+  });
+
+  // Save tab to URL and localStorage
+  useEffect(() => {
+    const validTabs = ['account', 'verification', 'security', 'preferences', 'payment', 'notifications'];
+    if (activeTab && validTabs.includes(activeTab)) {
+      localStorage.setItem('praqen_active_tab', activeTab);
+      const params = new URLSearchParams(location.search);
+      params.set('tab', activeTab);
+      const newUrl = `${window.location.pathname}?${params.toString()}`;
+      window.history.replaceState({}, '', newUrl);
+    }
+  }, [activeTab, location.pathname]);
+
+  // Read URL param on page load
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const tabParam = params.get('tab');
     const validTabs = ['account', 'verification', 'security', 'preferences', 'payment', 'notifications'];
-    if (tabParam && validTabs.includes(tabParam)) setActiveTab(tabParam);
+    if (tabParam && validTabs.includes(tabParam)) {
+      setActiveTab(tabParam);
+      localStorage.setItem('praqen_active_tab', tabParam);
+    }
   }, [location.search]);
+
   const [loading, setLoading] = useState(false);
 
   // Account info
@@ -384,10 +433,20 @@ export default function Settings({ user, setUser }) {
     timezone:    localStorage.getItem('praqen_timezone')     || 'Africa/Accra',
   }));
 
-  // Notifications
-  const [notifs, setNotifs] = useState({
-    email_trades: true, email_security: true, email_marketing: false,
-    push_trades: true, push_messages: true, push_disputes: true,
+  // Notifications State with localStorage
+  const [notifs, setNotifs] = useState(() => {
+    const saved = localStorage.getItem('praqen_notifications');
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return {
+      email_trades: true,
+      email_security: true,
+      email_marketing: false,
+      push_trades: true,
+      push_messages: true,
+      push_disputes: true,
+    };
   });
 
   // Payment methods
@@ -410,20 +469,20 @@ export default function Settings({ user, setUser }) {
     // Fetch real IP + geo from our backend (avoids CORS/rate-limit issues with 3rd-party APIs)
     const tk = localStorage.getItem('token');
     fetch(`${API_URL}/me/security`, { headers: tk ? { Authorization: `Bearer ${tk}` } : {} })
-      .then(r => r.json())
-      .then(d => {
-        if (d.ip) {
-          // Build emoji flag from ISO country code
-          const cc = (d.country_code || '').toUpperCase();
-          const flag = cc.length === 2
-            ? cc.replace(/./g, c => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65))
-            : '';
-          setSecInfo(prev => ({ ...prev, ip: d.ip, country: d.country || cc || null, flag, city: d.city, loading: false }));
-        } else {
-          setSecInfo(prev => ({ ...prev, loading: false }));
-        }
-      })
-      .catch(() => setSecInfo(prev => ({ ...prev, loading: false })));
+        .then(r => r.json())
+        .then(d => {
+          if (d.ip) {
+            // Build emoji flag from ISO country code
+            const cc = (d.country_code || '').toUpperCase();
+            const flag = cc.length === 2
+                ? cc.replace(/./g, c => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65))
+                : '';
+            setSecInfo(prev => ({ ...prev, ip: d.ip, country: d.country || cc || null, flag, city: d.city, loading: false }));
+          } else {
+            setSecInfo(prev => ({ ...prev, loading: false }));
+          }
+        })
+        .catch(() => setSecInfo(prev => ({ ...prev, loading: false })));
   }, [activeTab]);
 
   // Hide full name toggle
@@ -591,27 +650,27 @@ export default function Settings({ user, setUser }) {
     }).catch(() => {
       // Fallback: try profile alone if KYC endpoint fails (column may not exist yet)
       axios.get(`${API_URL}/users/profile`, { headers: authH() })
-        .then(r => {
-          const fresh = r.data.user || r.data;
-          if (!fresh?.id) return;
-          setEmailVerified(!!(fresh.is_email_verified || fresh.email_verified));
-          setPhoneVerified(!!(fresh.is_phone_verified || fresh.phone_verified));
-          setKycVerified(!!(fresh.kyc_verified || fresh.is_id_verified));
-          if (fresh.phone) setAccountForm(prev => ({ ...prev, phone: fresh.phone }));
-          if (fresh.kyc_status) {
-            setKycStatus(fresh.kyc_status);
-            if (fresh.kyc_status === 'pending') {
-              setKycSubmitted(true);
-              const kycFallback = JSON.parse(localStorage.getItem('praqen_kyc') || '{}');
-              kycFallback.status = 'pending';
-              localStorage.setItem('praqen_kyc', JSON.stringify(kycFallback));
-            } else if (fresh.kyc_status === 'approved') {
-              setKycSubmitted(false);
-              localStorage.removeItem('praqen_kyc');
+          .then(r => {
+            const fresh = r.data.user || r.data;
+            if (!fresh?.id) return;
+            setEmailVerified(!!(fresh.is_email_verified || fresh.email_verified));
+            setPhoneVerified(!!(fresh.is_phone_verified || fresh.phone_verified));
+            setKycVerified(!!(fresh.kyc_verified || fresh.is_id_verified));
+            if (fresh.phone) setAccountForm(prev => ({ ...prev, phone: fresh.phone }));
+            if (fresh.kyc_status) {
+              setKycStatus(fresh.kyc_status);
+              if (fresh.kyc_status === 'pending') {
+                setKycSubmitted(true);
+                const kycFallback = JSON.parse(localStorage.getItem('praqen_kyc') || '{}');
+                kycFallback.status = 'pending';
+                localStorage.setItem('praqen_kyc', JSON.stringify(kycFallback));
+              } else if (fresh.kyc_status === 'approved') {
+                setKycSubmitted(false);
+                localStorage.removeItem('praqen_kyc');
+              }
             }
-          }
-          if (fresh.kyc_id_type) { setKycSubmittedType(fresh.kyc_id_type); }
-        }).catch(() => {});
+            if (fresh.kyc_id_type) { setKycSubmittedType(fresh.kyc_id_type); }
+          }).catch(() => {});
     }).finally(() => setVerificationSyncing(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -717,10 +776,10 @@ export default function Settings({ user, setUser }) {
         toast.info(`Dev: code auto-filled (${r.data.devCode})`, { autoClose: 8000 });
       } else {
         const msg = phoneOtpMethod === 'email'
-          ? 'Code sent to your email! Check inbox and spam folder.'
-          : phoneOtpMethod === 'sms'
-          ? 'Code sent via SMS to your phone!'
-          : 'Code sent via WhatsApp!';
+            ? 'Code sent to your email! Check inbox and spam folder.'
+            : phoneOtpMethod === 'sms'
+                ? 'Code sent via SMS to your phone!'
+                : 'Code sent via WhatsApp!';
         toast.success(msg);
       }
     } catch (e) {
@@ -741,8 +800,8 @@ export default function Settings({ user, setUser }) {
     setPhoneStep('verifying');
     try {
       await axios.post(`${API_URL}/users/verify-phone-otp`,
-        { phone: accountForm.phone, otp: phoneOtpCode },
-        { headers: authH() }
+          { phone: accountForm.phone, otp: phoneOtpCode },
+          { headers: authH() }
       );
       toast.success('Phone number verified! ✅');
       markPhoneVerifiedLocally(accountForm.phone);
@@ -865,8 +924,8 @@ export default function Settings({ user, setUser }) {
         compressImage(kycFiles.back),
       ]);
       await axios.post(`${API_URL}/kyc/upload`,
-        { idImage, idImageBack, idType: kycIdType },
-        { headers: authH() }
+          { idImage, idImageBack, idType: kycIdType },
+          { headers: authH() }
       );
       toast.success("Documents received! We'll review within 24 hours. ✅");
       const submittedAt = new Date().toISOString();
@@ -883,8 +942,8 @@ export default function Settings({ user, setUser }) {
       }));
     } catch (e) {
       const msg = e?.response?.data?.error
-        || (e?.response?.status === 413 ? 'Images are too large. Please use smaller photos and try again.' : null)
-        || 'Failed to submit KYC. Please check your connection and try again.';
+          || (e?.response?.status === 413 ? 'Images are too large. Please use smaller photos and try again.' : null)
+          || 'Failed to submit KYC. Please check your connection and try again.';
       toast.error(msg);
       setKycStep('ready');
     }
@@ -904,6 +963,72 @@ export default function Settings({ user, setUser }) {
     finally { setLoading(false); }
   };
 
+  // Fetch Notifications Function
+  const fetchNotifications = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_URL}/user/notification-preferences`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.data) {
+        const data = response.data;
+        setNotifs({
+          email_trades: data.email_trades ?? true,
+          email_security: data.email_security ?? true,
+          email_marketing: data.email_marketing ?? false,
+          push_trades: data.push_trades ?? true,
+          push_messages: data.push_messages ?? true,
+          push_disputes: data.push_disputes ?? true,
+        });
+        localStorage.setItem('praqen_notifications', JSON.stringify(data));
+      }
+    } catch (error) {
+      console.error('Failed to fetch notifications:', error);
+      const saved = localStorage.getItem('praqen_notifications');
+      if (saved) {
+        try { setNotifs(JSON.parse(saved)); } catch {}
+      }
+    }
+  };
+
+  // Save Notifications Function
+  const handleSaveNotifications = async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const payload = {
+        email_trades: notifs.email_trades,
+        email_security: notifs.email_security,
+        email_marketing: notifs.email_marketing,
+        push_trades: notifs.push_trades,
+        push_messages: notifs.push_messages,
+        push_disputes: notifs.push_disputes,
+      };
+
+      await axios.put(
+          `${API_URL}/user/notification-preferences`,
+          payload,
+          { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      localStorage.setItem('praqen_notifications', JSON.stringify(notifs));
+      toast.success('✅ Notification preferences saved successfully!');
+
+    } catch (error) {
+      console.error('Save error:', error);
+      toast.error(error?.response?.data?.error || '❌ Failed to save preferences');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch notifications when Notifications tab opens
+  useEffect(() => {
+    if (activeTab === 'notifications') {
+      fetchNotifications();
+    }
+  }, [activeTab]);
+
   const TABS = [
     { id: 'account',       icon: User,     label: 'Account' },
     { id: 'verification',  icon: Shield,   label: 'Verification' },
@@ -918,1013 +1043,980 @@ export default function Settings({ user, setUser }) {
   const labelCls = "block text-sm font-bold mb-1.5 text-gray-700";
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ backgroundColor: C.mist, fontFamily: "'DM Sans',sans-serif" }}>
+      <div className="min-h-screen flex flex-col" style={{ backgroundColor: C.mist, fontFamily: "'DM Sans',sans-serif" }}>
 
-      <div className="max-w-5xl mx-auto w-full px-4 py-4 md:py-8">
+        <div className="max-w-5xl mx-auto w-full px-4 py-4 md:py-8">
 
-        {/* Header */}
-        <div className="mb-4 md:mb-8">
-          <h1 className="text-2xl md:text-3xl font-black" style={{ color: C.forest, fontFamily: "'Syne',sans-serif" }}>Settings</h1>
-          <p className="text-sm mt-1" style={{ color: C.g500 }}>Manage your account, security and preferences</p>
-        </div>
-
-        <div className="flex flex-col md:flex-row gap-4 md:gap-6">
-
-          {/* Sidebar tabs */}
-          <div className="md:w-52 flex-shrink-0">
-
-            {/* Mobile: horizontal scrollable pill tab bar */}
-            <div className="md:hidden flex gap-2 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1">
-              {TABS.map(({ id, icon: Icon, label }) => (
-                <button key={id} onClick={() => setActiveTab(id)}
-                  className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold whitespace-nowrap transition"
-                  style={{
-                    backgroundColor: activeTab === id ? C.green : C.white,
-                    color: activeTab === id ? '#fff' : C.g500,
-                    border: `1.5px solid ${activeTab === id ? C.green : C.g200}`,
-                  }}>
-                  <Icon size={13} style={{ flexShrink: 0 }} />
-                  {label}
-                </button>
-              ))}
-              <button onClick={handleLogout}
-                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold whitespace-nowrap"
-                style={{ backgroundColor: '#FEF2F2', color: '#EF4444', border: '1.5px solid #FECACA' }}>
-                <LogOut size={13} style={{ flexShrink: 0 }} />
-                Logout
-              </button>
-            </div>
-
-            {/* Desktop: vertical sidebar */}
-            <div className="hidden md:block bg-white rounded-2xl shadow-sm border overflow-hidden" style={{ borderColor: C.g200 }}>
-              {TABS.map(({ id, icon: Icon, label }) => (
-                <button key={id} onClick={() => setActiveTab(id)}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-left transition border-b last:border-0 hover:bg-gray-50"
-                  style={{ borderColor: C.g100, backgroundColor: activeTab === id ? `${C.green}10` : 'transparent', borderLeft: activeTab === id ? `3px solid ${C.green}` : '3px solid transparent' }}>
-                  <Icon size={16} style={{ color: activeTab === id ? C.green : C.g400 }} />
-                  <span className="text-sm font-bold" style={{ color: activeTab === id ? C.green : C.g600 }}>{label}</span>
-                </button>
-              ))}
-              {/* Logout */}
-              <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 text-left transition hover:bg-red-50" style={{ borderTop: `1px solid ${C.g100}` }}>
-                <LogOut size={16} className="text-red-400" />
-                <span className="text-sm font-bold text-red-500">Log Out</span>
-              </button>
-            </div>
+          {/* Header */}
+          <div className="mb-4 md:mb-8">
+            <h1 className="text-2xl md:text-3xl font-black" style={{ color: C.forest, fontFamily: "'Syne',sans-serif" }}>Settings</h1>
+            <p className="text-sm mt-1" style={{ color: C.g500 }}>Manage your account, security and preferences</p>
           </div>
 
-          {/* Main content */}
-          <div className="flex-1 min-w-0 space-y-5">
+          <div className="flex flex-col md:flex-row gap-4 md:gap-6">
 
-            {/* ── ACCOUNT ─────────────────────────────────────────── */}
-            {activeTab === 'account' && (
-              <>
-                {/* Account information */}
-                <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: C.g200 }}>
-                  <h2 className="text-lg font-black mb-5" style={{ color: C.forest }}>Account Information</h2>
-                  <form onSubmit={handleAccountUpdate} className="space-y-4">
-                    <div className="grid md:grid-cols-2 gap-4">
-                      {/* Username — editable until changed once */}
-                      <div>
-                        <label className={labelCls} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                          Username {user?.username_changed && <Lock size={12} style={{ color: C.g400 }} />}
-                        </label>
-                        {user?.username_changed ? (
-                          <div className="px-4 py-2.5 border-2 rounded-xl text-sm font-medium flex items-center justify-between"
-                            style={{ borderColor: C.g200, backgroundColor: C.g100, color: C.g500 }}>
-                            <span>{accountForm.username}</span>
-                            <Lock size={13} style={{ color: C.g400 }} />
-                          </div>
-                        ) : (
-                          <input type="text" value={accountForm.username}
-                            onChange={e => setAccountForm({ ...accountForm, username: e.target.value })}
-                            className={inputCls} required style={inputStyle(accountForm.username)} />
-                        )}
-                        {user?.username_changed
-                          ? <p className="text-xs mt-1 flex items-center gap-1" style={{ color: C.g400 }}><Lock size={9} />Username is permanently locked.</p>
-                          : <p className="text-xs mt-1 flex items-center gap-1" style={{ color: '#D97706' }}>⚠ You can only change your username once. Choose carefully.</p>
-                        }
-                      </div>
-                      {/* Full Name — editable until KYC */}
-                      <div>
-                        <label className={labelCls} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                          Full Name {kycVerified && <Lock size={12} style={{ color: C.g400 }} />}
-                        </label>
-                        {kycVerified ? (
-                          <div className="px-4 py-2.5 border-2 rounded-xl text-sm font-medium flex items-center justify-between"
-                            style={{ borderColor: C.g200, backgroundColor: C.g100, color: C.g500 }}>
-                            <span>{accountForm.fullName}</span>
-                            <Lock size={13} style={{ color: C.g400 }} />
-                          </div>
-                        ) : (
-                          <input type="text" value={accountForm.fullName}
-                            onChange={e => setAccountForm({ ...accountForm, fullName: e.target.value })}
-                            className={inputCls} style={inputStyle(accountForm.fullName)} />
-                        )}
-                        {kycVerified
-                          ? <p className="text-xs mt-1 flex items-center gap-1" style={{ color: C.g400 }}><Lock size={9} />Locked after ID verification.</p>
-                          : <p className="text-xs mt-1" style={{ color: C.g500 }}>ℹ Full name cannot be changed after ID verification.</p>
-                        }
-                      </div>
-                    </div>
+            {/* Sidebar tabs */}
+            <div className="md:w-52 flex-shrink-0">
 
-                    <div className="grid md:grid-cols-2 gap-4">
-                      {/* Email — read-only (can't change), show full email + verify button if not verified */}
-                      <div>
-                        <label className={labelCls} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          Email Address
-                          {emailVerified
-                            ? <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#ECFDF5', color: C.success }}>✓ Verified</span>
-                            : <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#FFF7ED', color: C.warn }}>⚠ Unverified</span>}
-                        </label>
-                        <div className="px-4 py-2.5 border-2 rounded-xl text-sm font-medium flex items-center justify-between"
-                          style={{ borderColor: emailVerified ? '#DCFCE7' : '#FDE68A', backgroundColor: C.g50, color: C.g700 }}>
-                          <span className="truncate">{maskEmail(accountForm.email)}</span>
-                          {emailVerified
-                            ? <CheckCircle size={14} style={{ color: C.success, flexShrink: 0 }} />
-                            : <AlertCircle size={14} style={{ color: C.warn, flexShrink: 0 }} />}
-                        </div>
-                        <p className="text-xs mt-1" style={{ color: C.g400 }}>This is the email used to register. It cannot be changed.</p>
-                        {!emailVerified && (
-                          <div className="mt-2 space-y-2">
-                            {emailVerifyStep === 'idle' && (
-                              <button type="button" onClick={handleSendEmailCode} disabled={emailCodeLoading}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black disabled:opacity-60"
-                                style={{ backgroundColor: C.paid, color: 'white' }}>
-                                {emailCodeLoading ? <RefreshCw size={11} className="animate-spin" /> : <Mail size={11} />}
-                                {emailCodeLoading ? 'Sending code…' : 'Verify Email →'}
-                              </button>
-                            )}
-                            {(emailVerifyStep === 'otp' || emailVerifyStep === 'verifying') && (
-                              <>
-                                <p className="text-xs" style={{ color: C.g500 }}>Code sent to your email — enter it below:</p>
-                                <div className="flex gap-2 flex-wrap items-center">
-                                  <input type="text" inputMode="numeric" maxLength={6}
-                                    placeholder="000000" value={emailCode}
-                                    onChange={e => setEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                                    className="px-3 py-2 border-2 rounded-xl text-sm font-black focus:outline-none w-36"
-                                    style={{ borderColor: C.paid, letterSpacing: '0.2em', color: C.g800 }} />
-                                  <button type="button" onClick={handleVerifyEmailCode}
-                                    disabled={emailVerifyStep === 'verifying' || emailCode.length < 6}
-                                    className="px-3 py-2 rounded-xl text-white text-xs font-black disabled:opacity-50"
-                                    style={{ backgroundColor: C.success }}>
-                                    {emailVerifyStep === 'verifying' ? 'Verifying…' : '✓ Confirm'}
-                                  </button>
-                                  <button type="button" onClick={() => { setEmailVerifyStep('idle'); setEmailCode(''); }}
-                                    className="text-xs underline" style={{ color: C.g400 }}>Resend</button>
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Phone — editable until verified, then locked */}
-                      <div>
-                        <label className={labelCls} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          Phone Number
-                          {phoneVerified || phoneStep === 'done'
-                            ? <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#ECFDF5', color: C.success }}>✓ Verified</span>
-                            : accountForm.phone
-                              ? <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#FFF7ED', color: C.warn }}>⚠ Unverified</span>
-                              : null}
-                        </label>
-                        {phoneVerified || phoneStep === 'done' ? (
-                          <div className="px-4 py-2.5 border-2 rounded-xl text-sm font-medium flex items-center justify-between"
-                            style={{ borderColor: '#DCFCE7', backgroundColor: C.g50, color: C.g700 }}>
-                            <span>{accountForm.phone || 'Your number has been verified'}</span>
-                            <CheckCircle size={14} style={{ color: C.success, flexShrink: 0 }} />
-                          </div>
-                        ) : (
-                          <input type="tel" value={accountForm.phone}
-                            onChange={e => setAccountForm({ ...accountForm, phone: e.target.value })}
-                            placeholder="+[country code] your number — e.g. +233XXXXXXXXX" className={inputCls} style={inputStyle(accountForm.phone)} />
-                        )}
-                        {phoneVerified || phoneStep === 'done'
-                          ? <p className="text-xs mt-1 flex items-center gap-1" style={{ color: C.g400 }}><Lock size={9} />Phone number locked after verification.</p>
-                          : <p className="text-xs mt-1" style={{ color: C.g400 }}>Go to the Verification tab to verify your phone number instantly.</p>}
-                      </div>
-                    </div>
-
-                    {/* Location — locked after ID verification */}
-                    {(() => {
-                      const locationLocked = kycVerified
-                        || !!(user?.is_id_verified || user?.kyc_verified || user?.kyc_status === 'approved');
-                      return (
-                        <div>
-                          <label className={labelCls} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                            Location {locationLocked && <Lock size={12} style={{ color: C.g400 }} />}
-                          </label>
-                          {locationLocked ? (
-                            <div className="px-4 py-2.5 border-2 rounded-xl text-sm font-medium flex items-center justify-between"
-                              style={{ borderColor: C.g200, backgroundColor: C.g100, color: C.g500 }}>
-                              <span>{accountForm.location || '—'}</span>
-                              <Lock size={13} style={{ color: C.g400 }} />
-                            </div>
-                          ) : (
-                            <input type="text" value={accountForm.location}
-                              onChange={e => setAccountForm({ ...accountForm, location: e.target.value })}
-                              placeholder="e.g. Accra, Ghana"
-                              className={inputCls} style={inputStyle(accountForm.location)} />
-                          )}
-                          {locationLocked
-                            ? <p className="text-xs mt-1 flex items-center gap-1" style={{ color: C.g400 }}><Lock size={9} />Location locked after ID verification.</p>
-                            : <p className="text-xs mt-1" style={{ color: C.g500 }}>ℹ Location will be locked once your ID is verified.</p>
-                          }
-                        </div>
-                      );
-                    })()}
-
-                    {/* Bio with 100-word limit */}
-                    <div>
-                      <label className={labelCls}>Bio <span className="font-normal text-gray-400">(optional)</span></label>
-                      <textarea
-                        value={accountForm.bio}
-                        onChange={e => {
-                          const val = e.target.value;
-                          const wc = val.trim() === '' ? 0 : val.trim().split(/\s+/).length;
-                          if (wc <= 100) setAccountForm({ ...accountForm, bio: val });
-                        }}
-                        placeholder="Tell traders a bit about yourself… (max 100 words)"
-                        rows={2}
-                        className={inputCls + " resize-none"} style={inputStyle(accountForm.bio)} />
-                      <p className="text-xs mt-0.5 text-right"
-                        style={{ color: (accountForm.bio || '').trim() === '' ? C.g400 : (accountForm.bio || '').trim().split(/\s+/).length >= 100 ? C.danger : C.g400 }}>
-                        {(accountForm.bio || '').trim() === '' ? 0 : (accountForm.bio || '').trim().split(/\s+/).length}/100 words
-                      </p>
-                    </div>
-
-                    <button type="submit" disabled={loading}
-                      className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-white font-bold text-sm hover:opacity-90 disabled:opacity-50"
-                      style={{ backgroundColor: C.green }}>
-                      {loading ? <><RefreshCw size={15} className="animate-spin" /> Saving…</> : <><Save size={15} /> Save Changes</>}
+              {/* Mobile: horizontal scrollable pill tab bar */}
+              <div className="md:hidden flex gap-2 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1">
+                {TABS.map(({ id, icon: Icon, label }) => (
+                    <button key={id} onClick={() => setActiveTab(id)}
+                            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold whitespace-nowrap transition"
+                            style={{
+                              backgroundColor: activeTab === id ? C.green : C.white,
+                              color: activeTab === id ? '#fff' : C.g500,
+                              border: `1.5px solid ${activeTab === id ? C.green : C.g200}`,
+                            }}>
+                      <Icon size={13} style={{ flexShrink: 0 }} />
+                      {label}
                     </button>
-                  </form>
-                </div>
+                ))}
+                <button onClick={handleLogout}
+                        className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold whitespace-nowrap"
+                        style={{ backgroundColor: '#FEF2F2', color: '#EF4444', border: '1.5px solid #FECACA' }}>
+                  <LogOut size={13} style={{ flexShrink: 0 }} />
+                  Logout
+                </button>
+              </div>
 
-                {/* Name display preferences */}
-                <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: C.g200 }}>
-                  <h2 className="text-lg font-black mb-1" style={{ color: C.forest }}>Name Display</h2>
-                  <p className="text-xs text-gray-400 mb-4">How your name appears to other traders on the platform</p>
+              {/* Desktop: vertical sidebar */}
+              <div className="hidden md:block bg-white rounded-2xl shadow-sm border overflow-hidden" style={{ borderColor: C.g200 }}>
+                {TABS.map(({ id, icon: Icon, label }) => (
+                    <button key={id} onClick={() => setActiveTab(id)}
+                            className="w-full flex items-center gap-3 px-4 py-3 text-left transition border-b last:border-0 hover:bg-gray-50"
+                            style={{ borderColor: C.g100, backgroundColor: activeTab === id ? `${C.green}10` : 'transparent', borderLeft: activeTab === id ? `3px solid ${C.green}` : '3px solid transparent' }}>
+                      <Icon size={16} style={{ color: activeTab === id ? C.green : C.g400 }} />
+                      <span className="text-sm font-bold" style={{ color: activeTab === id ? C.green : C.g600 }}>{label}</span>
+                    </button>
+                ))}
+                {/* Logout */}
+                <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 text-left transition hover:bg-red-50" style={{ borderTop: `1px solid ${C.g100}` }}>
+                  <LogOut size={16} className="text-red-400" />
+                  <span className="text-sm font-bold text-red-500">Log Out</span>
+                </button>
+              </div>
+            </div>
 
-                  {/* Options */}
-                  <div className="space-y-2 mb-4">
-                    {(() => {
-                      const full    = accountForm.fullName || user?.full_name || '';
-                      const initial = full
-                        ? full.trim().split(/\s+/).map((w, i) => i === 0 ? w : w[0] + '.').join(' ')
-                        : 'Samuel K.';
-                      return [
-                        { val: 'full',    label: 'Show full name',                   desc: 'Your full name is visible to all traders', example: full || 'Samuel Kwame' },
-                        { val: 'initial', label: 'Show first name and last initial', desc: 'Only first name + last initial shown',      example: initial },
-                        { val: 'hide',    label: 'Hide full name',                   desc: 'Only your username is shown',               example: accountForm.username || user?.username || 'samuel123' },
-                      ];
-                    })().map(({ val, label, desc, example }) => (
-                      <label key={val} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition ${prefs.nameDisplay === val ? 'border-green-300 bg-green-50' : 'border-gray-100 hover:border-gray-200'}`}>
-                        <input type="radio" name="nameDisplay" value={val} checked={prefs.nameDisplay === val}
-                          onChange={() => setPrefs(p => ({ ...p, nameDisplay: val }))}
-                          className="accent-green-600" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-gray-800">{label}</p>
-                          <p className="text-xs text-gray-500">{desc}</p>
-                        </div>
-                        <span className="text-xs font-mono px-2 py-0.5 rounded-lg flex-shrink-0" style={{ backgroundColor: C.g100, color: C.g600 }}>{example}</span>
-                      </label>
-                    ))}
-                  </div>
+            {/* Main content */}
+            <div className="flex-1 min-w-0 space-y-5">
 
-                  {/* Live preview */}
-                  <div className="mb-4 px-4 py-3 rounded-xl border" style={{ backgroundColor: C.mist, borderColor: C.g200 }}>
-                    <p className="text-xs font-bold mb-1" style={{ color: C.g500 }}>Preview — what traders see:</p>
-                    <p className="text-sm font-black" style={{ color: C.forest }}>
-                      {(() => {
-                        const full = accountForm.fullName || user?.full_name || '';
-                        const username = accountForm.username || user?.username || '';
-                        if (prefs.nameDisplay === 'hide' || !full) return username;
-                        if (prefs.nameDisplay === 'initial') {
-                          const parts = full.trim().split(/\s+/);
-                          return parts.length < 2 ? full : parts[0] + ' ' + parts.slice(1).map(p => p[0] + '.').join(' ');
-                        }
-                        return full;
-                      })()}
-                    </p>
-                  </div>
-
-                  {/* Save button */}
-                  <button onClick={saveNameDisplay} disabled={nameDisplaySaving}
-                    className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-white font-bold text-sm hover:opacity-90 disabled:opacity-50 transition"
-                    style={{ backgroundColor: nameDisplaySaved ? C.success : C.green }}>
-                    {nameDisplaySaving
-                      ? <><RefreshCw size={15} className="animate-spin"/> Saving…</>
-                      : nameDisplaySaved
-                        ? <><CheckCircle size={15}/> Saved!</>
-                        : <><Save size={15}/> Save Name Display</>}
-                  </button>
-                </div>
-              </>
-            )}
-
-            {/* ── VERIFICATION ────────────────────────────────────── */}
-            {activeTab === 'verification' && (
-              <div className="space-y-4 max-w-2xl">
-                {verificationSyncing && (
-                  <div className="bg-white rounded-2xl border p-10 flex items-center justify-center gap-3" style={{ borderColor: C.g200 }}>
-                    <RefreshCw size={18} className="animate-spin" style={{ color: C.green }} />
-                    <span className="text-sm font-bold" style={{ color: C.g500 }}>Loading verification status…</span>
-                  </div>
-                )}
-                {!verificationSyncing && <>
-                {/* ── Status banner ── */}
-                <div className="rounded-2xl p-5 border"
-                  style={{ background: verLevel === 3 ? `linear-gradient(135deg,${C.success},${C.mint})` : `linear-gradient(135deg,${C.forest},${C.green})`, borderColor: 'transparent' }}>
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
-                      <Shield size={24} className="text-white" />
-                    </div>
-                    <div>
-                      <p className="text-white font-black text-lg">Verification Level {verLevel}/3</p>
-                      <p className="text-white/70 text-xs">
-                        {verLevel === 3 ? '✅ Fully verified — maximum trade limits' :
-                          verLevel === 2 ? '⚡ KYC required for higher limits' :
-                          verLevel === 1 ? '⚠️ Add phone to unlock more features' :
-                          '🔴 Start verification to begin trading'}
-                      </p>
-                    </div>
-                    <div className="ml-auto text-right">
-                      <p className="text-white/70 text-xs mb-1">Trade limit</p>
-                      <p className="text-white font-black text-sm">
-                        {verLevel >= 3 ? 'Unlimited' : verLevel >= 2 ? '$2,000' : verLevel >= 1 ? '$500' : '$100'}
-                      </p>
-                    </div>
-                  </div>
-                  {/* Progress bar */}
-                  <div className="w-full h-2 rounded-full bg-white/20">
-                    <div className="h-2 rounded-full transition-all" style={{ width: `${(verLevel / 3) * 100}%`, backgroundColor: C.gold }} />
-                  </div>
-                </div>
-
-                {/* ── 3-step cards ── */}
-                <div className="space-y-3">
-
-                    {/* ── Step 1 — Email ── */}
-                    {(() => {
-                      const underReview = !emailVerified && emailResendCount >= 3;
-                      return (
-                        <div className={`p-4 rounded-xl border transition ${emailVerified ? 'bg-green-50 border-green-200' : underReview ? 'bg-amber-50 border-amber-200' : 'border-blue-200 bg-blue-50'}`}>
-                          <div className="flex items-start gap-4">
-                            <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0 ${emailVerified ? 'bg-green-500 text-white' : underReview ? 'bg-amber-400 text-white' : 'bg-blue-500 text-white'}`}>
-                              {emailVerified ? <CheckCircle size={18}/> : underReview ? <Clock size={18}/> : 1}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <p className={`font-bold text-sm ${emailVerified ? 'text-green-800' : underReview ? 'text-amber-800' : 'text-blue-800'}`}>Email Verification</p>
-                                <span className={`text-xs font-black px-2 py-0.5 rounded-full ${emailVerified ? 'bg-green-200 text-green-800' : underReview ? 'bg-amber-200 text-amber-800' : 'bg-blue-200 text-blue-800'}`}>
-                                  {emailVerified ? '✓ Verified' : underReview ? '⏳ Under Review' : 'Basic'}
-                                </span>
-                              </div>
-                              <p className={`text-xs mt-0.5 ${emailVerified ? 'text-green-600' : underReview ? 'text-amber-700' : 'text-blue-600'}`}>
-                                {emailVerified ? `${maskEmail(accountForm.email)} is verified ✓` : underReview ? 'Being reviewed by our team' : 'Verify your email address to start trading'}
-                              </p>
-
-                              {/* Under-review card */}
-                              {underReview && (
-                                <div className="mt-3 rounded-xl border overflow-hidden" style={{borderColor:'#FDE68A'}}>
-                                  <div className="px-4 py-2.5 flex items-center gap-2" style={{backgroundColor:'#FEF3C7', borderBottom:'1px solid #FDE68A'}}>
-                                    <Mail size={13} style={{color:'#D97706', flexShrink:0}}/>
-                                    <p className="text-xs font-black" style={{color:'#92400E'}}>Email is Under Manual Review</p>
-                                  </div>
-                                  <div className="px-4 py-3 space-y-2" style={{backgroundColor:'#FFFBEB'}}>
-                                    <p className="text-xs leading-relaxed" style={{color:'#78350F'}}>
-                                      We tried to send a code to <strong>{maskEmail(accountForm.email)}</strong> but couldn't confirm delivery.
-                                      Our team will manually verify your email and notify you within <strong>24 hours</strong>.
-                                    </p>
-                                    <p className="text-xs" style={{color:'#92400E'}}>You'll receive an update once your email is approved or rejected.</p>
-                                    <a href="mailto:hello@praqen.com"
-                                      className="inline-flex items-center gap-1.5 text-xs font-black mt-1"
-                                      style={{color:'#D97706'}}>
-                                      <Mail size={11}/> hello@praqen.com
-                                    </a>
-                                  </div>
+              {/* ── ACCOUNT ─────────────────────────────────────────── */}
+              {activeTab === 'account' && (
+                  <>
+                    {/* Account information */}
+                    <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: C.g200 }}>
+                      <h2 className="text-lg font-black mb-5" style={{ color: C.forest }}>Account Information</h2>
+                      <form onSubmit={handleAccountUpdate} className="space-y-4">
+                        <div className="grid md:grid-cols-2 gap-4">
+                          {/* Username — editable until changed once */}
+                          <div>
+                            <label className={labelCls} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                              Username {user?.username_changed && <Lock size={12} style={{ color: C.g400 }} />}
+                            </label>
+                            {user?.username_changed ? (
+                                <div className="px-4 py-2.5 border-2 rounded-xl text-sm font-medium flex items-center justify-between"
+                                     style={{ borderColor: C.g200, backgroundColor: C.g100, color: C.g500 }}>
+                                  <span>{accountForm.username}</span>
+                                  <Lock size={13} style={{ color: C.g400 }} />
                                 </div>
-                              )}
+                            ) : (
+                                <input type="text" value={accountForm.username}
+                                       onChange={e => setAccountForm({ ...accountForm, username: e.target.value })}
+                                       className={inputCls} required style={inputStyle(accountForm.username)} />
+                            )}
+                            {user?.username_changed
+                                ? <p className="text-xs mt-1 flex items-center gap-1" style={{ color: C.g400 }}><Lock size={9} />Username is permanently locked.</p>
+                                : <p className="text-xs mt-1 flex items-center gap-1" style={{ color: '#D97706' }}>⚠ You can only change your username once. Choose carefully.</p>
+                            }
+                          </div>
+                          {/* Full Name — editable until KYC */}
+                          <div>
+                            <label className={labelCls} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                              Full Name {kycVerified && <Lock size={12} style={{ color: C.g400 }} />}
+                            </label>
+                            {kycVerified ? (
+                                <div className="px-4 py-2.5 border-2 rounded-xl text-sm font-medium flex items-center justify-between"
+                                     style={{ borderColor: C.g200, backgroundColor: C.g100, color: C.g500 }}>
+                                  <span>{accountForm.fullName}</span>
+                                  <Lock size={13} style={{ color: C.g400 }} />
+                                </div>
+                            ) : (
+                                <input type="text" value={accountForm.fullName}
+                                       onChange={e => setAccountForm({ ...accountForm, fullName: e.target.value })}
+                                       className={inputCls} style={inputStyle(accountForm.fullName)} />
+                            )}
+                            {kycVerified
+                                ? <p className="text-xs mt-1 flex items-center gap-1" style={{ color: C.g400 }}><Lock size={9} />Locked after ID verification.</p>
+                                : <p className="text-xs mt-1" style={{ color: C.g500 }}>ℹ Full name cannot be changed after ID verification.</p>
+                            }
+                          </div>
+                        </div>
 
-                              {/* Normal OTP flow */}
-                              {!emailVerified && !underReview && (
-                                <div className="mt-3 space-y-2">
+                        <div className="grid md:grid-cols-2 gap-4">
+                          {/* Email — read-only (can't change), show full email + verify button if not verified */}
+                          <div>
+                            <label className={labelCls} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              Email Address
+                              {emailVerified
+                                  ? <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#ECFDF5', color: C.success }}>✓ Verified</span>
+                                  : <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#FFF7ED', color: C.warn }}>⚠ Unverified</span>}
+                            </label>
+                            <div className="px-4 py-2.5 border-2 rounded-xl text-sm font-medium flex items-center justify-between"
+                                 style={{ borderColor: emailVerified ? '#DCFCE7' : '#FDE68A', backgroundColor: C.g50, color: C.g700 }}>
+                              <span className="truncate">{maskEmail(accountForm.email)}</span>
+                              {emailVerified
+                                  ? <CheckCircle size={14} style={{ color: C.success, flexShrink: 0 }} />
+                                  : <AlertCircle size={14} style={{ color: C.warn, flexShrink: 0 }} />}
+                            </div>
+                            <p className="text-xs mt-1" style={{ color: C.g400 }}>This is the email used to register. It cannot be changed.</p>
+                            {!emailVerified && (
+                                <div className="mt-2 space-y-2">
                                   {emailVerifyStep === 'idle' && (
-                                    <button onClick={handleSendEmailCode} disabled={emailCodeLoading}
-                                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-60"
-                                      style={{ backgroundColor: C.paid }}>
-                                      <Mail size={13} />
-                                      {emailCodeLoading ? 'Sending…' : 'Send Verification Code →'}
-                                    </button>
+                                      <button type="button" onClick={handleSendEmailCode} disabled={emailCodeLoading}
+                                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black disabled:opacity-60"
+                                              style={{ backgroundColor: C.paid, color: 'white' }}>
+                                        {emailCodeLoading ? <RefreshCw size={11} className="animate-spin" /> : <Mail size={11} />}
+                                        {emailCodeLoading ? 'Sending code…' : 'Verify Email →'}
+                                      </button>
                                   )}
                                   {(emailVerifyStep === 'otp' || emailVerifyStep === 'verifying') && (
-                                    <>
-                                      <p className="text-xs" style={{ color: '#1e40af' }}>Code sent! Check your inbox and spam folder:</p>
-                                      <div className="flex gap-2 flex-wrap items-center">
-                                        <input type="text" inputMode="numeric" maxLength={6}
-                                          placeholder="000000" value={emailCode}
-                                          onChange={e => setEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                                          className="px-3 py-2 border-2 rounded-xl text-sm font-black focus:outline-none w-36"
-                                          style={{ borderColor: '#3b82f6', letterSpacing: '0.2em', color: C.g800 }} />
-                                        <button onClick={handleVerifyEmailCode}
-                                          disabled={emailVerifyStep === 'verifying' || emailCode.length < 6}
-                                          className="px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-50"
-                                          style={{ backgroundColor: C.success }}>
-                                          {emailVerifyStep === 'verifying' ? 'Verifying…' : '✓ Verify'}
-                                        </button>
-                                        <button onClick={() => { setEmailVerifyStep('idle'); setEmailCode(''); }} className="text-xs underline text-gray-400">Resend</button>
-                                      </div>
-                                    </>
+                                      <>
+                                        <p className="text-xs" style={{ color: C.g500 }}>Code sent to your email — enter it below:</p>
+                                        <div className="flex gap-2 flex-wrap items-center">
+                                          <input type="text" inputMode="numeric" maxLength={6}
+                                                 placeholder="000000" value={emailCode}
+                                                 onChange={e => setEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                                 className="px-3 py-2 border-2 rounded-xl text-sm font-black focus:outline-none w-36"
+                                                 style={{ borderColor: C.paid, letterSpacing: '0.2em', color: C.g800 }} />
+                                          <button type="button" onClick={handleVerifyEmailCode}
+                                                  disabled={emailVerifyStep === 'verifying' || emailCode.length < 6}
+                                                  className="px-3 py-2 rounded-xl text-white text-xs font-black disabled:opacity-50"
+                                                  style={{ backgroundColor: C.success }}>
+                                            {emailVerifyStep === 'verifying' ? 'Verifying…' : '✓ Confirm'}
+                                          </button>
+                                          <button type="button" onClick={() => { setEmailVerifyStep('idle'); setEmailCode(''); }}
+                                                  className="text-xs underline" style={{ color: C.g400 }}>Resend</button>
+                                        </div>
+                                      </>
                                   )}
                                 </div>
-                              )}
-                            </div>
-                            {emailVerified
-                              ? <CheckCircle size={16} className="text-green-500 flex-shrink-0 mt-0.5"/>
-                              : underReview ? <Clock size={16} style={{color:'#D97706', flexShrink:0, marginTop:2}}/>
-                              : <span className="text-xs font-bold text-blue-600 flex-shrink-0 mt-0.5">Required →</span>}
+                            )}
+                          </div>
+
+                          {/* Phone — editable until verified, then locked */}
+                          <div>
+                            <label className={labelCls} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              Phone Number
+                              {phoneVerified || phoneStep === 'done'
+                                  ? <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#ECFDF5', color: C.success }}>✓ Verified</span>
+                                  : accountForm.phone
+                                      ? <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#FFF7ED', color: C.warn }}>⚠ Unverified</span>
+                                      : null}
+                            </label>
+                            {phoneVerified || phoneStep === 'done' ? (
+                                <div className="px-4 py-2.5 border-2 rounded-xl text-sm font-medium flex items-center justify-between"
+                                     style={{ borderColor: '#DCFCE7', backgroundColor: C.g50, color: C.g700 }}>
+                                  <span>{accountForm.phone || 'Your number has been verified'}</span>
+                                  <CheckCircle size={14} style={{ color: C.success, flexShrink: 0 }} />
+                                </div>
+                            ) : (
+                                <input type="tel" value={accountForm.phone}
+                                       onChange={e => setAccountForm({ ...accountForm, phone: e.target.value })}
+                                       placeholder="+[country code] your number — e.g. +233XXXXXXXXX" className={inputCls} style={inputStyle(accountForm.phone)} />
+                            )}
+                            {phoneVerified || phoneStep === 'done'
+                                ? <p className="text-xs mt-1 flex items-center gap-1" style={{ color: C.g400 }}><Lock size={9} />Phone number locked after verification.</p>
+                                : <p className="text-xs mt-1" style={{ color: C.g400 }}>Go to the Verification tab to verify your phone number instantly.</p>}
                           </div>
                         </div>
-                      );
-                    })()}
 
-                    {/* ── Step 2 — Phone ── */}
-                    {(() => {
-                      const done = phoneVerified || phoneStep === 'done';
-                      return (
-                        <div className={`p-4 rounded-xl border transition ${done ? 'bg-green-50 border-green-200' : emailVerified ? 'border-blue-200 bg-blue-50' : 'bg-gray-50 border-gray-100'}`}>
-                          <div className="flex items-start gap-4">
-                            <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0 ${done ? 'bg-green-500 text-white' : emailVerified ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
-                              {done ? <CheckCircle size={18}/> : 2}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <p className={`font-bold text-sm ${done ? 'text-green-800' : emailVerified ? 'text-blue-800' : 'text-gray-600'}`}>Phone Number</p>
-                                <span className={`text-xs font-black px-2 py-0.5 rounded-full ${done ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-600'}`}>
-                                  {done ? '✓ Verified' : 'Not Verified'}
-                                </span>
+                        {/* Location — locked after ID verification */}
+                        {(() => {
+                          const locationLocked = kycVerified
+                              || !!(user?.is_id_verified || user?.kyc_verified || user?.kyc_status === 'approved');
+                          return (
+                              <div>
+                                <label className={labelCls} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                                  Location {locationLocked && <Lock size={12} style={{ color: C.g400 }} />}
+                                </label>
+                                {locationLocked ? (
+                                    <div className="px-4 py-2.5 border-2 rounded-xl text-sm font-medium flex items-center justify-between"
+                                         style={{ borderColor: C.g200, backgroundColor: C.g100, color: C.g500 }}>
+                                      <span>{accountForm.location || '—'}</span>
+                                      <Lock size={13} style={{ color: C.g400 }} />
+                                    </div>
+                                ) : (
+                                    <input type="text" value={accountForm.location}
+                                           onChange={e => setAccountForm({ ...accountForm, location: e.target.value })}
+                                           placeholder="e.g. Accra, Ghana"
+                                           className={inputCls} style={inputStyle(accountForm.location)} />
+                                )}
+                                {locationLocked
+                                    ? <p className="text-xs mt-1 flex items-center gap-1" style={{ color: C.g400 }}><Lock size={9} />Location locked after ID verification.</p>
+                                    : <p className="text-xs mt-1" style={{ color: C.g500 }}>ℹ Location will be locked once your ID is verified.</p>
+                                }
                               </div>
-                              <p className={`text-xs mt-0.5 ${done ? 'text-green-600' : emailVerified ? 'text-blue-600' : 'text-gray-400'}`}>
-                                {done
-                                  ? accountForm.phone ? `${accountForm.phone} — verified ✓` : 'Phone verified — you can now trade up to $2,000 ✓'
-                                  : 'Add your phone number to unlock the $2,000 trade limit'}
-                              </p>
+                          );
+                        })()}
 
-                              {/* OTP flow — only shown when email verified and phone not yet done */}
-                              {!done && emailVerified && (
-                                <div className="mt-3 space-y-2">
-
-                                  {/* Idle: enter phone + pick method + send */}
-                                  {phoneStep === 'idle' && (
-                                    <>
-                                      <input
-                                        type="tel"
-                                        placeholder="+233 XX XXX XXXX"
-                                        value={accountForm.phone || ''}
-                                        onChange={e => setAccountForm({ ...accountForm, phone: e.target.value })}
-                                        className="w-full px-3 py-2 border-2 rounded-xl text-sm focus:outline-none"
-                                        style={{ borderColor: accountForm.phone ? C.green : C.g200, color: C.g800, backgroundColor: 'white' }}
-                                      />
-                                      <p className="text-xs font-bold" style={{ color: '#1e40af' }}>How would you like to receive your code?</p>
-                                      <div className="flex gap-2">
-                                        <button
-                                          onClick={() => setPhoneOtpMethod('email')}
-                                          className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border-2 text-xs font-black transition ${phoneOtpMethod === 'email' ? 'border-blue-500 bg-blue-50 text-blue-800' : 'border-gray-200 bg-white text-gray-500'}`}>
-                                          <Mail size={12}/> 📧 Email
-                                        </button>
-                                        <button
-                                          onClick={() => setPhoneOtpMethod('sms')}
-                                          className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border-2 text-xs font-black transition ${phoneOtpMethod === 'sms' ? 'border-orange-500 bg-orange-50 text-orange-800' : 'border-gray-200 bg-white text-gray-500'}`}>
-                                          📱 SMS
-                                        </button>
-                                        <button
-                                          onClick={() => setPhoneOtpMethod('whatsapp')}
-                                          className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border-2 text-xs font-black transition ${phoneOtpMethod === 'whatsapp' ? 'border-green-500 bg-green-50 text-green-800' : 'border-gray-200 bg-white text-gray-500'}`}>
-                                          💬 WhatsApp
-                                        </button>
-                                      </div>
-                                      <button
-                                        onClick={handleSendPhoneOtp}
-                                        disabled={!accountForm.phone}
-                                        className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-60"
-                                        style={{ backgroundColor: C.paid }}>
-                                        <Smartphone size={13}/>
-                                        Send Verification Code →
-                                      </button>
-                                    </>
-                                  )}
-
-                                  {/* Sending spinner */}
-                                  {phoneStep === 'sending' && (
-                                    <div className="flex items-center gap-2 text-xs font-bold" style={{ color: '#1e40af' }}>
-                                      <RefreshCw size={13} className="animate-spin"/>
-                                      Sending your code…
-                                    </div>
-                                  )}
-
-                                  {/* OTP code input */}
-                                  {(phoneStep === 'otp' || phoneStep === 'verifying') && (
-                                    <>
-                                      <p className="text-xs" style={{ color: '#1e40af' }}>
-                                        {phoneOtpMethod === 'email'
-                                          ? 'Code sent to your email — check inbox and spam folder:'
-                                          : phoneOtpMethod === 'sms'
-                                          ? `Code sent via SMS to ${accountForm.phone}:`
-                                          : `Code sent via WhatsApp to ${accountForm.phone}:`}
-                                      </p>
-                                      <div className="flex gap-2 flex-wrap items-center">
-                                        <input
-                                          type="text" inputMode="numeric" maxLength={6}
-                                          placeholder="000000" value={phoneOtpCode}
-                                          onChange={e => setPhoneOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                                          className="px-3 py-2 border-2 rounded-xl text-sm font-black focus:outline-none w-36"
-                                          style={{ borderColor: '#3b82f6', letterSpacing: '0.2em', color: C.g800 }}
-                                          autoFocus
-                                        />
-                                        <button
-                                          onClick={handleVerifyPhoneOtp}
-                                          disabled={phoneStep === 'verifying' || phoneOtpCode.length < 6}
-                                          className="px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-50"
-                                          style={{ backgroundColor: C.success }}>
-                                          {phoneStep === 'verifying' ? 'Verifying…' : '✓ Verify'}
-                                        </button>
-                                        <button
-                                          onClick={() => { setPhoneStep('idle'); setPhoneOtpCode(''); }}
-                                          className="text-xs underline text-gray-400">
-                                          Resend
-                                        </button>
-                                      </div>
-                                    </>
-                                  )}
-                                </div>
-                              )}
-
-                              {/* Locked behind email — must verify email first */}
-                              {!done && !emailVerified && (
-                                <p className="text-xs mt-2 font-bold" style={{ color: '#94a3b8' }}>
-                                  Complete email verification first (Step 1).
-                                </p>
-                              )}
-                            </div>
-                            {done
-                              ? <CheckCircle size={16} className="text-green-500 flex-shrink-0 mt-0.5"/>
-                              : emailVerified ? null
-                              : <Clock size={16} className="text-gray-300 flex-shrink-0 mt-0.5"/>}
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* ── Step 3 — KYC ── */}
-                    {(() => {
-                      const kycPending  = (kycSubmitted || kycStatus === 'pending')  && !kycVerified;
-                      const kycRejected = kycStatus === 'rejected' && !kycVerified;
-                      const displayType = kycSubmittedType || kycIdType;
-                      const typeLabel   = KYC_ID_TYPES.find(t => t.value === displayType)?.label || 'Government ID';
-                      const submittedAgo = kycSubmittedAt ? (() => {
-                        const s = (Date.now() - new Date(kycSubmittedAt)) / 1000;
-                        if (s < 3600)  return `${Math.floor(s/60)}m ago`;
-                        if (s < 86400) return `${Math.floor(s/3600)}h ago`;
-                        return `${Math.floor(s/86400)}d ago`;
-                      })() : null;
-                      return (
-                        <div className={`p-4 rounded-xl border transition ${
-                          kycVerified  ? 'bg-green-50 border-green-200' :
-                          kycRejected  ? 'bg-red-50 border-red-200' :
-                          kycPending   ? 'bg-amber-50 border-amber-200' :
-                          phoneVerified ? 'border-blue-200 bg-blue-50' : 'bg-gray-50 border-gray-100'
-                        }`}>
-                          <div className="flex items-start gap-4">
-                            <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0 ${
-                              kycVerified  ? 'bg-green-500 text-white' :
-                              kycRejected  ? 'bg-red-500 text-white' :
-                              kycPending   ? 'bg-amber-400 text-white' :
-                              phoneVerified ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'
-                            }`}>
-                              {kycVerified ? <CheckCircle size={18}/> : kycPending ? <Clock size={18}/> : kycRejected ? '✕' : 3}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <p className={`font-bold text-sm ${kycVerified ? 'text-green-800' : kycRejected ? 'text-red-800' : kycPending ? 'text-amber-800' : phoneVerified ? 'text-blue-800' : 'text-gray-600'}`}>
-                                  Identity (KYC)
-                                </p>
-                                <span className={`text-xs font-black px-2 py-0.5 rounded-full ${
-                                  kycVerified  ? 'bg-green-200 text-green-800' :
-                                  kycRejected  ? 'bg-red-200 text-red-800' :
-                                  kycPending   ? 'bg-amber-200 text-amber-800' :
-                                  'bg-gray-200 text-gray-600'
-                                }`}>
-                                  {kycVerified ? '✓ Verified' : kycRejected ? '✗ Rejected' : kycPending ? '⏳ Under Review' : 'Advanced'}
-                                </span>
-                              </div>
-                              <p className={`text-xs mt-0.5 ${kycVerified ? 'text-green-600' : kycRejected ? 'text-red-600' : kycPending ? 'text-amber-700' : phoneVerified ? 'text-blue-600' : 'text-gray-400'}`}>
-                                {kycVerified  ? 'Identity verified — unlimited trading unlocked ✓' :
-                                 kycRejected  ? 'Your documents were not accepted — please re-submit' :
-                                 kycPending   ? 'Documents received and under review by our team' :
-                                 'Upload your government ID (front + back) for unlimited trading'}
-                              </p>
-
-                              {/* ── KYC PENDING BANNER ── */}
-                              {kycPending && (
-                                <div className="mt-3 rounded-xl border overflow-hidden" style={{borderColor:'#FDE68A'}}>
-                                  {/* Header */}
-                                  <div className="px-4 py-2.5 flex items-center gap-2" style={{backgroundColor:'#FEF3C7', borderBottom:'1px solid #FDE68A'}}>
-                                    <Clock size={13} style={{color:'#D97706', flexShrink:0}}/>
-                                    <p className="text-xs font-black" style={{color:'#92400E'}}>Documents Under Review</p>
-                                    <span className="ml-auto text-xs font-black px-2 py-0.5 rounded-full animate-pulse" style={{backgroundColor:'#FCD34D', color:'#78350F'}}>⏳ Pending</span>
-                                  </div>
-                                  {/* Body */}
-                                  <div className="px-4 py-3 space-y-2" style={{backgroundColor:'#FFFBEB'}}>
-                                    {displayType && (
-                                      <div className="flex items-center gap-2">
-                                        <CheckCircle size={12} style={{color:'#D97706', flexShrink:0}}/>
-                                        <span className="text-xs font-semibold" style={{color:'#92400E'}}>Document: {typeLabel}</span>
-                                      </div>
-                                    )}
-                                    <div className="flex items-center gap-2">
-                                      <CheckCircle size={12} style={{color:'#D97706', flexShrink:0}}/>
-                                      <span className="text-xs font-semibold" style={{color:'#92400E'}}>ID front uploaded ✓</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <CheckCircle size={12} style={{color:'#D97706', flexShrink:0}}/>
-                                      <span className="text-xs font-semibold" style={{color:'#92400E'}}>ID back uploaded ✓</span>
-                                    </div>
-                                    {submittedAgo && (
-                                      <div className="flex items-center gap-2">
-                                        <Clock size={12} style={{color:'#D97706', flexShrink:0}}/>
-                                        <span className="text-xs font-semibold" style={{color:'#92400E'}}>Submitted {submittedAgo}</span>
-                                      </div>
-                                    )}
-                                    <p className="text-xs leading-relaxed pt-1" style={{color:'#78350F'}}>
-                                      Our team reviews documents within <strong>24 hours</strong>. You will receive an in-app notification when approved or if we need more information.
-                                    </p>
-                                    <a href="mailto:hello@praqen.com" className="inline-flex items-center gap-1.5 text-xs font-black" style={{color:'#D97706'}}>
-                                      <Mail size={11}/> hello@praqen.com
-                                    </a>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* ── KYC REJECTED BANNER ── */}
-                              {kycRejected && (
-                                <div className="mt-3 rounded-xl border overflow-hidden" style={{borderColor:'#FCA5A5'}}>
-                                  <div className="px-4 py-2.5 flex items-center gap-2" style={{backgroundColor:'#FEF2F2', borderBottom:'1px solid #FCA5A5'}}>
-                                    <span className="text-xs">❌</span>
-                                    <p className="text-xs font-black" style={{color:'#991B1B'}}>KYC Not Approved</p>
-                                    <span className="ml-auto text-xs font-black px-2 py-0.5 rounded-full" style={{backgroundColor:'#FCA5A5', color:'#7F1D1D'}}>Rejected</span>
-                                  </div>
-                                  <div className="px-4 py-3 space-y-2" style={{backgroundColor:'#FFF5F5'}}>
-                                    {kycRejectedReason && (
-                                      <p className="text-xs font-semibold leading-relaxed" style={{color:'#991B1B'}}>
-                                        Reason: {kycRejectedReason}
-                                      </p>
-                                    )}
-                                    <p className="text-xs leading-relaxed" style={{color:'#7F1D1D'}}>
-                                      Please re-submit your documents with clearer, well-lit photos. Make sure all text on the ID is readable.
-                                    </p>
-                                    <button
-                                      onClick={() => {
-                                        setKycStatus(null); setKycSubmitted(false);
-                                        setKycStep('select'); setKycFiles({ front: null, back: null }); setKycIdType('');
-                                        localStorage.removeItem('praqen_kyc');
-                                      }}
-                                      className="w-full mt-1 py-2 rounded-xl text-xs font-black"
-                                      style={{backgroundColor:'#EF4444', color:'#fff'}}>
-                                      Re-submit KYC Documents
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* KYC multi-step upload form */}
-                              {!kycVerified && !kycPending && kycStatus !== 'approved' && phoneVerified && (
-                                <div className="mt-4 space-y-4">
-
-                                  {/* Step A: Select ID type */}
-                                  <div className={`rounded-xl border-2 p-4 transition ${kycIdType ? 'border-green-300 bg-green-50' : 'border-dashed border-gray-200 bg-gray-50'}`}>
-                                    <div className="flex items-center gap-2 mb-2">
-                                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${kycIdType ? 'bg-green-500 text-white' : 'bg-blue-500 text-white'}`}>
-                                        {kycIdType ? '✓' : '1'}
-                                      </div>
-                                      <p className="text-xs font-black text-gray-700">Select your ID type</p>
-                                    </div>
-                                    <select
-                                      value={kycIdType}
-                                      onChange={e => {
-                                        setKycIdType(e.target.value);
-                                        if (e.target.value) setKycStep('upload_id');
-                                        setKycFiles({ front: null, back: null });
-                                      }}
-                                      className="w-full px-3 py-2.5 border-2 rounded-xl text-sm font-semibold focus:outline-none transition"
-                                      style={{ borderColor: kycIdType ? C.success : C.g200, color: C.g800, backgroundColor: 'white' }}>
-                                      <option value="">— Choose a document type —</option>
-                                      {KYC_ID_TYPES.map(({ value, label }) => (
-                                        <option key={value} value={value}>{label}</option>
-                                      ))}
-                                    </select>
-                                  </div>
-
-                                  {/* Step B: ID Front */}
-                                  {kycIdType && (
-                                    <div className={`rounded-xl border-2 p-4 transition ${kycFiles.front ? 'border-green-300 bg-green-50' : 'border-dashed border-blue-200 bg-blue-50'}`}>
-                                      <div className="flex items-center gap-2 mb-2">
-                                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${kycFiles.front ? 'bg-green-500 text-white' : 'bg-blue-500 text-white'}`}>
-                                          {kycFiles.front ? '✓' : '2'}
-                                        </div>
-                                        <div>
-                                          <p className="text-xs font-black text-gray-700">Front of {KYC_ID_TYPES.find(t => t.value === kycIdType)?.label}</p>
-                                          <p className="text-xs text-gray-400">Clear photo showing your name, photo and ID number</p>
-                                        </div>
-                                      </div>
-                                      <div className="mb-2 px-3 py-2 rounded-lg text-xs" style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}>
-                                        ✅ Make sure the <strong>entire card is visible</strong>, all text is readable, and there is <strong>no glare or blur</strong>
-                                      </div>
-                                      <label className="flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed cursor-pointer hover:border-blue-400 transition bg-white"
-                                        style={{ borderColor: kycFiles.front ? C.success : '#93C5FD' }}>
-                                        <Upload size={18} style={{ color: kycFiles.front ? C.success : '#3B82F6', flexShrink: 0 }} />
-                                        <div className="flex-1 min-w-0">
-                                          <p className="text-xs font-bold" style={{ color: kycFiles.front ? C.success : '#1D4ED8' }}>
-                                            {kycFiles.front ? `✓ ${kycFiles.front.name}` : 'Tap to upload FRONT of ID'}
-                                          </p>
-                                          {!kycFiles.front && <p className="text-xs text-gray-400">Max 10MB · JPG or PNG</p>}
-                                        </div>
-                                        {kycFiles.front && (
-                                          <button type="button" onClick={e => { e.preventDefault(); setKycFiles(f => ({...f, front: null})); }}
-                                            className="text-xs text-red-400 font-bold hover:text-red-600">Remove</button>
-                                        )}
-                                        <input type="file" accept="image/*" className="hidden"
-                                          onChange={e => {
-                                            const f = e.target.files[0] || null;
-                                            setKycFiles(prev => ({...prev, front: f}));
-                                            if (f) setKycStep('upload_back');
-                                          }} />
-                                      </label>
-                                    </div>
-                                  )}
-
-                                  {/* Step C: ID Back */}
-                                  {kycIdType && kycFiles.front && (
-                                    <div className={`rounded-xl border-2 p-4 transition ${kycFiles.back ? 'border-green-300 bg-green-50' : 'border-dashed border-orange-200 bg-orange-50'}`}>
-                                      <div className="flex items-center gap-2 mb-2">
-                                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${kycFiles.back ? 'bg-green-500 text-white' : 'bg-orange-500 text-white'}`}>
-                                          {kycFiles.back ? '✓' : '3'}
-                                        </div>
-                                        <div>
-                                          <p className="text-xs font-black text-gray-700">Back of {KYC_ID_TYPES.find(t => t.value === kycIdType)?.label}</p>
-                                          <p className="text-xs text-gray-400">Clear photo of the reverse side of your ID</p>
-                                        </div>
-                                      </div>
-                                      <div className="mb-2 px-3 py-2 rounded-lg text-xs" style={{ backgroundColor: '#FFF7ED', color: '#C2410C', border: '1px solid #FED7AA' }}>
-                                        ✅ Flip your ID and photograph the <strong>back side</strong> — all details must be <strong>clear and unobstructed</strong>
-                                      </div>
-                                      <label className="flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed cursor-pointer hover:border-orange-400 transition bg-white"
-                                        style={{ borderColor: kycFiles.back ? C.success : '#FDBA74' }}>
-                                        <Upload size={18} style={{ color: kycFiles.back ? C.success : '#EA580C', flexShrink: 0 }} />
-                                        <div className="flex-1 min-w-0">
-                                          <p className="text-xs font-bold" style={{ color: kycFiles.back ? C.success : '#9A3412' }}>
-                                            {kycFiles.back ? `✓ ${kycFiles.back.name}` : 'Tap to upload BACK of ID'}
-                                          </p>
-                                          {!kycFiles.back && <p className="text-xs text-gray-400">Max 10MB · JPG or PNG</p>}
-                                        </div>
-                                        {kycFiles.back && (
-                                          <button type="button" onClick={e => { e.preventDefault(); setKycFiles(f => ({...f, back: null})); }}
-                                            className="text-xs text-red-400 font-bold hover:text-red-600">Remove</button>
-                                        )}
-                                        <input type="file" accept="image/*" className="hidden"
-                                          onChange={e => {
-                                            const f = e.target.files[0] || null;
-                                            setKycFiles(prev => ({...prev, back: f}));
-                                            if (f) setKycStep('ready');
-                                          }} />
-                                      </label>
-                                    </div>
-                                  )}
-
-                                  {/* Step D: Processing state */}
-                                  {kycStep === 'processing' && (
-                                    <div className="rounded-xl border-2 border-blue-200 bg-blue-50 p-5 text-center">
-                                      <RefreshCw size={28} className="animate-spin mx-auto mb-2 text-blue-500" />
-                                      <p className="text-sm font-black text-blue-800">Processing your documents…</p>
-                                      <p className="text-xs text-blue-600 mt-1">Securely uploading and encrypting your files</p>
-                                    </div>
-                                  )}
-
-                                  {/* Submit button */}
-                                  {kycIdType && kycFiles.front && kycFiles.back && kycStep !== 'processing' && (
-                                    <div className="rounded-xl border-2 border-green-200 bg-green-50 p-4">
-                                      <div className="flex items-center gap-2 mb-3">
-                                        <CheckCircle size={16} className="text-green-600 flex-shrink-0" />
-                                        <p className="text-xs font-black text-green-800">All documents uploaded — ready to submit</p>
-                                      </div>
-                                      <div className="space-y-1 mb-4">
-                                        <div className="flex items-center gap-2 text-xs text-green-700">
-                                          <CheckCircle size={11} className="text-green-500 flex-shrink-0" />
-                                          <span>{KYC_ID_TYPES.find(t => t.value === kycIdType)?.label} selected</span>
-                                        </div>
-                                        <div className="flex items-center gap-2 text-xs text-green-700">
-                                          <CheckCircle size={11} className="text-green-500 flex-shrink-0" />
-                                          <span>ID front: {kycFiles.front.name}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2 text-xs text-green-700">
-                                          <CheckCircle size={11} className="text-green-500 flex-shrink-0" />
-                                          <span>ID back: {kycFiles.back.name}</span>
-                                        </div>
-                                      </div>
-                                      <button onClick={handleKycSubmit} disabled={kycLoading}
-                                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-white text-sm font-black disabled:opacity-50 transition hover:opacity-90"
-                                        style={{ backgroundColor: C.green }}>
-                                        <Shield size={15} />
-                                        Submit for Review — Secure &amp; Encrypted
-                                      </button>
-                                      <p className="text-xs text-gray-400 text-center mt-2">We typically review within 24 hours</p>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                            {kycVerified
-                              ? <CheckCircle size={16} className="text-green-500 flex-shrink-0 mt-0.5"/>
-                              : kycPending ? <Clock size={16} style={{color:'#D97706', flexShrink:0, marginTop:2}}/>
-                              : phoneVerified ? null
-                              : <Clock size={16} className="text-gray-300 flex-shrink-0 mt-0.5"/>}
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                </div>
-
-                </>}
-              </div>
-            )}
-
-            {/* ── SECURITY ────────────────────────────────────────── */}
-            {activeTab === 'security' && (
-              <div className="space-y-5">
-
-                {/* ── Account Security Info ── */}
-                <div className="bg-white rounded-2xl shadow-sm border p-5 md:p-6" style={{ borderColor: C.g200 }}>
-                  <h2 className="text-lg font-black mb-4" style={{ color: C.forest }}>Account Security</h2>
-                  <div className="space-y-2">
-
-                    {/* Registered Country */}
-                    <div className="flex items-center gap-3 p-2.5 md:p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
-                      <Globe size={16} style={{ color: C.forest, flexShrink: 0 }} />
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.g500 }}>Registered Country</p>
-                        {secInfo.loading ? (
-                          <div className="h-4 w-28 rounded animate-pulse mt-1" style={{ backgroundColor: C.g200 }} />
-                        ) : (
-                          <p className="text-sm font-black" style={{ color: C.g800 }}>
-                            {secInfo.flag} {secInfo.country || user?.country || '—'}
-                            {secInfo.city ? <span className="font-normal text-xs ml-1.5" style={{ color: C.g500 }}>{secInfo.city}</span> : null}
+                        {/* Bio with 100-word limit */}
+                        <div>
+                          <label className={labelCls}>Bio <span className="font-normal text-gray-400">(optional)</span></label>
+                          <textarea
+                              value={accountForm.bio}
+                              onChange={e => {
+                                const val = e.target.value;
+                                const wc = val.trim() === '' ? 0 : val.trim().split(/\s+/).length;
+                                if (wc <= 100) setAccountForm({ ...accountForm, bio: val });
+                              }}
+                              placeholder="Tell traders a bit about yourself… (max 100 words)"
+                              rows={2}
+                              className={inputCls + " resize-none"} style={inputStyle(accountForm.bio)} />
+                          <p className="text-xs mt-0.5 text-right"
+                             style={{ color: (accountForm.bio || '').trim() === '' ? C.g400 : (accountForm.bio || '').trim().split(/\s+/).length >= 100 ? C.danger : C.g400 }}>
+                            {(accountForm.bio || '').trim() === '' ? 0 : (accountForm.bio || '').trim().split(/\s+/).length}/100 words
                           </p>
-                        )}
-                      </div>
+                        </div>
+
+                        <button type="submit" disabled={loading}
+                                className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-white font-bold text-sm hover:opacity-90 disabled:opacity-50"
+                                style={{ backgroundColor: C.green }}>
+                          {loading ? <><RefreshCw size={15} className="animate-spin" /> Saving…</> : <><Save size={15} /> Save Changes</>}
+                        </button>
+                      </form>
                     </div>
 
-                    {/* IP Address */}
-                    <div className="flex items-center gap-3 p-2.5 md:p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
-                      <Shield size={16} style={{ color: C.forest, flexShrink: 0 }} />
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.g500 }}>IP Address</p>
-                        {secInfo.loading ? (
-                          <div className="h-4 w-32 rounded animate-pulse mt-1" style={{ backgroundColor: C.g200 }} />
-                        ) : (
-                          <p className="text-sm font-black font-mono" style={{ color: C.g800 }}>{secInfo.ip || '—'}</p>
-                        )}
-                      </div>
-                    </div>
+                    {/* Name display preferences */}
+                    <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: C.g200 }}>
+                      <h2 className="text-lg font-black mb-1" style={{ color: C.forest }}>Name Display</h2>
+                      <p className="text-xs text-gray-400 mb-4">How your name appears to other traders on the platform</p>
 
-                    {/* Last Active — with pulsing online dot */}
-                    <div className="flex items-center gap-3 p-2.5 md:p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
-                      <Clock size={16} style={{ color: C.forest, flexShrink: 0 }} />
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.g500 }}>Last Active</p>
-                        <p className="text-sm font-black flex items-center gap-1.5" style={{ color: C.success }}>
-                          <span className="relative flex h-2.5 w-2.5">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
-                          </span>
-                          Online now
+                      {/* Options */}
+                      <div className="space-y-2 mb-4">
+                        {(() => {
+                          const full    = accountForm.fullName || user?.full_name || '';
+                          const initial = full
+                              ? full.trim().split(/\s+/).map((w, i) => i === 0 ? w : w[0] + '.').join(' ')
+                              : 'Samuel K.';
+                          return [
+                            { val: 'full',    label: 'Show full name',                   desc: 'Your full name is visible to all traders', example: full || 'Samuel Kwame' },
+                            { val: 'initial', label: 'Show first name and last initial', desc: 'Only first name + last initial shown',      example: initial },
+                            { val: 'hide',    label: 'Hide full name',                   desc: 'Only your username is shown',               example: accountForm.username || user?.username || 'samuel123' },
+                          ];
+                        })().map(({ val, label, desc, example }) => (
+                            <label key={val} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition ${prefs.nameDisplay === val ? 'border-green-300 bg-green-50' : 'border-gray-100 hover:border-gray-200'}`}>
+                              <input type="radio" name="nameDisplay" value={val} checked={prefs.nameDisplay === val}
+                                     onChange={() => setPrefs(p => ({ ...p, nameDisplay: val }))}
+                                     className="accent-green-600" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-bold text-gray-800">{label}</p>
+                                <p className="text-xs text-gray-500">{desc}</p>
+                              </div>
+                              <span className="text-xs font-mono px-2 py-0.5 rounded-lg flex-shrink-0" style={{ backgroundColor: C.g100, color: C.g600 }}>{example}</span>
+                            </label>
+                        ))}
+                      </div>
+
+                      {/* Live preview */}
+                      <div className="mb-4 px-4 py-3 rounded-xl border" style={{ backgroundColor: C.mist, borderColor: C.g200 }}>
+                        <p className="text-xs font-bold mb-1" style={{ color: C.g500 }}>Preview — what traders see:</p>
+                        <p className="text-sm font-black" style={{ color: C.forest }}>
+                          {(() => {
+                            const full = accountForm.fullName || user?.full_name || '';
+                            const username = accountForm.username || user?.username || '';
+                            if (prefs.nameDisplay === 'hide' || !full) return username;
+                            if (prefs.nameDisplay === 'initial') {
+                              const parts = full.trim().split(/\s+/);
+                              return parts.length < 2 ? full : parts[0] + ' ' + parts.slice(1).map(p => p[0] + '.').join(' ');
+                            }
+                            return full;
+                          })()}
                         </p>
                       </div>
-                    </div>
 
-                    {/* Last Login (only shown when data exists) */}
-                    {user?.last_login && (
-                      <div className="flex items-center gap-3 p-2.5 md:p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
-                        <LogOut size={16} style={{ color: C.forest, flexShrink: 0 }} />
-                        <div className="min-w-0">
-                          <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.g500 }}>Last Login</p>
-                          <p className="text-sm font-black" style={{ color: C.g800 }}>
-                            {new Date(user.last_login).toLocaleDateString('en-US', {
-                              year: 'numeric', month: 'short', day: 'numeric',
-                              hour: '2-digit', minute: '2-digit'
-                            })}
-                          </p>
+                      {/* Save button */}
+                      <button onClick={saveNameDisplay} disabled={nameDisplaySaving}
+                              className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-white font-bold text-sm hover:opacity-90 disabled:opacity-50 transition"
+                              style={{ backgroundColor: nameDisplaySaved ? C.success : C.green }}>
+                        {nameDisplaySaving
+                            ? <><RefreshCw size={15} className="animate-spin"/> Saving…</>
+                            : nameDisplaySaved
+                                ? <><CheckCircle size={15}/> Saved!</>
+                                : <><Save size={15}/> Save Name Display</>}
+                      </button>
+                    </div>
+                  </>
+              )}
+
+              {/* ── VERIFICATION ────────────────────────────────────── */}
+              {activeTab === 'verification' && (
+                  <div className="space-y-4 max-w-2xl">
+                    {verificationSyncing && (
+                        <div className="bg-white rounded-2xl border p-10 flex items-center justify-center gap-3" style={{ borderColor: C.g200 }}>
+                          <RefreshCw size={18} className="animate-spin" style={{ color: C.green }} />
+                          <span className="text-sm font-bold" style={{ color: C.g500 }}>Loading verification status…</span>
                         </div>
-                      </div>
                     )}
-
-                    {/* Device Access */}
-                    <div className="flex items-center gap-3 p-2.5 md:p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
-                      <Smartphone size={16} style={{ color: C.forest, flexShrink: 0 }} />
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.g500 }}>Device Access</p>
-                        <p className="text-sm font-black" style={{ color: C.g800 }}>{secInfo.device}</p>
-                      </div>
-                    </div>
-
-                    {/* Language */}
-                    <div className="flex items-center gap-3 p-2.5 md:p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
-                      <Languages size={16} style={{ color: C.forest, flexShrink: 0 }} />
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.g500 }}>Language</p>
-                        <p className="text-sm font-black" style={{ color: C.g800 }}>{secInfo.language}</p>
-                      </div>
-                    </div>
-
-                  </div>
-                </div>
-
-                {/* ── Change Password ── */}
-                <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: C.g200 }}>
-                  <h2 className="text-lg font-black mb-5" style={{ color: C.forest }}>Change Password</h2>
-
-                  {/* Success banner */}
-                  {passwordSuccess && (
-                    <div className="mb-5 flex items-center gap-2.5 p-3 rounded-xl border" style={{ backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }}>
-                      <CheckCircle size={18} style={{ color: C.success, flexShrink: 0 }} />
-                      <div>
-                        <p className="text-sm font-black" style={{ color: '#065F46' }}>Password changed successfully!</p>
-                        <p className="text-xs mt-0.5" style={{ color: '#059669' }}>Your password has been updated. Use your new password next time you log in.</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* General form error */}
-                  {passwordErrors.form && (
-                    <div className="mb-4 flex items-center gap-2 p-3 rounded-xl border" style={{ backgroundColor: '#FEF2F2', borderColor: '#FECACA' }}>
-                      <AlertCircle size={16} style={{ color: C.danger, flexShrink: 0 }} />
-                      <p className="text-xs font-bold" style={{ color: '#991B1B' }}>{passwordErrors.form}</p>
-                    </div>
-                  )}
-
-                  <form onSubmit={handlePasswordChange} className="space-y-4">
-                    {[
-                      { key: 'currentPassword', label: 'Current Password', show: showPw.current, toggle: () => setShowPw({ ...showPw, current: !showPw.current }) },
-                      { key: 'newPassword',      label: 'New Password',     show: showPw.new,     toggle: () => setShowPw({ ...showPw, new: !showPw.new }) },
-                      { key: 'confirmPassword',  label: 'Confirm New Password', show: showPw.confirm, toggle: () => setShowPw({ ...showPw, confirm: !showPw.confirm }) },
-                    ].map(({ key, label, show, toggle }) => (
-                      <div key={key}>
-                        <label className={labelCls}>{label}</label>
-                        <div className="relative">
-                          <input
-                            type={show ? 'text' : 'password'}
-                            value={passwordForm[key]}
-                            onChange={e => {
-                              setPasswordForm({ ...passwordForm, [key]: e.target.value });
-                              if (passwordErrors[key]) setPasswordErrors(prev => { const n = { ...prev }; delete n[key]; return n; });
-                            }}
-                            className={`${inputCls} pr-10 ${passwordErrors[key] ? 'border-red-400' : ''}`}
-                            style={passwordErrors[key] ? { borderColor: C.danger, color: C.g800 } : inputStyle(passwordForm[key])}
-                            required
-                          />
-                          <button type="button" onClick={toggle} className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 transition">
-                            {show ? <EyeOff size={16} /> : <Eye size={16} />}
-                          </button>
+                    {!verificationSyncing && <>
+                      {/* ── Status banner ── */}
+                      <div className="rounded-2xl p-5 border"
+                           style={{ background: verLevel === 3 ? `linear-gradient(135deg,${C.success},${C.mint})` : `linear-gradient(135deg,${C.forest},${C.green})`, borderColor: 'transparent' }}>
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
+                            <Shield size={24} className="text-white" />
+                          </div>
+                          <div>
+                            <p className="text-white font-black text-lg">Verification Level {verLevel}/3</p>
+                            <p className="text-white/70 text-xs">
+                              {verLevel === 3 ? '✅ Fully verified — maximum trade limits' :
+                                  verLevel === 2 ? '⚡ KYC required for higher limits' :
+                                      verLevel === 1 ? '⚠️ Add phone to unlock more features' :
+                                          '🔴 Start verification to begin trading'}
+                            </p>
+                          </div>
+                          <div className="ml-auto text-right">
+                            <p className="text-white/70 text-xs mb-1">Trade limit</p>
+                            <p className="text-white font-black text-sm">
+                              {verLevel >= 3 ? 'Unlimited' : verLevel >= 2 ? '$2,000' : verLevel >= 1 ? '$500' : '$100'}
+                            </p>
+                          </div>
                         </div>
-                        {/* Inline error message */}
-                        {passwordErrors[key] && (
-                          <p className="flex items-center gap-1 text-xs font-bold mt-1" style={{ color: C.danger }}>
-                            <AlertCircle size={11} />
-                            {passwordErrors[key]}
-                          </p>
-                        )}
+                        {/* Progress bar */}
+                        <div className="w-full h-2 rounded-full bg-white/20">
+                          <div className="h-2 rounded-full transition-all" style={{ width: `${(verLevel / 3) * 100}%`, backgroundColor: C.gold }} />
+                        </div>
                       </div>
-                    ))}
-                    {/* Password strength — shown only when typing a new password and no success */}
-                    {passwordForm.newPassword && !passwordSuccess && (
-                      <div>
-                        <p className="text-xs text-gray-500 mb-1">Password strength</p>
-                        <div className="flex gap-1">
-                          {[1, 2, 3, 4].map(i => {
-                            const len = passwordForm.newPassword.length;
-                            const hasUpper = /[A-Z]/.test(passwordForm.newPassword);
-                            const hasNum = /\d/.test(passwordForm.newPassword);
-                            const hasSpec = /[^a-zA-Z0-9]/.test(passwordForm.newPassword);
-                            let metCount = 0;
-                            if (len >= 8) metCount++;
-                            if (hasUpper) metCount++;
-                            if (hasNum) metCount++;
-                            if (hasSpec) metCount++;
-                            const strengthLabel = metCount <= 1 ? 'Weak' : metCount === 2 ? 'Medium' : 'Strong';
-                            const color = metCount <= 1 ? C.danger : metCount === 2 ? C.warn : C.success;
-                            return <div key={i} className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: i <= metCount ? color : C.g200 }} />;
-                          })}
+
+                      {/* ── 3-step cards ── */}
+                      <div className="space-y-3">
+
+                        {/* ── Step 1 — Email ── */}
+                        {(() => {
+                          const underReview = !emailVerified && emailResendCount >= 3;
+                          return (
+                              <div className={`p-4 rounded-xl border transition ${emailVerified ? 'bg-green-50 border-green-200' : underReview ? 'bg-amber-50 border-amber-200' : 'border-blue-200 bg-blue-50'}`}>
+                                <div className="flex items-start gap-4">
+                                  <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0 ${emailVerified ? 'bg-green-500 text-white' : underReview ? 'bg-amber-400 text-white' : 'bg-blue-500 text-white'}`}>
+                                    {emailVerified ? <CheckCircle size={18}/> : underReview ? <Clock size={18}/> : 1}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <p className={`font-bold text-sm ${emailVerified ? 'text-green-800' : underReview ? 'text-amber-800' : 'text-blue-800'}`}>Email Verification</p>
+                                      <span className={`text-xs font-black px-2 py-0.5 rounded-full ${emailVerified ? 'bg-green-200 text-green-800' : underReview ? 'bg-amber-200 text-amber-800' : 'bg-blue-200 text-blue-800'}`}>
+                                  {emailVerified ? '✓ Verified' : underReview ? '⏳ Under Review' : 'Basic'}
+                                </span>
+                                    </div>
+                                    <p className={`text-xs mt-0.5 ${emailVerified ? 'text-green-600' : underReview ? 'text-amber-700' : 'text-blue-600'}`}>
+                                      {emailVerified ? `${maskEmail(accountForm.email)} is verified ✓` : underReview ? 'Being reviewed by our team' : 'Verify your email address to start trading'}
+                                    </p>
+
+                                    {/* Under-review card */}
+                                    {underReview && (
+                                        <div className="mt-3 rounded-xl border overflow-hidden" style={{borderColor:'#FDE68A'}}>
+                                          <div className="px-4 py-2.5 flex items-center gap-2" style={{backgroundColor:'#FEF3C7', borderBottom:'1px solid #FDE68A'}}>
+                                            <Mail size={13} style={{color:'#D97706', flexShrink:0}}/>
+                                            <p className="text-xs font-black" style={{color:'#92400E'}}>Email is Under Manual Review</p>
+                                          </div>
+                                          <div className="px-4 py-3 space-y-2" style={{backgroundColor:'#FFFBEB'}}>
+                                            <p className="text-xs leading-relaxed" style={{color:'#78350F'}}>
+                                              We tried to send a code to <strong>{maskEmail(accountForm.email)}</strong> but couldn't confirm delivery.
+                                              Our team will manually verify your email and notify you within <strong>24 hours</strong>.
+                                            </p>
+                                            <p className="text-xs" style={{color:'#92400E'}}>You'll receive an update once your email is approved or rejected.</p>
+                                            <a href="mailto:hello@praqen.com"
+                                               className="inline-flex items-center gap-1.5 text-xs font-black mt-1"
+                                               style={{color:'#D97706'}}>
+                                              <Mail size={11}/> hello@praqen.com
+                                            </a>
+                                          </div>
+                                        </div>
+                                    )}
+
+                                    {/* Normal OTP flow */}
+                                    {!emailVerified && !underReview && (
+                                        <div className="mt-3 space-y-2">
+                                          {emailVerifyStep === 'idle' && (
+                                              <button onClick={handleSendEmailCode} disabled={emailCodeLoading}
+                                                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-60"
+                                                      style={{ backgroundColor: C.paid }}>
+                                                <Mail size={13} />
+                                                {emailCodeLoading ? 'Sending…' : 'Send Verification Code →'}
+                                              </button>
+                                          )}
+                                          {(emailVerifyStep === 'otp' || emailVerifyStep === 'verifying') && (
+                                              <>
+                                                <p className="text-xs" style={{ color: '#1e40af' }}>Code sent! Check your inbox and spam folder:</p>
+                                                <div className="flex gap-2 flex-wrap items-center">
+                                                  <input type="text" inputMode="numeric" maxLength={6}
+                                                         placeholder="000000" value={emailCode}
+                                                         onChange={e => setEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                                         className="px-3 py-2 border-2 rounded-xl text-sm font-black focus:outline-none w-36"
+                                                         style={{ borderColor: '#3b82f6', letterSpacing: '0.2em', color: C.g800 }} />
+                                                  <button onClick={handleVerifyEmailCode}
+                                                          disabled={emailVerifyStep === 'verifying' || emailCode.length < 6}
+                                                          className="px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-50"
+                                                          style={{ backgroundColor: C.success }}>
+                                                    {emailVerifyStep === 'verifying' ? 'Verifying…' : '✓ Verify'}
+                                                  </button>
+                                                  <button onClick={() => { setEmailVerifyStep('idle'); setEmailCode(''); }} className="text-xs underline text-gray-400">Resend</button>
+                                                </div>
+                                              </>
+                                          )}
+                                        </div>
+                                    )}
+                                  </div>
+                                  {emailVerified
+                                      ? <CheckCircle size={16} className="text-green-500 flex-shrink-0 mt-0.5"/>
+                                      : underReview ? <Clock size={16} style={{color:'#D97706', flexShrink:0, marginTop:2}}/>
+                                          : <span className="text-xs font-bold text-blue-600 flex-shrink-0 mt-0.5">Required →</span>}
+                                </div>
+                              </div>
+                          );
+                        })()}
+
+                        {/* ── Step 2 — Phone ── */}
+                        {(() => {
+                          const done = phoneVerified || phoneStep === 'done';
+                          return (
+                              <div className={`p-4 rounded-xl border transition ${done ? 'bg-green-50 border-green-200' : emailVerified ? 'border-blue-200 bg-blue-50' : 'bg-gray-50 border-gray-100'}`}>
+                                <div className="flex items-start gap-4">
+                                  <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0 ${done ? 'bg-green-500 text-white' : emailVerified ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
+                                    {done ? <CheckCircle size={18}/> : 2}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <p className={`font-bold text-sm ${done ? 'text-green-800' : emailVerified ? 'text-blue-800' : 'text-gray-600'}`}>Phone Number</p>
+                                      <span className={`text-xs font-black px-2 py-0.5 rounded-full ${done ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-600'}`}>
+                                  {done ? '✓ Verified' : 'Not Verified'}
+                                </span>
+                                    </div>
+                                    <p className={`text-xs mt-0.5 ${done ? 'text-green-600' : emailVerified ? 'text-blue-600' : 'text-gray-400'}`}>
+                                      {done
+                                          ? accountForm.phone ? `${accountForm.phone} — verified ✓` : 'Phone verified — you can now trade up to $2,000 ✓'
+                                          : 'Add your phone number to unlock the $2,000 trade limit'}
+                                    </p>
+
+                                    {/* OTP flow — only shown when email verified and phone not yet done */}
+                                    {!done && emailVerified && (
+                                        <div className="mt-3 space-y-2">
+
+                                          {/* Idle: enter phone + pick method + send */}
+                                          {phoneStep === 'idle' && (
+                                              <>
+                                                <input
+                                                    type="tel"
+                                                    placeholder="+233 XX XXX XXXX"
+                                                    value={accountForm.phone || ''}
+                                                    onChange={e => setAccountForm({ ...accountForm, phone: e.target.value })}
+                                                    className="w-full px-3 py-2 border-2 rounded-xl text-sm focus:outline-none"
+                                                    style={{ borderColor: accountForm.phone ? C.green : C.g200, color: C.g800, backgroundColor: 'white' }}
+                                                />
+                                                <p className="text-xs font-bold" style={{ color: '#1e40af' }}>How would you like to receive your code?</p>
+                                                <div className="flex gap-2">
+                                                  <button
+                                                      onClick={() => setPhoneOtpMethod('email')}
+                                                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border-2 text-xs font-black transition ${phoneOtpMethod === 'email' ? 'border-blue-500 bg-blue-50 text-blue-800' : 'border-gray-200 bg-white text-gray-500'}`}>
+                                                    <Mail size={12}/> 📧 Email
+                                                  </button>
+                                                  <button
+                                                      onClick={() => setPhoneOtpMethod('sms')}
+                                                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border-2 text-xs font-black transition ${phoneOtpMethod === 'sms' ? 'border-orange-500 bg-orange-50 text-orange-800' : 'border-gray-200 bg-white text-gray-500'}`}>
+                                                    📱 SMS
+                                                  </button>
+                                                  <button
+                                                      onClick={() => setPhoneOtpMethod('whatsapp')}
+                                                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border-2 text-xs font-black transition ${phoneOtpMethod === 'whatsapp' ? 'border-green-500 bg-green-50 text-green-800' : 'border-gray-200 bg-white text-gray-500'}`}>
+                                                    💬 WhatsApp
+                                                  </button>
+                                                </div>
+                                                <button
+                                                    onClick={handleSendPhoneOtp}
+                                                    disabled={!accountForm.phone}
+                                                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-60"
+                                                    style={{ backgroundColor: C.paid }}>
+                                                  <Smartphone size={13}/>
+                                                  Send Verification Code →
+                                                </button>
+                                              </>
+                                          )}
+
+                                          {/* Sending spinner */}
+                                          {phoneStep === 'sending' && (
+                                              <div className="flex items-center gap-2 text-xs font-bold" style={{ color: '#1e40af' }}>
+                                                <RefreshCw size={13} className="animate-spin"/>
+                                                Sending your code…
+                                              </div>
+                                          )}
+
+                                          {/* OTP code input */}
+                                          {(phoneStep === 'otp' || phoneStep === 'verifying') && (
+                                              <>
+                                                <p className="text-xs" style={{ color: '#1e40af' }}>
+                                                  {phoneOtpMethod === 'email'
+                                                      ? 'Code sent to your email — check inbox and spam folder:'
+                                                      : phoneOtpMethod === 'sms'
+                                                          ? `Code sent via SMS to ${accountForm.phone}:`
+                                                          : `Code sent via WhatsApp to ${accountForm.phone}:`}
+                                                </p>
+                                                <div className="flex gap-2 flex-wrap items-center">
+                                                  <input
+                                                      type="text" inputMode="numeric" maxLength={6}
+                                                      placeholder="000000" value={phoneOtpCode}
+                                                      onChange={e => setPhoneOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                                      className="px-3 py-2 border-2 rounded-xl text-sm font-black focus:outline-none w-36"
+                                                      style={{ borderColor: '#3b82f6', letterSpacing: '0.2em', color: C.g800 }}
+                                                      autoFocus
+                                                  />
+                                                  <button
+                                                      onClick={handleVerifyPhoneOtp}
+                                                      disabled={phoneStep === 'verifying' || phoneOtpCode.length < 6}
+                                                      className="px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-50"
+                                                      style={{ backgroundColor: C.success }}>
+                                                    {phoneStep === 'verifying' ? 'Verifying…' : '✓ Verify'}
+                                                  </button>
+                                                  <button
+                                                      onClick={() => { setPhoneStep('idle'); setPhoneOtpCode(''); }}
+                                                      className="text-xs underline text-gray-400">
+                                                    Resend
+                                                  </button>
+                                                </div>
+                                              </>
+                                          )}
+                                        </div>
+                                    )}
+
+                                    {/* Locked behind email — must verify email first */}
+                                    {!done && !emailVerified && (
+                                        <p className="text-xs mt-2 font-bold" style={{ color: '#94a3b8' }}>
+                                          Complete email verification first (Step 1).
+                                        </p>
+                                    )}
+                                  </div>
+                                  {done
+                                      ? <CheckCircle size={16} className="text-green-500 flex-shrink-0 mt-0.5"/>
+                                      : emailVerified ? null
+                                          : <Clock size={16} className="text-gray-300 flex-shrink-0 mt-0.5"/>}
+                                </div>
+                              </div>
+                          );
+                        })()}
+
+                        {/* ── Step 3 — KYC ── */}
+                        {(() => {
+                          const kycPending  = (kycSubmitted || kycStatus === 'pending')  && !kycVerified;
+                          const kycRejected = kycStatus === 'rejected' && !kycVerified;
+                          const displayType = kycSubmittedType || kycIdType;
+                          const typeLabel   = KYC_ID_TYPES.find(t => t.value === displayType)?.label || 'Government ID';
+                          const submittedAgo = kycSubmittedAt ? (() => {
+                            const s = (Date.now() - new Date(kycSubmittedAt)) / 1000;
+                            if (s < 3600)  return `${Math.floor(s/60)}m ago`;
+                            if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+                            return `${Math.floor(s/86400)}d ago`;
+                          })() : null;
+                          return (
+                              <div className={`p-4 rounded-xl border transition ${
+                                  kycVerified  ? 'bg-green-50 border-green-200' :
+                                      kycRejected  ? 'bg-red-50 border-red-200' :
+                                          kycPending   ? 'bg-amber-50 border-amber-200' :
+                                              phoneVerified ? 'border-blue-200 bg-blue-50' : 'bg-gray-50 border-gray-100'
+                              }`}>
+                                <div className="flex items-start gap-4">
+                                  <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0 ${
+                                      kycVerified  ? 'bg-green-500 text-white' :
+                                          kycRejected  ? 'bg-red-500 text-white' :
+                                              kycPending   ? 'bg-amber-400 text-white' :
+                                                  phoneVerified ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'
+                                  }`}>
+                                    {kycVerified ? <CheckCircle size={18}/> : kycPending ? <Clock size={18}/> : kycRejected ? '✕' : 3}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <p className={`font-bold text-sm ${kycVerified ? 'text-green-800' : kycRejected ? 'text-red-800' : kycPending ? 'text-amber-800' : phoneVerified ? 'text-blue-800' : 'text-gray-600'}`}>
+                                        Identity (KYC)
+                                      </p>
+                                      <span className={`text-xs font-black px-2 py-0.5 rounded-full ${
+                                          kycVerified  ? 'bg-green-200 text-green-800' :
+                                              kycRejected  ? 'bg-red-200 text-red-800' :
+                                                  kycPending   ? 'bg-amber-200 text-amber-800' :
+                                                      'bg-gray-200 text-gray-600'
+                                      }`}>
+                                  {kycVerified ? '✓ Verified' : kycRejected ? '✗ Rejected' : kycPending ? '⏳ Under Review' : 'Advanced'}
+                                </span>
+                                    </div>
+                                    <p className={`text-xs mt-0.5 ${kycVerified ? 'text-green-600' : kycRejected ? 'text-red-600' : kycPending ? 'text-amber-700' : phoneVerified ? 'text-blue-600' : 'text-gray-400'}`}>
+                                      {kycVerified  ? 'Identity verified — unlimited trading unlocked ✓' :
+                                          kycRejected  ? 'Your documents were not accepted — please re-submit' :
+                                              kycPending   ? 'Documents received and under review by our team' :
+                                                  'Upload your government ID (front + back) for unlimited trading'}
+                                    </p>
+
+                                    {/* ── KYC PENDING BANNER ── */}
+                                    {kycPending && (
+                                        <div className="mt-3 rounded-xl border overflow-hidden" style={{borderColor:'#FDE68A'}}>
+                                          {/* Header */}
+                                          <div className="px-4 py-2.5 flex items-center gap-2" style={{backgroundColor:'#FEF3C7', borderBottom:'1px solid #FDE68A'}}>
+                                            <Clock size={13} style={{color:'#D97706', flexShrink:0}}/>
+                                            <p className="text-xs font-black" style={{color:'#92400E'}}>Documents Under Review</p>
+                                            <span className="ml-auto text-xs font-black px-2 py-0.5 rounded-full animate-pulse" style={{backgroundColor:'#FCD34D', color:'#78350F'}}>⏳ Pending</span>
+                                          </div>
+                                          {/* Body */}
+                                          <div className="px-4 py-3 space-y-2" style={{backgroundColor:'#FFFBEB'}}>
+                                            {displayType && (
+                                                <div className="flex items-center gap-2">
+                                                  <CheckCircle size={12} style={{color:'#D97706', flexShrink:0}}/>
+                                                  <span className="text-xs font-semibold" style={{color:'#92400E'}}>Document: {typeLabel}</span>
+                                                </div>
+                                            )}
+                                            <div className="flex items-center gap-2">
+                                              <CheckCircle size={12} style={{color:'#D97706', flexShrink:0}}/>
+                                              <span className="text-xs font-semibold" style={{color:'#92400E'}}>ID front uploaded ✓</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                              <CheckCircle size={12} style={{color:'#D97706', flexShrink:0}}/>
+                                              <span className="text-xs font-semibold" style={{color:'#92400E'}}>ID back uploaded ✓</span>
+                                            </div>
+                                            {submittedAgo && (
+                                                <div className="flex items-center gap-2">
+                                                  <Clock size={12} style={{color:'#D97706', flexShrink:0}}/>
+                                                  <span className="text-xs font-semibold" style={{color:'#92400E'}}>Submitted {submittedAgo}</span>
+                                                </div>
+                                            )}
+                                            <p className="text-xs leading-relaxed pt-1" style={{color:'#78350F'}}>
+                                              Our team reviews documents within <strong>24 hours</strong>. You will receive an in-app notification when approved or if we need more information.
+                                            </p>
+                                            <a href="mailto:hello@praqen.com" className="inline-flex items-center gap-1.5 text-xs font-black" style={{color:'#D97706'}}>
+                                              <Mail size={11}/> hello@praqen.com
+                                            </a>
+                                          </div>
+                                        </div>
+                                    )}
+
+                                    {/* ── KYC REJECTED BANNER ── */}
+                                    {kycRejected && (
+                                        <div className="mt-3 rounded-xl border overflow-hidden" style={{borderColor:'#FCA5A5'}}>
+                                          <div className="px-4 py-2.5 flex items-center gap-2" style={{backgroundColor:'#FEF2F2', borderBottom:'1px solid #FCA5A5'}}>
+                                            <span className="text-xs">❌</span>
+                                            <p className="text-xs font-black" style={{color:'#991B1B'}}>KYC Not Approved</p>
+                                            <span className="ml-auto text-xs font-black px-2 py-0.5 rounded-full" style={{backgroundColor:'#FCA5A5', color:'#7F1D1D'}}>Rejected</span>
+                                          </div>
+                                          <div className="px-4 py-3 space-y-2" style={{backgroundColor:'#FFF5F5'}}>
+                                            {kycRejectedReason && (
+                                                <p className="text-xs font-semibold leading-relaxed" style={{color:'#991B1B'}}>
+                                                  Reason: {kycRejectedReason}
+                                                </p>
+                                            )}
+                                            <p className="text-xs leading-relaxed" style={{color:'#7F1D1D'}}>
+                                              Please re-submit your documents with clearer, well-lit photos. Make sure all text on the ID is readable.
+                                            </p>
+                                            <button
+                                                onClick={() => {
+                                                  setKycStatus(null); setKycSubmitted(false);
+                                                  setKycStep('select'); setKycFiles({ front: null, back: null }); setKycIdType('');
+                                                  localStorage.removeItem('praqen_kyc');
+                                                }}
+                                                className="w-full mt-1 py-2 rounded-xl text-xs font-black"
+                                                style={{backgroundColor:'#EF4444', color:'#fff'}}>
+                                              Re-submit KYC Documents
+                                            </button>
+                                          </div>
+                                        </div>
+                                    )}
+
+                                    {/* KYC multi-step upload form */}
+                                    {!kycVerified && !kycPending && kycStatus !== 'approved' && phoneVerified && (
+                                        <div className="mt-4 space-y-4">
+
+                                          {/* Step A: Select ID type */}
+                                          <div className={`rounded-xl border-2 p-4 transition ${kycIdType ? 'border-green-300 bg-green-50' : 'border-dashed border-gray-200 bg-gray-50'}`}>
+                                            <div className="flex items-center gap-2 mb-2">
+                                              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${kycIdType ? 'bg-green-500 text-white' : 'bg-blue-500 text-white'}`}>
+                                                {kycIdType ? '✓' : '1'}
+                                              </div>
+                                              <p className="text-xs font-black text-gray-700">Select your ID type</p>
+                                            </div>
+                                            <select
+                                                value={kycIdType}
+                                                onChange={e => {
+                                                  setKycIdType(e.target.value);
+                                                  if (e.target.value) setKycStep('upload_id');
+                                                  setKycFiles({ front: null, back: null });
+                                                }}
+                                                className="w-full px-3 py-2.5 border-2 rounded-xl text-sm font-semibold focus:outline-none transition"
+                                                style={{ borderColor: kycIdType ? C.success : C.g200, color: C.g800, backgroundColor: 'white' }}>
+                                              <option value="">— Choose a document type —</option>
+                                              {KYC_ID_TYPES.map(({ value, label }) => (
+                                                  <option key={value} value={value}>{label}</option>
+                                              ))}
+                                            </select>
+                                          </div>
+
+                                          {/* Step B: ID Front */}
+                                          {kycIdType && (
+                                              <div className={`rounded-xl border-2 p-4 transition ${kycFiles.front ? 'border-green-300 bg-green-50' : 'border-dashed border-blue-200 bg-blue-50'}`}>
+                                                <div className="flex items-center gap-2 mb-2">
+                                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${kycFiles.front ? 'bg-green-500 text-white' : 'bg-blue-500 text-white'}`}>
+                                                    {kycFiles.front ? '✓' : '2'}
+                                                  </div>
+                                                  <div>
+                                                    <p className="text-xs font-black text-gray-700">Front of {KYC_ID_TYPES.find(t => t.value === kycIdType)?.label}</p>
+                                                    <p className="text-xs text-gray-400">Clear photo showing your name, photo and ID number</p>
+                                                  </div>
+                                                </div>
+                                                <div className="mb-2 px-3 py-2 rounded-lg text-xs" style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}>
+                                                  ✅ Make sure the <strong>entire card is visible</strong>, all text is readable, and there is <strong>no glare or blur</strong>
+                                                </div>
+                                                <label className="flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed cursor-pointer hover:border-blue-400 transition bg-white"
+                                                       style={{ borderColor: kycFiles.front ? C.success : '#93C5FD' }}>
+                                                  <Upload size={18} style={{ color: kycFiles.front ? C.success : '#3B82F6', flexShrink: 0 }} />
+                                                  <div className="flex-1 min-w-0">
+                                                    <p className="text-xs font-bold" style={{ color: kycFiles.front ? C.success : '#1D4ED8' }}>
+                                                      {kycFiles.front ? `✓ ${kycFiles.front.name}` : 'Tap to upload FRONT of ID'}
+                                                    </p>
+                                                    {!kycFiles.front && <p className="text-xs text-gray-400">Max 10MB · JPG or PNG</p>}
+                                                  </div>
+                                                  {kycFiles.front && (
+                                                      <button type="button" onClick={e => { e.preventDefault(); setKycFiles(f => ({...f, front: null})); }}
+                                                              className="text-xs text-red-400 font-bold hover:text-red-600">Remove</button>
+                                                  )}
+                                                  <input type="file" accept="image/*" className="hidden"
+                                                         onChange={e => {
+                                                           const f = e.target.files[0] || null;
+                                                           setKycFiles(prev => ({...prev, front: f}));
+                                                           if (f) setKycStep('upload_back');
+                                                         }} />
+                                                </label>
+                                              </div>
+                                          )}
+
+                                          {/* Step C: ID Back */}
+                                          {kycIdType && kycFiles.front && (
+                                              <div className={`rounded-xl border-2 p-4 transition ${kycFiles.back ? 'border-green-300 bg-green-50' : 'border-dashed border-orange-200 bg-orange-50'}`}>
+                                                <div className="flex items-center gap-2 mb-2">
+                                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${kycFiles.back ? 'bg-green-500 text-white' : 'bg-orange-500 text-white'}`}>
+                                                    {kycFiles.back ? '✓' : '3'}
+                                                  </div>
+                                                  <div>
+                                                    <p className="text-xs font-black text-gray-700">Back of {KYC_ID_TYPES.find(t => t.value === kycIdType)?.label}</p>
+                                                    <p className="text-xs text-gray-400">Clear photo of the reverse side of your ID</p>
+                                                  </div>
+                                                </div>
+                                                <div className="mb-2 px-3 py-2 rounded-lg text-xs" style={{ backgroundColor: '#FFF7ED', color: '#C2410C', border: '1px solid #FED7AA' }}>
+                                                  ✅ Flip your ID and photograph the <strong>back side</strong> — all details must be <strong>clear and unobstructed</strong>
+                                                </div>
+                                                <label className="flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed cursor-pointer hover:border-orange-400 transition bg-white"
+                                                       style={{ borderColor: kycFiles.back ? C.success : '#FDBA74' }}>
+                                                  <Upload size={18} style={{ color: kycFiles.back ? C.success : '#EA580C', flexShrink: 0 }} />
+                                                  <div className="flex-1 min-w-0">
+                                                    <p className="text-xs font-bold" style={{ color: kycFiles.back ? C.success : '#9A3412' }}>
+                                                      {kycFiles.back ? `✓ ${kycFiles.back.name}` : 'Tap to upload BACK of ID'}
+                                                    </p>
+                                                    {!kycFiles.back && <p className="text-xs text-gray-400">Max 10MB · JPG or PNG</p>}
+                                                  </div>
+                                                  {kycFiles.back && (
+                                                      <button type="button" onClick={e => { e.preventDefault(); setKycFiles(f => ({...f, back: null})); }}
+                                                              className="text-xs text-red-400 font-bold hover:text-red-600">Remove</button>
+                                                  )}
+                                                  <input type="file" accept="image/*" className="hidden"
+                                                         onChange={e => {
+                                                           const f = e.target.files[0] || null;
+                                                           setKycFiles(prev => ({...prev, back: f}));
+                                                           if (f) setKycStep('ready');
+                                                         }} />
+                                                </label>
+                                              </div>
+                                          )}
+
+                                          {/* Step D: Processing state */}
+                                          {kycStep === 'processing' && (
+                                              <div className="rounded-xl border-2 border-blue-200 bg-blue-50 p-5 text-center">
+                                                <RefreshCw size={28} className="animate-spin mx-auto mb-2 text-blue-500" />
+                                                <p className="text-sm font-black text-blue-800">Processing your documents…</p>
+                                                <p className="text-xs text-blue-600 mt-1">Securely uploading and encrypting your files</p>
+                                              </div>
+                                          )}
+
+                                          {/* Submit button */}
+                                          {kycIdType && kycFiles.front && kycFiles.back && kycStep !== 'processing' && (
+                                              <div className="rounded-xl border-2 border-green-200 bg-green-50 p-4">
+                                                <div className="flex items-center gap-2 mb-3">
+                                                  <CheckCircle size={16} className="text-green-600 flex-shrink-0" />
+                                                  <p className="text-xs font-black text-green-800">All documents uploaded — ready to submit</p>
+                                                </div>
+                                                <div className="space-y-1 mb-4">
+                                                  <div className="flex items-center gap-2 text-xs text-green-700">
+                                                    <CheckCircle size={11} className="text-green-500 flex-shrink-0" />
+                                                    <span>{KYC_ID_TYPES.find(t => t.value === kycIdType)?.label} selected</span>
+                                                  </div>
+                                                  <div className="flex items-center gap-2 text-xs text-green-700">
+                                                    <CheckCircle size={11} className="text-green-500 flex-shrink-0" />
+                                                    <span>ID front: {kycFiles.front.name}</span>
+                                                  </div>
+                                                  <div className="flex items-center gap-2 text-xs text-green-700">
+                                                    <CheckCircle size={11} className="text-green-500 flex-shrink-0" />
+                                                    <span>ID back: {kycFiles.back.name}</span>
+                                                  </div>
+                                                </div>
+                                                <button onClick={handleKycSubmit} disabled={kycLoading}
+                                                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-white text-sm font-black disabled:opacity-50 transition hover:opacity-90"
+                                                        style={{ backgroundColor: C.green }}>
+                                                  <Shield size={15} />
+                                                  Submit for Review — Secure &amp; Encrypted
+                                                </button>
+                                                <p className="text-xs text-gray-400 text-center mt-2">We typically review within 24 hours</p>
+                                              </div>
+                                          )}
+                                        </div>
+                                    )}
+                                  </div>
+                                  {kycVerified
+                                      ? <CheckCircle size={16} className="text-green-500 flex-shrink-0 mt-0.5"/>
+                                      : kycPending ? <Clock size={16} style={{color:'#D97706', flexShrink:0, marginTop:2}}/>
+                                          : phoneVerified ? null
+                                              : <Clock size={16} className="text-gray-300 flex-shrink-0 mt-0.5"/>}
+                                </div>
+                              </div>
+                          );
+                        })()}
+
+                      </div>
+
+                    </>}
+                  </div>
+              )}
+
+              {/* ── SECURITY ────────────────────────────────────────── */}
+              {activeTab === 'security' && (
+                  <div className="space-y-5">
+
+                    {/* ── Account Security Info ── */}
+                    <div className="bg-white rounded-2xl shadow-sm border p-5" style={{ borderColor: C.g200 }}>
+                      <h2 className="text-lg font-black mb-4" style={{ color: C.forest }}>Account Security</h2>
+                      <div className="space-y-2.5">
+
+                        {/* Registered Country */}
+                        <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
+                          <Globe size={16} style={{ color: C.forest, flexShrink: 0 }} />
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.g500 }}>Registered Country</p>
+                            {secInfo.loading ? (
+                                <div className="h-4 w-28 rounded animate-pulse mt-1" style={{ backgroundColor: C.g200 }} />
+                            ) : (
+                                <p className="text-sm font-black" style={{ color: C.g800 }}>
+                                  {secInfo.flag} {secInfo.country || user?.country || '—'}
+                                  {secInfo.city ? <span className="font-normal text-xs ml-1.5" style={{ color: C.g500 }}>{secInfo.city}</span> : null}
+                                </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* IP Address */}
+                        <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
+                          <Shield size={16} style={{ color: C.forest, flexShrink: 0 }} />
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.g500 }}>IP Address</p>
+                            {secInfo.loading ? (
+                                <div className="h-4 w-32 rounded animate-pulse mt-1" style={{ backgroundColor: C.g200 }} />
+                            ) : (
+                                <p className="text-sm font-black font-mono" style={{ color: C.g800 }}>{secInfo.ip || '—'}</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Last Active */}
+                        <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
+                          <Clock size={16} style={{ color: C.forest, flexShrink: 0 }} />
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.g500 }}>Last Active</p>
+                            <p className="text-sm font-black" style={{ color: C.success }}>🟢 Online now</p>
+                          </div>
+                        </div>
+
+                        {/* Device Access */}
+                        <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
+                          <Smartphone size={16} style={{ color: C.forest, flexShrink: 0 }} />
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.g500 }}>Device Access</p>
+                            <p className="text-sm font-black" style={{ color: C.g800 }}>{secInfo.device}</p>
+                          </div>
+                        </div>
+
+                        {/* Language */}
+                        <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: C.g50 }}>
+                          <Languages size={16} style={{ color: C.forest, flexShrink: 0 }} />
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.g500 }}>Language</p>
+                            <p className="text-sm font-black" style={{ color: C.g800 }}>{secInfo.language}</p>
+                          </div>
+                        </div>
+
+                      </div>
+                    </div>
+
+                    <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: C.g200 }}>
+                      <h2 className="text-lg font-black mb-5" style={{ color: C.forest }}>Change Password</h2>
+                      <form onSubmit={handlePasswordChange} className="space-y-4">
+                        {[
+                          { key: 'currentPassword', label: 'Current Password', show: showPw.current, toggle: () => setShowPw({ ...showPw, current: !showPw.current }) },
+                          { key: 'newPassword',      label: 'New Password',     show: showPw.new,     toggle: () => setShowPw({ ...showPw, new: !showPw.new }) },
+                          { key: 'confirmPassword',  label: 'Confirm New Password', show: showPw.confirm, toggle: () => setShowPw({ ...showPw, confirm: !showPw.confirm }) },
+                        ].map(({ key, label, show, toggle }) => (
+                            <div key={key}>
+                              <label className={labelCls}>{label}</label>
+                              <div className="relative">
+                                <input type={show ? 'text' : 'password'} value={passwordForm[key]}
+                                       onChange={e => setPasswordForm({ ...passwordForm, [key]: e.target.value })}
+                                       className={inputCls + " pr-10"} style={inputStyle(passwordForm[key])} required />
+                                <button type="button" onClick={toggle} className="absolute right-3 top-3 text-gray-400 hover:text-gray-600">
+                                  {show ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
+                              </div>
+                            </div>
+                        ))}
+                        {/* Password strength */}
+                        {passwordForm.newPassword && (
+                            <div>
+                              <p className="text-xs text-gray-500 mb-1">Password strength</p>
+                              <div className="flex gap-1">
+                                {[1, 2, 3, 4].map(i => {
+                                  const len = passwordForm.newPassword.length;
+                                  const hasUpper = /[A-Z]/.test(passwordForm.newPassword);
+                                  const hasNum = /\d/.test(passwordForm.newPassword);
+                                  const hasSpec = /[^a-zA-Z0-9]/.test(passwordForm.newPassword);
+                                  const score = (len >= 8 ? 1 : 0) + (len >= 12 ? 1 : 0) + (hasUpper && hasNum ? 1 : 0) + (hasSpec ? 1 : 0);
+                                  const color = score <= 1 ? C.danger : score === 2 ? C.warn : score === 3 ? C.paid : C.success;
+                                  return <div key={i} className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: i <= score ? color : C.g200 }} />;
+                                })}
+                              </div>
+                            </div>
+                        )}
+                        <button type="submit" disabled={loading}
+                                className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-white font-bold text-sm hover:opacity-90 disabled:opacity-50"
+                                style={{ backgroundColor: C.green }}>
+                          {loading ? <><RefreshCw size={15} className="animate-spin" /> Updating…</> : <><Lock size={15} /> Update Password</>}
+                        </button>
+                      </form>
+                    </div>
+
+                    {/* Active sessions */}
+                    <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: C.g200 }}>
+                      <h2 className="text-lg font-black mb-4" style={{ color: C.forest }}>Account Actions</h2>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between p-3 rounded-xl border" style={{ borderColor: C.g100 }}>
+                          <div>
+                            <p className="text-sm font-bold text-gray-800">Two-Factor Authentication</p>
+                            <p className="text-xs text-gray-400">Add extra security to your account</p>
+                          </div>
+                          <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-orange-100 text-orange-700">Coming Soon</span>
+                        </div>
+                        <div className="flex items-center justify-between p-3 rounded-xl border border-red-100 bg-red-50">
+                          <div>
+                            <p className="text-sm font-bold text-red-700">Log Out</p>
+                            <p className="text-xs text-red-400">Sign out of your account on this device</p>
+                          </div>
+                          <button onClick={handleLogout} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-white text-xs font-bold" style={{ backgroundColor: C.danger }}>
+                            <LogOut size={13} /> Log Out
+                          </button>
                         </div>
                         <p className="text-xs font-bold mt-1" style={{
                           color: (() => {
@@ -1954,558 +2046,255 @@ export default function Settings({ user, setUser }) {
                           })()}
                         </p>
                       </div>
-                    )}
-                    <button type="submit" disabled={loading}
-                      className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-white font-bold text-sm hover:opacity-90 disabled:opacity-50 transition-all"
-                      style={{ backgroundColor: C.green }}>
-                      {loading ? <><RefreshCw size={15} className="animate-spin" /> Updating…</> : <><Lock size={15} /> Update Password</>}
-                    </button>
-                  </form>
-                </div>
+                    </div>
+                  </div>
+              )}
 
-                {/* Account Actions */}
-                <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: C.g200 }}>
-                  <h2 className="text-lg font-black mb-4" style={{ color: C.forest }}>Account Actions</h2>
-                  <div className="space-y-3">
-                    {/* ── 2FA UI ──────────────────────────────────────────── */}
-                    {!twoFAEnabled ? (
-                      <div className="rounded-xl border" style={{ borderColor: C.g100 }}>
-                        {twoFAStep === 'idle' && (
-                          <div className="flex items-center justify-between p-3">
-                            <div className="flex items-start gap-3">
-                              <Shield size={18} style={{ color: C.g400, flexShrink: 0, marginTop: 2 }} />
-                              <div>
-                                <p className="text-sm font-bold" style={{ color: C.g800 }}>Two-Factor Authentication</p>
-                                <p className="text-xs mt-0.5" style={{ color: C.g500 }}>Add extra security to your account</p>
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => setTwoFAStep('method')}
-                              className="text-xs font-bold px-3 py-1.5 rounded-lg transition hover:opacity-80"
-                              style={{ backgroundColor: C.green, color: '#fff' }}>
-                              Enable
-                            </button>
-                          </div>
-                        )}
+              {/* ── PREFERENCES ─────────────────────────────────────── */}
+              {activeTab === 'preferences' && (
+                  <div className="space-y-4">
+                    <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: C.g200 }}>
+                      <h2 className="text-lg font-black mb-1" style={{ color: C.forest }}>Account Preferences</h2>
+                      <p className="text-xs mb-6" style={{ color: C.g400 }}>Customize how prices, dates, and content display across PRAQEN</p>
 
-                        {twoFAStep === 'method' && (
-                          <div className="p-4 space-y-3">
-                            <p className="text-xs font-bold" style={{ color: C.g500, marginBottom: 8 }}>Choose your 2FA method:</p>
-
-                            {/* EMAIL Option */}
-                            <button
-                              disabled={!emailVerified || twoFALoading}
-                              onClick={async () => {
-                                setSelected2FAMethod('email');
-                                setTwoFAError('');
-                                setTwoFAStep('sending');
-                                setTwoFALoading(true);
-                                try {
-                                  await axios.post(`${API_URL}/auth/send-otp`,
-                                    { email: user?.email, channel: 'email' },
-                                    { timeout: TIMEOUT_MS, headers: authH() }
-                                  );
-                                  setTwoFAStep('otp');
-                                } catch (e) {
-                                  const msg = e?.response?.data?.error || (e.code === 'ECONNABORTED' ? 'Request timed out — please try again' : 'Failed to send code — please try again');
-                                  setTwoFAError(msg);
-                                  setTwoFAStep('method');
-                                } finally {
-                                  setTwoFALoading(false);
-                                }
-                              }}
-                              className={`w-full flex items-center gap-2 px-3 py-3 rounded-xl text-xs font-bold transition border-2 ${!emailVerified ? 'opacity-40 cursor-not-allowed' : 'hover:border-green-500'}`}
-                              style={{ borderColor: C.green, backgroundColor: `${C.green}08` }}>
-                              <Mail size={16} style={{ color: C.green, flexShrink: 0 }} />
-                              <div className="text-left">
-                                <p className="text-xs font-bold" style={{ color: C.g800 }}>Email</p>
-                                <p className="text-[10px]" style={{ color: C.g500 }}>{emailVerified ? maskEmail(user?.email || '') : 'Verify email first'}</p>
-                              </div>
-                              {twoFALoading ? <RefreshCw size={14} className="animate-spin ml-auto" style={{ color: C.green }} /> : null}
-                            </button>
-                            {!emailVerified && (
-                              <p className="text-xs" style={{ color: C.warn }}>Verify your email address in the Verification tab first.</p>
-                            )}
-
-
-                            <button onClick={() => setTwoFAStep('idle')} disabled={twoFALoading} className="text-xs font-semibold" style={{ color: C.g400 }}>← Cancel</button>
-                          </div>
-                        )}
-
-                        {(twoFAStep === 'sending' || twoFAStep === 'otp' || twoFAStep === 'verifying') && (
-                          <div className="p-4 space-y-3">
-                            <div className="flex items-center gap-3 mb-3">
-                              <Shield size={18} style={{ color: C.green, flexShrink: 0 }} />
-                              <div>
-                                <p className="text-sm font-bold" style={{ color: C.g800 }}>Verify 2FA Setup</p>
-                                <p className="text-xs" style={{ color: C.g500 }}>
-                                  {twoFAStep === 'sending'
-                                    ? 'Sending code to your email…'
-                                    : twoFAStep === 'verifying'
-                                    ? 'Verifying code…'
-                                    : `Code sent to ${maskEmail(user?.email || '')}`}
-                                </p>
-                              </div>
-                            </div>
-
-                            {twoFAError && (
-                              <div className="flex items-center gap-2 p-2.5 rounded-xl text-xs font-medium" style={{ backgroundColor: '#FEF2F2', color: C.danger, border: `1px solid #FECACA` }}>
-                                <AlertCircle size={13} /> {twoFAError}
-                                <button onClick={() => setTwoFAError('')} className="ml-auto" style={{ color: C.g400 }}><X size={14} /></button>
-                              </div>
-                            )}
-
-                            {twoFAStep !== 'sending' && (
-                              <>
-                                <div className="text-center">
-                                  <label className="block text-xs font-bold mb-2" style={{ color: C.g500 }}>Enter 6-digit code</label>
-                                  <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
-                                    {Array.from({ length: 6 }, (_, i) => (
-                                      <input key={i} type="text" inputMode="numeric" maxLength={1}
-                                        value={twoFACode[i] || ''}
-                                        onChange={e => {
-                                          const d = e.target.value.replace(/\D/g, '').slice(-1);
-                                          const arr = [...twoFACode.padEnd(6, '').slice(0, 6)];
-                                          arr[i] = d;
-                                          const val = arr.join('');
-                                          setTwoFACode(val);
-                                          setTwoFAError('');
-                                          if (d && i < 5) {
-                                            const next = document.querySelector(`[data-2fa-idx="${i + 1}"]`);
-                                            next?.focus();
-                                          }
-                                        }}
-                                        onKeyDown={e => {
-                                          if (e.key === 'Backspace' && !twoFACode[i] && i > 0) {
-                                            const arr = [...twoFACode.padEnd(6, '').slice(0, 6)];
-                                            arr[i - 1] = '';
-                                            setTwoFACode(arr.join(''));
-                                            const prev = document.querySelector(`[data-2fa-idx="${i - 1}"]`);
-                                            prev?.focus();
-                                          }
-                                        }}
-                                        onPaste={e => {
-                                          const p = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
-                                          setTwoFACode(p);
-                                          const last = document.querySelector(`[data-2fa-idx="${Math.min(p.length, 5)}"]`);
-                                          last?.focus();
-                                          e.preventDefault();
-                                        }}
-                                        data-2fa-idx={i}
-                                        style={{
-                                          width: 38, height: 44, borderRadius: 10,
-                                          textAlign: 'center', fontSize: 16, fontWeight: 800,
-                                          border: `2px solid ${twoFACode[i] ? C.green : C.g200}`,
-                                          color: C.forest, background: twoFACode[i] ? `${C.green}08` : '#fff',
-                                          outline: 'none', transition: 'all 0.15s',
-                                          fontFamily: "'DM Sans',sans-serif",
-                                        }} />
-                                    ))}
-                                  </div>
+                      <div className="space-y-6">
+                        {/* ── Currency ── */}
+                        <div>
+                          <label className={labelCls}><DollarSign size={14} className="inline mr-1" /> Preferred Currency</label>
+                          <select value={prefs.currency} onChange={e => setPrefs({ ...prefs, currency: e.target.value })}
+                                  className={inputCls} style={inputStyle(true)}>
+                            {CURRENCIES.map(({ code, label, symbol, flag }) => (
+                                <option key={code} value={code}>{flag} {label} ({symbol})</option>
+                            ))}
+                          </select>
+                          {(() => {
+                            const cur = CURRENCIES.find(c => c.code === prefs.currency);
+                            return cur ? (
+                                <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold" style={{ backgroundColor: C.g50, color: C.g600 }}>
+                                  <span className="text-base">{cur.flag}</span>
+                                  <span>{cur.label}</span>
+                                  <span className="ml-auto font-black" style={{ color: C.green }}>{cur.symbol}</span>
                                 </div>
-
-                                <button
-                                  onClick={async () => {
-                                    if (twoFACode.length < 6) { setTwoFAError('Enter the full 6-digit code'); return; }
-                                    setTwoFALoading(true);
-                                    setTwoFAError('');
-                                    setTwoFAStep('verifying');
-                                    try {
-                                      // Verify OTP via existing verify-otp endpoint
-                                      await axios.post(`${API_URL}/auth/verify-otp`,
-                                        { email: user?.email, code: twoFACode, channel: 'email' },
-                                        { timeout: TIMEOUT_MS, headers: authH() }
-                                      );
-                                      // OTP correct — now toggle 2FA on
-                                      await axios.patch(`${API_URL}/users/toggle-2fa`,
-                                        { two_factor_enabled: true, two_factor_method: selected2FAMethod },
-                                        { timeout: TIMEOUT_MS, headers: authH() }
-                                      );
-                                      setTwoFAEnabled(true);
-                                      setTwoFAMethod(selected2FAMethod);
-                                      setTwoFAStep('done');
-                                      setTwoFACode('');
-                                      if (setUser) setUser(u => ({ ...u, two_factor_enabled: true, two_factor_method: selected2FAMethod }));
-                                      const stored = JSON.parse(localStorage.getItem('user') || '{}');
-                                      localStorage.setItem('user', JSON.stringify({ ...stored, two_factor_enabled: true, two_factor_method: selected2FAMethod }));
-                                      toast.success(`2FA enabled via ${selected2FAMethod}! ✅`);
-                                    } catch (e) {
-                                      const msg = e?.response?.data?.error || (e.code === 'ECONNABORTED' ? 'Request timed out — please try again' : 'Invalid or expired code');
-                                      setTwoFAError(msg);
-                                      setTwoFAStep('otp');
-                                    } finally {
-                                      setTwoFALoading(false);
-                                    }
-                                  }}
-                                  disabled={twoFALoading || twoFACode.length < 6}
-                                  className="w-full py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-40"
-                                  style={{ backgroundColor: C.green, color: '#fff' }}>
-                                  {twoFALoading ? <><RefreshCw size={13} className="animate-spin" /> Verifying…</> : 'Confirm & Enable 2FA'}
-                                </button>
-
-                                <button onClick={() => { setTwoFAStep('method'); setTwoFACode(''); setTwoFAError(''); }} disabled={twoFALoading}
-                                  className="text-xs font-semibold" style={{ color: C.g400 }}>← Back</button>
-                              </>
-                            )}
-                          </div>
-                        )}
-
-                        {twoFAStep === 'done' && (
-                          <div className="flex items-center justify-between p-3 rounded-xl" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-                            <div className="flex items-center gap-3">
-                              <CheckCircle size={18} style={{ color: C.success, flexShrink: 0 }} />
-                              <div>
-                                <p className="text-sm font-bold" style={{ color: '#065F46' }}>2FA is ON ✓</p>
-                                <p className="text-xs" style={{ color: '#059669' }}>via Email</p>
-                              </div>
-                            </div>
-                            <span className="text-xs font-black px-2 py-1 rounded-full" style={{ backgroundColor: '#D1FAE5', color: '#065F46' }}>Active</span>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="rounded-xl" style={{ borderColor: C.g100 }}>
-                        <div className="flex items-center justify-between p-3 rounded-xl" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-                          <div className="flex items-center gap-3">
-                            <Shield size={18} style={{ color: C.success, flexShrink: 0 }} />
-                            <div>
-                              <p className="text-sm font-bold" style={{ color: '#065F46' }}>Two-Factor Authentication</p>
-                              <p className="text-xs" style={{ color: '#059669' }}>Secured via {twoFAMethod === 'email' ? 'Email' : twoFAMethod}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-black px-2.5 py-1 rounded-full flex items-center gap-1" style={{ backgroundColor: '#D1FAE5', color: '#065F46' }}>
-                              <CheckCircle size={11} /> ON
-                            </span>
-                            <button onClick={() => setShowDisableInput(true)}
-                              className="text-xs font-bold px-2.5 py-1.5 rounded-lg transition hover:opacity-80"
-                              style={{ backgroundColor: '#FEF2F2', color: C.danger }}>Disable</button>
-                          </div>
+                            ) : null;
+                          })()}
                         </div>
-                        {showDisableInput && (
-                          <div className="p-3 space-y-2.5" style={{ borderTop: `1px solid ${C.g100}` }}>
-                            <div className="flex items-center gap-2">
-                              <Lock size={14} style={{ color: C.g400 }} />
-                              <input type="password" placeholder="Enter current password to disable"
-                                value={disablePassword}
-                                onChange={e => setDisablePassword(e.target.value)}
-                                className="flex-1 px-3 py-2 border-2 rounded-xl text-xs focus:outline-none"
-                                style={{ borderColor: C.g200, fontFamily: "'DM Sans',sans-serif" }} />
-                            </div>
-                            <div className="flex gap-2">
-                              <button disabled={!disablePassword || disableLoading}
-                                onClick={async () => {
-                                  setDisableLoading(true);
-                                  try {
-                                    await axios.patch(`${API_URL}/users/toggle-2fa`,
-                                      { two_factor_enabled: false, password: disablePassword },
-                                      { timeout: TIMEOUT_MS, headers: authH() }
-                                    );
-                                    setTwoFAEnabled(false);
-                                    setTwoFAMethod(null);
-                                    setDisablePassword('');
-                                    setShowDisableInput(false);
-                                    if (setUser) setUser(u => ({ ...u, two_factor_enabled: false, two_factor_method: null }));
-                                    const stored = JSON.parse(localStorage.getItem('user') || '{}');
-                                    localStorage.setItem('user', JSON.stringify({ ...stored, two_factor_enabled: false, two_factor_method: null }));
-                                    toast.success('2FA disabled');
-                                  } catch (e) {
-                                    toast.error(e?.response?.data?.error || 'Failed to disable 2FA');
-                                  } finally { setDisableLoading(false); }
-                                }}
-                                className="px-3 py-1.5 rounded-lg text-xs font-bold text-white transition hover:opacity-80 disabled:opacity-40 flex items-center gap-1"
-                                style={{ backgroundColor: C.danger }}>
-                                {disableLoading ? <><RefreshCw size={12} className="animate-spin" /> Disabling…</> : 'Disable 2FA'}
-                              </button>
-                              <button onClick={() => { setShowDisableInput(false); setDisablePassword(''); }}
-                                className="px-3 py-1.5 rounded-lg text-xs font-bold"
-                                style={{ color: C.g400 }}>Cancel</button>
+
+                        {/* ── Language ── */}
+                        <div>
+                          <label className={labelCls}><Languages size={14} className="inline mr-1" /> Language</label>
+                          <select value={prefs.language} onChange={e => setPrefs({ ...prefs, language: e.target.value })}
+                                  className={inputCls} style={inputStyle(true)}>
+                            {LANGUAGES.map(({ code, label, native }) => (
+                                <option key={code} value={code}>{label}{native !== label ? ` — ${native}` : ''}</option>
+                            ))}
+                          </select>
+                          {(() => {
+                            const lang = LANGUAGES.find(l => l.code === prefs.language);
+                            return lang ? (
+                                <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold" style={{ backgroundColor: C.g50, color: C.g600 }}>
+                                  <span>{lang.label}</span>
+                                  {lang.native !== lang.label && <span style={{ color: C.g400 }}>({lang.native})</span>}
+                                </div>
+                            ) : null;
+                          })()}
+                        </div>
+
+                        {/* ── Timezone ── */}
+                        <div>
+                          <label className={labelCls}><MapPin size={14} className="inline mr-1" /> Timezone</label>
+                          <select value={prefs.timezone} onChange={e => setPrefs({ ...prefs, timezone: e.target.value })}
+                                  className={inputCls} style={inputStyle(true)}>
+                            {Object.entries(TIMEZONE_GROUPS).map(([region, zones]) => (
+                                <optgroup key={region} label={region}>
+                                  {zones.map(({ tz, label }) => (
+                                      <option key={tz} value={tz}>{label}</option>
+                                  ))}
+                                </optgroup>
+                            ))}
+                          </select>
+                          {prefs.timezone && (
+                              <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold" style={{ backgroundColor: C.g50, color: C.g600 }}>
+                                <span>🕐</span>
+                                <span>{prefs.timezone.replace(/_/g, ' ')}</span>
+                                <span className="ml-auto font-black" style={{ color: C.green }}>
+                            {(() => { try { return new Intl.DateTimeFormat('en', { timeZone: prefs.timezone, timeZoneName: 'short' }).formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value || ''; } catch { return ''; } })()}
+                          </span>
+                              </div>
+                          )}
+                        </div>
+
+                        <button onClick={handleSavePreferences} disabled={loading}
+                                className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-white font-bold text-sm hover:opacity-90 disabled:opacity-50 transition"
+                                style={{ backgroundColor: C.green }}>
+                          {loading ? <><RefreshCw size={15} className="animate-spin" /> Saving…</> : <><Save size={15} /> Save Preferences</>}
+                        </button>
+                        <p className="text-xs" style={{ color: C.g400 }}>
+                          Currency affects price display in your wallet and marketplace. Language and timezone are saved to your account.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+              )}
+
+              {/* ── PAYMENT METHODS ──────────────────────────────────── */}
+              {activeTab === 'payment' && (
+                  <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: C.g200 }}>
+                    <h2 className="text-lg font-black mb-2" style={{ color: C.forest }}>Payment Methods</h2>
+                    <p className="text-xs text-gray-400 mb-5">These details are shared with buyers/sellers during a trade</p>
+                    <form onSubmit={handlePaymentUpdate} className="space-y-4">
+                      <div>
+                        <label className={labelCls}>Bank Name</label>
+                        <input type="text" value={payments.bankName} onChange={e => setPayments({ ...payments, bankName: e.target.value })}
+                               placeholder="e.g. GCB Bank, GTBank, Ecobank" className={inputCls} style={inputStyle(payments.bankName)} />
+                      </div>
+                      <div>
+                        <label className={labelCls}>Bank Account Number</label>
+                        <input type="text" value={payments.accountNumber} onChange={e => setPayments({ ...payments, accountNumber: e.target.value })}
+                               placeholder="Enter account number" className={inputCls} style={inputStyle(payments.accountNumber)} />
+                      </div>
+                      <div>
+                        <label className={labelCls}>Mobile Money Provider</label>
+                        <select value={payments.mobileProvider} onChange={e => setPayments({ ...payments, mobileProvider: e.target.value })}
+                                className={inputCls} style={inputStyle(payments.mobileProvider)}>
+                          <option value="">Select provider</option>
+                          <option value="mtn">MTN Mobile Money</option>
+                          <option value="vodafone">Vodafone Cash</option>
+                          <option value="airteltigo">AirtelTigo Money</option>
+                          <option value="mpesa">M-Pesa</option>
+                          <option value="opay">OPay</option>
+                          <option value="palmpay">PalmPay</option>
+                          <option value="wave">Wave</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className={labelCls}>Mobile Money Number</label>
+                        <input type="tel" value={payments.mobileNumber} onChange={e => setPayments({ ...payments, mobileNumber: e.target.value })}
+                               placeholder="+233 XX XXX XXXX" className={inputCls} style={inputStyle(payments.mobileNumber)} />
+                      </div>
+                      <div className="p-3 rounded-xl text-xs font-semibold flex items-start gap-2" style={{ backgroundColor: `${C.warn}12`, color: '#92400E' }}>
+                        <AlertCircle size={13} className="flex-shrink-0 mt-0.5" />
+                        Your payment details are only shared with your trade partner during an active trade. Never share outside the platform.
+                      </div>
+                      <button type="submit" disabled={loading}
+                              className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-white font-bold text-sm hover:opacity-90 disabled:opacity-50"
+                              style={{ backgroundColor: C.green }}>
+                        {loading ? <><RefreshCw size={15} className="animate-spin" /> Saving…</> : <><Save size={15} /> Save Payment Methods</>}
+                      </button>
+                    </form>
+                  </div>
+              )}
+
+              {/* ── NOTIFICATIONS ───────────────────────────────────── */}
+              {activeTab === 'notifications' && (
+                  <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: C.g200 }}>
+                    <h2 className="text-lg font-black mb-5" style={{ color: C.forest }}>Notification Preferences</h2>
+                    <div className="space-y-4">
+                      {/* ── Push Notification Enable Banner ── */}
+                      <PushEnableCard />
+
+                      {[
+                        { section: '📧 Email Notifications', items: [
+                            { key: 'email_trades',   label: 'Trade Updates',     desc: 'New trades, payments, releases' },
+                            { key: 'email_security', label: 'Security Alerts',   desc: 'Login attempts, password changes' },
+                            { key: 'email_marketing',label: 'News & Promotions', desc: 'Platform updates and offers' },
+                          ]},
+                        { section: '🔔 Push Notification Types', items: [
+                            { key: 'push_trades',   label: 'Trade Alerts',   desc: 'New trades, payments, BTC releases' },
+                            { key: 'push_messages', label: 'Chat Messages',  desc: 'New messages in trade chat' },
+                            { key: 'push_disputes', label: 'Dispute Alerts', desc: 'Dispute opened or resolved' },
+                          ]},
+                      ].map(({ section, items }) => (
+                          <div key={section}>
+                            <p className="text-sm font-black text-gray-700 mb-2">{section}</p>
+                            <div className="space-y-2">
+                              {items.map(({ key, label, desc }) => (
+                                  <div key={key} className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border" style={{ borderColor: C.g100 }}>
+                                    <div>
+                                      <p className="text-sm font-bold text-gray-800">{label}</p>
+                                      <p className="text-xs text-gray-500">{desc}</p>
+                                    </div>
+                                    {/* ✅ FIXED: Toggle component with proper styling */}
+                                    <Toggle checked={notifs[key]} onChange={v => setNotifs({ ...notifs, [key]: v })} />
+                                  </div>
+                              ))}
                             </div>
                           </div>
+                      ))}
+                      {/* Save button with handleSaveNotifications */}
+                      <button
+                          onClick={handleSaveNotifications}
+                          disabled={loading}
+                          className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-white font-bold text-sm hover:opacity-90 disabled:opacity-50 transition"
+                          style={{ backgroundColor: C.green }}>
+                        {loading ? (
+                            <><RefreshCw size={15} className="animate-spin" /> Saving…</>
+                        ) : (
+                            <><Save size={15} /> Save Preferences</>
                         )}
-                      </div>
-                    )}
-                    <div className="flex items-center justify-between p-3 rounded-xl border" style={{ borderColor: '#FECACA', backgroundColor: '#FEF2F2' }}>
-                      <div>
-                        <p className="text-sm font-bold" style={{ color: '#991B1B' }}>Log Out</p>
-                        <p className="text-xs" style={{ color: '#DC2626' }}>Sign out of your account on this device</p>
-                      </div>
-                      <button onClick={handleLogout} disabled={loggingOut || logoutConfirm}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-white text-xs font-bold hover:opacity-90 disabled:opacity-50 transition-all"
-                        style={{ backgroundColor: C.danger }}>
-                        {loggingOut ? <><RefreshCw size={13} className="animate-spin" /> Logging out…</> : <><LogOut size={13} /> Log Out</>}
                       </button>
                     </div>
                   </div>
-                </div>
+              )}
 
-              </div>
-            )}
-
-            {/* ── PREFERENCES ─────────────────────────────────────── */}
-            {activeTab === 'preferences' && (
-              <div className="space-y-4">
-                <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: C.g200 }}>
-                  <h2 className="text-lg font-black mb-1" style={{ color: C.forest }}>Account Preferences</h2>
-                  <p className="text-xs mb-6" style={{ color: C.g400 }}>Customize how prices, dates, and content display across PRAQEN</p>
-
-                  <div className="space-y-6">
-                    {/* ── Currency ── */}
-                    <div>
-                      <label className={labelCls}><DollarSign size={14} className="inline mr-1" /> Preferred Currency</label>
-                      <select value={prefs.currency} onChange={e => setPrefs({ ...prefs, currency: e.target.value })}
-                        className={inputCls} style={inputStyle(true)}>
-                        {CURRENCIES.map(({ code, label, symbol, flag }) => (
-                          <option key={code} value={code}>{flag} {label} ({symbol})</option>
-                        ))}
-                      </select>
-                      {(() => {
-                        const cur = CURRENCIES.find(c => c.code === prefs.currency);
-                        return cur ? (
-                          <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold" style={{ backgroundColor: C.g50, color: C.g600 }}>
-                            <span className="text-base">{cur.flag}</span>
-                            <span>{cur.label}</span>
-                            <span className="ml-auto font-black" style={{ color: C.green }}>{cur.symbol}</span>
-                          </div>
-                        ) : null;
-                      })()}
-                    </div>
-
-                    {/* ── Language ── */}
-                    <div>
-                      <label className={labelCls}><Languages size={14} className="inline mr-1" /> Language</label>
-                      <select value={prefs.language} onChange={e => setPrefs({ ...prefs, language: e.target.value })}
-                        className={inputCls} style={inputStyle(true)}>
-                        {LANGUAGES.map(({ code, label, native }) => (
-                          <option key={code} value={code}>{label}{native !== label ? ` — ${native}` : ''}</option>
-                        ))}
-                      </select>
-                      {(() => {
-                        const lang = LANGUAGES.find(l => l.code === prefs.language);
-                        return lang ? (
-                          <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold" style={{ backgroundColor: C.g50, color: C.g600 }}>
-                            <span>{lang.label}</span>
-                            {lang.native !== lang.label && <span style={{ color: C.g400 }}>({lang.native})</span>}
-                          </div>
-                        ) : null;
-                      })()}
-                    </div>
-
-                    {/* ── Timezone ── */}
-                    <div>
-                      <label className={labelCls}><MapPin size={14} className="inline mr-1" /> Timezone</label>
-                      <select value={prefs.timezone} onChange={e => setPrefs({ ...prefs, timezone: e.target.value })}
-                        className={inputCls} style={inputStyle(true)}>
-                        {Object.entries(TIMEZONE_GROUPS).map(([region, zones]) => (
-                          <optgroup key={region} label={region}>
-                            {zones.map(({ tz, label }) => (
-                              <option key={tz} value={tz}>{label}</option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
-                      {prefs.timezone && (
-                        <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold" style={{ backgroundColor: C.g50, color: C.g600 }}>
-                          <span>🕐</span>
-                          <span>{prefs.timezone.replace(/_/g, ' ')}</span>
-                          <span className="ml-auto font-black" style={{ color: C.green }}>
-                            {(() => { try { return new Intl.DateTimeFormat('en', { timeZone: prefs.timezone, timeZoneName: 'short' }).formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value || ''; } catch { return ''; } })()}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    <button onClick={handleSavePreferences} disabled={loading}
-                      className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-white font-bold text-sm hover:opacity-90 disabled:opacity-50 transition"
-                      style={{ backgroundColor: C.green }}>
-                      {loading ? <><RefreshCw size={15} className="animate-spin" /> Saving…</> : <><Save size={15} /> Save Preferences</>}
-                    </button>
-                    <p className="text-xs" style={{ color: C.g400 }}>
-                      Currency affects price display in your wallet and marketplace. Language and timezone are saved to your account.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── PAYMENT METHODS ──────────────────────────────────── */}
-            {activeTab === 'payment' && (
-              <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: C.g200 }}>
-                <h2 className="text-lg font-black mb-2" style={{ color: C.forest }}>Payment Methods</h2>
-                <p className="text-xs text-gray-400 mb-5">These details are shared with buyers/sellers during a trade</p>
-                <form onSubmit={handlePaymentUpdate} className="space-y-4">
-                  <div>
-                    <label className={labelCls}>Bank Name</label>
-                    <input type="text" value={payments.bankName} onChange={e => setPayments({ ...payments, bankName: e.target.value })}
-                      placeholder="e.g. GCB Bank, GTBank, Ecobank" className={inputCls} style={inputStyle(payments.bankName)} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Bank Account Number</label>
-                    <input type="text" value={payments.accountNumber} onChange={e => setPayments({ ...payments, accountNumber: e.target.value })}
-                      placeholder="Enter account number" className={inputCls} style={inputStyle(payments.accountNumber)} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Mobile Money Provider</label>
-                    <select value={payments.mobileProvider} onChange={e => setPayments({ ...payments, mobileProvider: e.target.value })}
-                      className={inputCls} style={inputStyle(payments.mobileProvider)}>
-                      <option value="">Select provider</option>
-                      <option value="mtn">MTN Mobile Money</option>
-                      <option value="vodafone">Vodafone Cash</option>
-                      <option value="airteltigo">AirtelTigo Money</option>
-                      <option value="mpesa">M-Pesa</option>
-                      <option value="opay">OPay</option>
-                      <option value="palmpay">PalmPay</option>
-                      <option value="wave">Wave</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className={labelCls}>Mobile Money Number</label>
-                    <input type="tel" value={payments.mobileNumber} onChange={e => setPayments({ ...payments, mobileNumber: e.target.value })}
-                      placeholder="+233 XX XXX XXXX" className={inputCls} style={inputStyle(payments.mobileNumber)} />
-                  </div>
-                  <div className="p-3 rounded-xl text-xs font-semibold flex items-start gap-2" style={{ backgroundColor: `${C.warn}12`, color: '#92400E' }}>
-                    <AlertCircle size={13} className="flex-shrink-0 mt-0.5" />
-                    Your payment details are only shared with your trade partner during an active trade. Never share outside the platform.
-                  </div>
-                  <button type="submit" disabled={loading}
-                    className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-white font-bold text-sm hover:opacity-90 disabled:opacity-50"
-                    style={{ backgroundColor: C.green }}>
-                    {loading ? <><RefreshCw size={15} className="animate-spin" /> Saving…</> : <><Save size={15} /> Save Payment Methods</>}
-                  </button>
-                </form>
-              </div>
-            )}
-
-            {/* ── NOTIFICATIONS ───────────────────────────────────── */}
-            {activeTab === 'notifications' && (
-              <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: C.g200 }}>
-                <h2 className="text-lg font-black mb-5" style={{ color: C.forest }}>Notification Preferences</h2>
-                <div className="space-y-4">
-                  {/* ── Push Notification Enable Banner ── */}
-                  <PushEnableCard />
-
-                  {[
-                    { section: '📧 Email Notifications', items: [
-                      { key: 'email_trades',   label: 'Trade Updates',     desc: 'New trades, payments, releases' },
-                      { key: 'email_security', label: 'Security Alerts',   desc: 'Login attempts, password changes' },
-                      { key: 'email_marketing',label: 'News & Promotions', desc: 'Platform updates and offers' },
-                    ]},
-                    { section: '🔔 Push Notification Types', items: [
-                      { key: 'push_trades',   label: 'Trade Alerts',   desc: 'New trades, payments, BTC releases' },
-                      { key: 'push_messages', label: 'Chat Messages',  desc: 'New messages in trade chat' },
-                      { key: 'push_disputes', label: 'Dispute Alerts', desc: 'Dispute opened or resolved' },
-                    ]},
-                  ].map(({ section, items }) => (
-                    <div key={section}>
-                      <p className="text-sm font-black text-gray-700 mb-2">{section}</p>
-                      <div className="space-y-2">
-                        {items.map(({ key, label, desc }) => (
-                          <div key={key} className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border" style={{ borderColor: C.g100 }}>
-                            <div>
-                              <p className="text-sm font-bold text-gray-800">{label}</p>
-                              <p className="text-xs text-gray-500">{desc}</p>
-                            </div>
-                            <Toggle checked={notifs[key]} onChange={v => setNotifs({ ...notifs, [key]: v })} />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                  <button onClick={() => toast.success('Notification preferences saved!')}
-                    className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-white font-bold text-sm hover:opacity-90"
-                    style={{ backgroundColor: C.green }}>
-                    <Save size={15} /> Save Preferences
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* ── Logout Confirm Modal — rendered globally for all tabs ── */}
-            {logoutConfirm && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-                <div className="bg-white rounded-2xl shadow-xl border max-w-sm w-full p-6" style={{ borderColor: C.g200 }}>
-                  <div className="text-center mb-5">
-                    <div className="mx-auto w-12 h-12 rounded-full flex items-center justify-center mb-3" style={{ backgroundColor: '#FEF2F2' }}>
-                      <LogOut size={22} style={{ color: C.danger }} />
-                    </div>
-                    <h3 className="text-lg font-black mb-1" style={{ color: C.forest }}>Log Out?</h3>
-                    <p className="text-sm" style={{ color: C.g500 }}>Are you sure you want to log out? You'll need to sign in again to access your account.</p>
-                  </div>
-                  <div className="flex gap-3">
-                    <button onClick={() => setLogoutConfirm(false)} disabled={loggingOut}
-                      className="flex-1 py-2.5 rounded-xl font-bold text-sm transition hover:opacity-80 disabled:opacity-50"
-                      style={{ backgroundColor: C.g100, color: C.g700 }}>
-                      Cancel
-                    </button>
-                    <button onClick={handleLogoutConfirm} disabled={loggingOut}
-                      className="flex-1 py-2.5 rounded-xl font-bold text-sm text-white transition hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
-                      style={{ backgroundColor: C.danger }}>
-                      {loggingOut ? <><RefreshCw size={14} className="animate-spin" /> Logging out…</> : <>Yes, Log Out</>}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* ── FOOTER ──────────────────────────────────────────────────────────── */}
-      <footer style={{ backgroundColor: C.forest }}>
-        <div className="max-w-5xl mx-auto px-4 pt-10 pb-6">
-          <div className="grid md:grid-cols-3 gap-8 mb-6">
-            <div>
+        {/* ── FOOTER ──────────────────────────────────────────────────────────── */}
+        <footer style={{ backgroundColor: C.forest }}>
+          <div className="max-w-5xl mx-auto px-4 pt-10 pb-6">
+            <div className="grid md:grid-cols-3 gap-8 mb-6">
+              <div>
               <span className="text-xl font-black" style={{ fontFamily: "'Syne',sans-serif" }}>
                 <span className="text-white">PRA</span><span style={{ color: C.gold }}>QEN</span>
               </span>
-              <p className="text-xs leading-relaxed my-3" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                The world's most trusted P2P Bitcoin platform. Escrow-protected. 0.5% fee only.
+                <p className="text-xs leading-relaxed my-3" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                  The world's most trusted P2P Bitcoin platform. Escrow-protected. 0.5% fee only.
+                </p>
+                <div className="flex gap-2 flex-wrap">
+                  {[
+                    {label:'TikTok',    href:'https://www.tiktok.com/@praqen', bg:'rgba(0,0,0,0.55)', color:'#ffffff', d:'M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z'},
+                    {label:'Instagram', href:'https://www.instagram.com/praqen?igsh=MTRkZWg2amp5YnJlYQ%3D%3D&utm_source=qr', bg:'rgba(228,64,95,0.3)', color:'#E4405F', d:'M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z'},
+                    {label:'X (Twitter)', href:'https://x.com/praqenapp?s=21', bg:'rgba(255,255,255,0.12)', color:'#ffffff', d:'M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z'},
+                    {label:'Discord',   href:'https://discord.gg/V6zCZxfdy', bg:'rgba(88,101,242,0.35)', color:'#5865F2', d:'M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z'},
+                    {label:'LinkedIn',  href:'https://www.linkedin.com/in/pra-qen-045373402/', bg:'rgba(10,102,194,0.35)', color:'#0A66C2', d:'M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z'},
+                  ].map(({label,href,bg,color,d})=>(
+                      <a key={label} href={href} target="_blank" rel="noopener noreferrer" title={label}
+                         className="w-8 h-8 rounded-lg flex items-center justify-center hover:scale-110 transition-transform"
+                         style={{backgroundColor:bg}}>
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill={color} aria-hidden="true"><path d={d}/></svg>
+                      </a>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-white font-black text-sm mb-3">Account</p>
+                <div className="space-y-2">
+                  {[['Profile', '/profile'], ['My Trades', '/my-trades'], ['My Listings', '/my-listings'], ['Wallet', '/wallet'], ['Dashboard', '/dashboard']].map(([l, h]) => (
+                      <a key={l} href={h} className="block text-xs hover:text-white transition" style={{ color: 'rgba(255,255,255,0.4)' }}>{l}</a>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-white font-black text-sm mb-3">Support</p>
+                <div className="space-y-2">
+                  {[
+                    ['Discord', 'https://discord.gg/V6zCZxfdy'],
+                    ['hello@praqen.com', 'mailto:hello@praqen.com'],
+                  ].map(([l, h]) => (
+                      <a key={l} href={h} target="_blank" rel="noopener noreferrer" className="block text-xs hover:text-white transition" style={{ color: 'rgba(255,255,255,0.4)' }}>{l}</a>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-col md:flex-row items-center justify-between gap-2 pt-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+              <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>© {new Date().getFullYear()} PRAQEN. All rights reserved.</p>
+              <p className="text-xs flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                <Shield size={10} /> Escrow Protected · 0.5% fee on completion only
               </p>
-              <div className="flex gap-2 flex-wrap">
-                {[
-                  {label:'TikTok',    href:'https://www.tiktok.com/@praqen', bg:'rgba(0,0,0,0.55)', color:'#ffffff', d:'M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z'},
-                  {label:'Instagram', href:'https://www.instagram.com/praqen?igsh=MTRkZWg2amp5YnJlYQ%3D%3D&utm_source=qr', bg:'rgba(228,64,95,0.3)', color:'#E4405F', d:'M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z'},
-                  {label:'X (Twitter)', href:'https://x.com/praqenapp?s=21', bg:'rgba(255,255,255,0.12)', color:'#ffffff', d:'M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z'},
-                  {label:'Discord',   href:'https://discord.gg/V6zCZxfdy', bg:'rgba(88,101,242,0.35)', color:'#5865F2', d:'M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z'},
-                  {label:'LinkedIn',  href:'https://www.linkedin.com/in/pra-qen-045373402/', bg:'rgba(10,102,194,0.35)', color:'#0A66C2', d:'M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z'},
-                ].map(({label,href,bg,color,d})=>(
-                  <a key={label} href={href} target="_blank" rel="noopener noreferrer" title={label}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center hover:scale-110 transition-transform"
-                    style={{backgroundColor:bg}}>
-                    <svg viewBox="0 0 24 24" width="15" height="15" fill={color} aria-hidden="true"><path d={d}/></svg>
-                  </a>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="text-white font-black text-sm mb-3">Account</p>
-              <div className="space-y-2">
-                {[['Profile', '/profile'], ['My Trades', '/my-trades'], ['My Listings', '/my-listings'], ['Wallet', '/wallet'], ['Dashboard', '/dashboard']].map(([l, h]) => (
-                  <a key={l} href={h} className="block text-xs hover:text-white transition" style={{ color: 'rgba(255,255,255,0.4)' }}>{l}</a>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="text-white font-black text-sm mb-3">Support</p>
-              <div className="space-y-2">
-                {[
-                  ['Discord', 'https://discord.gg/V6zCZxfdy'],
-                  ['hello@praqen.com', 'mailto:hello@praqen.com'],
-                ].map(([l, h]) => (
-                  <a key={l} href={h} target="_blank" rel="noopener noreferrer" className="block text-xs hover:text-white transition" style={{ color: 'rgba(255,255,255,0.4)' }}>{l}</a>
-                ))}
-              </div>
             </div>
           </div>
-          <div className="flex flex-col md:flex-row items-center justify-between gap-2 pt-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>© {new Date().getFullYear()} PRAQEN. All rights reserved.</p>
-            <p className="text-xs flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.3)' }}>
-              <Shield size={10} /> Escrow Protected · 0.5% fee on completion only
-            </p>
-          </div>
-        </div>
-      </footer>
-    </div>
+        </footer>
+      </div>
   );
 }
