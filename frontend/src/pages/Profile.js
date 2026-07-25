@@ -14,10 +14,11 @@ import {
   ChevronRight, Phone, Mail, FileText, ThumbsUp,
   ThumbsDown, Target, Smartphone, ArrowRight,
   Bitcoin, ShoppingCart, Gift, Plus, Tag,
-  Filter, ArrowUpDown
+  Filter, ArrowUpDown, Zap, Briefcase, Medal,
+  Crown, Diamond, Flame, Rocket
 } from 'lucide-react';
 import { toast } from 'react-toastify';
-import { BadgeChip } from '../lib/badge';
+import { BadgeChip, TRUST_MAP, BADGE_ORDER, BADGE_THRESHOLDS, renderBadgeIcon } from '../lib/badge';
 import { copyToClipboard } from '../utils/clipboard';
 
 // ── Colors ──────────────────────────────────────────────────────────────────
@@ -30,32 +31,21 @@ const C = {
   online: '#22C55E', purple: '#8B5CF6',
 };
 
-const BADGE_DEFS = [
-  {
-    id: 'verified_identity', label: 'Verified Identity', icon: '🪪', color: '#3B82F6', bg: '#EFF6FF',
-    desc: 'Completed full KYC identity verification.', check: (u) => !!(u?.kyc_verified || u?.is_id_verified)
-  },
-  {
-    id: 'top_trader', label: 'Top Trader', icon: '🏆', color: '#F4A422', bg: '#FFFBEB',
-    desc: 'Completed 100+ successful trades.', check: (u) => parseInt(u?.total_trades || 0) >= 100
-  },
-  {
-    id: 'high_volume', label: 'High Volume', icon: '📈', color: '#10B981', bg: '#ECFDF5',
-    desc: 'Traded over $10,000 in total volume.', check: (u) => parseInt(u?.total_trades || 0) * 100 >= 10000
-  },
-  {
-    id: 'fast_responder', label: 'Fast Responder', icon: '⚡', color: '#8B5CF6', bg: '#F5F3FF',
-    desc: 'Average reply time under 5 minutes.', check: (u) => parseInt(u?.avg_reply_minutes || 99) < 5
-  },
-  {
-    id: 'trusted_seller', label: 'Trusted Seller', icon: '🔒', color: '#EF4444', bg: '#FEF2F2',
-    desc: '98%+ positive feedback with 20+ trades.', check: (u) => parseInt(u?.total_trades || 0) >= 20 && parseFloat(u?.completion_rate || 0) >= 98
-  },
-  {
-    id: 'veteran', label: 'Veteran Trader', icon: '🎖️', color: '#6D28D9', bg: '#F5F3FF',
-    desc: 'Account older than 1 year.', check: (u) => u?.created_at && (Date.now() - new Date(u.created_at)) / (1000 * 60 * 60 * 24 * 365) >= 1
-  },
-];
+const BADGE_DEFS = BADGE_ORDER.map((key) => {
+  const b = TRUST_MAP[key];
+  const tradesNeeded = BADGE_THRESHOLDS[key];
+  return {
+    id: key.toLowerCase(),
+    label: key,
+    icon: renderBadgeIcon(b, 24),
+    color: b.color,
+    bg: b.bg.includes('gradient') ? b.bg : b.bg,
+    desc: tradesNeeded
+      ? `Level ${b.level}: ${tradesNeeded}+ successful trades completed.`
+      : `Level ${b.level}: Starting your trading journey on PRAQEN.`,
+    check: (u) => (tradesNeeded ? parseInt(u?.total_trades || 0, 10) >= tradesNeeded : true),
+  };
+});
 
 const isoToFlag = (cc) => {
   if (!cc || cc.length !== 2) return '';
@@ -870,7 +860,10 @@ export default function Profile({ userId: propUserId }) {
                   </div>
                   {nextTier && own && (
                     <div style={{ padding: 14, borderRadius: 14, background: `${C.gold}08`, border: `1.5px solid ${C.gold}25` }}>
-                      <p style={{ fontWeight: 900, fontSize: 12, color: C.forest, marginBottom: 8 }}>🎯 Unlock {nextTier.label} — ${fmt(nextTier.limit)}/trade</p>
+                      <p style={{ fontWeight: 900, fontSize: 12, color: C.forest, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Target size={14} style={{ color: C.forest, flexShrink: 0 }} />
+                        Unlock {nextTier.label} — ${fmt(nextTier.limit)}/trade
+                      </p>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
                         {nextTier.requires.map(req => {
                           const done = req === 'email' ? emailOk : req === 'phone' ? phoneOk : req === 'kyc' ? kycOk : trades >= 50;
@@ -1238,7 +1231,10 @@ export default function Profile({ userId: propUserId }) {
                 <div style={{ position: 'absolute', top: -30, right: -30, width: 120, height: 120, borderRadius: '50%', background: C.gold, opacity: 0.1, filter: 'blur(30px)' }} />
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
                   <div>
-                    <p style={{ fontWeight: 900, fontSize: 20, fontFamily: "'Syne',sans-serif" }}>🏅 Badge Collection</p>
+                    <p style={{ fontWeight: 900, fontSize: 20, fontFamily: "'Syne',sans-serif", display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Medal size={22} style={{ flexShrink: 0 }} />
+                      Badge Collection
+                    </p>
                     <p style={{ opacity: 0.6, fontSize: 12, marginTop: 4 }}>
                       {earned.length === 0 ? 'Complete tasks below to start earning badges' :
                         earned.length === BADGE_DEFS.length ? '🎉 All badges earned — legendary status!' :
@@ -1268,7 +1264,7 @@ export default function Profile({ userId: propUserId }) {
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
                               <p style={{ fontWeight: 900, fontSize: 13, color: has ? b.color : C.g500 }}>{b.label}</p>
                               {has ? <span style={{ fontSize: 10, fontWeight: 900, padding: '2px 8px', borderRadius: 20, color: 'white', background: b.color }}>✓ EARNED</span>
-                                : <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, color: C.g400, background: C.g100 }}>🔒 LOCKED</span>}
+                                : <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, color: C.g400, background: C.g100, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Lock size={10} /> LOCKED</span>}
                             </div>
                             <p style={{ fontSize: 12, lineHeight: 1.5, color: has ? C.g600 : C.g400 }}>{b.desc}</p>
                           </div>

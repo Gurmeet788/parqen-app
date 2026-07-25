@@ -10,10 +10,11 @@ import {
   Filter, Home, Wallet, User, Gift,
   ChevronDown, TrendingUp, BarChart2, ThumbsUp, ThumbsDown, Repeat2,
   Phone, Mail, Ban, ArrowUp, ArrowDown,
+  Crown, Zap, Flame,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import CountryFlag, { resolveCode } from '../components/CountryFlag';
-import { TRUST_MAP, deriveBadge } from '../lib/badge';
+import { BadgeChip, BADGE_COLORS } from '../lib/badge';
 import ActiveTradeCard from '../components/ActiveTradeCard';
 import PRQFooter from '../components/PRQFooter';
 
@@ -249,7 +250,8 @@ function Avatar({user, size=36, radius='rounded-xl'}) {
 // ── Featured badge config ─────────────────────────────────────────────────────
 const FEATURED = {
   active_trader: {
-    tag:         '👑 ACTIVE TRADER OF THE WEEK',
+    TagIcon:     Crown,
+    tag:         'ACTIVE TRADER OF THE WEEK',
     ribbon:      'linear-gradient(90deg,#064E3B 0%,#065F46 18%,#059669 38%,#6EE7B7 50%,#059669 62%,#065F46 82%,#064E3B 100%)',
     border:      '#059669',
     glow:        'rgba(5,150,105,0.35)',
@@ -262,7 +264,8 @@ const FEATURED = {
     pulse:       true,
   },
   fast_responder: {
-    tag:         '⚡ FAST RESPONDER OF THE WEEK',
+    TagIcon:     Zap,
+    tag:         'FAST RESPONDER OF THE WEEK',
     ribbon:      'linear-gradient(90deg,#1E3A8A,#4338CA,#818CF8,#4338CA,#1E3A8A)',
     border:      '#4F46E5',
     glow:        'rgba(79,70,229,0.28)',
@@ -273,7 +276,8 @@ const FEATURED = {
     btnShadow:   '0 4px 14px rgba(79,70,229,0.40)',
   },
   hot_offer: {
-    tag:         '🔥 HOT OFFER · TRENDING NOW',
+    TagIcon:     Flame,
+    tag:         'HOT OFFER · TRENDING NOW',
     ribbon:      'linear-gradient(90deg,#7C2D12,#EA580C,#FCD34D,#EA580C,#7C2D12)',
     border:      '#EA580C',
     glow:        'rgba(234,88,12,0.28)',
@@ -289,7 +293,6 @@ const FEATURED = {
 function OfferCard({listing, btcPriceUSD, onViewSeller, onBuy, liked, onToggleLike, featuredType, liveSeenAt, userBuyAmt}) {
   const { rates: USD_RATES } = useRates();
   const u         = getUser(listing.users);
-  const badge     = deriveBadge(u);
   // liveSeenAt comes from the 30s server poll — always fresher than the cached listing
   const [seen, setSeen] = useState(() => getLastSeen({ ...u, last_seen_at: liveSeenAt || u.last_seen_at }));
   useEffect(() => {
@@ -340,6 +343,7 @@ function OfferCard({listing, btcPriceUSD, onViewSeller, onBuy, liked, onToggleLi
               background: ft.ribbon,
               padding: ft.pulse ? '10px 16px' : '8px 16px',
             }}>
+            {ft.TagIcon && <ft.TagIcon size={14} strokeWidth={2.5} color="#fff" style={{ flexShrink: 0 }} />}
             <span style={{
               fontSize: ft.pulse ? 12 : 11,
               fontWeight: 900,
@@ -393,11 +397,7 @@ function OfferCard({listing, btcPriceUSD, onViewSeller, onBuy, liked, onToggleLi
                   · {resolveCode(u.country)?.toUpperCase() || u.country}
                 </span>
               )}
-              <span className={`inline-flex items-center gap-px font-medium px-1 py-0 rounded-full border flex-shrink-0 ${badge.animate ? 'shadow-md' : ''}`}
-                style={{background:badge.bg, borderColor:badge.borderColor, fontSize:'8px', boxShadow: badge.glow ? `0 0 8px ${badge.glow}` : undefined}}>
-                <span style={{color:badge.iconColor||badge.textColor}}>{badge.icon}</span>
-                <span style={{color:badge.textColor}}>{badge.label}</span>
-              </span>
+              <BadgeChip user={u} size="xs" />
             </div>
 
             <div className="flex items-center justify-between mt-1.5 gap-1">
@@ -531,7 +531,6 @@ function ProfileModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
   }, [sellerId]);
 
   const u      = getUser(freshSeller || seller);
-  const badge  = deriveBadge(u);
   const seen   = getLastSeen(u);
   const trades = getTrades(u);
   const rating = parseFloat(u.average_rating || 0);
@@ -631,11 +630,7 @@ function ProfileModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
                 <span className="text-white/40 text-xs">·</span>
                 <span className="text-white/60 text-xs">{seen.online ? '🟢 Active now' : seen.label}</span>
               </div>
-              <span className={`inline-flex items-center gap-px px-2 py-0.5 rounded-full border text-xs font-black ${badge.animate ? 'shadow' : ''}`}
-                style={{background:badge.bg, borderColor:badge.borderColor, boxShadow:badge.glow?`0 0 6px ${badge.glow}`:undefined}}>
-                <span style={{color:badge.iconColor||badge.textColor}}>{badge.icon}</span>
-                <span style={{color:badge.textColor}}>{badge.label}</span>
-              </span>
+              <BadgeChip user={u} size="sm" />
             </div>
           </div>
 
@@ -1927,8 +1922,7 @@ export default function BuyBitcoin({user}) {
               </div>
               {affLeaderboard.map((u,i)=>{
                 const medals=['🥇','🥈','🥉'];
-                const badgeColors={BEGINNER:'#7C3AED',PRO:'#059669',EXPERT:'#1E40AF',AMBASSADOR:'#0D9488',LEGEND:'#D97706'};
-                const bc = badgeColors[u.badge]||'#64748B';
+                const bc = BADGE_COLORS[u.badge] || '#64748B';
                 const earnedUsd = ((u.earned_btc||0)*(btcPrice||76000));
                 return (
                   <div key={u.username} style={{display:'flex',alignItems:'center',gap:9,padding:'8px 14px',borderTop:'1px solid #F8FAFC',transition:'background 0.15s'}}>
@@ -1941,7 +1935,7 @@ export default function BuyBitcoin({user}) {
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:'flex',alignItems:'center',gap:4}}>
                         <span style={{fontSize:10,fontWeight:800,color:'#1E293B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:80}}>{u.username}</span>
-                        <span style={{fontSize:7,fontWeight:900,color:bc,background:`${bc}12`,border:`1px solid ${bc}25`,borderRadius:3,padding:'1px 4px',letterSpacing:0.4,flexShrink:0,textTransform:'uppercase'}}>{u.badge||'BEGINNER'}</span>
+                        <BadgeChip user={u} badgeName={u.badge} size="xs" />
                       </div>
                       <span style={{fontSize:8,color:'#94A3B8',fontWeight:500}}>{u.referrals} referral{u.referrals !== 1 ? 's' : ''} · {u.affiliate_trades} ref trade{u.affiliate_trades !== 1 ? 's' : ''}</span>
                     </div>

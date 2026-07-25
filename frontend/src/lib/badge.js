@@ -1,44 +1,109 @@
+import React from 'react';
+import {
+  Shield, Zap, Briefcase, Target, Medal, Crown, Bird, Diamond, Flame, Rocket,
+} from 'lucide-react';
+
 // Single source of truth for all badge definitions across the app.
-// Import TRUST_MAP, deriveBadge, and BadgeChip from here — never define them per-page.
+// Import TRUST_MAP, deriveBadge, BadgeChip, and renderBadgeIcon from here.
+
+export const BADGE_ORDER = [
+  'BEGINNER', 'ACTIVE', 'PRO', 'EXPERT', 'AMBASSADOR',
+  'LEGEND', 'ELITE', 'DIAMOND', 'TITAN', 'GODMODE',
+];
+
+export const BADGE_THRESHOLDS = {
+  ACTIVE: 5,
+  PRO: 15,
+  EXPERT: 35,
+  AMBASSADOR: 75,
+  LEGEND: 150,
+  ELITE: 300,
+  DIAMOND: 500,
+  TITAN: 750,
+  GODMODE: 1000,
+};
 
 export const TRUST_MAP = {
-  LEGEND:     { label:'LEGEND',     icon:'♛', iconColor:'#92400E', textColor:'#78350F', borderColor:'#F59E0B', bg:'linear-gradient(135deg,#FEF3C7,#FDE68A)', glow:'rgba(245,158,11,0.65)', animate:true  },
-  AMBASSADOR: { label:'AMBASSADOR', icon:'◈', iconColor:'#99F6E4', textColor:'#FFFFFF', borderColor:'#0D9488', bg:'linear-gradient(135deg,#0D9488,#2D6A4F)', glow:'rgba(13,148,136,0.45)'               },
-  EXPERT:     { label:'EXPERT',     icon:'▲', iconColor:'#7DD3FC', textColor:'#FFFFFF', borderColor:'#3B82F6', bg:'linear-gradient(135deg,#1E3A5F,#1E40AF)', glow:'rgba(59,130,246,0.45)'               },
-  PRO:        { label:'PRO',        icon:'●', iconColor:'#059669', textColor:'#065F46', borderColor:'#34D399', bg:'linear-gradient(135deg,#D1FAE5,#A7F3D0)', glow:'rgba(52,211,153,0.4)'                },
-  ACTIVE:     { label:'Active',     icon:'●', iconColor:'#22C55E', textColor:'#166534', borderColor:'#86EFAC', bg:'linear-gradient(135deg,#F0FDF4,#DCFCE7)', glow:'rgba(134,239,172,0.35)'              },
-  BEGINNER:   { label:'NEW ✦',      icon:'🌱', iconColor:null,     textColor:'#7C3AED', borderColor:'#C4B5FD', bg:'linear-gradient(135deg,#EDE9FE,#F5F3FF)', glow:'rgba(167,139,250,0.5)',  animate:true },
+  GODMODE:    { label: 'GODMODE',    level: 10, Icon: Rocket,     color: '#FF0080', bg: 'linear-gradient(90deg, #FF0080, #FF8C00, #40E0D0)', textColor: '#FFFFFF', borderColor: '#FF0080', glow: 'rgba(255,0,128,0.5)', animate: true },
+  TITAN:      { label: 'TITAN',      level: 9,  Icon: Flame,      color: '#EC4899', bg: 'linear-gradient(135deg,#FCE7F3,#FBCFE8)', textColor: '#9D174D', borderColor: '#EC4899', glow: 'rgba(236,72,153,0.4)' },
+  DIAMOND:    { label: 'DIAMOND',    level: 8,  Icon: Diamond,    color: '#06B6D4', bg: 'linear-gradient(135deg,#CFFAFE,#A5F3FC)', textColor: '#155E75', borderColor: '#06B6D4', glow: 'rgba(6,182,212,0.4)' },
+  ELITE:      { label: 'ELITE',      level: 7,  Icon: Bird,       color: '#EF4444', bg: 'linear-gradient(135deg,#FEE2E2,#FECACA)', textColor: '#991B1B', borderColor: '#EF4444', glow: 'rgba(239,68,68,0.4)' },
+  LEGEND:     { label: 'LEGEND',     level: 6,  Icon: Crown,      color: '#EAB308', bg: 'linear-gradient(135deg,#FEF3C7,#FDE68A)', textColor: '#78350F', borderColor: '#EAB308', glow: 'rgba(234,179,8,0.5)', animate: true },
+  AMBASSADOR: { label: 'AMBASSADOR', level: 5,  Icon: Medal,      color: '#14B8A6', bg: 'linear-gradient(135deg,#CCFBF1,#99F6E4)', textColor: '#115E59', borderColor: '#14B8A6', glow: 'rgba(20,184,166,0.4)' },
+  EXPERT:     { label: 'EXPERT',     level: 4,  Icon: Target,     color: '#F97316', bg: 'linear-gradient(135deg,#FFEDD5,#FED7AA)', textColor: '#9A3412', borderColor: '#F97316', glow: 'rgba(249,115,22,0.4)' },
+  PRO:        { label: 'PRO',        level: 3,  Icon: Briefcase,  color: '#8B5CF6', bg: 'linear-gradient(135deg,#EDE9FE,#DDD6FE)', textColor: '#5B21B6', borderColor: '#8B5CF6', glow: 'rgba(139,92,246,0.4)' },
+  ACTIVE:     { label: 'ACTIVE',     level: 2,  Icon: Zap,        color: '#3B82F6', bg: 'linear-gradient(135deg,#DBEAFE,#BFDBFE)', textColor: '#1E40AF', borderColor: '#3B82F6', glow: 'rgba(59,130,246,0.4)' },
+  BEGINNER:   { label: 'BEGINNER',   level: 1,  Icon: Shield,     color: '#22C55E', bg: 'linear-gradient(135deg,#DCFCE7,#BBF7D0)', textColor: '#166534', borderColor: '#22C55E', glow: 'rgba(34,197,94,0.4)' },
 };
+
+export const BADGE_COLORS = Object.fromEntries(
+  Object.entries(TRUST_MAP).map(([key, badge]) => [key, badge.color]),
+);
+
+export function renderBadgeIcon(badge, size = 12) {
+  if (!badge?.Icon) return null;
+  const Icon = badge.Icon;
+  return (
+    <Icon
+      size={size}
+      strokeWidth={2.5}
+      color={badge.iconColor || badge.color}
+      style={{ flexShrink: 0 }}
+    />
+  );
+}
 
 export function deriveBadge(u) {
   if (u?.badge) {
     const b = String(u.badge).toUpperCase();
     if (TRUST_MAP[b]) return TRUST_MAP[b];
   }
-  const t = parseInt(u?.total_trades ?? u?.trade_count ?? 0);
-  if (t >= 500) return TRUST_MAP.LEGEND;
-  if (t >= 200) return TRUST_MAP.AMBASSADOR;
-  if (t >= 100) return TRUST_MAP.EXPERT;
-  if (t >= 25)  return TRUST_MAP.PRO;
-  if (t >= 5)   return TRUST_MAP.ACTIVE;
+  const t = parseInt(u?.total_trades ?? u?.trade_count ?? 0, 10);
+  if (t >= 1000) return TRUST_MAP.GODMODE;
+  if (t >= 750)  return TRUST_MAP.TITAN;
+  if (t >= 500)  return TRUST_MAP.DIAMOND;
+  if (t >= 300)  return TRUST_MAP.ELITE;
+  if (t >= 150)  return TRUST_MAP.LEGEND;
+  if (t >= 75)   return TRUST_MAP.AMBASSADOR;
+  if (t >= 35)   return TRUST_MAP.EXPERT;
+  if (t >= 15)   return TRUST_MAP.PRO;
+  if (t >= 5)    return TRUST_MAP.ACTIVE;
   return TRUST_MAP.BEGINNER;
 }
 
-// Drop-in React component for rendering a badge pill consistently everywhere.
-// Works with both Tailwind and inline-style pages.
-export function BadgeChip({ user, className = '' }) {
-  const badge = deriveBadge(user);
+export function getNextBadge(currentKey) {
+  const key = String(currentKey || 'BEGINNER').toUpperCase();
+  const idx = BADGE_ORDER.indexOf(key);
+  if (idx < 0 || idx >= BADGE_ORDER.length - 1) return null;
+  const nextKey = BADGE_ORDER[idx + 1];
+  return {
+    key: nextKey,
+    tradesNeeded: BADGE_THRESHOLDS[nextKey],
+    ...TRUST_MAP[nextKey],
+  };
+}
+
+export function BadgeChip({ user, badgeName, className = '', size = 'sm' }) {
+  const badge = badgeName
+    ? (TRUST_MAP[String(badgeName).toUpperCase()] || TRUST_MAP.BEGINNER)
+    : deriveBadge(user);
+  const iconSize = size === 'xs' ? 10 : size === 'lg' ? 15 : 12;
+
   return (
     <span
-      className={`inline-flex items-center gap-0.5 text-xs font-black px-1.5 py-0.5 rounded-full border flex-shrink-0 ${badge.animate ? 'shadow-md' : ''} ${className}`}
+      className={`inline-flex items-center gap-1 font-black rounded-full border flex-shrink-0 ${badge.animate ? 'shadow-sm' : ''} ${className}`}
       style={{
         background: badge.bg,
         borderColor: badge.borderColor,
+        color: badge.textColor,
         boxShadow: badge.glow ? `0 0 8px ${badge.glow}` : undefined,
+        padding: size === 'xs' ? '1px 5px' : size === 'lg' ? '4px 10px' : '2px 7px',
+        fontSize: size === 'xs' ? '10px' : size === 'lg' ? '13px' : '11px',
+        letterSpacing: '0.02em',
       }}
     >
-      <span style={{ color: badge.iconColor || badge.textColor }}>{badge.icon}</span>
-      <span style={{ color: badge.textColor }}>{badge.label}</span>
+      {renderBadgeIcon(badge, iconSize)}
+      <span>{badge.label}</span>
     </span>
   );
 }

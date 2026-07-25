@@ -10,10 +10,11 @@ import {
   Filter, Home, Wallet, User, Gift, Shield,
   ChevronDown, ThumbsUp, ThumbsDown, Repeat2,
   Phone, Mail, Ban, ArrowUp, ArrowDown,
+  Flame,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import CountryFlag, { resolveCode } from '../components/CountryFlag';
-import { TRUST_MAP, deriveBadge } from '../lib/badge';
+import { BadgeChip, BADGE_COLORS } from '../lib/badge';
 import ActiveTradeCard from '../components/ActiveTradeCard';
 import PRQFooter from '../components/PRQFooter';
 
@@ -33,7 +34,8 @@ const C = {
 // ── Featured badge config ─────────────────────────────────────────────────────
 const FEATURED = {
   hot_offer: {
-    tag:         '🔥 HOT OFFER · TRENDING NOW',
+    TagIcon:     Flame,
+    tag:         'HOT OFFER · TRENDING NOW',
     ribbon:      'linear-gradient(90deg,#78350F 0%,#C2410C 18%,#EA580C 38%,#FCD34D 50%,#EA580C 62%,#C2410C 82%,#78350F 100%)',
     border:      '#D97706',
     glow:        'rgba(217,119,6,0.38)',
@@ -275,7 +277,6 @@ function Avatar({user, size=48, radius='rounded-xl'}) {
 function OfferCard({listing, btcPriceUSD, onViewBuyer, onSell, featuredType, liveSeenAt}) {
   const { rates: USD_RATES } = useRates();
   const u         = getUser(listing.users);
-  const badge     = deriveBadge(u);
   const [seen, setSeen] = useState(() => getLastSeen({ ...u, last_seen_at: liveSeenAt || u.last_seen_at }));
   useEffect(() => {
     setSeen(getLastSeen({ ...u, last_seen_at: liveSeenAt || u.last_seen_at }));
@@ -321,7 +322,8 @@ function OfferCard({listing, btcPriceUSD, onViewBuyer, onSell, featuredType, liv
           <div style={{position:'absolute',inset:0,overflow:'hidden'}}>
             <div style={{position:'absolute',top:0,left:0,width:'60%',height:'100%',background:'linear-gradient(90deg,transparent,rgba(255,255,255,0.18),transparent)',animation:'shimmer 2.2s ease-in-out infinite'}}/>
           </div>
-          <span style={{position:'relative',zIndex:1,fontSize:10,fontWeight:900,letterSpacing:'0.08em',color:'#fff',textShadow:'0 1px 4px rgba(0,0,0,0.35)',textTransform:'uppercase'}}>
+          <span style={{position:'relative',zIndex:1,fontSize:10,fontWeight:900,letterSpacing:'0.08em',color:'#fff',textShadow:'0 1px 4px rgba(0,0,0,0.35)',textTransform:'uppercase',display:'inline-flex',alignItems:'center',gap:6}}>
+            {ft.TagIcon && <ft.TagIcon size={12} strokeWidth={2.5} color="#fff" style={{ flexShrink: 0 }} />}
             {ft.tag}
           </span>
         </div>
@@ -361,11 +363,7 @@ function OfferCard({listing, btcPriceUSD, onViewBuyer, onSell, featuredType, liv
                   · {resolveCode(u.country)?.toUpperCase() || u.country}
                 </span>
               )}
-              <span className={`inline-flex items-center gap-px font-medium px-1 py-0 rounded-full border flex-shrink-0 ${badge.animate ? 'shadow-md' : ''}`}
-                style={{background:badge.bg, borderColor:badge.borderColor, fontSize:'8px', boxShadow: badge.glow ? `0 0 8px ${badge.glow}` : undefined}}>
-                <span style={{color:badge.iconColor||badge.textColor}}>{badge.icon}</span>
-                <span style={{color:badge.textColor}}>{badge.label}</span>
-              </span>
+              <BadgeChip user={u} size="xs" />
             </div>
 
             {/* Stats row — feedback left, trades + status right */}
@@ -500,7 +498,6 @@ function BuyerModal({buyer, listing, onClose, onTrade, btcPriceUSD}) {
   }, [buyerId]);
 
   const u      = getUser(freshBuyer || buyer);
-  const badge  = deriveBadge(u);
   const seen   = getLastSeen(u);
   const trades = getTrades(u);
   const rating = parseFloat(u.average_rating || 0);
@@ -592,11 +589,7 @@ function BuyerModal({buyer, listing, onClose, onTrade, btcPriceUSD}) {
                 <span className="text-white/40 text-xs">·</span>
                 <span className="text-white/60 text-xs">{seen.online ? '🟢 Active now' : seen.label}</span>
               </div>
-              <span className={`inline-flex items-center gap-px px-2 py-0.5 rounded-full border text-xs font-black ${badge.animate ? 'shadow' : ''}`}
-                style={{background:badge.bg, borderColor:badge.borderColor, boxShadow:badge.glow?`0 0 6px ${badge.glow}`:undefined}}>
-                <span style={{color:badge.iconColor||badge.textColor}}>{badge.icon}</span>
-                <span style={{color:badge.textColor}}>{badge.label}</span>
-              </span>
+              <BadgeChip user={u} size="sm" />
             </div>
           </div>
 
@@ -1734,7 +1727,7 @@ export default function SellBitcoin({user}) {
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap'}}>
                         <span style={{fontSize:10,fontWeight:700,color:'#1E293B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.username}</span>
-                        <span style={{fontSize:7,fontWeight:900,color:bc,background:`${bc}12`,border:`1px solid ${bc}30`,borderRadius:3,padding:'1px 4px',letterSpacing:0.4,flexShrink:0,textTransform:'uppercase'}}>{u.badge||'BEGINNER'}</span>
+                        <BadgeChip user={u} badgeName={u.badge} size="xs" />
                       </div>
                       <span style={{fontSize:8,color:'#94A3B8',fontWeight:500}}>{u.referrals} refs · {u.affiliate_trades||u.total_trades} trades</span>
                     </div>
