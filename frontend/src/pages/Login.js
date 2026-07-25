@@ -25,6 +25,7 @@ const C = {
 const COUNTRIES = [
   { flag: '🇬🇭', name: 'Ghana', code: '+233', min: 9, max: 9 },
   { flag: '🇳🇬', name: 'Nigeria', code: '+234', min: 10, max: 10 },
+  { flag: '🇵🇰', name: 'Pakistan', code: '+92', min: 10, max: 10 },
   { flag: '🇰🇪', name: 'Kenya', code: '+254', min: 9, max: 9 },
   { flag: '🇿🇦', name: 'South Africa', code: '+27', min: 9, max: 9 },
   { flag: '🇹🇿', name: 'Tanzania', code: '+255', min: 9, max: 9 },
@@ -38,6 +39,7 @@ const COUNTRIES = [
   { flag: '🇮🇳', name: 'India', code: '+91', min: 10, max: 10 },
   { flag: '🇦🇺', name: 'Australia', code: '+61', min: 9, max: 9 },
   { flag: '🇨🇲', name: 'Cameroon', code: '+237', min: 9, max: 9 },
+
 ];
 
 const BENEFITS = [
@@ -119,6 +121,12 @@ export default function Login({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+
+  // 2FA login state
+  const [tempToken, setTempToken] = useState('');
+  const [twoFAMethod, setTwoFAMethod] = useState('email');
+  const [twoFACode, setTwoFACode] = useState('');
+  const [twoFALoading, setTwoFALoading] = useState(false);
 
   const fullPhone = `${country.code}${phone.replace(/^0+/, '')}`;
 
@@ -221,13 +229,55 @@ export default function Login({ onLogin }) {
     setLoading(true); setError('');
     try {
       const { data } = await axios.post(`${API_URL}/auth/verify-login-otp`, { email: pendingEmail, code: emailOtp });
-      if (data.success) {
+      if (data.requires2FA) {
+        // 2FA is enabled — show 2FA code input step
+        setTempToken(data.tempToken);
+        setTwoFAMethod(data.twoFactorMethod || 'email');
+        let methodLabel = 'email';
+        if (data.twoFactorMethod === 'sms') methodLabel = 'phone';
+        else if (data.twoFactorMethod === 'whatsapp') methodLabel = 'WhatsApp';
+        else if (data.twoFactorMethod === 'totp') methodLabel = 'authenticator app';
+        setNotice(`Enter the code from your ${methodLabel}`);
+        setTwoFACode('');
+        setStep('2fa-otp');
+      } else if (data.success) {
         onLogin(data.user, data.token);
         navigate('/buy-bitcoin');
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Invalid code. Please try again.');
       setEmailOtp('');
+    } finally { setLoading(false); }
+  };
+
+  const handleVerify2FA = async () => {
+    if (twoFACode.length !== 6) { setError('Enter the full 6-digit code'); return; }
+    setTwoFALoading(true); setError('');
+    try {
+      const { data } = await axios.post(`${API_URL}/auth/verify-2fa-login`, { tempToken, code: twoFACode });
+      if (data.success) {
+        onLogin(data.user, data.token);
+        navigate('/buy-bitcoin');
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || 'Invalid code. Please try again.');
+      setTwoFACode('');
+    } finally { setTwoFALoading(false); }
+  };
+
+  const resend2FACode = async () => {
+    setError(''); setTwoFACode(''); setNotice('');
+    setLoading(true);
+    try {
+      // Re-send by calling login again to get a fresh OTP
+      const { data } = await axios.post(`${API_URL}/auth/verify-login-otp`, { email: pendingEmail, code: emailOtp });
+      if (data.requires2FA) {
+        setTempToken(data.tempToken);
+        setTwoFAMethod(data.twoFactorMethod || 'email');
+        setNotice(`New code sent to your ${data.twoFactorMethod === 'sms' ? 'phone' : 'email'}`);
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not resend code. Please log in again.');
     } finally { setLoading(false); }
   };
 
@@ -576,7 +626,7 @@ export default function Login({ onLogin }) {
           <div className="hero-bg-pattern" />
           <div className="hero-glow-1" />
           <div className="hero-glow-2" />
-          
+
           <div style={{ position: 'relative', zIndex: 2 }}>
             {/* Brand Badge */}
             <div style={{
@@ -605,7 +655,7 @@ export default function Login({ onLogin }) {
               margin: '0 0 16px',
               letterSpacing: '-1px'
             }}>
-              Welcome<br/>Back! 👋
+              Welcome<br />Back! 👋
             </h1>
 
             <p style={{
@@ -693,14 +743,15 @@ export default function Login({ onLogin }) {
                   letterSpacing: '-0.3px',
                   fontFamily: "'Outfit', sans-serif"
                 }}>
-                  {step === 'choose' ? 'Sign In' : step === 'email' ? 'Email Sign In' : step === 'email-otp' ? 'Check Your Email' : otpSent ? 'Verify Code' : 'Phone Sign In'}
+                  {step === 'choose' ? 'Sign In' : step === 'email' ? 'Email Sign In' : step === 'email-otp' ? 'Check Your Email' : step === '2fa-otp' ? 'Two-Factor Auth' : otpSent ? 'Verify Code' : 'Phone Sign In'}
                 </h1>
                 <p style={{ fontSize: 13, color: '#64748B', margin: 0, fontWeight: 400 }}>
                   {step === 'choose' ? 'Choose your sign-in method'
                     : step === 'email' ? 'Sign in with your email & password'
-                    : step === 'email-otp' ? `We sent a 6-digit code to ${pendingEmail}`
-                    : otpSent ? `Code sent to ${fullPhone}`
-                    : "We'll send a 6-digit code via SMS"}
+                      : step === 'email-otp' ? `We sent a 6-digit code to ${pendingEmail}`
+                        : step === '2fa-otp' ? `Enter the code from your ${twoFAMethod === 'sms' ? 'phone' : twoFAMethod === 'whatsapp' ? 'WhatsApp' : twoFAMethod === 'totp' ? 'authenticator app' : 'email'}`
+                          : otpSent ? `Code sent to ${fullPhone}`
+                            : "We'll send a 6-digit code via SMS"}
                 </p>
               </div>
 
@@ -773,7 +824,7 @@ export default function Login({ onLogin }) {
                       background: '#F8FAFC', border: '1px solid #F1F5F9',
                       flexWrap: 'wrap'
                     }}>
-                      {[['🔒','256-bit SSL'],['✅','2.4M+ traders'],['🌍','180+ countries']].map(([ic, lb]) => (
+                      {[['🔒', '256-bit SSL'], ['✅', '2.4M+ traders'], ['🌍', '180+ countries']].map(([ic, lb]) => (
                         <div key={lb} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, color: '#64748B' }}>
                           <span>{ic}</span>{lb}
                         </div>
@@ -849,7 +900,7 @@ export default function Login({ onLogin }) {
                       }}>
                         {remember && (
                           <svg width="11" height="9" viewBox="0 0 11 9" fill="none">
-                            <path d="M1 4.5L4 7.5L10 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            <path d="M1 4.5L4 7.5L10 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
                         )}
                       </div>
@@ -916,6 +967,61 @@ export default function Login({ onLogin }) {
                     </button>
 
                     <button onClick={resendEmailOtp} disabled={loading}
+                      style={{
+                        width: '100%', padding: '12px', borderRadius: 12,
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        fontSize: 13, fontWeight: 600, color: '#2D6A4F',
+                        fontFamily: "'Inter', sans-serif"
+                      }}>
+                      ← Resend code
+                    </button>
+                  </div>
+                )}
+
+                {/* 2FA STEP */}
+                {step === '2fa-otp' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '14px', borderRadius: 14,
+                      background: 'rgba(45,106,79,0.06)', border: '1.5px solid rgba(45,106,79,0.15)'
+                    }}>
+                      <div style={{
+                        width: 40, height: 40, borderRadius: 12,
+                        background: 'linear-gradient(135deg, #2D6A4F, #40916C)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                      }}>
+                        <Shield size={18} color="white" />
+                      </div>
+                      <div>
+                        <p style={{ fontWeight: 700, fontSize: 13, color: '#1B4332', margin: '0 0 2px' }}>2FA Required</p>
+                        <p style={{ fontSize: 12, color: '#2D6A4F', margin: 0 }}>Extra security check for this account</p>
+                      </div>
+                    </div>
+
+                    <div style={{ textAlign: 'center' }}>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 12, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Enter 6-digit code
+                      </label>
+                      <OtpBoxes value={twoFACode} onChange={v => { setTwoFACode(v); setError(''); }} />
+                    </div>
+
+                    <button onClick={handleVerify2FA} disabled={twoFALoading || twoFACode.length !== 6}
+                      className="submit-btn"
+                      style={{
+                        background: 'linear-gradient(135deg, #2D6A4F, #40916C)',
+                        color: 'white',
+                        boxShadow: '0 6px 20px rgba(45, 106, 79, 0.25)',
+                        opacity: (twoFALoading || twoFACode.length !== 6) ? 0.55 : 1
+                      }}>
+                      {twoFALoading ? (
+                        <><RefreshCw size={16} className="animate-spin" />Verifying…</>
+                      ) : (
+                        <>Verify & Sign In <ArrowRight size={16} /></>
+                      )}
+                    </button>
+
+                    <button onClick={resend2FACode} disabled={loading}
                       style={{
                         width: '100%', padding: '12px', borderRadius: 12,
                         background: 'none', border: 'none', cursor: 'pointer',
@@ -1082,8 +1188,8 @@ export default function Login({ onLogin }) {
                   </div>
                 )}
 
-                {/* Divider & Register CTA — hidden during OTP verification */}
-                {step !== 'email-otp' && (
+                {/* Divider & Register CTA — hidden during OTP/2FA verification */}
+                {step !== 'email-otp' && step !== '2fa-otp' && (
                   <>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
                       <div style={{ flex: 1, height: 1, background: '#E2E8F0' }} />
@@ -1111,7 +1217,7 @@ export default function Login({ onLogin }) {
                   <Shield size={11} />
                   <span>SSL · Zero fraud</span>
                 </div>
-                <button onClick={() => go(step === 'email-otp' ? 'email' : 'choose')}
+                <button onClick={() => go(step === 'email-otp' ? 'email' : step === '2fa-otp' ? 'email' : 'choose')}
                   style={{
                     background: 'none', border: 'none', cursor: 'pointer',
                     fontSize: 12, fontWeight: 600, color: '#64748B',

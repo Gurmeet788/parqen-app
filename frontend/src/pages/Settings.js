@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { requestNotificationPermission, getNotificationPermission, isPushSupported } from '../utils/notifications';
@@ -407,6 +407,23 @@ export default function Settings({ user, setUser }) {
   // Security
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [showPw, setShowPw] = useState({ current: false, new: false, confirm: false });
+  const [passwordErrors, setPasswordErrors] = useState({});
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+  const [logoutConfirm, setLogoutConfirm] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  // 2FA state
+  const [twoFAEnabled, setTwoFAEnabled] = useState(user?.two_factor_enabled || false);
+  const [twoFAMethod, setTwoFAMethod] = useState(user?.two_factor_method || null);
+  const [twoFAStep, setTwoFAStep] = useState('idle'); // idle | method | sending | otp | verifying | done
+  const [twoFACode, setTwoFACode] = useState('');
+  const [twoFAError, setTwoFAError] = useState('');
+  const [twoFALoading, setTwoFALoading] = useState(false);
+  const [showDisableInput, setShowDisableInput] = useState(false);
+  const [disablePassword, setDisablePassword] = useState('');
+  const [disableLoading, setDisableLoading] = useState(false);
+  const [selected2FAMethod, setSelected2FAMethod] = useState('email');
+  const TIMEOUT_MS = 15000;
 
   // Preferences — lazy-init from localStorage so selections survive navigation/re-renders
   const [prefs, setPrefs] = useState(() => ({
@@ -677,16 +694,40 @@ export default function Settings({ user, setUser }) {
     finally { setLoading(false); }
   };
 
+  const validatePasswordForm = () => {
+    const errs = {};
+    if (!passwordForm.currentPassword) errs.currentPassword = 'Current password is required';
+    if (!passwordForm.newPassword) errs.newPassword = 'New password is required';
+    else if (passwordForm.newPassword.length < 8) errs.newPassword = 'Password must be at least 8 characters';
+    else if (!/[A-Z]/.test(passwordForm.newPassword)) errs.newPassword = 'Password must include at least one uppercase letter';
+    else if (!/\d/.test(passwordForm.newPassword)) errs.newPassword = 'Password must include at least one number';
+    else if (!/[^a-zA-Z0-9]/.test(passwordForm.newPassword)) errs.newPassword = 'Password must include at least one special character';
+    else if (passwordForm.newPassword === passwordForm.currentPassword) errs.newPassword = 'New password must be different from current password';
+    if (!passwordForm.confirmPassword) errs.confirmPassword = 'Please confirm your new password';
+    else if (passwordForm.newPassword !== passwordForm.confirmPassword) errs.confirmPassword = 'Passwords do not match';
+    setPasswordErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
   const handlePasswordChange = async (e) => {
     e.preventDefault();
-    if (passwordForm.newPassword !== passwordForm.confirmPassword) { toast.error('Passwords do not match'); return; }
-    if (passwordForm.newPassword.length < 6) { toast.error('Password must be at least 6 characters'); return; }
+    setPasswordSuccess(false);
+    if (!validatePasswordForm()) return;
     setLoading(true);
     try {
       await axios.post(`${API_URL}/auth/change-password`, { currentPassword: passwordForm.currentPassword, newPassword: passwordForm.newPassword }, { headers: authH() });
-      toast.success('Password changed!');
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-    } catch (e) { toast.error(e?.response?.data?.error || 'Failed to change password'); }
+      setPasswordErrors({});
+      setPasswordSuccess(true);
+      setTimeout(() => setPasswordSuccess(false), 3000);
+    } catch (e) {
+      const msg = e?.response?.data?.error || 'Failed to change password';
+      if (msg.toLowerCase().includes('incorrect')) {
+        setPasswordErrors({ currentPassword: msg });
+      } else {
+        setPasswordErrors({ form: msg });
+      }
+    }
     finally { setLoading(false); }
   };
 
@@ -699,9 +740,20 @@ export default function Settings({ user, setUser }) {
     finally { setLoading(false); }
   };
 
+  const handleLogoutConfirm = async () => {
+    setLoggingOut(true);
+    await new Promise(r => setTimeout(r, 400));
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('praqen_kyc');
+    toast.info('Logged out');
+    setLogoutConfirm(false);
+    setLoggingOut(false);
+    navigate('/login');
+  };
+
   const handleLogout = () => {
-    localStorage.removeItem('token'); localStorage.removeItem('user'); localStorage.removeItem('praqen_kyc');
-    toast.info('Logged out'); navigate('/login');
+    setLogoutConfirm(true);
   };
 
   const handleSendPhoneOtp = async () => {
@@ -1966,6 +2018,33 @@ export default function Settings({ user, setUser }) {
                             <LogOut size={13} /> Log Out
                           </button>
                         </div>
+                        <p className="text-xs font-bold mt-1" style={{
+                          color: (() => {
+                            const len = passwordForm.newPassword.length;
+                            const hasUpper = /[A-Z]/.test(passwordForm.newPassword);
+                            const hasNum = /\d/.test(passwordForm.newPassword);
+                            const hasSpec = /[^a-zA-Z0-9]/.test(passwordForm.newPassword);
+                            let m = 0;
+                            if (len >= 8) m++;
+                            if (hasUpper) m++;
+                            if (hasNum) m++;
+                            if (hasSpec) m++;
+                            return m <= 1 ? C.danger : m === 2 ? C.warn : C.success;
+                          })()
+                        }}>
+                          {(() => {
+                            const len = passwordForm.newPassword.length;
+                            const hasUpper = /[A-Z]/.test(passwordForm.newPassword);
+                            const hasNum = /\d/.test(passwordForm.newPassword);
+                            const hasSpec = /[^a-zA-Z0-9]/.test(passwordForm.newPassword);
+                            let m = 0;
+                            if (len >= 8) m++;
+                            if (hasUpper) m++;
+                            if (hasNum) m++;
+                            if (hasSpec) m++;
+                            return m <= 1 ? 'Weak' : m === 2 ? 'Medium' : 'Strong';
+                          })()}
+                        </p>
                       </div>
                     </div>
                   </div>
