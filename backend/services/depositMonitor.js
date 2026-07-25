@@ -153,8 +153,13 @@ class DepositMonitor {
         return resp.data;
       } catch (err) {
         lastErr = err;
-        const isNetwork = ['ETIMEDOUT','ECONNREFUSED','ENOTFOUND','ECONNRESET'].includes(err.code);
-        if (!isNetwork) throw err; // non-network errors propagate immediately
+        // No HTTP response at all — timeout (including axios's own ECONNABORTED
+        // client-side timeout, previously missed by an error-code allowlist here),
+        // DNS failure, connection refused/reset — means we never reached this API,
+        // so always worth rotating to the next fallback. A genuine HTTP error
+        // response (4xx/5xx) means the API IS reachable but rejected the request,
+        // which trying a different API won't fix.
+        if (err.response) throw err;
         // rotate: put the failed API at the back so the next one is tried first
         this._apiFallbacks.push(this._apiFallbacks.shift());
       }

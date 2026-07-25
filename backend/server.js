@@ -60,6 +60,14 @@ try {
 const quoteService          = require('./services/quoteService');
 const { E, S }              = require('./utils/apiErrors');
 const emailService          = require('./services/emailService');
+const speakeasy             = require('speakeasy');
+
+// ── 2FA login-store: maps tempTokenHash -> { code, expires, userId, method } ─
+const pending2FALogin = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of pending2FALogin) { if (v.expires < now) pending2FALogin.delete(k); }
+}, 60000);
 
 // In-memory typing state: 'tradeId:userId' -> expiresAt timestamp
 const typingState = {};
@@ -212,6 +220,12 @@ app.use(cors({
   maxAge:           86400, // browser caches preflight for 24 hours
 }));
 
+// Webhook signature verification needs the exact raw bytes Coinbase signed — must be
+// captured BEFORE the global JSON parser below consumes the request stream. body-parser
+// sets req._body once it runs, so express.json() will see that and skip re-parsing,
+// leaving req.body as this Buffer for that one path only.
+app.use('/api/wallet/webhook', express.raw({ type: '*/*' }));
+
 app.use(express.json({ limit: '6mb' })); // raised from 2mb — KYC route needs headroom for 2 compressed base64 images (~1.1–1.9mb each after canvas compression)
 
 // ── Rate Limiters ──────────────────────────────────────────────────────────
@@ -261,7 +275,10 @@ app.use('/api/hd-wallet', hdWalletRoutes);
 // NOTE: walletRoutes removed — wallet routes are defined inline below
 // to avoid Supabase-not-initialized errors in external route files.
 
-const JWT_SECRET = process.env.JWT_SECRET || 'praqen-secret-change-in-production';
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is not set. Refusing to start with an insecure default secret.');
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 const otpStore          = new Map();
 const verificationCodes = new Map();
 
@@ -313,6 +330,32 @@ function phoneToCountryCode(phone) {
     }
   }
   return null;
+}
+
+const disposableDomains = require('disposable-email-domains');
+
+async function validateEmailForRegistration(email) {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return { valid: false, error: 'Enter a valid email address.' };
+  }
+
+  const domain = email.split('@')[1].toLowerCase();
+  if (disposableDomains.includes(domain)) {
+    return { valid: false, error: 'Disposable or temporary email addresses are not allowed. Please use a permanent email.' };
+  }
+
+  try {
+    const dns = require('dns').promises;
+    const mxRecords = await dns.resolveMx(domain);
+    if (!mxRecords || mxRecords.length === 0) {
+      return { valid: false, error: 'This email domain does not appear to accept mail. Please check your email address.' };
+    }
+  } catch (e) {
+    return { valid: false, error: 'This email domain could not be verified. Please check your email address.' };
+  }
+
+  return { valid: true };
 }
 
 // Resolve client IP + phone → ISO country code (fire-and-forget, never blocks login)
@@ -691,54 +734,21 @@ async function sendVerificationEmail(email, code, subject = 'Your PRAQEN Verific
   console.log(`📧 Sending verification to ${email}`);
   const html = buildVerificationEmailHtml(code);
 
-  // ── PRIMARY: Gmail SMTP (works for ALL email addresses, no domain restriction) ──
-  if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-    try {
-      const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-      });
-      const info = await transporter.sendMail({
-        from: `"PRAQEN" <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject,
-        html,
-      });
-      console.log(`✅ Verification email sent via Gmail to ${email}`, info.messageId);
-      return true;
-    } catch (gmailErr) {
-      console.error(`❌ Gmail error:`, gmailErr.message);
-    }
+  // ── Use emailService.sendEmail (Brevo SMTP + Resend fallback, same working path) ──
+  const result = await emailService.sendEmail({
+    to: email,
+    subject,
+    html,
+    type: 'verification',
+    metadata: { code_hint: String(code).slice(0, 2) + '****' },
+  });
+
+  if (result.success) {
+    console.log(`✅ Verification email sent via emailService to ${email} (${result.messageId})`);
+    return true;
   }
 
-  // ── FALLBACK: Resend API ─────────────────────────────────────────────────
-  if (process.env.RESEND_API_KEY) {
-    try {
-      const response = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: RESEND_FROM_ADDR,
-          to: email,
-          subject,
-          html,
-        }),
-      });
-      const data = await response.json();
-      if (data.id) {
-        console.log(`✅ Verification email sent via Resend: ${data.id}`);
-        return true;
-      }
-      throw new Error(`Resend error: ${JSON.stringify(data)}`);
-    } catch (resendErr) {
-      console.error('❌ Resend failed:', resendErr.message);
-    }
-  }
-
-  throw new Error(`All email providers failed for ${email}`);
+  throw new Error(`All email providers failed for ${email}: ${result.error}`);
 }
 
 async function sendWelcomeEmail(email, username) {
@@ -1474,6 +1484,26 @@ function optionalAuth(req, res, next) {
   next();
 }
 
+async function requireEmailVerified(req, res, next) {
+  try {
+    const { data: user } = await supabaseAdmin
+      .from('users')
+      .select('is_email_verified, email_verified')
+      .eq('id', req.userId)
+      .single();
+    const verified = !!(user?.is_email_verified || user?.email_verified);
+    if (!verified) {
+      return res.status(403).json({
+        error: 'Please verify your email address before trading.',
+        requireVerification: 'email',
+      });
+    }
+    next();
+  } catch (e) {
+    return res.status(500).json({ error: 'Could not verify account status. Please try again.' });
+  }
+}
+
 // ============================================================
 // HEALTH CHECK
 // ============================================================
@@ -1693,25 +1723,15 @@ app.post('/api/auth/google', authLimiter, async (req, res) => {
       emailService.sendWelcomeEmail({ id: newUser.id, email: normalizedEmail, username })
         .catch(e => console.error('[Google Auth] Welcome email failed:', e.message));
 
-      // Provision HD wallet address
+      // Provision a real HD wallet address, mirrored to every table the deposit
+      // monitors read from (see hdWalletService.ensureWalletExists).
       Promise.resolve().then(async () => {
         try {
-          const hdAddrData = hdWalletService.generateUserAddress(newUser.id);
-          await supabaseAdmin.from('users').update({
-            bitcoin_wallet_address: hdAddrData.address,
-            updated_at: new Date().toISOString(),
-          }).eq('id', newUser.id);
-          await supabaseAdmin.from('user_wallets').upsert({
-            user_id:     newUser.id,
-            btc_address:  hdAddrData.address,
-            network:     'mainnet',
-            balance_btc:  0,
-            created_at:  new Date().toISOString(),
-          });
-          console.log(`[Google Auth] HD wallet generated for ${newUser.username}: ${hdAddrData.address}`);
-          realtimeDepositService.subscribeAddress(newUser.id, hdAddrData.address);
+          const { address } = await hdWalletService.ensureWalletExists(newUser.id);
+          console.log(`[Google Auth] Wallet ensured for ${newUser.username}: ${address}`);
+          realtimeDepositService.subscribeAddress(newUser.id, address);
         } catch (e) {
-          console.error('[Google Auth] HD wallet generation failed:', e.message);
+          console.error('[Google Auth] Wallet provisioning failed:', e.message);
         }
       });
 
@@ -1728,6 +1748,45 @@ app.post('/api/auth/google', authLimiter, async (req, res) => {
           }
         })();
       }
+    }
+
+    // ── 2FA check: if user has 2FA enabled, issue temp token instead of real JWT ─
+    if (userToAuth.two_factor_enabled) {
+      const method2FA = userToAuth.two_factor_method || 'email';
+      const twoFactorOtp = String(Math.floor(100000 + Math.random() * 900000));
+
+      const tempToken = jwt.sign(
+        { userId: userToAuth.id, email: userToAuth.email, pending2FA: true },
+        JWT_SECRET,
+        { expiresIn: '5m' }
+      );
+
+      pending2FALogin.set(tempToken, {
+        code: twoFactorOtp,
+        expires: Date.now() + 10 * 60 * 1000,
+        userId: userToAuth.id,
+        method: method2FA,
+      });
+
+      // Send 2FA code via the user's chosen method (skip for TOTP)
+      if (method2FA === 'email') {
+        sendVerificationEmail(userToAuth.email, twoFactorOtp, 'Your PRAQEN 2FA Login Code')
+          .catch(err => console.error('[2FA-google] email failed:', err.message));
+      } else if (method2FA === 'sms' || method2FA === 'whatsapp') {
+        const phone2FA = userToAuth.phone?.startsWith('+') ? userToAuth.phone : `+${userToAuth.phone}`;
+        sendSmsOtp(phone2FA, `Your PRAQEN 2FA login code is: ${twoFactorOtp}. Valid 10 min.`)
+          .catch(err => console.error('[2FA-google] SMS failed:', err.message));
+        storeOtp(phone2FA, twoFactorOtp).catch(e => console.warn('[2FA-google] DB store warn:', e.message));
+      }
+      // TOTP: no code sent — verify against stored secret
+
+      console.log(`[2FA] Google-login 2FA gate via ${method2FA} for user ${userToAuth.id.slice(0,8)}`);
+      return res.json({
+        requires2FA: true,
+        tempToken,
+        twoFactorMethod: method2FA,
+        email: userToAuth.email,
+      });
     }
 
     // 5. Sign JWT
@@ -1772,6 +1831,14 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     }
     if (password.length < 6) {
       return res.status(400).json({ error: E.PASSWORD_TOO_SHORT });
+    }
+
+    // ── Email format + disposable domain + MX validation ───────────────────
+    if (email) {
+      const emailCheck = await validateEmailForRegistration(email.toLowerCase().trim());
+      if (!emailCheck.valid) {
+        return res.status(400).json({ error: emailCheck.error });
+      }
     }
 
     // ── Check uniqueness (fast DB lookups) ─────────────────────────────────
@@ -1917,26 +1984,18 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
         .catch(e => console.warn('[Register] SMS OTP DB backup failed:', e.message));
     }
 
-    // 2. Generate HD wallet address for this user
+    // 2. Generate a real HD wallet address for this user and mirror it to every
+    //    table the deposit monitors read from. ensureWalletExists() uses
+    //    select-then-insert (not upsert) so it can't silently no-op the way the
+    //    old duplicated blocks here did.
     Promise.resolve().then(async () => {
       try {
-        const hdAddrData = hdWalletService.generateUserAddress(newUser.id);
-        await supabaseAdmin.from('users').update({
-          bitcoin_wallet_address: hdAddrData.address,
-          updated_at: new Date().toISOString(),
-        }).eq('id', newUser.id);
-        await supabaseAdmin.from('user_wallets').upsert({
-          user_id:    newUser.id,
-          btc_address: hdAddrData.address,
-          network:    'mainnet',
-          balance_btc: 0,
-          created_at: new Date().toISOString(),
-        });
-        console.log(`[Register] HD wallet generated for ${newUser.username}: ${hdAddrData.address}`);
+        const { address } = await hdWalletService.ensureWalletExists(newUser.id);
+        console.log(`[Register] Wallet ensured for ${newUser.username}: ${address}`);
         // Subscribe to real-time WebSocket monitoring immediately
-        realtimeDepositService.subscribeAddress(newUser.id, hdAddrData.address);
+        realtimeDepositService.subscribeAddress(newUser.id, address);
       } catch (e) {
-        console.error('[Register] HD wallet generation failed:', e.message);
+        console.error('[Register] Wallet provisioning failed:', e.message);
       }
     });
 
@@ -1959,35 +2018,6 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
           console.error('[Register] Referral count update failed:', e.message);
         }
       })();
-    }
-
-    // 4. HD wallet address — assign immediately on registration
-    try {
-      const hdWallet  = require('./services/hdWalletService');
-      const addrData  = hdWallet.generateUserAddress(newUser.id);
-      await Promise.all([
-        supabaseAdmin.from('users').update({
-          bitcoin_wallet_address: addrData.address,
-          wallet_created_at:      new Date().toISOString(),
-        }).eq('id', newUser.id),
-        supabaseAdmin.from('user_wallets').upsert({
-          user_id:          newUser.id,
-          btc_address:      addrData.address,
-          balance_btc:      0,
-          last_onchain_btc: 0,
-          updated_at:       new Date().toISOString(),
-        }, { onConflict: 'user_id' }),
-        supabaseAdmin.from('wallets').upsert({
-          user_id:            newUser.id,
-          address:            addrData.address,
-          balance_btc:        0,
-          locked_balance_btc: 0,
-          updated_at:         new Date().toISOString(),
-        }, { onConflict: 'user_id' }),
-      ]);
-      console.log(`[Register] HD wallet address assigned for ${newUser.username}: ${addrData.address}`);
-    } catch (e) {
-      console.error('[Register] HD wallet address failed (non-critical):', e.message);
     }
 
   } catch (error) {
@@ -2025,6 +2055,46 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
         if (row) { data = row; break; }
       }
       if (!data) return res.status(404).json({ error: 'No account found for this phone number. Please register first.' });
+
+      // ── 2FA check: if user has 2FA enabled, issue temp token instead of real JWT ─
+      if (data.two_factor_enabled) {
+        const method2FA = data.two_factor_method || 'email';
+        const twoFactorOtp = String(Math.floor(100000 + Math.random() * 900000));
+
+        const tempToken = jwt.sign(
+          { userId: data.id, email: data.email, pending2FA: true },
+          JWT_SECRET,
+          { expiresIn: '5m' }
+        );
+
+        pending2FALogin.set(tempToken, {
+          code: twoFactorOtp,
+          expires: Date.now() + 10 * 60 * 1000,
+          userId: data.id,
+          method: method2FA,
+        });
+
+        // Send 2FA code via the user's chosen method (skip for TOTP)
+        if (method2FA === 'email') {
+          sendVerificationEmail(data.email, twoFactorOtp, 'Your PRAQEN 2FA Login Code')
+            .catch(err => console.error('[2FA-phone] email failed:', err.message));
+        } else if (method2FA === 'sms' || method2FA === 'whatsapp') {
+          const phone2FA = data.phone?.startsWith('+') ? data.phone : `+${data.phone}`;
+          sendSmsOtp(phone2FA, `Your PRAQEN 2FA login code is: ${twoFactorOtp}. Valid 10 min.`)
+            .catch(err => console.error('[2FA-phone] SMS failed:', err.message));
+          storeOtp(phone2FA, twoFactorOtp).catch(e => console.warn('[2FA-phone] DB store warn:', e.message));
+        }
+        // TOTP: no code sent — setting code to null so verify-2fa-login falls through to TOTP secret check
+
+        console.log(`[2FA] Phone-login 2FA gate via ${method2FA} for user ${data.id.slice(0,8)}`);
+        return res.json({
+          requires2FA: true,
+          tempToken,
+          twoFactorMethod: method2FA,
+          email: data.email,
+        });
+      }
+
       const token = jwt.sign({ userId: data.id, email: data.email }, JWT_SECRET, { expiresIn: '7d' });
       const nowPhone = new Date().toISOString();
       await supabaseAdmin.from('users').update({ last_login: nowPhone, last_seen_at: nowPhone }).eq('id', data.id);
@@ -2075,7 +2145,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
   }
 });
 
-// ── Email login OTP verification ─────────────────────────────────────────────
+// ── Email login OTP verification (+ 2FA check) ────────────────────────────────
 app.post('/api/auth/verify-login-otp', authLimiter, async (req, res) => {
   try {
     const { email, code } = req.body;
@@ -2092,12 +2162,56 @@ app.post('/api/auth/verify-login-otp', authLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Incorrect code. Please try again.' });
     }
 
-    // OTP valid — delete it and complete login
+    // OTP valid — delete it
     emailLoginOtpStore.delete(key);
 
     const { data } = await supabaseAdmin.from('users').select('*').eq('id', record.userId).single();
     if (!data) return res.status(404).json({ error: 'User not found' });
 
+    // ── 2FA check: if user has 2FA enabled, issue temp token instead of real JWT ─
+    if (data.two_factor_enabled) {
+      const method = data.two_factor_method || 'email';
+      const twoFactorOtp = String(Math.floor(100000 + Math.random() * 900000));
+
+      const tempToken = jwt.sign(
+        { userId: data.id, email: data.email, pending2FA: true },
+        JWT_SECRET,
+        { expiresIn: '5m' }
+      );
+
+      pending2FALogin.set(tempToken, {
+        code: twoFactorOtp,
+        expires: Date.now() + 10 * 60 * 1000,
+        userId: data.id,
+        method,
+      });
+
+      // Send 2FA code via the user's chosen method (skip for TOTP; authenticator app generates code)
+      if (method === 'email') {
+        sendVerificationEmail(data.email, twoFactorOtp, 'Your PRAQEN 2FA Login Code')
+          .catch(err => console.error('[2FA-login] email failed:', err.message));
+      } else if (method === 'sms' || method === 'whatsapp') {
+        const phone = data.phone?.startsWith('+') ? data.phone : `+${data.phone}`;
+        sendSmsOtp(phone, `Your PRAQEN 2FA login code is: ${twoFactorOtp}. Valid 10 min.`)
+          .catch(err => console.error('[2FA-login] SMS failed:', err.message));
+        storeOtp(phone, twoFactorOtp).catch(e => console.warn('[2FA-login] DB store warn:', e.message));
+      }
+      // TOTP: no code sent — user scans QR code and generates codes from their authenticator app
+
+      if (method !== 'totp') {
+        console.log(`[2FA] Login 2FA code sent via ${method} for user ${data.id.slice(0,8)}`);
+      } else {
+        console.log(`[2FA] Login 2FA — TOTP mode (no code sent) for user ${data.id.slice(0,8)}`);
+      }
+      return res.json({
+        requires2FA: true,
+        tempToken,
+        twoFactorMethod: method,
+        email: data.email,
+      });
+    }
+
+    // ── No 2FA — issue real JWT ────────────────────────────────────────────
     const token = jwt.sign({ userId: data.id, email: data.email }, JWT_SECRET, { expiresIn: '7d' });
     const now = new Date().toISOString();
     await supabaseAdmin.from('users').update({ last_login: now, last_seen_at: now }).eq('id', data.id);
@@ -2116,7 +2230,9 @@ app.post('/api/auth/verify-login-otp', authLimiter, async (req, res) => {
         is_moderator: data.is_moderator || false, referral_code: data.referral_code || null,
         bitcoin_wallet_address: btcAddress,
         total_referrals: data.total_referrals || 0,
-        referral_earnings_btc: data.referral_earnings_btc || 0 },
+        referral_earnings_btc: data.referral_earnings_btc || 0,
+        two_factor_enabled: data.two_factor_enabled || false,
+        two_factor_method: data.two_factor_method || null },
       token,
     });
 
@@ -2125,6 +2241,302 @@ app.post('/api/auth/verify-login-otp', authLimiter, async (req, res) => {
   } catch (err) {
     console.error('[verify-login-otp] error:', err);
     res.status(500).json({ error: 'Verification failed. Please try again.' });
+  }
+});
+
+// ── 2FA login verification ────────────────────────────────────────────────────
+app.post('/api/auth/verify-2fa-login', authLimiter, async (req, res) => {
+  try {
+    const { tempToken, code } = req.body;
+    if (!tempToken || !code) return res.status(400).json({ error: 'Temporary token and code are required' });
+
+    // Verify temp token
+    let decoded;
+    try {
+      decoded = jwt.verify(tempToken, JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    }
+    if (!decoded.pending2FA) return res.status(401).json({ error: 'Invalid session. Please log in again.' });
+
+    // Determine verification method from pending record or user's TOTP secret
+    const pending = pending2FALogin.get(tempToken);
+    let isVerified = false;
+    let userDataFor2FA = null;
+
+    if (pending) {
+      // For TOTP, the pending entry has no valid code — skip comparison and use TOTP secret
+      if (pending.method === 'totp') {
+        const { data: userForTOTP } = await supabaseAdmin.from('users').select('totp_secret').eq('id', decoded.userId).single();
+        if (!userForTOTP || !userForTOTP.totp_secret) {
+          pending2FALogin.delete(tempToken);
+          return res.status(400).json({ error: 'TOTP not configured. Please log in again.' });
+        }
+        isVerified = speakeasy.totp.verify({
+          secret: userForTOTP.totp_secret,
+          encoding: 'base32',
+          token: String(code).trim(),
+          window: 1,
+        });
+        if (!isVerified) {
+          return res.status(400).json({ error: 'Incorrect authenticator code. Please try again.' });
+        }
+        pending2FALogin.delete(tempToken);
+      } else {
+        // Method is email, sms, or whatsapp — check against stored code
+        if (Date.now() > pending.expires) {
+          pending2FALogin.delete(tempToken);
+          return res.status(400).json({ error: 'Code has expired. Please log in again.' });
+        }
+        if (pending.code !== String(code).trim()) {
+          return res.status(400).json({ error: 'Incorrect code. Please try again.' });
+        }
+        isVerified = true;
+        pending2FALogin.delete(tempToken);
+      }
+    } else {
+      // No pending entry — could be TOTP. Fetch user and verify against TOTP secret
+      const { data: userForTOTP } = await supabaseAdmin.from('users').select('totp_secret, two_factor_method').eq('id', decoded.userId).single();
+      if (!userForTOTP) return res.status(404).json({ error: 'User not found' });
+      userDataFor2FA = userForTOTP;
+
+      if (userForTOTP.two_factor_method === 'totp' && userForTOTP.totp_secret) {
+        isVerified = speakeasy.totp.verify({
+          secret: userForTOTP.totp_secret,
+          encoding: 'base32',
+          token: String(code).trim(),
+          window: 1,
+        });
+        if (!isVerified) {
+          return res.status(400).json({ error: 'Incorrect authenticator code. Please try again.' });
+        }
+      } else {
+        return res.status(400).json({ error: 'No pending 2FA verification. Please log in again.' });
+      }
+    }
+
+    if (!isVerified) {
+      return res.status(400).json({ error: '2FA verification failed. Please try again.' });
+    }
+
+    // Issue real JWT
+    const { data } = await supabaseAdmin.from('users').select('*').eq('id', decoded.userId).single();
+    if (!data) return res.status(404).json({ error: 'User not found' });
+
+    const token = jwt.sign({ userId: data.id, email: data.email }, JWT_SECRET, { expiresIn: '7d' });
+    const now = new Date().toISOString();
+    await supabaseAdmin.from('users').update({ last_login: now, last_seen_at: now }).eq('id', data.id);
+    detectAndSaveCountry(data.id, req).catch(() => {});
+
+    let btcAddress = data.bitcoin_wallet_address;
+    if (!isRealBtcAddress(btcAddress)) {
+      btcAddress = await upgradeToHDAddress(data.id, data.username) || btcAddress;
+    }
+
+    res.json({
+      success: true,
+      token,
+      user: {
+        id: data.id, email: data.email, username: data.username, full_name: data.full_name,
+        average_rating: data.average_rating || 0, total_trades: data.total_trades || 0,
+        avatar_url: data.avatar_url || null, is_admin: data.is_admin || false,
+        is_moderator: data.is_moderator || false, referral_code: data.referral_code || null,
+        bitcoin_wallet_address: btcAddress,
+        total_referrals: data.total_referrals || 0,
+        referral_earnings_btc: data.referral_earnings_btc || 0,
+        two_factor_enabled: data.two_factor_enabled || false,
+        two_factor_method: data.two_factor_method || null,
+      },
+    });
+
+    emailService.sendLoginAlertEmail({ id: data.id, email: data.email, username: data.username })
+      .catch(() => {});
+  } catch (error) {
+    console.error('[verify-2fa-login] error:', error.message);
+    res.status(500).json({ error: '2FA verification failed. Please try again.' });
+  }
+});
+
+
+// ── Password Reset Email Template ────────────────────────────────────────────
+function buildPasswordResetEmailHtml(resetUrl) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PRAQEN Password Reset</title></head>
+<body style="margin:0;padding:0;background:#F0FAF5;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0FAF5;padding:32px 0;">
+    <tr><td align="center">
+      <table width="520" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(27,67,50,0.10);">
+        <tr><td style="background:linear-gradient(135deg,#1B4332 0%,#2D6A4F 100%);padding:32px 40px;text-align:center;">
+          <div style="display:inline-block;width:56px;height:56px;background:#F4A422;border-radius:14px;line-height:56px;font-size:28px;font-weight:900;color:#1B4332;font-family:Georgia,serif;text-align:center;">P</div>
+          <p style="margin:12px 0 0;color:#ffffff;font-size:20px;font-weight:800;letter-spacing:3px;font-family:Georgia,serif;">PRAQEN</p>
+          <p style="margin:4px 0 0;color:rgba(255,255,255,0.65);font-size:12px;letter-spacing:1px;">Password Reset Request</p>
+        </td></tr>
+        <tr><td style="padding:40px 40px 32px;text-align:center;">
+          <p style="margin:0 0 8px;font-size:16px;font-weight:600;color:#334155;">Reset Your Password</p>
+          <p style="margin:0 0 24px;font-size:13px;color:#64748B;line-height:1.6;">We received a request to reset the password for your PRAQEN account. Click the button below to set a new password. This link expires in <strong>1 hour</strong>.</p>
+          <a href="${resetUrl}" style="display:inline-block;background:linear-gradient(135deg,#1B4332,#2D6A4F);color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;padding:14px 36px;border-radius:10px;letter-spacing:0.5px;">Reset Password →</a>
+          <p style="margin:24px 0 8px;font-size:12px;color:#94A3B8;">If you didn't request this, you can safely ignore this email.</p>
+          <p style="margin:0;font-size:12px;color:#94A3B8;">Never share this link with anyone — PRAQEN will never ask for it.</p>
+        </td></tr>
+        <tr><td style="padding:0 40px 24px;">
+          <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:10px;padding:14px 18px;text-align:center;">
+            <p style="margin:0;font-size:12px;font-weight:700;color:#92400E;">⚠️ Always trade within PRAQEN — never outside our platform</p>
+          </div>
+        </td></tr>
+        <tr><td style="background:#F8FAFC;padding:20px 40px;text-align:center;border-top:1px solid #E2E8F0;">
+          <p style="margin:0 0 4px;font-size:12px;color:#94A3B8;">Need help? Contact us at <a href="mailto:support@praqen.com" style="color:#2D6A4F;font-weight:700;">support@praqen.com</a></p>
+          <p style="margin:0;font-size:11px;color:#CBD5E1;">© 2025 PRAQEN · The World's Most Trusted P2P Bitcoin Marketplace</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+// ── Send password reset email (reuses same working emailService pipeline as welcome/verification emails) ──
+async function sendPasswordResetEmail(email, resetUrl) {
+  const html = buildPasswordResetEmailHtml(resetUrl);
+  const subject = 'PRAQEN - Password Reset Request';
+  console.log(`📧 Sending password reset to ${email}`);
+
+  // Use emailService.sendEmail() — Brevo SMTP (primary) → Resend (fallback),
+  // same pipeline that successfully sends welcome/verification emails.
+  // emailService.js logs the actual error from each provider attempt.
+  const result = await emailService.sendEmail({
+    to: email,
+    subject,
+    html,
+    type: 'password_reset',
+    metadata: { reset_requested_at: new Date().toISOString() },
+  });
+
+  if (result.success) {
+    console.log(`✅ Password reset email sent via emailService to ${email} (${result.messageId})`);
+    return true;
+  }
+
+  // result.error contains the actual error from Brevo SMTP or Resend fallback
+  console.error('[sendPasswordResetEmail] emailService returned failure:', {
+    error: result.error,
+    providerChain: 'Brevo SMTP → Resend fallback',
+  });
+  throw new Error(`Email delivery failed: ${result.error || 'Unknown error'}`);
+}
+
+// ── Forgot Password: generate reset token & email link ────────────────────────
+app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const { data: user } = await supabaseAdmin
+      .from('users')
+      .select('id, email')
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+
+    if (!user) {
+      console.log(`[forgot-password] No account for ${normalizedEmail}`);
+      return res.json({ success: true, message: 'If an account exists with that email, a reset link has been sent.' });
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const tokenExpires = new Date(Date.now() + 60 * 60 * 1000);
+
+    const { error: updateError } = await supabaseAdmin
+      .from('users')
+      .update({
+        reset_password_token: resetToken,
+        reset_password_expires: tokenExpires.toISOString(),
+      })
+      .eq('id', user.id);
+
+    if (updateError) {
+      console.error('[forgot-password] DB update error:', updateError.message);
+      return res.status(500).json({ error: 'Failed to process request. Please try again.' });
+    }
+
+    const frontendUrl = (process.env.FRONTEND_URL || 'https://praqen.com').split(',')[0].trim();
+    const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}&email=${encodeURIComponent(normalizedEmail)}`;
+
+    sendPasswordResetEmail(normalizedEmail, resetUrl)
+      .then(() => console.log(`[forgot-password] Reset email sent to ${normalizedEmail}`))
+      .catch(e => console.error('[forgot-password] Email send failed:', e.message));
+
+    return res.json({ success: true, message: 'If an account exists with that email, a reset link has been sent.' });
+
+  } catch (err) {
+    console.error('[forgot-password] error:', err.message);
+    res.status(500).json({ error: 'Failed to process request. Please try again.' });
+  }
+});
+
+// ── Reset Password: validate token & update password ──────────────────────────
+app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
+  try {
+    const { email, newPassword, token } = req.body;
+
+    if (!email || !newPassword || !token) {
+      return res.status(400).json({ error: 'Email, new password, and reset token are required' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const { data: user, error: fetchError } = await supabaseAdmin
+      .from('users')
+      .select('id, email, reset_password_token, reset_password_expires, password_hash')
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+
+    if (fetchError || !user) {
+      console.error('[reset-password] DB fetch error:', fetchError?.message);
+      return res.status(400).json({ error: 'Invalid or expired reset link' });
+    }
+
+    if (!user.reset_password_token) {
+      return res.status(400).json({ error: 'No password reset has been requested for this account' });
+    }
+
+    if (user.reset_password_token !== token) {
+      return res.status(400).json({ error: 'Invalid or expired reset link' });
+    }
+
+    const expiresAt = new Date(user.reset_password_expires).getTime();
+    if (Date.now() > expiresAt) {
+      return res.status(400).json({ error: 'Reset link has expired. Please request a new one.' });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+
+    const { error: updateError } = await supabaseAdmin
+      .from('users')
+      .update({
+        password_hash: passwordHash,
+        reset_password_token: null,
+        reset_password_expires: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', user.id);
+
+    if (updateError) {
+      console.error('[reset-password] DB update error:', updateError.message);
+      return res.status(500).json({ error: 'Failed to reset password. Please try again.' });
+    }
+
+    console.log(`✅ Password reset successful for ${normalizedEmail}`);
+    return res.json({ success: true, message: 'Password has been reset successfully. You can now log in with your new password.' });
+
+  } catch (err) {
+    console.error('[reset-password] error:', err.message);
+    res.status(500).json({ error: 'Failed to reset password. Please try again.' });
   }
 });
 
@@ -2324,8 +2736,11 @@ const MODERATOR_EMAIL_ALLOWLIST = [
   'parqen5@gmail.com',
 ];
 
-// ── Team portal: direct login (no OTP — restricted to the allowlist above) ───
-app.post('/api/team/login', async (req, res) => {
+// ── Team portal: direct login — password THEN a mandatory email OTP ──────────
+// No path through this route ever issues a token on password alone. Reuses the
+// same emailLoginOtpStore + /api/auth/verify-login-otp flow as regular user
+// login, so team accounts get at least the same protection as everyone else.
+app.post('/api/team/login', authLimiter, async (req, res) => {
   try {
     const { email: rawEmail, password } = req.body;
     const email = (rawEmail || '').toLowerCase().trim();
@@ -2346,24 +2761,19 @@ app.post('/api/team/login', async (req, res) => {
 
     if (!data.is_moderator && !data.is_admin) return res.status(403).json({ error: 'Access denied. This account does not have team privileges.' });
 
-    const jwtSecret = process.env.JWT_SECRET || JWT_SECRET;
-    const token = jwt.sign({ userId: data.id, email: data.email }, jwtSecret, { expiresIn: '7d' });
-    const now = new Date().toISOString();
-    try { await supabaseAdmin.from('users').update({ last_login: now, last_seen_at: now }).eq('id', data.id); } catch (_) {}
-
-    return res.json({
-      success: true,
-      token,
-      user: {
-        id: data.id, email: data.email, username: data.username, full_name: data.full_name,
-        is_moderator: data.is_moderator, is_admin: data.is_admin,
-        avatar_url: data.avatar_url || null,
-        average_rating: data.average_rating || 0, total_trades: data.total_trades || 0,
-        referral_code: data.referral_code || null,
-        total_referrals: data.total_referrals || 0,
-        referral_earnings_btc: data.referral_earnings_btc || 0,
-      },
+    // Password confirmed — now require the email code before issuing any token.
+    const loginOtp = String(Math.floor(100000 + Math.random() * 900000));
+    emailLoginOtpStore.set(email, {
+      code: loginOtp,
+      expires: Date.now() + 10 * 60 * 1000,
+      userId: data.id,
     });
+    emailService.sendLoginOtpEmail(
+      { id: data.id, email: data.email, username: data.username },
+      loginOtp
+    ).catch(err => console.error('[team-login-otp] email send failed:', err.message));
+
+    return res.json({ success: true, requiresOtp: true, email: data.email });
   } catch (err) {
     console.error('team/login error:', err);
     res.status(500).json({ error: err.message || 'Login failed. Please try again.' });
@@ -2372,7 +2782,7 @@ app.post('/api/team/login', async (req, res) => {
 
 // ── Team portal: check email status ─────────────────────────────────────────
 // Returns: has_account | needs_setup | not_allowed
-app.post('/api/team/check-email', async (req, res) => {
+app.post('/api/team/check-email', authLimiter, async (req, res) => {
   try {
     const email = (req.body.email || '').toLowerCase().trim();
     if (!email) return res.status(400).json({ error: 'Email required' });
@@ -2391,7 +2801,7 @@ app.post('/api/team/check-email', async (req, res) => {
 });
 
 // ── Team portal: first-time account setup ────────────────────────────────────
-app.post('/api/team/setup-account', async (req, res) => {
+app.post('/api/team/setup-account', authLimiter, async (req, res) => {
   try {
     const { email: rawEmail, full_name, password } = req.body;
     const email = (rawEmail || '').toLowerCase().trim();
@@ -2433,18 +2843,28 @@ app.post('/api/team/setup-account', async (req, res) => {
     }
     const newUser = inserted[0];
 
-    await Promise.all([
-      supabaseAdmin.from('user_balances').insert([{ user_id: newUser.id, balance_btc: 0, balance_usd: 0 }]),
-      supabaseAdmin.from('wallets').insert({ user_id: newUser.id, balance_btc: 0, locked_balance_btc: 0, updated_at: new Date().toISOString() }),
-    ]).catch(() => {});
+    await supabaseAdmin.from('user_balances').insert([{ user_id: newUser.id, balance_btc: 0, balance_usd: 0 }]).then(null, () => {});
 
     const token = jwt.sign({ userId: newUser.id, email }, JWT_SECRET, { expiresIn: '7d' });
-    return res.json({
+    res.json({
       success: true, token,
       user: { id: newUser.id, email, username: newUser.username, full_name: newUser.full_name,
         is_moderator: true, is_admin: false, avatar_url: null,
         average_rating: 0, total_trades: 0, referral_code: referralCode, total_referrals: 0, referral_earnings_btc: 0 },
     });
+
+    // Provision a real HD wallet address, mirrored to every table the deposit
+    // monitors read from (see hdWalletService.ensureWalletExists).
+    Promise.resolve().then(async () => {
+      try {
+        const { address } = await hdWalletService.ensureWalletExists(newUser.id);
+        console.log(`[Team Setup] Wallet ensured for ${newUser.username}: ${address}`);
+        realtimeDepositService.subscribeAddress(newUser.id, address);
+      } catch (e) {
+        console.error('[Team Setup] Wallet provisioning failed:', e.message);
+      }
+    });
+    return;
   } catch (err) {
     console.error('team/setup-account error:', err);
     res.status(500).json({ error: 'Server error' });
@@ -3162,7 +3582,11 @@ app.post('/api/auth/change-password', verifyToken, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Current and new password required' });
-    if (newPassword.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    if (newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    if (!/[A-Z]/.test(newPassword)) return res.status(400).json({ error: 'Password must include at least one uppercase letter' });
+    if (!/\d/.test(newPassword)) return res.status(400).json({ error: 'Password must include at least one number' });
+    if (!/[^a-zA-Z0-9]/.test(newPassword)) return res.status(400).json({ error: 'Password must include at least one special character' });
+    if (currentPassword === newPassword) return res.status(400).json({ error: 'New password must be different from current password' });
     const { data: user, error } = await supabaseAdmin.from('users').select('password_hash').eq('id', req.userId).single();
     if (error || !user) return res.status(404).json({ error: 'User not found' });
     const valid = await bcrypt.compare(currentPassword, user.password_hash);
@@ -3219,12 +3643,20 @@ async function storeOtp(contact, otp) {
   if (error) throw new Error(`OTP store failed: ${error.message}`);
 }
 
+// Countries where Africa's Talking silently fails to deliver despite "success" response.
+// These MUST bypass AT and go straight to Twilio.
+const FORCE_TWILIO_PREFIXES = ['+92']; // Pakistan — add others here if the same issue is found
+
 // ── Multi-channel OTP delivery: AT → Twilio SMS → Twilio WhatsApp ────────────
 async function sendSmsOtp(phone, message) {
   const errs = [];
 
+  // Check if this phone number should bypass AT and use only Twilio
+  const forceTwilio = FORCE_TWILIO_PREFIXES.some(prefix => phone.startsWith(prefix));
+
   // ── Channel 1: Africa's Talking (best delivery for GH/NG/KE/UG/TZ) ─────────
-  if (atSms) {
+  // Skipped for countries where AT silently swallows messages despite "success"
+  if (atSms && !forceTwilio) {
     const senderId = process.env.AFRICASTALKING_SENDER_ID;
     // Try with custom sender ID first; if rejected, retry with AT default shortcode.
     // Custom sender IDs need carrier approval — unapproved IDs are silently dropped.
@@ -3250,14 +3682,15 @@ async function sendSmsOtp(phone, message) {
     }
     if (atDelivered) return;
   } else {
-    errs.push('AT: not configured');
+    errs.push(forceTwilio ? 'AT: skipped (forced Twilio route)' : 'AT: not configured');
   }
 
   // ── Channel 2: Twilio SMS ────────────────────────────────────────────────────
   if (TWILIO_ENABLED && TWILIO_PHONE) {
     try {
       await getTwilioClient().messages.create({ body: message, from: TWILIO_PHONE, to: phone });
-      console.log(`[SMS] ✅ Twilio SMS → ${phone}`);
+      const routeLabel = forceTwilio ? ' (forced route: PK)' : '';
+      console.log(`[SMS] ✅ Twilio SMS → ${phone}${routeLabel}`);
       return;
     } catch (twilioErr) {
       console.warn(`[SMS] Twilio SMS failed (${twilioErr.code}): ${twilioErr.message}`);
@@ -3348,18 +3781,28 @@ app.post('/api/auth/send-otp', otpLimiter, async (req, res) => {
       if (limit.blocked) return res.status(429).json({ error: limit.error });
 
       let smsSent = false;
+      let smsError = null;
       try {
         await sendSmsOtp(contact, `Your PRAQEN code is: ${otp}. Valid 10 min. Do not share.`);
         smsSent = true;
       } catch (smsErr) {
-        console.error('[send-otp sms] failed:', smsErr.message);
+        smsError = smsErr.message;
+        console.error('[send-otp sms] all channels failed:', smsErr.message);
       }
 
       recordPhoneRequest(contact);
       console.log(`[OTP send] sms to=${contact} sent=${smsSent} code=${otp}`);
+
+      if (!smsSent) {
+        return res.status(502).json({
+          error: `SMS delivery failed for this number. ${isDev ? `(${smsError})` : 'Please try email verification instead, or contact support.'}`,
+          devCode: isDev ? otp : undefined,
+        });
+      }
+
       return res.json({
         success: true,
-        message: smsSent ? 'Code sent to your phone!' : 'SMS delivery issue. Check dev console for code.',
+        message: 'Code sent to your phone!',
         devCode: isDev ? otp : undefined,
       });
     }
@@ -3389,13 +3832,21 @@ app.post('/api/auth/send-phone-otp', otpLimiter, async (req, res) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     storeOtp(contact, otp).catch(e => console.warn('[send-phone-otp] DB store warn:', e.message));
 
-    await sendSmsOtp(contact, `Your PRAQEN code is: ${otp}. Valid 10 min. Do not share.`);
+    try {
+      await sendSmsOtp(contact, `Your PRAQEN code is: ${otp}. Valid 10 min. Do not share.`);
+    } catch (smsErr) {
+      console.error('[OTP send-phone error]', smsErr.message);
+      recordPhoneRequest(contact);
+      return res.status(502).json({
+        error: `SMS delivery failed: ${smsErr.message}. Please try the WhatsApp option or contact support.`,
+      });
+    }
 
     recordPhoneRequest(contact);
     console.log(`[OTP send-phone] to=${contact}`);
     res.json({ success: true, message: 'Code sent!' });
   } catch (error) {
-    console.error('[OTP send-phone error]', error.message);
+    console.error('[OTP send-phone outer error]', error.message);
     res.status(500).json({ error: 'Failed to send code. Please try again.' });
   }
 });
@@ -3629,6 +4080,155 @@ app.post('/api/auth/verify-email', (req, res, next) => {
 // ============================================================
 
 // POST /api/users/resend-verification — send email verification code to logged-in user
+// ── Lightweight 2FA toggle endpoint — uses existing OTP send/verify flow ──────
+
+// PATCH /api/users/toggle-2fa — set two_factor_enabled (requires verfied OTP beforehand)
+app.patch('/api/users/toggle-2fa', verifyToken, async (req, res) => {
+  try {
+    const { two_factor_enabled, password } = req.body;
+
+    if (two_factor_enabled === true) {
+      const method = req.body.two_factor_method || 'email';
+      if (!['email', 'sms', 'whatsapp', 'totp'].includes(method)) {
+        return res.status(400).json({ error: 'Invalid 2FA method. Choose email, sms, whatsapp, or totp.' });
+      }
+
+      // For email/sms/whatsapp: verify the user has the required contact info
+      if (method === 'email') {
+        const { data: user } = await supabaseAdmin
+          .from('users').select('is_email_verified, email_verified').eq('id', req.userId).single();
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        const emailOk = !!(user.is_email_verified || user.email_verified);
+        if (!emailOk) return res.status(400).json({ error: 'Verify your email address first in Settings → Verification' });
+      }
+
+      if (method === 'sms' || method === 'whatsapp') {
+        const { data: user } = await supabaseAdmin
+          .from('users').select('phone, is_phone_verified, phone_verified').eq('id', req.userId).single();
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        const phoneOk = !!(user.phone && (user.is_phone_verified || user.phone_verified));
+        if (!phoneOk) return res.status(400).json({ error: 'Verify your phone number first in Settings → Verification' });
+      }
+
+      // For TOTP: must have a confirmed secret (check via /totp/confirm which sets two_factor_method)
+      // The TOTP flow sets both two_factor_enabled and two_factor_method via /totp/confirm, so this
+      // toggle for TOTP should only reset the method if already enabled
+
+      await supabaseAdmin.from('users')
+        .update({ two_factor_enabled: true, two_factor_method: method, updated_at: new Date() })
+        .eq('id', req.userId);
+      console.log(`[2FA] Enabled via ${method} for user ${req.userId.slice(0,8)}`);
+      return res.json({ success: true, message: `2FA enabled via ${method}!` });
+
+    } else if (two_factor_enabled === false) {
+      // Disabling: require current password
+      if (!password) return res.status(400).json({ error: 'Current password is required to disable 2FA' });
+      const { data: user } = await supabaseAdmin
+        .from('users').select('password_hash').eq('id', req.userId).single();
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      const valid = await bcrypt.compare(password, user.password_hash);
+      if (!valid) return res.status(400).json({ error: 'Current password is incorrect' });
+
+      await supabaseAdmin.from('users')
+        .update({ two_factor_enabled: false, two_factor_method: null, updated_at: new Date() })
+        .eq('id', req.userId);
+      console.log(`[2FA] Disabled for user ${req.userId.slice(0,8)}`);
+      return res.json({ success: true, message: '2FA disabled successfully!' });
+
+    } else {
+      return res.status(400).json({ error: 'two_factor_enabled must be true or false' });
+    }
+  } catch (error) {
+    console.error('[2FA-toggle]', error.message);
+    res.status(500).json({ error: 'Failed to update 2FA setting. Please try again.' });
+  }
+});
+
+// ── TOTP Authenticator App setup ──────────────────────────────────────────────
+// POST /api/users/2fa/totp/setup — generate secret + QR code URL (does NOT enable 2FA yet)
+app.post('/api/users/2fa/totp/setup', verifyToken, async (req, res) => {
+  try {
+    // Check current 2FA state
+    const { data: user, error: dbErr } = await supabaseAdmin
+      .from('users').select('two_factor_enabled, totp_secret, email').eq('id', req.userId).single();
+
+    // Handle missing database columns gracefully
+    if (dbErr && dbErr.message && dbErr.message.includes('does not exist')) {
+      console.error('[TOTP-setup] DB column missing — run migrations:', dbErr.message);
+      return res.status(500).json({ error: 'TOTP database setup incomplete. Please run the database migration (add_2fa_columns.sql + add_totp_secret_column.sql) in Supabase SQL Editor.' });
+    }
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.two_factor_enabled) {
+      return res.status(400).json({ error: '2FA is already enabled. Disable it first to reconfigure.' });
+    }
+
+    // Include user email in the label so authenticator apps show a distinguishable entry
+    const label = user.email ? `PRAQEN (${user.email})` : 'PRAQEN';
+    const secret = speakeasy.generateSecret({ name: label, issuer: 'PRAQEN' });
+
+    // Store secret temporarily (not yet confirmed, but we overwrite any old one)
+    await supabaseAdmin.from('users')
+      .update({ totp_secret: secret.base32, updated_at: new Date() })
+      .eq('id', req.userId);
+
+    console.log(`[TOTP] Setup initiated for user ${req.userId.slice(0,8)}`);
+    res.json({
+      success: true,
+      secret: secret.base32,
+      otpauth_url: secret.otpauth_url,
+    });
+  } catch (error) {
+    console.error('[TOTP-setup]', error.message);
+    // Check for column-not-found error specifically
+    if (error.message && error.message.includes('column') && error.message.includes('does not exist')) {
+      return res.status(500).json({ error: 'TOTP database setup incomplete. Run the database migration in Supabase SQL Editor.' });
+    }
+    res.status(500).json({ error: 'Failed to generate TOTP secret. Please try again.' });
+  }
+});
+
+// POST /api/users/2fa/totp/confirm — verify the code from authenticator app and enable 2FA
+app.post('/api/users/2fa/totp/confirm', verifyToken, async (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ error: 'Verification code is required' });
+
+    const { data: user, error: dbErr } = await supabaseAdmin
+      .from('users').select('totp_secret').eq('id', req.userId).single();
+
+    // Handle missing database columns gracefully
+    if (dbErr && dbErr.message && dbErr.message.includes('does not exist')) {
+      console.error('[TOTP-confirm] DB column missing:', dbErr.message);
+      return res.status(500).json({ error: 'TOTP database setup incomplete. Please run the database migration in Supabase SQL Editor.' });
+    }
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!user.totp_secret) {
+      return res.status(400).json({ error: 'No TOTP secret found. Call /setup first.' });
+    }
+
+    const verified = speakeasy.totp.verify({
+      secret: user.totp_secret,
+      encoding: 'base32',
+      token: String(code).trim(),
+      window: 1, // ±1 step (30s) tolerance = 90s window
+    });
+
+    if (!verified) {
+      return res.status(400).json({ error: 'Invalid code. Make sure your authenticator app shows the correct code.' });
+    }
+
+    await supabaseAdmin.from('users')
+      .update({ two_factor_enabled: true, two_factor_method: 'totp', updated_at: new Date() })
+      .eq('id', req.userId);
+
+    console.log(`[TOTP] Confirmed and enabled for user ${req.userId.slice(0,8)}`);
+    res.json({ success: true, message: 'Authenticator app 2FA enabled successfully!' });
+  } catch (error) {
+    console.error('[TOTP-confirm]', error.message);
+    res.status(500).json({ error: 'Failed to verify TOTP code. Please try again.' });
+  }
+});
+
 app.post('/api/users/resend-verification', verifyToken, async (req, res) => {
   try {
     const { data: user } = await supabaseAdmin
@@ -3675,7 +4275,7 @@ app.post('/api/users/resend-verification', verifyToken, async (req, res) => {
 });
 
 // POST /api/users/verify-email-code — verify code entered from profile
-app.post('/api/users/verify-email-code', verifyToken, async (req, res) => {
+app.post('/api/users/verify-email-code', verifyToken, otpLimiter, async (req, res) => {
   try {
     const { code } = req.body;
     if (!code || String(code).length !== 6) return res.status(400).json({ error: 'Enter the full 6-digit code' });
@@ -3735,7 +4335,7 @@ app.post('/api/users/send-phone-otp', otpLimiter, verifyToken, async (req, res) 
     const e164    = cleaned.startsWith('+') ? cleaned : `+${cleaned.replace(/^0+/, '')}`;
 
     if (!/^\+[1-9]\d{6,14}$/.test(e164)) {
-      return res.status(400).json({ error: 'Invalid phone number. Use international format, e.g. +233XXXXXXXXX for Ghana or +234XXXXXXXXXX for Nigeria.' });
+      return res.status(400).json({ error: 'Invalid phone number. Use international format, e.g. +233XXXXXXXXX for Ghana, +92XXXXXXXXXX for Pakistan, or +234XXXXXXXXXX for Nigeria.' });
     }
 
     const limit = checkPhoneRateLimit(e164);
@@ -3879,7 +4479,7 @@ app.post('/api/users/submit-phone', verifyToken, async (req, res) => {
     // Clean the number — strip spaces, dashes, parentheses
     let e164 = phone.trim().replace(/[\s\-()]/g, '');
     if (!e164.startsWith('+')) {
-      return res.status(400).json({ error: 'Please include your country code. Use international format, e.g. +233XXXXXXXXX for Ghana or +234XXXXXXXXXX for Nigeria.' });
+      return res.status(400).json({ error: 'Please include your country code. Use international format, e.g. +233XXXXXXXXX for Ghana, +92XXXXXXXXXX for Pakistan, or +234XXXXXXXXXX for Nigeria.' });
     }
 
     // Check if THIS user already has a phone saved — once submitted, it cannot be changed
@@ -5276,9 +5876,7 @@ app.put('/api/listings/:id', verifyToken, async (req, res) => {
       if (isSellListing) {
         const { data: sellerWallet } = await supabaseAdmin
           .from('wallets').select('balance_btc, balance_usdt').eq('user_id', req.userId).maybeSingle();
-        const sellerBalUsd = listing.asset === 'USDT'
-          ? parseFloat(sellerWallet?.balance_usdt || 0) // 1 USDT ≈ $1
-          : parseFloat(sellerWallet?.balance_btc || 0) * 88000;
+        const sellerBalUsd = parseFloat(sellerWallet?.balance_btc || 0) * 88000;
         if (parseFloat(max_limit_usd) > sellerBalUsd && sellerBalUsd > 0) {
           return res.status(400).json({
             error: `Maximum trade limit ($${parseFloat(max_limit_usd).toFixed(0)}) exceeds your wallet balance ($${sellerBalUsd.toFixed(0)}). Please top up or lower the maximum.`,
@@ -5865,7 +6463,7 @@ app.post('/api/quotes', async (req, res) => {
   }
 });
 
-app.post('/api/trades', verifyToken, async (req, res) => {
+app.post('/api/trades', verifyToken, requireEmailVerified, async (req, res) => {
   try {
     const { offerId: rawOfferId, listingId: rawListingId, amountBtc, amount, paymentMethod, trade_type, amountLocal, currency, currencySymbol, quoteId } = req.body;
     const listingId = rawOfferId || rawListingId;
@@ -6320,13 +6918,14 @@ app.post('/api/trades/:id/cancel', tradeLimiter, verifyToken, async (req, res) =
         return res.status(403).json({ error: 'This dispute cannot be self-cancelled — a moderator will resolve it.' });
       }
     } else {
-      // Not yet disputed: any participant can cancel, EXCEPT after buyer marks
-      // paid — only the seller can cancel at that point (protects the seller if
-      // a payment claim turns out to be fake; the buyer must open a dispute
-      // instead of unilaterally backing out after claiming to pay).
-      const isPostPay = trade.buyer_confirmed === true;
-      if (isPostPay && !isSeller) {
-        return res.status(403).json({ error: 'Cannot cancel after payment has been sent — open a dispute instead' });
+      // Not yet disputed: only the BUYER can unilaterally cancel. Sellers hold
+      // the escrowed BTC — letting a seller cancel on demand (even before payment)
+      // gives them an easy way to pocket a payment the buyer sends moments later
+      // and still reclaim the BTC, or simply back a buyer into a corner. A seller
+      // who wants out of a trade must open a dispute instead, so a moderator can
+      // review it rather than the seller unilaterally deciding.
+      if (!isBuyer) {
+        return res.status(403).json({ error: 'Only the buyer can cancel this trade — open a dispute instead' });
       }
     }
 
@@ -7026,7 +7625,8 @@ app.post('/api/admin/moderator-login', verifyToken, async (req, res) => {
     if (user?.is_moderator || user?.is_admin || user?.email === ADMIN_EMAIL) {
       return res.json({ success: true, moderator: { username: user?.email === ADMIN_EMAIL ? 'PRAQEN Admin' : user.username, role: user?.email === ADMIN_EMAIL ? 'admin' : 'moderator' } });
     }
-    const envCode = process.env.MODERATOR_ACCESS_CODE || 'PRAQEN_MOD_2024';
+    const envCode = process.env.MODERATOR_ACCESS_CODE;
+    if (!envCode) return res.status(403).json({ error: 'Moderator access code is not configured.' });
     if (code !== envCode) return res.status(403).json({ error: 'Invalid moderator code' });
     res.json({ success: true, token: `mod_${req.userId}`, moderator: { username: user?.username || 'Moderator', role: 'moderator' } });
   } catch (error) {
@@ -7316,7 +7916,7 @@ app.get('/api/referral/leaderboard', async (req, res) => {
   }
 });
 
-app.post('/api/referral/withdraw', verifyToken, async (req, res) => {
+app.post('/api/referral/withdraw', verifyToken, authLimiter, async (req, res) => {
   try {
     const { data: earnings, error } = await supabaseAdmin
       .from('affiliate_earnings')
@@ -7822,6 +8422,22 @@ async function requireAdmin(req, res) {
   return u;
 }
 
+// Helper: record a privilege/verification change in admin_audit_log.
+// Never let a logging failure break the underlying admin action.
+async function logAdminAction(req, action, targetId, details) {
+  try {
+    await supabaseAdmin.from('admin_audit_log').insert({
+      admin_id:   req.userId,
+      target_id:  targetId,
+      action,
+      details:    details || null,
+      ip_address: req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || null,
+    });
+  } catch (e) {
+    console.error('[admin_audit_log] failed to record action:', action, e.message);
+  }
+}
+
 // GET /api/admin/stats — full platform overview
 app.get('/api/admin/stats', verifyToken, async (req, res) => {
   try {
@@ -7912,9 +8528,17 @@ app.put('/api/admin/users/:id', verifyToken, async (req, res) => {
     const updates = {};
     for (const k of allowed) { if (req.body[k] !== undefined) updates[k] = req.body[k]; }
     if (!Object.keys(updates).length) return res.status(400).json({ error: 'No valid fields' });
+    // Only a FULL admin (not a moderator) may grant/revoke admin or moderator role —
+    // requireAdmin() treats is_moderator as sufficient for admin-panel access in general,
+    // but role changes themselves must not be self-serviceable by moderators.
+    if ('is_admin' in updates || 'is_moderator' in updates) {
+      const isFullAdmin = admin.is_admin || admin.email === ADMIN_EMAIL;
+      if (!isFullAdmin) return res.status(403).json({ error: 'Only a full admin can change admin/moderator role.' });
+    }
     updates.updated_at = new Date();
     const { data, error } = await supabaseAdmin.from('users').update(updates).eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
+    logAdminAction(req, 'USER_UPDATE', req.params.id, updates).catch(() => {});
     res.json({ success: true, user: data });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -8026,6 +8650,7 @@ app.put('/api/admin/kyc/:userId/approve', verifyToken, async (req, res) => {
       .single();
     if (error) return res.status(400).json({ error: error.message });
     if (!updated) return res.status(404).json({ error: 'User not found' });
+    logAdminAction(req, 'KYC_APPROVE', req.params.userId, null).catch(() => {});
     try {
       await createNotification(req.params.userId, 'kyc', '✅ KYC Approved', 'Your identity has been verified. You now have full access to all PRAQEN features.', '/settings');
       sendSystemAlert(req.params.userId, '🪪 KYC Approved!', 'Your identity has been verified. Full access to all PRAQEN features is now unlocked!', 'https://praqen.com/settings').catch(() => {});
@@ -8432,6 +9057,7 @@ app.put('/api/admin/users/:id/verify-email', verifyToken, async (req, res) => {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { data, error } = await supabaseAdmin.from('users').update({ is_email_verified: true, updated_at: new Date() }).eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
+    logAdminAction(req, 'VERIFY_EMAIL', req.params.id, null).catch(() => {});
     await createNotification(req.params.id, 'system', '📧 Email Verified', 'Your email address has been manually verified by an admin.', '/settings');
     res.json({ success: true, user: data });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -8443,6 +9069,7 @@ app.put('/api/admin/users/:id/verify-phone', verifyToken, async (req, res) => {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { data, error } = await supabaseAdmin.from('users').update({ is_phone_verified: true, phone_verified: true, updated_at: new Date() }).eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
+    logAdminAction(req, 'VERIFY_PHONE', req.params.id, null).catch(() => {});
     // Update request row if it exists
     await supabaseAdmin.from('phone_verification_requests')
       .update({ status: 'approved', reviewed_at: new Date().toISOString(), reviewed_by: req.userId })
@@ -8692,6 +9319,7 @@ app.put('/api/admin/users/:id/ban', verifyToken, async (req, res) => {
     if (req.params.id === req.userId) return res.status(400).json({ error: 'Cannot ban your own account' });
     const { data, error } = await supabaseAdmin.from('users').update({ account_status: 'banned', updated_at: new Date() }).eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
+    logAdminAction(req, 'BAN', req.params.id, { reason }).catch(() => {});
     if (reason) await createNotification(req.params.id, 'security', '🚫 Account Banned', `Your account has been banned. Reason: ${reason}`, '/');
     res.json({ success: true, user: data });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -8703,6 +9331,7 @@ app.put('/api/admin/users/:id/unban', verifyToken, async (req, res) => {
     const admin = await requireAdmin(req, res); if (!admin) return;
     const { data, error } = await supabaseAdmin.from('users').update({ account_status: 'active', updated_at: new Date() }).eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
+    logAdminAction(req, 'UNBAN', req.params.id, null).catch(() => {});
     await createNotification(req.params.id, 'system', '✅ Account Reinstated', 'Your account ban has been lifted. Welcome back to PRAQEN!', '/dashboard');
     res.json({ success: true, user: data });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -8712,10 +9341,13 @@ app.put('/api/admin/users/:id/unban', verifyToken, async (req, res) => {
 app.put('/api/admin/users/:id/make-admin', verifyToken, async (req, res) => {
   try {
     const admin = await requireAdmin(req, res); if (!admin) return;
+    const isFullAdmin = admin.is_admin || admin.email === ADMIN_EMAIL;
+    if (!isFullAdmin) return res.status(403).json({ error: 'Only a full admin can change admin role.' });
     const { data: cur } = await supabaseAdmin.from('users').select('is_admin').eq('id', req.params.id).single();
     const newVal = !cur?.is_admin;
     const { data, error } = await supabaseAdmin.from('users').update({ is_admin: newVal, updated_at: new Date() }).eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
+    logAdminAction(req, 'MAKE_ADMIN', req.params.id, { is_admin: newVal }).catch(() => {});
     res.json({ success: true, user: data, is_admin: newVal });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -9265,7 +9897,7 @@ app.post('/api/wallet/check-payment', verifyToken, async (req, res) => {
   }
 });
 
-app.post('/api/wallet/withdraw', verifyToken, async (req, res) => {
+app.post('/api/wallet/withdraw', verifyToken, authLimiter, requireEmailVerified, async (req, res) => {
   try {
     const { address, amountBtc } = req.body;
     if (!address || !amountBtc || amountBtc <= 0) return res.status(400).json({ error: 'Invalid withdrawal request' });
@@ -9280,12 +9912,16 @@ app.post('/api/wallet/withdraw', verifyToken, async (req, res) => {
         requireVerification: 'both'
       });
     }
-    const { data: bal } = await supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', req.userId).single();
+    // wallets = source of truth (matches escrow/trading/display everywhere else)
+    const { data: bal } = await supabaseAdmin.from('wallets').select('balance_btc').eq('user_id', req.userId).single();
     const current = parseFloat(bal?.balance_btc || 0);
     const amount  = parseFloat(amountBtc);
     if (current < amount) return res.status(400).json({ error: `Insufficient balance. You have ${current.toFixed(8)} BTC` });
-    const newBal = current - amount;
-    await supabaseAdmin.from('user_balances').update({ balance_btc: newBal, updated_at: new Date() }).eq('user_id', req.userId);
+    const newBal = parseFloat((current - amount).toFixed(8));
+    // wallets first (source of truth), then keep secondary tables in sync
+    await supabaseAdmin.from('wallets').update({ balance_btc: newBal, updated_at: new Date().toISOString() }).eq('user_id', req.userId);
+    await supabaseAdmin.from('user_balances').update({ balance_btc: newBal, updated_at: new Date().toISOString() }).eq('user_id', req.userId);
+    await supabaseAdmin.from('user_wallets').update({ balance_btc: newBal, updated_at: new Date().toISOString() }).eq('user_id', req.userId);
     await supabaseAdmin.from('wallet_transactions').insert({ user_id: req.userId, type: 'WITHDRAWAL', amount_btc: amount, status: 'PENDING', destination_address: address, created_at: new Date() }).maybeSingle();
     res.json({ success: true, message: `Withdrawal of ${amount} BTC to ${address} is pending processing.`, new_balance: newBal, note: 'Withdrawals are processed manually within 24 hours. Contact hello@praqen.com for urgent requests.' });
   } catch (error) {
@@ -9515,96 +10151,62 @@ app.post('/api/wallet/internal-transfer', verifyToken, async (req, res) => {
   }
 });
 
-app.post('/api/wallet/send', verifyToken, async (req, res) => {
-  try {
-    const { address, amountBtc } = req.body;
-
-    if (!address || !amountBtc || parseFloat(amountBtc) <= 0) {
-      return res.status(400).json({ error: 'Address and a positive amount are required' });
-    }
-
-    // SECURITY: Mainnet-only validation. tb1/m/n/2 are testnet — blocked permanently.
-    // Sending real BTC to a testnet address causes permanent, unrecoverable fund loss.
-    const btcAddressRe = /^(bc1[a-z0-9]{25,87}|[13][a-zA-HJ-NP-Z1-9]{25,34})$/;
-    if (!btcAddressRe.test(address)) {
-      return res.status(400).json({ error: 'Invalid Bitcoin address. Only mainnet addresses accepted (bc1..., 1..., 3...).' });
-    }
-
-    const amount = parseFloat(amountBtc);
-
-    // Check user balance
-    const { data: bal, error: balErr } = await supabaseAdmin
-      .from('user_balances')
-      .select('balance_btc')
-      .eq('user_id', req.userId)
-      .single();
-    if (balErr) throw balErr;
-
-    const available = parseFloat(bal?.balance_btc || 0);
-    if (available < amount) {
-      return res.status(400).json({
-        error: `Insufficient balance. Available: ${available.toFixed(8)} BTC, Requested: ${amount.toFixed(8)} BTC`
-      });
-    }
-
-    // Broadcast on-chain via HD wallet
-    const result = await hdWalletService.sendBitcoin(`user_${req.userId}`, address, amount);
-
-    // Deduct from user_balances
-    const newBalance = parseFloat((available - amount).toFixed(8));
-    await supabaseAdmin
-      .from('user_balances')
-      .update({ balance_btc: newBalance, updated_at: new Date().toISOString() })
-      .eq('user_id', req.userId);
-
-    // Record transaction
-    await supabaseAdmin
-      .from('wallet_transactions')
-      .insert({
-        user_id:             req.userId,
-        type:                'WITHDRAWAL',
-        amount_btc:          amount,
-        status:              'CONFIRMED',
-        tx_hash:             result.txid,
-        destination_address: address,
-        created_at:          new Date().toISOString(),
-      });
-
-    console.log(`[wallet/send] User ${req.userId.slice(0,8)} sent ${amount} BTC → ${address} | txid: ${result.txid}`);
-
-    res.json({
-      success:     true,
-      txid:        result.txid,
-      amount_btc:  amount,
-      to:          address,
-      fee_sats:    result.fee_sats,
-      new_balance: newBalance,
-      explorer:    result.explorer_url,
-      message:     `${amount} BTC sent successfully`,
-    });
-  } catch (error) {
-    console.error('[POST /api/wallet/send]', error.message);
-    res.status(500).json({ error: error.message });
-  }
+// DISABLED: this legacy route broadcast real BTC with only email verification —
+// no 2FA action-code, no phone/ID (KYC) checks — unlike the current live withdrawal
+// route (/api/hd-wallet/send in routes/hdWalletRoutes.js) which requires both.
+// It is not called by the frontend (confirmed via grep). Left in place, disabled,
+// rather than deleted, so any stale client hitting it gets a clear error instead of
+// a 404 that looks like a routing bug.
+app.post('/api/wallet/send', verifyToken, requireEmailVerified, async (req, res) => {
+  res.status(410).json({ error: 'This endpoint has been retired. Use /api/hd-wallet/send.' });
 });
 
+// SECURITY: this endpoint credits real BTC to a user_id taken from the request body.
+// It MUST verify the caller is actually Coinbase Commerce before trusting anything in
+// it — otherwise anyone can POST a forged "charge:confirmed" event and mint free BTC
+// for any account. Fails closed: if the webhook secret isn't configured, or the
+// signature doesn't match, the event is rejected and nothing is credited.
 app.post('/api/wallet/webhook', async (req, res) => {
   try {
-    const event = req.body;
-    console.log(`[Webhook] Event: ${event.event?.type}`);
+    const secret = process.env.COINBASE_COMMERCE_WEBHOOK_SECRET;
+    if (!secret) {
+      console.error('[Webhook] COINBASE_COMMERCE_WEBHOOK_SECRET not configured — rejecting all events');
+      return res.status(503).json({ error: 'Webhook not configured' });
+    }
+
+    const signature = req.headers['x-cc-webhook-signature'];
+    const rawBody    = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
+    const expected   = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+
+    if (!signature || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+      console.warn('[Webhook] Invalid or missing signature — rejected');
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+
+    const event = JSON.parse(rawBody.toString('utf8'));
+    console.log(`[Webhook] Verified event: ${event.event?.type}`);
     if (event.event?.type === 'charge:confirmed') {
       const charge = event.event.data;
       const userId = charge.metadata?.user_id;
       const btcAmt = parseFloat(charge.payments?.[0]?.value?.crypto?.amount || 0);
       if (userId && btcAmt > 0) {
-        const { data: bal } = await supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', userId).single();
-        const newBal = parseFloat(bal?.balance_btc || 0) + btcAmt;
-        await supabaseAdmin.from('user_balances').upsert({ user_id: userId, balance_btc: newBal, updated_at: new Date() });
+        // wallets = source of truth (matches escrow/trading/display everywhere else)
+        const { data: walletRow } = await supabaseAdmin.from('wallets').select('balance_btc').eq('user_id', userId).maybeSingle();
+        const newBal = parseFloat((parseFloat(walletRow?.balance_btc || 0) + btcAmt).toFixed(8));
+        if (walletRow) {
+          await supabaseAdmin.from('wallets').update({ balance_btc: newBal, updated_at: new Date().toISOString() }).eq('user_id', userId);
+        } else {
+          await supabaseAdmin.from('wallets').insert({ user_id: userId, balance_btc: newBal, locked_balance_btc: 0, updated_at: new Date().toISOString() });
+        }
+        // keep secondary tables in sync
+        await supabaseAdmin.from('user_balances').upsert({ user_id: userId, balance_btc: newBal, updated_at: new Date().toISOString() });
+        await supabaseAdmin.from('user_wallets').update({ balance_btc: newBal, updated_at: new Date().toISOString() }).eq('user_id', userId);
         await createNotification(userId, 'wallet', '💰 Bitcoin Received', `${btcAmt} BTC has been credited to your PRAQEN wallet.`, '/wallet');
       }
     }
     res.json({ received: true });
   } catch (error) {
+    console.error('[Webhook] error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -9791,12 +10393,16 @@ app.get('/api/wallet/usdt', verifyToken, async (req, res) => {
     // Generate (or re-derive) this user's Tron deposit address
     const { address: tronAddress } = tronWalletService.generateUserAddress(req.userId);
 
-    // Persist tron_address to user_wallets so the deposit monitor can scan it
-    const { error: upsertErr } = await supabaseAdmin.from('user_wallets').upsert(
-      { user_id: req.userId, tron_address: tronAddress, updated_at: new Date().toISOString() },
-      { onConflict: 'user_id' }
-    );
-    if (upsertErr) console.warn('[GET /wallet/usdt] user_wallets upsert failed:', upsertErr.message);
+    // user_wallets.btc_address is NOT NULL — ensureWalletExists() guarantees a row
+    // with a real btc_address exists first, so the update below can never hit that
+    // constraint (this was previously a plain upsert that silently failed whenever
+    // a user hit this USDT route before ever loading their BTC wallet, which meant
+    // their tron_address never got saved and usdtDepositMonitor never watched it).
+    await hdWalletService.ensureWalletExists(req.userId);
+    const { error: upsertErr } = await supabaseAdmin.from('user_wallets')
+      .update({ tron_address: tronAddress, updated_at: new Date().toISOString() })
+      .eq('user_id', req.userId);
+    if (upsertErr) console.warn('[GET /wallet/usdt] user_wallets update failed:', upsertErr.message);
 
     // Read USDT balance from wallets table (single source of truth)
     const { data: walRow } = await supabaseAdmin
@@ -10091,12 +10697,13 @@ app.get('/api/wallet/usdt/check', verifyToken, async (req, res) => {
     // Derive the user's Tron address deterministically (same result every time)
     const { address: derivedAddress } = tronWalletService.generateUserAddress(req.userId);
 
-    // Persist to user_wallets (best-effort — scan still works even if this fails)
-    const { error: upsertErr } = await supabaseAdmin.from('user_wallets').upsert(
-      { user_id: req.userId, tron_address: derivedAddress, updated_at: new Date().toISOString() },
-      { onConflict: 'user_id' }
-    );
-    if (upsertErr) console.warn('[/wallet/usdt/check] upsert error (non-fatal):', upsertErr.message);
+    // user_wallets.btc_address is NOT NULL — ensure the row exists (with a real
+    // btc_address) before updating tron_address, same reasoning as GET /wallet/usdt.
+    await hdWalletService.ensureWalletExists(req.userId);
+    const { error: upsertErr } = await supabaseAdmin.from('user_wallets')
+      .update({ tron_address: derivedAddress, updated_at: new Date().toISOString() })
+      .eq('user_id', req.userId);
+    if (upsertErr) console.warn('[/wallet/usdt/check] update error (non-fatal):', upsertErr.message);
 
     // Read last_onchain_usdt if available (for idempotent deposit detection)
     let lastOnchainUsdt = 0;

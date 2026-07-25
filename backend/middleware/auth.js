@@ -16,8 +16,9 @@ const verifyToken = (req, res, next) => {
     }
 
     try {
-        // Use same JWT_SECRET as server.js for consistency
-        const JWT_SECRET = process.env.JWT_SECRET || 'praqen-secret-change-in-production';
+        // Use same JWT_SECRET as server.js for consistency — never fall back to a public default
+        const JWT_SECRET = process.env.JWT_SECRET;
+        if (!JWT_SECRET) throw new Error('JWT_SECRET not set');
         const decoded = jwt.verify(token, JWT_SECRET);
         req.userId = decoded.userId;
         next();

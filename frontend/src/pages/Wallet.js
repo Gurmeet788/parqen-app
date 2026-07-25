@@ -8,6 +8,8 @@ import {
   ArrowDownLeft, ArrowUpRight, Shield, AlertTriangle,
   Clock, Eye, EyeOff, Zap, Download, Send, ArrowLeftRight,
   ChevronRight, ChevronDown, X, Wallet, Users, Search,
+  Link2, DollarSign, Ban, Lock, Mail, Check, Gift,
+  Flame, Smartphone, Landmark,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { QRCodeSVG } from 'qrcode.react';
@@ -43,7 +45,7 @@ const fmtDate = d => {
 };
 
 // ─── Withdraw Modal ────────────────────────────────────────────────────────────
-function WithdrawModal({ balance, btcPrice, onClose, onSend, kycStatus }) {
+function WithdrawModal({ balance, btcPrice, onClose, onSend, kycStatus, onSwitchToInternal }) {
   const [address,   setAddress]   = useState('');
   const [amount,    setAmount]    = useState('');
   const [usdAmount, setUsdAmount] = useState('');
@@ -140,7 +142,7 @@ function WithdrawModal({ balance, btcPrice, onClose, onSend, kycStatus }) {
   const fmtUsdVal = n => `$${parseFloat(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4"
+    <div className="fixed inset-0 z-[1100] flex items-end md:items-center justify-center p-0 md:p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}>
       <div className="bg-white w-full md:max-w-md rounded-t-3xl md:rounded-3xl overflow-hidden shadow-2xl"
         style={{ marginBottom: 'calc(60px + env(safe-area-inset-bottom, 0px))' }}>
@@ -167,6 +169,19 @@ function WithdrawModal({ balance, btcPrice, onClose, onSend, kycStatus }) {
         </div>
 
         <div className="p-5 overflow-y-auto" style={{ maxHeight: '75vh' }}>
+
+          {/* ── Destination toggle: external wallet (this modal) vs PRAQEN user ── */}
+          <div className="flex rounded-2xl overflow-hidden mb-4" style={{ border: `1.5px solid ${C.g200}` }}>
+            <div className="flex-1 py-3 text-center font-black text-xs"
+              style={{ background: 'linear-gradient(135deg, #1a1a2e, #16213e)', color: '#fff' }}>
+              External Wallet
+            </div>
+            <button onClick={onSwitchToInternal}
+              className="flex-1 py-3 text-center font-black text-xs transition hover:bg-gray-50"
+              style={{ color: C.g500 }}>
+              PRAQEN User
+            </button>
+          </div>
 
           {/* ── KYC gate ── */}
           {kycStatus && !(kycStatus.email && kycStatus.phone && kycStatus.kyc) ? (
@@ -208,9 +223,6 @@ function WithdrawModal({ balance, btcPrice, onClose, onSend, kycStatus }) {
                 style={{ background: 'linear-gradient(135deg, #10b981, #059669)', boxShadow: '0 4px 14px rgba(16,185,129,0.35)' }}>
                 <Shield size={15} /> Complete Verification Now
               </a>
-              <p className="text-xs text-center" style={{ color: C.g400 }}>
-                Internal transfers to PRAQEN users don't require KYC.
-              </p>
             </div>
           ) : (
           <div className="space-y-4">
@@ -335,7 +347,7 @@ function WithdrawModal({ balance, btcPrice, onClose, onSend, kycStatus }) {
               <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid #e2e8f0' }}>
                 {[
                   { label: 'You send',                             btc: btcAmt, usd: btcAmt * price, icon: '→' },
-                  { label: `Blockchain fee (${feeLabel || '—'})`,  btc: fee,    usd: feeUsd,         icon: '⛓' },
+                  { label: `Blockchain fee (${feeLabel || '—'})`,  btc: fee,    usd: feeUsd,         icon: <Link2 size={11} /> },
                   { label: 'Total deducted',                       btc: total,  usd: totalUsd,        bold: true },
                 ].map(({ label, btc, usd, bold, icon }, i, arr) => (
                   <div key={label}
@@ -469,7 +481,7 @@ function ReceiveModal({ address, network, onClose, onGenerate, checking, onCheck
   const explorerUrl = `https://mempool.space/address/${address}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4"
+    <div className="fixed inset-0 z-[1100] flex items-end md:items-center justify-center p-0 md:p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}>
       <div className="bg-white w-full md:max-w-sm rounded-t-2xl md:rounded-2xl overflow-hidden shadow-2xl">
         <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: C.g100 }}>
@@ -488,11 +500,11 @@ function ReceiveModal({ address, network, onClose, onGenerate, checking, onCheck
           {address ? (
             <>
               <p className="text-xs text-gray-500">Send BTC to your unique address. Credited after 1 confirmation (~10 min).</p>
-            <div className="flex justify-center py-2">
-  <div className="p-3 rounded-xl border" style={{ borderColor: C.g200, backgroundColor: '#fff' }}>
-    <QRCodeSVG value={address} size={160} level="M" />
-  </div>
-</div>
+
+              <div className="flex justify-center p-4 rounded-xl border" style={{ borderColor: C.g200, backgroundColor: '#fff' }}>
+                <QRCodeSVG value={address} size={168} level="M" includeMargin={false} />
+              </div>
+
               <div>
                 <label className="block text-xs font-bold mb-1.5 text-gray-600">Your Bitcoin Address</label>
                 <div className="p-3 rounded-xl border font-mono text-xs break-all"
@@ -613,7 +625,7 @@ function TxReceiptModal({ tx, onClose, onRepeat, btcPrice }) {
   ].filter(Boolean);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4"
+    <div className="fixed inset-0 z-[1100] flex items-end md:items-center justify-center p-0 md:p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}>
       <div className="bg-white w-full md:max-w-sm rounded-t-3xl md:rounded-3xl overflow-hidden shadow-2xl">
 
@@ -654,12 +666,12 @@ function TxReceiptModal({ tx, onClose, onRepeat, btcPrice }) {
                 <span style={{ color: '#6EE7B7' }}>@{counterpart}</span>
               </p>
             )}
-            <span className="text-xs font-black px-3 py-1 rounded-full mt-2 inline-block"
+            <span className="text-xs font-black px-3 py-1 rounded-full mt-2 inline-flex items-center gap-1"
               style={{
                 backgroundColor: isPending ? 'rgba(245,158,11,0.3)' : 'rgba(16,185,129,0.3)',
                 color: isPending ? '#FDE68A' : '#6EE7B7',
               }}>
-              {isPending ? '⏳ PENDING' : '✅ CONFIRMED'}
+              {isPending ? <><Clock size={11} /> PENDING</> : <><CheckCircle size={11} /> CONFIRMED</>}
             </span>
           </div>
           {/* Wave cut */}
@@ -688,13 +700,13 @@ function TxReceiptModal({ tx, onClose, onRepeat, btcPrice }) {
                       {/* Bullet points */}
                       <div className="px-3 py-3 space-y-2.5" style={{ backgroundColor: '#FFFDF5' }}>
                         {[
-                          { icon: '✅', text: 'User confirmed twice before sending' },
-                          { icon: '⚠️', text: 'Warned this is a risky wallet and chose to proceed' },
-                          feeAmt ? { icon: '💰', text: `Fee of ₿${feeAmt} held by PRAQEN` } : null,
-                          { icon: '🚫', text: 'PRAQEN is not responsible for any loss from this transaction' },
+                          { icon: <CheckCircle size={13} style={{ color: C.success }} />, text: 'User confirmed twice before sending' },
+                          { icon: <AlertTriangle size={13} style={{ color: C.warn }} />, text: 'Warned this is a risky wallet and chose to proceed' },
+                          feeAmt ? { icon: <DollarSign size={13} style={{ color: C.g500 }} />, text: `Fee of ₿${feeAmt} held by PRAQEN` } : null,
+                          { icon: <Ban size={13} style={{ color: '#ef4444' }} />, text: 'PRAQEN is not responsible for any loss from this transaction' },
                         ].filter(Boolean).map(({ icon, text }) => (
                           <div key={text} className="flex items-start gap-2">
-                            <span className="text-sm flex-shrink-0 mt-0.5">{icon}</span>
+                            <span className="flex-shrink-0 mt-0.5">{icon}</span>
                             <p className="text-xs font-semibold leading-relaxed" style={{ color: C.g700 }}>{text}</p>
                           </div>
                         ))}
@@ -735,11 +747,11 @@ function TxReceiptModal({ tx, onClose, onRepeat, btcPrice }) {
           })}
           {isOnChain && (
             <div className="border-t-2 border-dashed mt-3 pt-3 text-center">
-              <p className="text-xs font-semibold" style={{ color: C.g400 }}>
-                🔗 Blockchain External Wallet Send-Out
+              <p className="text-xs font-semibold flex items-center justify-center gap-1.5" style={{ color: C.g400 }}>
+                <Link2 size={12} /> Blockchain External Wallet Send-Out
               </p>
-              <p className="text-xs mt-1 font-semibold" style={{ color: C.warn }}>
-                ⚠️ The blockchain network is responsible for this external wallet transaction. PRAQEN is not liable once funds leave to an external address.
+              <p className="text-xs mt-1 font-semibold flex items-start justify-center gap-1.5" style={{ color: C.warn }}>
+                <AlertTriangle size={12} className="flex-shrink-0 mt-0.5" /> The blockchain network is responsible for this external wallet transaction. PRAQEN is not liable once funds leave to an external address.
               </p>
             </div>
           )}
@@ -853,7 +865,7 @@ function TxRow({ tx, onClick }) {
 const CURRENCY_SYMBOLS = { USD:'$', GBP:'£', EUR:'€', GHS:'₵', NGN:'₦', KES:'KSh ', ZAR:'R ' };
 
 // ─── Internal Transfer Modal ───────────────────────────────────────────────────
-function InternalTransferModal({ balance, btcPrice, displayCurrency, fxRate, currentUserId, currentUser, onClose, onDone, initialUsername }) {
+function InternalTransferModal({ balance, btcPrice, displayCurrency, fxRate, currentUserId, currentUser, onClose, onDone, initialUsername, onSwitchToExternal }) {
   const [step,        setStep]        = useState('form');
   const [inputMode,   setInputMode]   = useState('username'); // 'username' | 'address'
   const [query,       setQuery]       = useState(initialUsername || '');
@@ -919,7 +931,7 @@ function InternalTransferModal({ balance, btcPrice, displayCurrency, fxRate, cur
   const recipientLabel = recipient?.username ? `@${recipient.username}` : recipient?.address ? `${recipient.address.slice(0,12)}…` : '';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4"
+    <div className="fixed inset-0 z-[1100] flex items-end md:items-center justify-center p-0 md:p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}>
       <div className="bg-white w-full md:max-w-md rounded-t-3xl md:rounded-3xl overflow-hidden shadow-2xl"
         style={{ marginBottom: 'calc(60px + env(safe-area-inset-bottom, 0px))' }}>
@@ -934,7 +946,7 @@ function InternalTransferModal({ balance, btcPrice, displayCurrency, fxRate, cur
               </div>
               <div>
                 <h2 className="font-black text-base text-white">PRAQEN Transfer</h2>
-                <p className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>⚡ Instant · FREE · No blockchain fees</p>
+                <p className="text-xs flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.6)' }}><Zap size={11} /> Instant · FREE · No blockchain fees</p>
               </div>
             </div>
             <button onClick={onClose}
@@ -1045,9 +1057,9 @@ function InternalTransferModal({ balance, btcPrice, displayCurrency, fxRate, cur
                     style={{ borderTop: i > 0 ? '1px solid #f1f5f9' : 'none', backgroundColor: bold ? '#f8fafc' : '#fff' }}>
                     <span className="text-xs font-semibold" style={{ color: C.g500 }}>{label}</span>
                     {free
-                      ? <span className="text-xs font-black px-2.5 py-1 rounded-full"
+                      ? <span className="text-xs font-black px-2.5 py-1 rounded-full inline-flex items-center gap-1"
                           style={{ background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)', color: '#15803d', border: '1px solid #86efac' }}>
-                          ✓ FREE
+                          <Check size={11} /> FREE
                         </span>
                       : <span className={`text-xs ${bold ? 'font-black' : 'font-bold'}`}
                           style={{ color: bold ? C.forest : C.g700 }}>{val}</span>}
@@ -1088,6 +1100,19 @@ function InternalTransferModal({ balance, btcPrice, displayCurrency, fxRate, cur
           {/* ── FORM ── */}
           {step === 'form' && (
             <div className="p-5 space-y-4">
+
+              {/* ── Destination toggle: PRAQEN user (this modal) vs external wallet ── */}
+              <div className="flex rounded-2xl overflow-hidden" style={{ border: `1.5px solid ${C.g200}` }}>
+                <button onClick={onSwitchToExternal}
+                  className="flex-1 py-3 text-center font-black text-xs transition hover:bg-gray-50"
+                  style={{ color: C.g500 }}>
+                  External Wallet
+                </button>
+                <div className="flex-1 py-3 text-center font-black text-xs"
+                  style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)', color: '#fff' }}>
+                  PRAQEN User
+                </div>
+              </div>
 
               {/* Balance */}
               <div className="flex items-center justify-between px-4 py-3 rounded-2xl"
@@ -1237,7 +1262,7 @@ function InternalTransferModal({ balance, btcPrice, displayCurrency, fxRate, cur
 }
 
 // ─── USDT Withdraw Modal ──────────────────────────────────────────────────────
-function UsdtWithdrawModal({ balance, onClose, onSend, kycStatus }) {
+function UsdtWithdrawModal({ balance, onClose, onSend, kycStatus, onSwitchToInternal }) {
   const [address,       setAddress]       = useState('');
   const [amount,        setAmount]        = useState('');
   const [inputMode,     setInputMode]     = useState('usdt'); // 'usdt' | 'usd'
@@ -1309,7 +1334,7 @@ function UsdtWithdrawModal({ balance, onClose, onSend, kycStatus }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4"
+    <div className="fixed inset-0 z-[1100] flex items-end md:items-center justify-center p-0 md:p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}>
       <div className="bg-white w-full md:max-w-md rounded-t-3xl md:rounded-3xl overflow-hidden shadow-2xl"
         style={{ marginBottom: 'calc(60px + env(safe-area-inset-bottom, 0px))' }}>
@@ -1332,6 +1357,19 @@ function UsdtWithdrawModal({ balance, onClose, onSend, kycStatus }) {
           </div>
         </div>
         <div className="p-5 overflow-y-auto space-y-4" style={{ maxHeight: '75vh' }}>
+
+          {/* ── Destination toggle: external wallet (this modal) vs PRAQEN user ── */}
+          <div className="flex rounded-2xl overflow-hidden" style={{ border: `1.5px solid ${C.g200}` }}>
+            <div className="flex-1 py-3 text-center font-black text-xs"
+              style={{ background: 'linear-gradient(135deg, #1a1a2e, #16213e)', color: '#fff' }}>
+              External Wallet
+            </div>
+            <button onClick={onSwitchToInternal}
+              className="flex-1 py-3 text-center font-black text-xs transition hover:bg-gray-50"
+              style={{ color: C.g500 }}>
+              PRAQEN User
+            </button>
+          </div>
 
           {/* ── KYC gate ── */}
           {kycStatus && !(kycStatus.email && kycStatus.phone && kycStatus.kyc) ? (
@@ -1373,9 +1411,6 @@ function UsdtWithdrawModal({ balance, onClose, onSend, kycStatus }) {
                 style={{ background: 'linear-gradient(135deg, #10b981, #059669)', boxShadow: '0 4px 14px rgba(16,185,129,0.35)' }}>
                 <Shield size={15} /> Complete Verification Now
               </a>
-              <p className="text-xs text-center" style={{ color: '#9ca3af' }}>
-                Internal transfers to PRAQEN users don't require KYC.
-              </p>
             </div>
           ) : <>
 
@@ -1536,7 +1571,7 @@ function UsdtWithdrawModal({ balance, onClose, onSend, kycStatus }) {
             <div className="rounded-2xl overflow-hidden" style={{ border: '1.5px solid #e2e8f0' }}>
               {[
                 { label: 'You send',        val: `₮${usdtAmt.toFixed(2)}`,      icon: '→',  bold: false },
-                { label: `Platform fee (${usdtAmt <= 50 ? '₮4 flat' : '4%'})`, val: `₮${fee.toFixed(2)}`, icon: '💰', bold: false, warn: true },
+                { label: `Platform fee (${usdtAmt <= 50 ? '₮4 flat' : '4%'})`, val: `₮${fee.toFixed(2)}`, icon: <DollarSign size={11} />, bold: false, warn: true },
                 { label: 'Total deducted',  val: `₮${totalDeduct.toFixed(2)}`,  icon: null, bold: true  },
               ].map(({ label, val, icon, bold, warn }, i) => (
                 <div key={label} className="flex justify-between items-center px-4 py-3"
@@ -1656,7 +1691,7 @@ function UsdtWithdrawModal({ balance, onClose, onSend, kycStatus }) {
 }
 
 // ─── USDT Internal Transfer Modal ─────────────────────────────────────────────
-function UsdtInternalTransferModal({ balance, onClose, onTransfer }) {
+function UsdtInternalTransferModal({ balance, onClose, onTransfer, onSwitchToExternal }) {
   // steps: 'recipient' → 'amount' → 'preview' → 'success'
   const [step,          setStep]          = useState('recipient');
   const [mode,          setMode]          = useState('username');   // always 'username' for internal
@@ -1717,13 +1752,13 @@ function UsdtInternalTransferModal({ balance, onClose, onTransfer }) {
 
   const ErrBox = ({ msg }) => msg ? (
     <div className="flex items-start gap-2.5 px-4 py-3 rounded-2xl" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
-      <span className="text-red-500 mt-0.5 flex-shrink-0">✕</span>
+      <span className="text-red-500 mt-0.5 flex-shrink-0"><X size={13} /></span>
       <p className="text-xs font-bold" style={{ color: '#dc2626' }}>{msg}</p>
     </div>
   ) : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+    <div className="fixed inset-0 z-[1100] flex items-end sm:items-center justify-center p-0 sm:p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}>
       <div className="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl"
         style={{ backgroundColor: '#fff', maxHeight: '96dvh', overflowY: 'auto' }}>
@@ -1786,6 +1821,19 @@ function UsdtInternalTransferModal({ balance, onClose, onTransfer }) {
           {/* ══ STEP 1: Recipient ══════════════════════════════════════════ */}
           {step === 'recipient' && (
             <>
+              {/* ── Destination toggle: PRAQEN user (this modal) vs external wallet ── */}
+              <div className="flex rounded-2xl overflow-hidden" style={{ border: `1.5px solid ${C.g200}` }}>
+                <button onClick={onSwitchToExternal}
+                  className="flex-1 py-3 text-center font-black text-xs transition hover:bg-gray-50"
+                  style={{ color: C.g500 }}>
+                  External Wallet
+                </button>
+                <div className="flex-1 py-3 text-center font-black text-xs"
+                  style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)', color: '#fff' }}>
+                  PRAQEN User
+                </div>
+              </div>
+
               {/* Input */}
               <div>
                 <label className="block text-xs font-black mb-2 uppercase tracking-wide" style={{ color: C.g500 }}>
@@ -1821,12 +1869,12 @@ function UsdtInternalTransferModal({ balance, onClose, onTransfer }) {
               <div className="rounded-2xl p-4 space-y-2.5"
                 style={{ background: `linear-gradient(135deg, ${C.mist}, #f0fdf8)`, border: `1px solid ${C.sage}30` }}>
                 {[
-                  { icon: '⚡', text: 'Instant settlement — no blockchain delay' },
-                  { icon: '🆓', text: 'Zero fees — completely free between PRAQEN users' },
-                  { icon: '🔒', text: 'Username search only — use Send (on-chain) for external wallets' },
+                  { icon: <Zap size={14} style={{ color: C.green }} />, text: 'Instant settlement — no blockchain delay' },
+                  { icon: <Gift size={14} style={{ color: C.green }} />, text: 'Zero fees — completely free between PRAQEN users' },
+                  { icon: <Lock size={14} style={{ color: C.green }} />, text: 'Username search only — use Send (on-chain) for external wallets' },
                 ].map(({ icon, text }) => (
                   <div key={text} className="flex items-start gap-2.5">
-                    <span className="text-sm flex-shrink-0 mt-0.5">{icon}</span>
+                    <span className="flex-shrink-0 mt-0.5">{icon}</span>
                     <p className="text-xs font-semibold" style={{ color: C.green }}>{text}</p>
                   </div>
                 ))}
@@ -1853,7 +1901,7 @@ function UsdtInternalTransferModal({ balance, onClose, onTransfer }) {
                 </div>
                 <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
                   style={{ background: `linear-gradient(135deg, ${C.green}, ${C.mint})` }}>
-                  <span className="text-white text-xs font-black">✓</span>
+                  <span className="text-white text-xs font-black"><Check size={12} /></span>
                 </div>
               </div>
 
@@ -1994,7 +2042,7 @@ function UsdtInternalTransferModal({ balance, onClose, onTransfer }) {
               {recipient.isTronAddr && (
                 <div className="flex items-start gap-2.5 px-4 py-3 rounded-2xl"
                   style={{ background: '#fffbeb', border: '1.5px solid #fcd34d' }}>
-                  <span className="text-yellow-500 text-sm flex-shrink-0 mt-0.5">⚠</span>
+                  <span className="text-yellow-500 flex-shrink-0 mt-0.5"><AlertTriangle size={14} /></span>
                   <p className="text-xs font-semibold" style={{ color: '#92400e' }}>
                     Sending to a Tron address. This is an internal PRAQEN transfer — the recipient must be a PRAQEN user. Transfers cannot be reversed.
                   </p>
@@ -2162,7 +2210,7 @@ function WalletSwitcher({ activeCoin, onSelect, dark, pulse }) {
 // the real modal opens, so Send/Receive/Transfer work from either wallet view.
 function AssetPickerSheet({ title, subtitle, onPick, onClose }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4"
+    <div className="fixed inset-0 z-[1100] flex items-end md:items-center justify-center p-0 md:p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
       onClick={onClose}>
       <div className="bg-white w-full md:max-w-xs rounded-t-3xl md:rounded-3xl overflow-hidden shadow-2xl"
@@ -2208,6 +2256,52 @@ function AssetPickerSheet({ title, subtitle, onPick, onClose }) {
   );
 }
 
+// ─── Asset Action Sheet — shown when an Assets row (Bitcoin / Tether) is tapped ──
+// Coin is already known here, so it skips straight to Send/Receive/Transfer/Swap for it.
+function AssetActionSheet({ asset, balanceLabel, usdLabel, onAction, onClose }) {
+  const isBtc = asset === 'BTC';
+  const actions = [
+    { key: 'send',     label: 'Send',     icon: Send },
+    { key: 'receive',  label: 'Receive',  icon: Download },
+    { key: 'transfer', label: 'Transfer', icon: ArrowUpRight },
+    { key: 'swap',     label: 'Swap',     icon: ArrowLeftRight },
+  ];
+  return (
+    <div className="fixed inset-0 z-[1100] flex items-end md:items-center justify-center p-0 md:p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}>
+      <div className="bg-white w-full md:max-w-xs rounded-t-3xl md:rounded-3xl overflow-hidden shadow-2xl"
+        onClick={e => e.stopPropagation()}>
+        <div className="px-5 pt-5 pb-4 flex items-center gap-3 border-b" style={{ borderColor: C.g100 }}>
+          <div className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0"
+            style={isBtc ? { background: 'linear-gradient(135deg,#F7931A,#e8830a)' } : { background: '#26A17B' }}>
+            {isBtc ? <span style={{ fontSize: 19, fontWeight: 900, color: '#fff' }}>₿</span> : <TetherGlyph size={21} />}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-black text-sm" style={{ color: C.g800 }}>{isBtc ? 'Bitcoin' : 'Tether USD'}</p>
+            <p className="text-xs" style={{ color: C.g400 }}>{balanceLabel}{usdLabel ? ` · ${usdLabel}` : ''}</p>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-xl flex items-center justify-center hover:bg-gray-100 flex-shrink-0">
+            <X size={14} style={{ color: C.g500 }} />
+          </button>
+        </div>
+        <div className="px-3 py-4 grid grid-cols-4 gap-1.5 sm:gap-2">
+          {actions.map(({ key, label, icon: Icon }) => (
+            <button key={key} onClick={() => onAction(key)}
+              className="flex flex-col items-center gap-1.5 sm:gap-2 py-3 px-1 rounded-2xl border hover:bg-gray-50 transition active:scale-[0.98]"
+              style={{ borderColor: C.g200 }}>
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: C.mist }}>
+                <Icon size={15} style={{ color: C.green }} />
+              </div>
+              <span className="text-[11px] sm:text-xs font-bold text-center leading-tight whitespace-nowrap" style={{ color: C.g700 }}>{label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── USDT Receive Modal ────────────────────────────────────────────────────────
 function UsdtReceiveModal({ address, onClose, checking, scanCooldown, onCheckDeposits }) {
   const [copied, setCopied] = useState(false);
@@ -2220,7 +2314,7 @@ function UsdtReceiveModal({ address, onClose, checking, scanCooldown, onCheckDep
   const explorerUrl = `https://tronscan.org/#/address/${address}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4"
+    <div className="fixed inset-0 z-[1100] flex items-end md:items-center justify-center p-0 md:p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}>
       <div className="bg-white w-full md:max-w-sm rounded-t-2xl md:rounded-2xl overflow-hidden shadow-2xl">
         <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: C.g100 }}>
@@ -2237,11 +2331,18 @@ function UsdtReceiveModal({ address, onClose, checking, scanCooldown, onCheckDep
 
         <div className="p-5 space-y-4">
           <p className="text-xs text-gray-500">Send USDT (TRC-20) to your Tron address. Credited after network confirmation.</p>
-          <div className="flex justify-center py-2">
-  <div className="p-3 rounded-xl border" style={{ borderColor: C.g200, backgroundColor: '#fff' }}>
-    <QRCodeSVG value={address} size={160} level="M" />
-  </div>
-</div>
+
+          {address ? (
+            <div className="flex justify-center p-4 rounded-xl border" style={{ borderColor: C.g200, backgroundColor: '#fff' }}>
+              <QRCodeSVG value={address} size={168} level="M" includeMargin={false} />
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center gap-2 p-8 rounded-xl border" style={{ borderColor: C.g200, backgroundColor: C.g50 }}>
+              <RefreshCw size={18} className="animate-spin" style={{ color: C.g400 }} />
+              <p className="text-xs font-semibold" style={{ color: C.g400 }}>Generating your address…</p>
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-bold mb-1.5 text-gray-600">Your Tron (USDT-TRC20) Address</label>
             <div className="p-3 rounded-xl border font-mono text-xs break-all"
@@ -2300,7 +2401,7 @@ function P2PPromoBanner({ navigate }) {
       <div className="relative p-4 sm:p-6">
         <span className="inline-flex items-center gap-1.5 text-xs font-black px-2.5 py-1 rounded-full mb-2.5"
           style={{ background: 'rgba(244,164,34,0.22)', color: '#FCD34D', border: '1px solid rgba(252,211,77,0.35)' }}>
-          🔥 P2P Marketplace
+          <Flame size={11} /> P2P Marketplace
         </span>
 
         <p className="text-white font-black leading-snug mb-1.5" style={{ fontSize: 'clamp(1rem, 4.5vw, 1.3rem)' }}>
@@ -2313,10 +2414,10 @@ function P2PPromoBanner({ navigate }) {
         {/* Feature badges */}
         <div className="flex flex-wrap gap-1.5 sm:gap-2 mb-4 sm:mb-5">
           {[
-            { icon: '📱', label: 'MTN MoMo' },
-            { icon: '🏦', label: 'Bank Transfer' },
-            { icon: '⚡', label: 'Instant Payout' },
-            { icon: '🔒', label: 'Escrow Protected' },
+            { icon: <Smartphone size={12} />, label: 'MTN MoMo' },
+            { icon: <Landmark size={12} />,   label: 'Bank Transfer' },
+            { icon: <Zap size={12} />,        label: 'Instant Payout' },
+            { icon: <Shield size={12} />,     label: 'Escrow Protected' },
           ].map(({ icon, label }) => (
             <span key={label} className="flex items-center gap-1.5 text-xs font-bold px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl"
               style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.15)' }}>
@@ -2373,6 +2474,7 @@ export default function WalletPage({ user }) {
   const [showUsdtInternal, setShowUsdtInternal] = useState(false);
   const [showUsdtRecv,     setShowUsdtRecv]     = useState(false);
   const [assetPicker,      setAssetPicker]      = useState(null); // { type: 'send' | 'receive' | 'transfer' }
+  const [assetActionSheet, setAssetActionSheet] = useState(null); // 'BTC' | 'USDT' — opened from the Assets row tap
   const [showUsdtHint,     setShowUsdtHint]     = useState(() => !localStorage.getItem('praqen_usdt_hint_seen'));
   const dismissUsdtHint = () => { setShowUsdtHint(false); localStorage.setItem('praqen_usdt_hint_seen', '1'); };
   const [swapFrom,      setSwapFrom]      = useState('BTC');
@@ -2426,7 +2528,24 @@ export default function WalletPage({ user }) {
       setTransactions(r.data.transactions || []);
     } catch (e) {
       console.error('[Wallet] Load error:', e.message);
-      toast.error('Failed to load wallet');
+      if (!toast.isActive('btc-wallet-load-error')) {
+        // Custom close button wired directly to toast.dismiss(id) instead of the built-in
+        // closeButton — the default X wasn't reliably dismissing this specific toastId'd
+        // toast, so this bypasses whatever internal mechanism was involved entirely.
+        toast.error(
+          () => (
+            <div className="flex items-center justify-between gap-3 w-full">
+              <span>Failed to load wallet</span>
+              <button
+                onClick={(e) => { e.stopPropagation(); toast.dismiss('btc-wallet-load-error'); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, lineHeight: 0, flexShrink: 0 }}>
+                <X size={14} />
+              </button>
+            </div>
+          ),
+          { toastId: 'btc-wallet-load-error', closeButton: false }
+        );
+      }
     }
   };
 
@@ -2454,7 +2573,26 @@ export default function WalletPage({ user }) {
         balance_usdt:        parseFloat(r.data.balance_usdt        || 0),
         locked_balance_usdt: parseFloat(r.data.locked_balance_usdt || 0),
       });
-    } catch { toast.error('Failed to load USDT wallet'); }
+    } catch {
+      // Explicit isActive guard against re-firing under React 18 StrictMode double-invoke,
+      // PLUS a custom close button wired directly to toast.dismiss(id) instead of the
+      // built-in closeButton, which wasn't reliably dismissing this specific toast.
+      if (!toast.isActive('usdt-wallet-load-error')) {
+        toast.error(
+          () => (
+            <div className="flex items-center justify-between gap-3 w-full">
+              <span>Failed to load USDT wallet</span>
+              <button
+                onClick={(e) => { e.stopPropagation(); toast.dismiss('usdt-wallet-load-error'); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, lineHeight: 0, flexShrink: 0 }}>
+                <X size={14} />
+              </button>
+            </div>
+          ),
+          { toastId: 'usdt-wallet-load-error', closeButton: false }
+        );
+      }
+    }
     finally { setLoadingUsdt(false); }
   };
 
@@ -2637,6 +2775,17 @@ export default function WalletPage({ user }) {
     }
   };
 
+  // ── Asset action sheet dispatch — Send/Receive/Swap resolve for the tapped coin ──
+  const handleAssetAction = (action, asset) => {
+    setAssetActionSheet(null);
+    if (action === 'swap') {
+      setSwapFrom(asset);
+      setActiveCoin('SWAP');
+    } else {
+      openAssetModal(action, asset);
+    }
+  };
+
   // ── Execute BTC↔USDT swap ─────────────────────────────────────────────────
   const doSwap = async () => {
     // Resolve effective native amount from whichever input mode is active
@@ -2679,6 +2828,9 @@ export default function WalletPage({ user }) {
   const usdtBal       = parseFloat(usdtData?.balance_usdt        || 0);
   const usdtLocked     = parseFloat(usdtData?.locked_balance_usdt || 0);
   const portfolioUsd  = totalUsd + usdtBal + usdtLocked; // BTC total + USDT total, in USD
+  // Real allocation split for the insight widget — derived from actual balances, sums to exactly 100
+  const btcAllocPct   = portfolioUsd > 0 ? Math.round((totalUsd / portfolioUsd) * 100) : 50;
+  const usdtAllocPct  = 100 - btcAllocPct;
   console.log('[Wallet] balance_btc=', balance, 'locked=', lockedBal, 'available=', availableBal, 'btcPrice=', livePrice, 'availableUsd=', availableUsd, 'totalUsd=', totalUsd);
   const network = walletData?.network || 'mainnet';
 
@@ -2699,227 +2851,164 @@ export default function WalletPage({ user }) {
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: C.g50, fontFamily: "'DM Sans',sans-serif" }}>
 
-      <div className="max-w-2xl mx-auto w-full px-3 sm:px-4 py-4 sm:py-6 space-y-3 sm:space-y-4">
+      {/* Display font for hero numerals/headings only — body stays on the existing DM Sans stack. */}
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&display=swap');`}</style>
 
+      <div className="max-w-6xl mx-auto w-full px-3 sm:px-5 lg:px-8 py-4 sm:py-6 space-y-4 sm:space-y-5">
 
-        {activeCoin === 'BTC' && (<>
-        {/* ── WALLET CARD ──────────────────────────────────────────── */}
-        <div className="rounded-3xl overflow-hidden shadow-lg relative"
-          style={{ background: `linear-gradient(135deg,${C.forest} 0%,${C.green} 60%,${C.mint} 100%)` }}>
+        {/* ══════════════════ PORTFOLIO HOME (BTC + USDT unified) ══════════════════ */}
+        {activeCoin !== 'SWAP' && (<>
 
-          <div className="relative p-3.5 sm:p-6">
-            {/* Top row */}
-            <div className="flex items-center justify-between mb-3 sm:mb-5 gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
-                  <Wallet size={15} className="text-white" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className="text-white font-black text-xs sm:text-sm">Asset Wallet</p>
-                    <span className="flex items-center gap-1 text-xs font-black px-1.5 py-0.5 rounded-full"
-                      style={{ backgroundColor: 'rgba(16,185,129,0.25)', color: '#6EE7B7' }}>
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse inline-block" />
-                      Live
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                    <p className="text-white/60 text-xs truncate">{user?.username} · Auto-refreshing</p>
-                    <WalletSwitcher activeCoin={activeCoin} onSelect={setActiveCoin} dark pulse={showUsdtHint} />
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-1.5 flex-shrink-0">
-                <button onClick={() => setShowBal(!showBal)}
-                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center"
-                  style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
-                  {showBal ? <Eye size={12} className="text-white" /> : <EyeOff size={12} className="text-white" />}
-                </button>
-                <button onClick={refresh} disabled={refreshing}
-                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center"
-                  style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
-                  <RefreshCw size={12} className={`text-white ${refreshing ? 'animate-spin' : ''}`} />
-                </button>
-              </div>
+        {/* ── PAGE HEADER ── */}
+        <div className="flex items-center justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-black uppercase tracking-widest" style={{ color: C.mint }}>Wallet</p>
+            <h1 className="font-bold truncate" style={{ fontFamily: "'Syne',sans-serif", color: C.g800, fontSize: 'clamp(1.15rem,4.5vw,1.5rem)' }}>
+              {user?.username ? `${user.username}'s Portfolio` : 'Your Portfolio'}
+            </h1>
+          </div>
+          <div className="flex gap-2 flex-shrink-0">
+            <button onClick={() => setShowBal(!showBal)}
+              className="w-9 h-9 rounded-xl flex items-center justify-center border transition hover:shadow-sm"
+              style={{ borderColor: C.g200, backgroundColor: '#fff' }}>
+              {showBal ? <Eye size={14} style={{ color: C.g600 }} /> : <EyeOff size={14} style={{ color: C.g600 }} />}
+            </button>
+            <button onClick={refresh} disabled={refreshing}
+              className="w-9 h-9 rounded-xl flex items-center justify-center border transition hover:shadow-sm"
+              style={{ borderColor: C.g200, backgroundColor: '#fff' }}>
+              <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} style={{ color: C.g600 }} />
+            </button>
+          </div>
+        </div>
+
+        {/* ── HERO: TOTAL PORTFOLIO VALUE ──
+             White elevated card instead of a full-bleed green block — the color now accents
+             (badge, glow, icon tints) rather than dominating the whole card. */}
+        <div className="rounded-3xl bg-white shadow-xl border p-5 sm:p-7 relative overflow-hidden" style={{ borderColor: C.g100 }}>
+          <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full pointer-events-none"
+            style={{ background: `radial-gradient(circle, ${C.mint} 0%, transparent 70%)`, opacity: 0.08 }} />
+
+          <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
+            <div>
+            <div className="flex items-center gap-1.5 mb-2">
+              <span className="w-1.5 h-1.5 rounded-full inline-block animate-pulse" style={{ backgroundColor: C.success }} />
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.g400 }}>Total Portfolio Value</p>
             </div>
 
-            {/* Balance */}
-            <div className="mb-3 sm:mb-5">
-              {showBal ? (
-                <>
-                  {/* Combined portfolio value */}
-                  <p className="text-white/60 text-xs mb-1">Total Portfolio Value</p>
-                  <p className="font-black text-white tracking-tight" style={{ fontSize: 'clamp(1.35rem, 6vw, 2.5rem)' }}>
-                    {fmtLocal(portfolioUsd)}
-                  </p>
-                  <p className="text-white/70 text-xs sm:text-sm mt-1">Across Bitcoin &amp; USDT wallets</p>
+            <p className="font-extrabold tracking-tight" style={{ fontFamily: "'Syne',sans-serif", color: C.g800, fontSize: 'clamp(2rem,9vw,3.25rem)', lineHeight: 1.05 }}>
+              {showBal ? fmtLocal(portfolioUsd) : '••••••••'}
+            </p>
 
-                  {/* Side-by-side asset breakdown — makes both assets visible at once */}
-                  <div className="grid grid-cols-2 gap-2 sm:gap-3 mt-3">
-                    <div className="rounded-2xl p-2.5 sm:p-3.5 min-w-0" style={{ backgroundColor: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)' }}>
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <div className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0"
-                          style={{ background: 'linear-gradient(135deg,#F7931A,#e8830a)' }}>
-                          <span style={{ fontSize: 9, fontWeight: 900, color: '#fff', lineHeight: 1 }}>₿</span>
-                        </div>
-                        <p className="text-white/70 text-xs font-bold">Bitcoin</p>
-                      </div>
-                      <p className="font-black text-white tracking-tight truncate" style={{ fontSize: 'clamp(0.9rem, 3.5vw, 1.25rem)' }}>{fmt(availableBal, 6)}</p>
-                      <p className="text-white/55 text-xs mt-0.5 truncate">≈ {fmtLocal(availableUsd)}</p>
-                    </div>
-                    <div className="rounded-2xl p-2.5 sm:p-3.5 min-w-0" style={{ backgroundColor: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)' }}>
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <div className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#26A17B' }}>
-                          <TetherGlyph size={10} />
-                        </div>
-                        <p className="text-white/70 text-xs font-bold">USDT</p>
-                      </div>
-                      <p className="font-black text-white tracking-tight truncate" style={{ fontSize: 'clamp(0.9rem, 3.5vw, 1.25rem)' }}>{usdtBal.toFixed(2)}</p>
-                      <p className="text-white/55 text-xs mt-0.5 truncate">≈ {fmtLocal(usdtBal)}</p>
-                    </div>
-                  </div>
-
-                  {/* Locked + Total breakdown — combined across both assets */}
-                  <div className="grid grid-cols-2 gap-2 mt-3">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: '#F59E0B' }} />
-                      <div className="min-w-0">
-                        <p className="text-white/40 text-xs">Locked in Escrow</p>
-                        <p className="text-white/80 text-xs font-bold truncate">{fmt(lockedBal, 6)} BTC · {usdtLocked.toFixed(2)} USDT</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: '#52B788' }} />
-                      <div className="min-w-0">
-                        <p className="text-white/40 text-xs">Total Balance</p>
-                        <p className="text-white/80 text-xs font-bold truncate">{fmt(balance, 6)} BTC · {(usdtBal + usdtLocked).toFixed(2)} USDT</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {btcPrice > 0 && (
-                    <p className="text-white/40 text-xs mt-2 truncate">BTC: {fmtLocal(btcPrice)} · USDT: {fmtLocal(1)}</p>
-                  )}
-                </>
-              ) : (
-                <>
-                  <p className="text-white/60 text-xs mb-1">Total Portfolio Value</p>
-                  <p className="text-3xl sm:text-4xl font-black text-white">••••••••</p>
-                </>
+            {/* Available / Locked as compact inline pills — replaces two duplicated stat cards */}
+            <div className="flex flex-wrap gap-2 mt-4">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ backgroundColor: C.mist }}>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: C.mint }} />
+                <span className="text-xs font-bold" style={{ color: C.g700 }}>
+                  Available · {showBal ? fmtLocal(availableUsd + usdtBal) : '••••'}
+                </span>
+              </div>
+              {(lockedBal > 0 || usdtLocked > 0) && (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ backgroundColor: '#FFF7E8' }}>
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: C.gold }} />
+                  <span className="text-xs font-bold" style={{ color: C.g700 }}>
+                    In Escrow · {showBal ? fmtLocal((lockedBal * livePrice) + usdtLocked) : '••••'}
+                  </span>
+                </div>
               )}
             </div>
+            </div>
 
-            {/* Action buttons */}
-            <div className="grid grid-cols-4 gap-1.5 sm:gap-3">
-              {[
-                {
-                  label: 'Deposit',
-                  icon: Download,
-                  grad: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                  shadow: 'rgba(16,185,129,0.45)',
-                  action: () => setAssetPicker({ type: 'receive' }),
-                },
-                {
-                  label: 'Send',
-                  icon: Send,
-                  grad: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-                  shadow: 'rgba(239,68,68,0.45)',
-                  action: () => setAssetPicker({ type: 'send' }),
-                },
-                {
-                  label: 'Transfer',
-                  icon: ArrowLeftRight,
-                  grad: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                  shadow: 'rgba(99,102,241,0.45)',
-                  action: () => setAssetPicker({ type: 'transfer' }),
-                },
-                {
-                  label: 'Swap',
-                  icon: ArrowLeftRight,
-                  grad: `linear-gradient(135deg, ${C.gold} 0%, #e09318 100%)`,
-                  shadow: 'rgba(244,164,34,0.45)',
-                  action: () => { setActiveCoin('SWAP'); setSwapFrom('BTC'); },
-                },
-              ].map(({ label, icon: Icon, grad, shadow, action }) => (
-                <button key={label} onClick={action}
-                  className="flex flex-col items-center gap-1.5 py-2.5 sm:py-4 rounded-2xl transition active:scale-95"
-                  style={{ backgroundColor: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.14)' }}>
-                  <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center"
-                    style={{ background: grad, boxShadow: `0 6px 18px ${shadow}` }}>
-                    <Icon size={16} color="#fff" strokeWidth={2.2} />
-                  </div>
-                  <span className="text-white text-xs font-extrabold tracking-wide">{label}</span>
-                </button>
-              ))}
+            {/* Right side of the hero, sm+ only — real supplementary data (live spot price,
+                 tx count) instead of leaving the wide card empty next to the balance. */}
+            <div className="hidden sm:flex items-center gap-6 sm:pl-6 sm:border-l flex-shrink-0" style={{ borderColor: C.g400 }}>
+              <div>
+                <p className="text-sm font-bold uppercase tracking-wide" style={{ color: C.g400 }}>Live BTC Price</p>
+                <p className="font-bold" style={{ fontFamily: "'Syne',sans-serif", color: C.g800, fontSize: '1.35rem' }}>
+                  {fmtLocal(livePrice)}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm font-bold uppercase tracking-wide" style={{ color: C.g400 }}>Transactions</p>
+                <p className="font-bold" style={{ fontFamily: "'Syne',sans-serif", color: C.g800, fontSize: '1.35rem' }}>
+                  {transactions.length}
+                </p>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* ── USDT DISCOVERY HINT ──────────────────────────────────── */}
-        {showUsdtHint && (
-          <div className="flex items-start gap-3 p-4 rounded-2xl"
-            style={{ background: `linear-gradient(135deg, #26A17B12, #26A17B08)`, border: '1px solid #26A17B35' }}>
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#26A17B' }}>
-              <TetherGlyph size={18} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-black" style={{ color: C.g800 }}>You have a USDT wallet too!</p>
-              <p className="text-xs mt-0.5 leading-relaxed" style={{ color: C.g600 }}>
-                Both balances are shown above at a glance. Tap <strong>"Select Asset ▾"</strong> for USDT's own deposit address &amp; history, or hit Send/Receive/Transfer below and pick USDT from the list.
-              </p>
-            </div>
-            <button onClick={dismissUsdtHint}
-              className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 hover:bg-black/5 transition">
-              <X size={13} style={{ color: C.g400 }} />
-            </button>
-          </div>
-        )}
+        {/* From here down: a real 2-column layout on desktop instead of one narrow stretched
+             column — main actions/assets on the left, secondary insight content on the right. */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
+        <div className="lg:col-span-2 space-y-4 sm:space-y-5">
 
-        {/* ── P2P TRADE PROMO BANNER — deposit address now lives in the Deposit modal ── */}
-        <P2PPromoBanner navigate={navigate} />
-
-        {/* ── STATS ────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        {/* ── QUICK ACTIONS ──
+             Asset-agnostic — each opens the existing AssetPickerSheet, which already resolves
+             to the correct BTC/USDT modal. No new logic; just a single unified entry point. */}
+        <div className="grid grid-cols-4 gap-2 sm:gap-3">
           {[
-            { label: 'Available',    value: `₿${fmt(availableBal, 6)}`, color: C.gold },
-            { label: `${displayCurrency} Value`, value: fmtLocal(availableBal * (btcPrice || 88000)), color: C.success },
-            { label: 'Transactions', value: `${transactions.length}`, color: C.paid },
-          ].map(({ label, value, color }) => (
-            <div key={label} className="bg-white rounded-2xl border p-3 sm:p-4 shadow-sm text-center" style={{ borderColor: C.g200 }}>
-              <p className="font-black truncate" style={{ color, fontSize: 'clamp(0.75rem, 3vw, 1.25rem)' }}>{value}</p>
-              <p className="text-xs font-semibold mt-0.5 truncate" style={{ color: C.g400 }}>{label}</p>
-            </div>
+            { label: 'Send',     icon: Send,           action: () => setAssetPicker({ type: 'send' }) },
+            { label: 'Receive',  icon: Download,       action: () => setAssetPicker({ type: 'receive' }) },
+            { label: 'Transfer', icon: ArrowUpRight,   action: () => setAssetPicker({ type: 'transfer' }) },
+            { label: 'Swap',     icon: ArrowLeftRight, action: () => setActiveCoin('SWAP') },
+          ].map(({ label, icon: Icon, action }) => (
+            <button key={label} onClick={action}
+              className="bg-white rounded-2xl border shadow-sm p-3 sm:p-4 flex flex-col items-center gap-2 transition hover:shadow-md hover:-translate-y-0.5"
+              style={{ borderColor: C.g100 }}>
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: C.mist }}>
+                <Icon size={16} style={{ color: C.green }} />
+              </div>
+              <span className="text-xs font-bold" style={{ color: C.g700 }}>{label}</span>
+            </button>
           ))}
         </div>
 
-        {/* ── SECURITY INFO ────────────────────────────────────────── */}
-        <div className="bg-white rounded-2xl border shadow-sm p-4" style={{ borderColor: C.g200 }}>
-          <div className="flex items-center gap-2 mb-3">
-            <Shield size={14} style={{ color: C.green }} />
-            <p className="font-black text-sm" style={{ color: C.g800 }}>Wallet Security</p>
+
+        {/* ── ASSETS ──
+             Both balances side by side instead of two near-identical full-page views —
+             this is the real fix for the "giant green container × 2" duplication. */}
+        <div className="bg-white rounded-2xl border shadow-sm overflow-hidden" style={{ borderColor: C.g100 }}>
+          <div className="px-5 py-4 border-b" style={{ borderColor: C.g100 }}>
+            <p className="font-black text-sm" style={{ color: C.g800 }}>Assets</p>
           </div>
-          <div className="space-y-2">
-            {[
-              { icon: '🔑', label: 'Self-Custodial HD Wallet',  desc: 'Your keys derived from master seed — PRAQEN controls nothing' },
-              { icon: '🔒', label: 'Escrow Protected Trades',   desc: 'Trade funds locked until both parties confirm' },
-              { icon: '⚡', label: 'Auto Deposit Detection',    desc: 'Balance updates automatically when BTC arrives' },
-            ].map(({ icon, label, desc }) => (
-              <div key={label} className="flex items-center gap-3 p-2.5 rounded-xl" style={{ backgroundColor: C.g50 }}>
-                <span className="text-lg flex-shrink-0">{icon}</span>
-                <div>
-                  <p className="text-xs font-bold" style={{ color: C.g700 }}>{label}</p>
-                  <p className="text-xs" style={{ color: C.g400 }}>{desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
+
+          <button onClick={() => setAssetActionSheet('BTC')}
+            className="w-full flex items-center gap-3 px-5 py-4 transition hover:bg-slate-50 border-b" style={{ borderColor: C.g100 }}>
+            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#FFF7E8' }}>
+              <Bitcoin size={18} style={{ color: C.gold }} />
+            </div>
+            <div className="flex-1 min-w-0 text-left">
+              <p className="font-bold text-sm" style={{ color: C.g800 }}>Bitcoin</p>
+              <p className="text-xs" style={{ color: C.g400 }}>{showBal ? `${fmt(balance, 6)} BTC` : '•••• BTC'}</p>
+            </div>
+            <div className="text-right flex-shrink-0">
+              <p className="font-bold text-sm" style={{ color: C.g800 }}>{showBal ? fmtLocal(totalUsd) : '••••'}</p>
+              {lockedBal > 0 && <p className="text-xs font-semibold flex items-center justify-end gap-1" style={{ color: C.gold }}><Lock size={10} /> {fmt(lockedBal, 6)} locked</p>}
+            </div>
+            <ChevronRight size={16} style={{ color: C.g300 }} className="flex-shrink-0" />
+          </button>
+
+          <button onClick={() => setAssetActionSheet('USDT')}
+            className="w-full flex items-center gap-3 px-5 py-4 transition hover:bg-slate-50">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#E8F7F2' }}>
+              <TetherGlyph size={16} color="#26A17B" />
+            </div>
+            <div className="flex-1 min-w-0 text-left">
+              <p className="font-bold text-sm" style={{ color: C.g800 }}>Tether USD</p>
+              <p className="text-xs" style={{ color: C.g400 }}>{showBal ? `${usdtBal.toFixed(2)} USDT` : '•••• USDT'}</p>
+            </div>
+            <div className="text-right flex-shrink-0">
+              <p className="font-bold text-sm" style={{ color: C.g800 }}>{showBal ? fmtLocal(usdtBal) : '••••'}</p>
+              {usdtLocked > 0 && <p className="text-xs font-semibold flex items-center justify-end gap-1" style={{ color: C.gold }}><Lock size={10} /> {usdtLocked.toFixed(2)} locked</p>}
+            </div>
+            <ChevronRight size={16} style={{ color: C.g300 }} className="flex-shrink-0" />
+          </button>
         </div>
 
-        {/* ── TRANSACTION HISTORY ──────────────────────────────────── */}
-        <div className="bg-white rounded-2xl border shadow-sm overflow-hidden" style={{ borderColor: C.g200 }}>
+        {/* ── RECENT ACTIVITY (BTC transaction history) ──────────────── */}
+        <div className="bg-white rounded-2xl border shadow-sm overflow-hidden" style={{ borderColor: C.g100 }}>
           <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: C.g100 }}>
-            <p className="font-black text-sm" style={{ color: C.g800 }}>Transaction History</p>
+            <p className="font-black text-sm" style={{ color: C.g800 }}>Recent Activity</p>
             <span className="text-xs font-black px-2 py-0.5 rounded-full"
               style={{ backgroundColor: C.g100, color: C.g500 }}>
               {transactions.length} records
@@ -2944,168 +3033,86 @@ export default function WalletPage({ user }) {
             )}
           </div>
         </div>
-        </>)} {/* END BTC view */}
 
-        {/* ══════════════════ USDT VIEW ══════════════════ */}
-        {activeCoin === 'USDT' && (<>
+        </div> {/* END left column */}
 
-        {/* ── USDT WALLET CARD ── */}
-        <div className="rounded-3xl overflow-hidden shadow-2xl relative"
-          style={{ background: `linear-gradient(145deg, ${C.forest} 0%, #1a5c41 45%, #26A17B 100%)` }}>
-          {/* Decorative circles */}
-          <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full opacity-10" style={{ background: 'radial-gradient(circle, #fff 0%, transparent 70%)' }} />
-          <div className="absolute -bottom-8 -left-8 w-32 h-32 rounded-full opacity-8" style={{ background: 'radial-gradient(circle, #26A17B 0%, transparent 70%)' }} />
+        <div className="lg:col-span-1 space-y-4 sm:space-y-5">
 
-          <div className="relative p-3.5 sm:p-6">
-            {/* Top row */}
-            <div className="flex items-center justify-between mb-3 sm:mb-5 gap-2">
-              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                {/* Tether logo badge */}
-                <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center shadow-lg flex-shrink-0"
-                  style={{ background: 'linear-gradient(135deg, #26A17B, #1a7a5e)', border: '2px solid rgba(255,255,255,0.25)', boxShadow: '0 4px 16px rgba(38,161,123,0.55)' }}>
-                  <svg viewBox="0 0 32 32" width="20" height="20" fill="none">
-                    <path d="M17.6 15.73v-2.05h4.35V10.5H10.07v3.18H14.4v2.05C10.6 15.9 7.8 16.72 7.8 17.7s2.8 1.8 6.6 1.97v7.03h3.2v-7.03c3.8-.17 6.6-.99 6.6-1.97s-2.8-1.8-6.6-1.97zm0 3.32c-.18.01-.62.04-1.62.04-.86 0-1.46-.02-1.67-.04v.01c-2.89-.13-5.05-.63-5.05-1.25s2.16-1.11 5.05-1.24v1.97c.21.01.82.05 1.68.05.98 0 1.45-.04 1.61-.05v-1.97c2.9.13 5.06.63 5.06 1.24s-2.16 1.12-5.06 1.25v-.01z" fill="white"/>
-                  </svg>
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className="text-white font-black text-xs sm:text-sm tracking-wide">USDT Wallet</p>
-                    <span className="flex items-center gap-1 text-xs font-black px-2 py-0.5 rounded-full"
-                      style={{ background: 'rgba(38,161,123,0.35)', color: '#6EE7B7', border: '1px solid rgba(110,231,183,0.3)' }}>
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse inline-block" />
-                      TRC-20
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                    <p className="text-white/55 text-xs truncate">Tron Network · {user?.username}</p>
-                    <WalletSwitcher activeCoin={activeCoin} onSelect={setActiveCoin} dark />
-                  </div>
-                </div>
+        {/* ── ALLOCATION ── real split derived from actual balances, not a fabricated stat */}
+        {portfolioUsd > 0 && (
+          <div className="bg-white rounded-2xl border shadow-sm p-4" style={{ borderColor: C.g100 }}>
+            <p className="font-black text-sm mb-3" style={{ color: C.g800 }}>Allocation</p>
+            <div className="h-2.5 rounded-full overflow-hidden flex" style={{ backgroundColor: C.g100 }}>
+              <div style={{ width: `${btcAllocPct}%`, backgroundColor: C.gold }} />
+              <div style={{ width: `${usdtAllocPct}%`, backgroundColor: '#26A17B' }} />
+            </div>
+            <div className="flex items-center justify-between mt-3">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: C.gold }} />
+                <span className="text-xs font-bold" style={{ color: C.g600 }}>BTC {btcAllocPct}%</span>
               </div>
-              <div className="flex gap-1.5 flex-shrink-0">
-                <button onClick={() => setShowBal(!showBal)}
-                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center transition"
-                  style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)' }}>
-                  {showBal ? <Eye size={12} className="text-white" /> : <EyeOff size={12} className="text-white" />}
-                </button>
-                <button onClick={loadUsdtWallet} disabled={loadingUsdt}
-                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center transition"
-                  style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)' }}>
-                  <RefreshCw size={12} className={`text-white ${loadingUsdt ? 'animate-spin' : ''}`} />
-                </button>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: '#26A17B' }} />
+                <span className="text-xs font-bold" style={{ color: C.g600 }}>USDT {usdtAllocPct}%</span>
               </div>
             </div>
+          </div>
+        )}
 
-            {/* Balance block */}
-            <div className="mb-3 sm:mb-5">
-              {loadingUsdt && !usdtData ? (
-                <div className="flex items-center gap-2.5">
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <p className="text-white/60 text-sm font-semibold">Loading USDT balance…</p>
+        {/* ── USDT DISCOVERY HINT ──────────────────────────────────── */}
+        {showUsdtHint && (
+          <div className="flex items-start gap-3 p-4 rounded-2xl"
+            style={{ background: `linear-gradient(135deg, #26A17B12, #26A17B08)`, border: '1px solid #26A17B35' }}>
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#26A17B' }}>
+              <TetherGlyph size={18} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-black" style={{ color: C.g800 }}>You have a USDT wallet too!</p>
+              <p className="text-xs mt-0.5 leading-relaxed" style={{ color: C.g600 }}>
+                Both balances are shown together above. Use Send/Receive/Transfer and pick USDT from the list.
+              </p>
+            </div>
+            <button onClick={dismissUsdtHint}
+              className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 hover:bg-black/5 transition">
+              <X size={13} style={{ color: C.g400 }} />
+            </button>
+          </div>
+        )}
+
+        {/* ── P2P TRADE PROMO BANNER ── */}
+        <P2PPromoBanner navigate={navigate} />
+
+        {/* ── SECURITY INFO ────────────────────────────────────────── */}
+        <div className="bg-white rounded-2xl border shadow-sm p-4" style={{ borderColor: C.g100 }}>
+          <div className="flex items-center gap-2 mb-3">
+            <Shield size={14} style={{ color: C.green }} />
+            <p className="font-black text-sm" style={{ color: C.g800 }}>Wallet Security</p>
+          </div>
+          <div className="space-y-2">
+            {[
+              { icon: <Lock size={15} />, label: 'Self-Custodial HD Wallet',  desc: 'Your keys derived from master seed — PRAQEN controls nothing' },
+              { icon: <Shield size={15} />, label: 'Escrow Protected Trades',   desc: 'Trade funds locked until both parties confirm' },
+              { icon: <RefreshCw size={15} />, label: 'Auto Deposit Detection',    desc: 'Balance updates automatically when BTC arrives' },
+            ].map(({ icon, label, desc }) => (
+              <div key={label} className="flex items-center gap-3 p-2.5 rounded-xl" style={{ backgroundColor: C.g50 }}>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#fff', color: C.green }}>
+                  {icon}
                 </div>
-              ) : showBal ? (
-                <>
-                  <p className="text-white/55 text-xs font-semibold mb-1 uppercase tracking-widest">Available Balance</p>
-                  <div className="flex items-end gap-2">
-                    <p className="font-black text-white tracking-tight" style={{ fontSize: 'clamp(1.5rem, 7vw, 2.8rem)', lineHeight: 1 }}>
-                      {(usdtData?.balance_usdt || 0).toFixed(2)}
-                    </p>
-                    <span className="text-white/70 font-black mb-1 text-sm sm:text-base">USDT</span>
-                  </div>
-                  <p className="text-white/60 text-xs sm:text-sm mt-1.5">≈ ${(usdtData?.balance_usdt || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD · 1:1 pegged</p>
-
-                  {/* Locked + Total breakdown — combined across both assets, same as the BTC card */}
-                  <div className="grid grid-cols-2 gap-2 mt-3">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: '#F59E0B' }} />
-                      <div className="min-w-0">
-                        <p className="text-white/40 text-xs">Locked in Escrow</p>
-                        <p className="text-white/80 text-xs font-bold truncate">{fmt(lockedBal, 6)} BTC · {usdtLocked.toFixed(2)} USDT</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: '#52B788' }} />
-                      <div className="min-w-0">
-                        <p className="text-white/40 text-xs">Total Balance</p>
-                        <p className="text-white/80 text-xs font-bold truncate">{fmt(balance, 6)} BTC · {(usdtBal + usdtLocked).toFixed(2)} USDT</p>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <p className="text-white/55 text-xs font-semibold mb-1 uppercase tracking-widest">Available Balance</p>
-                  <p className="text-3xl sm:text-4xl font-black text-white tracking-widest">••••••</p>
-                </>
-              )}
-            </div>
-
-            {/* Action buttons */}
-            <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
-              {[
-                {
-                  label: 'Deposit',
-                  icon: <Download size={15} color="#fff" strokeWidth={2.2} />,
-                  grad: `linear-gradient(135deg, ${C.mint} 0%, ${C.sage} 100%)`,
-                  shadow: 'rgba(64,145,108,0.5)',
-                  action: () => setAssetPicker({ type: 'receive' }),
-                },
-                {
-                  label: 'Send',
-                  icon: <Send size={14} color="#fff" strokeWidth={2.2} />,
-                  grad: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-                  shadow: 'rgba(239,68,68,0.5)',
-                  action: () => setAssetPicker({ type: 'send' }),
-                },
-                {
-                  label: 'Transfer',
-                  icon: <ArrowLeftRight size={14} color="#fff" strokeWidth={2.2} />,
-                  grad: `linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)`,
-                  shadow: 'rgba(99,102,241,0.5)',
-                  action: () => setAssetPicker({ type: 'transfer' }),
-                },
-                {
-                  label: 'Swap',
-                  icon: <ArrowLeftRight size={14} color="#fff" strokeWidth={2.2} />,
-                  grad: `linear-gradient(135deg, ${C.gold} 0%, #e09318 100%)`,
-                  shadow: 'rgba(244,164,34,0.5)',
-                  action: () => { setActiveCoin('SWAP'); setSwapFrom('USDT'); },
-                },
-              ].map(({ label, icon, grad, shadow, action }) => (
-                <button key={label} onClick={action}
-                  className="flex flex-col items-center gap-1.5 py-2 sm:py-3 rounded-2xl transition active:scale-95"
-                  style={{ background: 'rgba(255,255,255,0.09)', border: '1px solid rgba(255,255,255,0.13)' }}>
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center"
-                    style={{ background: grad, boxShadow: `0 5px 16px ${shadow}` }}>
-                    {icon}
-                  </div>
-                  <span className="text-white font-extrabold tracking-wide" style={{ fontSize: '10px' }}>{label}</span>
-                </button>
-              ))}
-            </div>
+                <div>
+                  <p className="text-xs font-bold" style={{ color: C.g700 }}>{label}</p>
+                  <p className="text-xs" style={{ color: C.g400 }}>{desc}</p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* ── P2P TRADE PROMO BANNER — deposit address now lives in the Deposit modal ── */}
-        <P2PPromoBanner navigate={navigate} />
+        </div> {/* END right column */}
+        </div> {/* END grid */}
 
-        {/* ── USDT STATS ── */}
-        <div className="grid grid-cols-3 gap-2 sm:gap-3">
-          {[
-            { label: 'USDT Balance',   value: `₮${(usdtData?.balance_usdt || 0).toFixed(2)}`,        color: C.green,   bg: `${C.sage}15`,  border: `${C.sage}30` },
-            { label: 'In Escrow',      value: `₮${(usdtData?.locked_balance_usdt || 0).toFixed(2)}`, color: C.warn,    bg: `${C.warn}12`,  border: `${C.warn}25` },
-            { label: 'USD Value',      value: `$${(usdtData?.balance_usdt || 0).toFixed(2)}`,         color: C.success, bg: `${C.success}10`, border: `${C.success}25` },
-          ].map(({ label, value, color, bg, border }) => (
-            <div key={label} className="rounded-2xl p-3 sm:p-4 text-center shadow-sm"
-              style={{ backgroundColor: '#fff', border: `1.5px solid ${C.g200}`, background: '#fff' }}>
-              <div className="w-8 h-1 rounded-full mx-auto mb-2" style={{ backgroundColor: color, opacity: 0.6 }} />
-              <p className="font-black truncate" style={{ color, fontSize: 'clamp(0.7rem, 2.8vw, 1rem)' }}>{value}</p>
-              <p className="text-xs font-semibold mt-1 truncate" style={{ color: C.g400 }}>{label}</p>
-            </div>
-          ))}
-        </div>
 
-        </>)} {/* END USDT view */}
+        </>)} {/* END PORTFOLIO HOME */}
+
 
         {/* ══════════════════ SWAP VIEW ══════════════════ */}
         {activeCoin === 'SWAP' && (<>
@@ -3382,12 +3389,12 @@ export default function WalletPage({ user }) {
 
             <div className="flex items-center justify-center gap-4 pt-1">
               {[
-                { icon: '⚡', text: 'Instant' },
-                { icon: '🔒', text: 'Secure' },
-                { icon: '0⛓', text: 'No blockchain fees' },
+                { icon: <Zap size={12} />, text: 'Instant' },
+                { icon: <Lock size={12} />, text: 'Secure' },
+                { icon: <Link2 size={12} />, text: 'No blockchain fees' },
               ].map(({ icon, text }) => (
-                <div key={text} className="flex items-center gap-1">
-                  <span className="text-xs">{icon}</span>
+                <div key={text} className="flex items-center gap-1" style={{ color: C.g400 }}>
+                  {icon}
                   <span className="text-xs font-semibold" style={{ color: C.g400 }}>{text}</span>
                 </div>
               ))}
@@ -3443,9 +3450,9 @@ export default function WalletPage({ user }) {
                       </p>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <span className="text-xs font-black px-2 py-0.5 rounded-full"
+                      <span className="text-xs font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1"
                         style={{ background: `${C.success}15`, color: C.success, border: `1px solid ${C.success}25` }}>
-                        ✓ Done
+                        <Check size={10} /> Done
                       </span>
                       {sw.created_at && <p className="text-xs mt-1 font-semibold" style={{ color: C.g400 }}>{fmtAge(sw.created_at)}</p>}
                     </div>
@@ -3493,14 +3500,17 @@ export default function WalletPage({ user }) {
               <p className="text-white font-black text-sm mb-3">Quick Links</p>
               <div className="space-y-2">
                 {[
-                  ['Buy Bitcoin',  '/buy-bitcoin'],
-                  ['Sell Bitcoin', '/sell-bitcoin'],
-                  ['My Trades',   '/my-trades'],
-                  ['Settings',    '/settings'],
-                  ['📧 hello@praqen.com', 'mailto:hello@praqen.com'],
-                ].map(([l, h]) => (
-                  <a key={l} href={h} className="block text-xs hover:text-white transition"
-                    style={{ color: 'rgba(255,255,255,0.4)' }}>{l}</a>
+                  { l: 'Buy Bitcoin',  h: '/buy-bitcoin' },
+                  { l: 'Sell Bitcoin', h: '/sell-bitcoin' },
+                  { l: 'My Trades',   h: '/my-trades' },
+                  { l: 'Settings',    h: '/settings' },
+                  { l: 'Blog',        h: '/blog' },
+                  { l: 'Privacy',     h: '/privacy' },
+                  { l: 'Terms',       h: '/terms' },
+                  { l: 'hello@praqen.com', h: 'mailto:hello@praqen.com', icon: <Mail size={11} /> },
+                ].map(({ l, h, icon }) => (
+                  <a key={l} href={h} className="flex items-center gap-1.5 text-xs hover:text-white transition"
+                    style={{ color: 'rgba(255,255,255,0.4)' }}>{icon}{l}</a>
                 ))}
               </div>
             </div>
@@ -3519,9 +3529,9 @@ export default function WalletPage({ user }) {
 
       {selectedTx && <TxReceiptModal tx={selectedTx} btcPrice={btcPrice} onClose={() => setSelectedTx(null)}
           onRepeat={(username) => { setSelectedTx(null); setRepeatUsername(username); setShowInternal(true); }} />}
-      {showSend && <WithdrawModal balance={availableBal} btcPrice={btcPrice} onClose={() => setShowSend(false)} onSend={sendBitcoin} kycStatus={userVerif} />}
-      {showUsdtSend && <UsdtWithdrawModal balance={usdtData?.balance_usdt || 0} onClose={() => setShowUsdtSend(false)} onSend={sendUsdt} kycStatus={userVerif} />}
-      {showUsdtInternal && <UsdtInternalTransferModal balance={usdtData?.balance_usdt || 0} onClose={() => setShowUsdtInternal(false)} onTransfer={doUsdtInternalTransfer} />}
+      {showSend && <WithdrawModal balance={availableBal} btcPrice={btcPrice} onClose={() => setShowSend(false)} onSend={sendBitcoin} kycStatus={userVerif} onSwitchToInternal={() => { setShowSend(false); setShowInternal(true); }} />}
+      {showUsdtSend && <UsdtWithdrawModal balance={usdtData?.balance_usdt || 0} onClose={() => setShowUsdtSend(false)} onSend={sendUsdt} kycStatus={userVerif} onSwitchToInternal={() => { setShowUsdtSend(false); setShowUsdtInternal(true); }} />}
+      {showUsdtInternal && <UsdtInternalTransferModal balance={usdtData?.balance_usdt || 0} onClose={() => setShowUsdtInternal(false)} onTransfer={doUsdtInternalTransfer} onSwitchToExternal={() => { setShowUsdtInternal(false); setShowUsdtSend(true); }} />}
       {showRecv && (
         <ReceiveModal
           address={walletData?.address}
@@ -3549,6 +3559,19 @@ export default function WalletPage({ user }) {
           onClose={() => setAssetPicker(null)}
         />
       )}
+      {assetActionSheet && (
+        <AssetActionSheet
+          asset={assetActionSheet}
+          balanceLabel={assetActionSheet === 'BTC'
+            ? (showBal ? `${fmt(balance, 6)} BTC` : '•••• BTC')
+            : (showBal ? `${usdtBal.toFixed(2)} USDT` : '•••• USDT')}
+          usdLabel={assetActionSheet === 'BTC'
+            ? (showBal ? fmtLocal(totalUsd) : '••••')
+            : (showBal ? fmtLocal(usdtBal) : '••••')}
+          onAction={(action) => handleAssetAction(action, assetActionSheet)}
+          onClose={() => setAssetActionSheet(null)}
+        />
+      )}
       {showInternal && (
         <InternalTransferModal
           balance={availableBal}
@@ -3559,6 +3582,7 @@ export default function WalletPage({ user }) {
           currentUser={user}
           initialUsername={repeatUsername}
           onClose={() => { setShowInternal(false); setRepeatUsername(null); }}
+          onSwitchToExternal={() => { setShowInternal(false); setRepeatUsername(null); setShowSend(true); }}
           onDone={(newBal) => {
             setWalletData(prev => prev ? { ...prev, available_btc: newBal, balance_btc: newBal } : prev);
             setShowInternal(false);

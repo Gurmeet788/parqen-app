@@ -844,6 +844,7 @@ export default function TradeDetail({user}) {
   const msgEnd     = useRef(null);
   const chatRef    = useRef(null);
   const fileRef    = useRef(null);
+  const textareaRef = useRef(null);
   const scrolled        = useRef(false);
   const prevMsgCount    = useRef(0);
   const autoCancelled   = useRef(false);
@@ -1288,14 +1289,14 @@ export default function TradeDetail({user}) {
   // - While DISPUTED: ONLY the person who opened the dispute can cancel it — the
   //   other side can't cancel their way out of a dispute filed against them, and
   //   legacy disputes with no recorded opener can't be self-cancelled by anyone.
-  // - Otherwise (not yet disputed): either party can cancel before payment is
-  //   confirmed; once confirmed, only the seller can still cancel (protects the
-  //   seller if the buyer's payment claim turns out to be fake) — the buyer must
-  //   open a dispute instead of unilaterally backing out after claiming to pay.
+  // - Otherwise (not yet disputed): only the BUYER can cancel. Sellers hold the
+  //   escrowed BTC — letting them cancel on demand would let a dishonest seller
+  //   pocket a payment and still reclaim the BTC, or strong-arm the buyer. A
+  //   seller who wants out must open a dispute instead.
   const showCancelBtn = isActive && (isBuyer || isSeller) && (
     isDisputed
       ? !!trade?.disputed_by && String(trade.disputed_by) === String(user?.id)
-      : (isSeller || !trade?.buyer_confirmed)
+      : isBuyer
   );
 
   // Read receipts: timestamp of the last message the counterparty sent
@@ -1701,20 +1702,20 @@ export default function TradeDetail({user}) {
               )}
 
               {/* ── SYSTEM MESSAGE STRIP ── */}
-              <div className="flex-shrink-0 border-b px-3 py-2.5"
-                style={{borderColor:'rgba(34,197,94,0.25)', backgroundColor:'rgba(240,253,244,0.85)'}}>
-                <div className="flex items-start gap-2">
-                  <Shield size={11} style={{color:'#166534',flexShrink:0,marginTop:2}}/>
-                  <p className="text-xs leading-snug font-medium" style={{color:'#166534'}}>
-                    {isBuyer
-                      ? <>🔔 <strong>You are BUYING.</strong> Send payment via <span className="font-black">{payMethod}</span>, then tap <span className="font-black">✅ I HAVE PAID</span>. Only release after the seller confirms.</>
-                      : isSeller
-                        ? <>🔔 <strong>You are SELLING.</strong> Wait for the buyer to pay via <span className="font-black">{payMethod}</span>. Once payment arrives, tap <span className="font-black">✅ RELEASE BITCOIN</span> to complete the trade.</>
-                        : <>🔔 Pay via <span className="font-black">{payMethod}</span>, then tap <span className="font-black">✅ I HAVE PAID</span>. Do not trade outside escrow.</>
-                    }
-                  </p>
-                </div>
-              </div>
+             <div className="flex-shrink-0 border-b px-3 py-2.5"
+  style={{
+    borderColor: isSeller ? 'rgba(239,68,68,0.4)' : 'rgba(34,197,94,0.25)',
+    backgroundColor: isSeller ? C.danger : C.green,
+  }}>
+  <p className="text-xs leading-snug font-black uppercase tracking-wide" style={{color:'#fff'}}>
+    {isBuyer
+      ? `YOU ARE BUYING ${fmtBtc(btcReceived)} BTC FOR ${userPays.toFixed(2)} ${cur} ${payMethod}`
+      : isSeller
+        ? `YOU ARE SELLING ${fmtBtc(btcReceived)} BTC FOR ${userPays.toFixed(2)} ${cur} ${payMethod}`
+        : `PAY ${userPays.toFixed(2)} ${cur} VIA ${payMethod} FOR ${fmtBtc(btcReceived)} BTC`
+    }
+  </p>
+</div>
 
               {/* Messages */}
               <div ref={chatRef} className="flex-1 overflow-y-auto p-4 space-y-3" style={{backgroundColor:'#F9FAFB',minHeight:0}}>
@@ -1909,20 +1910,33 @@ export default function TradeDetail({user}) {
                               📎 Tap to enlarge
                             </p>
                           </button>
-                        ):(
-                          <div className="px-3.5 py-2.5 text-sm font-medium break-words shadow-md"
+                      ):(
+                          <div className="relative px-3.5 py-2.5 text-sm font-medium break-words shadow-md"
                             style={{
                               background:isOwn?ownBg:otherBg,
                               color:'#fff',
                               fontWeight:500,
                               lineHeight:'1.5',
                               borderRadius:isOwn?'18px 18px 4px 18px':'4px 18px 18px 18px',
+                              paddingRight: 32,
                             }}>
+                            <p className="text-xs font-black mb-1" style={{opacity:0.85}}>
+                              {isOwn ? 'You' : (cp?.username || 'User')}
+                            </p>
                             {text}
+                            <button
+                              type="button"
+                              onClick={()=>copyToClipboard(text, 'Message copied!')}
+                              className="absolute top-2 right-2 w-5 h-5 flex items-center justify-center"
+                              title="Copy message">
+                              <Copy size={13} style={{color:'rgba(255,255,255,0.7)'}}/>
+                            </button>
                           </div>
                         )}
                         <div className={`flex items-center gap-1 mt-1 ${isOwn?'justify-end':'ml-1'}`}>
-                          <span className="text-xs" style={{color:C.g400}}>{ts}</span>
+                          <span className="text-xs" style={{color:C.g400}}>
+                            {new Date(m.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})} {new Date(m.created_at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',hour12:false})}
+                          </span>
                           {isOwn&&(
                             m.is_read||new Date(m.created_at).getTime()<lastCpMsgTime
                               ?<CheckCheck size={12} style={{color:'#3B82F6'}}/>

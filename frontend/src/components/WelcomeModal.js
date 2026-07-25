@@ -183,8 +183,8 @@ export default function WelcomeModal({ user, onClose }) {
               <p className="text-xs font-black uppercase tracking-wider" style={{ color: C.g400 }}>Contact & Support</p>
               <div className="flex items-center gap-2">
                 <span className="text-base">📧</span>
-                <a href="mailto:hello@hellopraqen.com" className="text-xs font-bold" style={{ color: C.green }}>
-                  hello@hellopraqen.com
+                <a href="mailto:hello@praqen.com" className="text-xs font-bold" style={{ color: C.green }}>
+                  hello@praqen.com
                 </a>
               </div>
               <div className="flex items-center gap-2">

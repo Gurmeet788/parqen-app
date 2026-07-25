@@ -810,7 +810,7 @@ export default function Profile({ userId: propUserId }) {
 
           {/* ── OVERVIEW ── */}
           {tab === 'overview' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,280px)', gap: 20, alignItems: 'start' }}>
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px]" style={{ gap: 20, alignItems: 'start' }}>
 
               {/* Left column */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -1372,6 +1372,11 @@ export default function Profile({ userId: propUserId }) {
             <span style={{ color: 'white', fontWeight: 900, fontSize: 15, fontFamily: "'Syne',sans-serif" }}>PRAQEN</span>
           </div>
           <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginBottom: 16 }}>The world's most trusted P2P Bitcoin platform.</p>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
+            <a href="/blog" style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>Blog</a>
+            <a href="/privacy" style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>Privacy</a>
+            <a href="/terms" style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>Terms</a>
+          </div>
           <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: 11, textAlign: 'center' }}>© {new Date().getFullYear()} PRAQEN. All rights reserved.</p>
         </div>
       </footer>
