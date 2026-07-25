@@ -3504,6 +3504,7 @@ export default function WalletPage({ user }) {
                   { l: 'Sell Bitcoin', h: '/sell-bitcoin' },
                   { l: 'My Trades',   h: '/my-trades' },
                   { l: 'Settings',    h: '/settings' },
+                  { l: 'Blog',        h: '/blog' },
                   { l: 'hello@praqen.com', h: 'mailto:hello@praqen.com', icon: <Mail size={11} /> },
                 ].map(({ l, h, icon }) => (
                   <a key={l} href={h} className="flex items-center gap-1.5 text-xs hover:text-white transition"

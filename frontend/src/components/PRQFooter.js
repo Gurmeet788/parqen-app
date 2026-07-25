@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 
 const SOCIALS = [
   {
@@ -111,6 +111,8 @@ export default function PRQFooter() {
           </a>
         ))}
 
+        <span style={{ color: 'rgba(255,255,255,0.08)', fontSize: 10 }}>·</span>
+        <Link to="/blog" style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.45)', textDecoration: 'none', whiteSpace: 'nowrap' }}>Blog</Link>
         <span style={{ color: 'rgba(255,255,255,0.08)', fontSize: 10 }}>·</span>
         <a href="mailto:hello@praqen.com" style={{ fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textDecoration: 'none', whiteSpace: 'nowrap' }}>hello@praqen.com</a>
         <span style={{ fontSize: 8, fontWeight: 800, background: 'rgba(64,145,108,0.2)', border: '1px solid rgba(64,145,108,0.3)', color: '#6EE7B7', padding: '1px 5px', borderRadius: 4, whiteSpace: 'nowrap' }}>24/7</span>

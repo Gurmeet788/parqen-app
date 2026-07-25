@@ -927,7 +927,7 @@ export default function MyListings({ user }) {
             <div>
               <p className="text-white font-black text-sm mb-3">Trade</p>
               <div className="space-y-2">
-                {[['Buy Bitcoin','/buy-bitcoin'],['Sell Bitcoin','/sell-bitcoin'],['Gift Cards','/gift-cards'],['My Trades','/my-trades'],['Create Offer','/create-offer']].map(([l,h])=>(
+                {[['Buy Bitcoin','/buy-bitcoin'],['Sell Bitcoin','/sell-bitcoin'],['Gift Cards','/gift-cards'],['My Trades','/my-trades'],['Create Offer','/create-offer'],['Blog','/blog']].map(([l,h])=>(
                   <a key={l} href={h} className="block text-xs hover:text-white transition" style={{color:'rgba(255,255,255,0.4)'}}>{l}</a>
                 ))}
               </div>

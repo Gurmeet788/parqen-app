@@ -652,7 +652,7 @@ class TradeEscrowService {
           console.error(`🚨 [Escrow] FEE COLLECTION FAILED — ₿${platformFee.toFixed(8)} NOT COLLECTED:`, feeErr.message);
           await supabaseAdmin.from('trades')
               .update({ fee_status: 'FAILED', platform_fee_btc: platformFee })
-              .eq('id', tradeId).catch(() => {});
+              .eq('id', tradeId).then(null, () => {});
       }
     } else {
       // USDT fee audit trail
@@ -903,7 +903,7 @@ class TradeEscrowService {
             reason:      'ESCROW_REFUND',
             trade_id:    tradeId,
             created_at:  new Date().toISOString(),
-          }).catch(() => {});
+          }).then(null, () => {});
         }).catch(() => {});
 
       sendSystemAlert(

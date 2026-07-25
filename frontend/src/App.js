@@ -55,6 +55,8 @@ if (process.env.NODE_ENV === 'production') {
 
 // Lazy-loaded pages — each becomes its own JS chunk
 const GiftCardMarketplace   = lazy(() => import('./pages/GiftCardMarketplace'));
+const Blog                  = lazy(() => import('./pages/Blog'));
+const BlogPost               = lazy(() => import('./pages/BlogPost'));
 const LandingPage           = lazy(() => import('./pages/LandingPage'));
 const Register              = lazy(() => import('./pages/Register'));
 const Login                 = lazy(() => import('./pages/Login'));
@@ -340,6 +342,8 @@ function App() {
               <Route path="/" element={<LandingPage user={user} />} />
               <Route path="/listing/:id" element={<ListingDetail user={user} />} />
               <Route path="/gift-cards" element={<GiftCardMarketplace user={user} />} />
+              <Route path="/blog" element={<Blog />} />
+              <Route path="/blog/:slug" element={<BlogPost />} />
               <Route path="/marketplace" element={<Navigate to="/gift-cards" />} />
               <Route path="/register" element={!user ? <Register onLogin={login} /> : <Navigate to="/" />} />
               <Route path="/signup" element={!user ? <Register onLogin={login} /> : <Navigate to="/" />} />

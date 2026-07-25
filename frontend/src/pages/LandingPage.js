@@ -1063,6 +1063,7 @@ export default function LandingPage({ user }) {
               {l:'Buy Bitcoin',  t:'/buy-bitcoin'},
               {l:'Sell Bitcoin', t:'/sell-bitcoin'},
               {l:'Gift Cards',   t:'/gift-cards'},
+              {l:'Blog',         t:'/blog'},
               {l:'My Wallet',    t:'/wallet'},
               {l:'Dashboard',    t:'/dashboard'},
               {l:'Register',     t:'/register'},
