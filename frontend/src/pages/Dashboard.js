@@ -1649,6 +1649,8 @@ export default function Dashboard({ user }) {
                   {label:'My Trades',     tab:'trades'},
                   {label:'My Offers',     route:'/my-listings'},
                   {label:'Blog',          route:'/blog'},
+                  {label:'Privacy',       route:'/privacy'},
+                  {label:'Terms',         route:'/terms'},
                 ].map(({label,route,tab})=>(
                   <button key={label}
                     onClick={()=>{ if(tab){setActiveTab(tab)} else navigate(route); }}
