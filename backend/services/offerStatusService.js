@@ -26,7 +26,7 @@ async function updateOfferStatus(userId) {
 
     const { data: offers } = await supabaseAdmin
       .from('listings')
-      .select('id, status, listing_type')
+      .select('id, status, listing_type, asset')
       .eq('seller_id', userId)
       .in('listing_type', BTC_REQUIRED_TYPES)
       .in('status', ['ACTIVE', 'PAUSED']);
@@ -65,7 +65,7 @@ async function syncAllOfferStatuses() {
     // Fetch all ACTIVE and PAUSED BTC/USDT-required listings (include limits for cap logic)
     const { data: listings, error } = await supabaseAdmin
       .from('listings')
-      .select('id, seller_id, status, listing_type, bitcoin_price, min_limit_usd, max_limit_usd, max_limit_local')
+      .select('id, seller_id, status, listing_type, asset, bitcoin_price, min_limit_usd, max_limit_usd, max_limit_local')
       .in('listing_type', BTC_REQUIRED_TYPES)
       .in('status', ['ACTIVE', 'PAUSED']);
 
@@ -91,6 +91,7 @@ async function syncAllOfferStatuses() {
     const toReactivate = [];
 
     for (const listing of listings) {
+      const isUsdt    = listing.asset === 'USDT';
       const btcPrice  = parseFloat(listing.bitcoin_price) || BTC_PRICE_APPROX;
       const balUsd    = (balMap[listing.seller_id] || 0) * btcPrice; // default to BTC balance
       const minUsd    = parseFloat(listing.min_limit_usd || 0);
