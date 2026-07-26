@@ -11,6 +11,65 @@ import {
   ToggleLeft, ToggleRight
 } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { parsePhoneNumberWithError } from 'libphonenumber-js';
+
+const COUNTRY_OPTIONS = [
+  { code: 'GH', name: 'Ghana', dialCode: '+233', flag: '🇬🇭' },
+  { code: 'NG', name: 'Nigeria', dialCode: '+234', flag: '🇳🇬' },
+  { code: 'CN', name: 'China', dialCode: '+86', flag: '🇨🇳' },
+  { code: 'PK', name: 'Pakistan', dialCode: '+92', flag: '🇵🇰' },
+  { code: 'KE', name: 'Kenya', dialCode: '+254', flag: '🇰🇪' },
+  { code: 'ZA', name: 'South Africa', dialCode: '+27', flag: '🇿🇦' },
+  { code: 'US', name: 'United States', dialCode: '+1', flag: '🇺🇸' },
+  { code: 'GB', name: 'United Kingdom', dialCode: '+44', flag: '🇬🇧' },
+  { code: 'AE', name: 'United Arab Emirates', dialCode: '+971', flag: '🇦🇪' },
+  { code: 'IN', name: 'India', dialCode: '+91', flag: '🇮🇳' },
+  { code: 'CA', name: 'Canada', dialCode: '+1', flag: '🇨🇦' },
+  { code: 'CM', name: 'Cameroon', dialCode: '+237', flag: '🇨🇲' },
+  { code: 'CI', name: "Côte d'Ivoire", dialCode: '+225', flag: '🇨🇮' },
+  { code: 'EG', name: 'Egypt', dialCode: '+20', flag: '🇪🇬' },
+  { code: 'ET', name: 'Ethiopia', dialCode: '+251', flag: '🇪🇹' },
+  { code: 'MW', name: 'Malawi', dialCode: '+265', flag: '🇲🇼' },
+  { code: 'MA', name: 'Morocco', dialCode: '+212', flag: '🇲🇦' },
+  { code: 'MZ', name: 'Mozambique', dialCode: '+258', flag: '🇲🇿' },
+  { code: 'RW', name: 'Rwanda', dialCode: '+250', flag: '🇷🇼' },
+  { code: 'SN', name: 'Senegal', dialCode: '+221', flag: '🇸🇳' },
+  { code: 'TZ', name: 'Tanzania', dialCode: '+255', flag: '🇹🇿' },
+  { code: 'UG', name: 'Uganda', dialCode: '+256', flag: '🇺🇬' },
+  { code: 'ZM', name: 'Zambia', dialCode: '+260', flag: '🇿🇲' },
+  { code: 'ZW', name: 'Zimbabwe', dialCode: '+263', flag: '🇿🇼' },
+];
+
+const validatePhoneFrontend = (phoneInput, countryCode = 'GH') => {
+  if (!phoneInput || typeof phoneInput !== 'string' || !phoneInput.trim()) {
+    return { valid: false, error: 'Please enter your phone number first.' };
+  }
+  const cleaned = phoneInput.trim().replace(/[\s\-()]/g, '');
+  try {
+    const phoneNumber = parsePhoneNumberWithError(cleaned, countryCode || 'GH');
+    if (!phoneNumber || !phoneNumber.isValid()) {
+      const countryObj = COUNTRY_OPTIONS.find(c => c.code === countryCode);
+      const countryLabel = countryObj ? `${countryObj.name} (${countryObj.dialCode})` : countryCode;
+      return {
+        valid: false,
+        error: `Invalid phone number format or length for ${countryLabel}. Please check your number.`
+      };
+    }
+    return {
+      valid: true,
+      e164: phoneNumber.number,
+      country: phoneNumber.country,
+      countryCallingCode: `+${phoneNumber.countryCallingCode}`
+    };
+  } catch (err) {
+    const countryObj = COUNTRY_OPTIONS.find(c => c.code === countryCode);
+    const countryLabel = countryObj ? `${countryObj.name} (${countryObj.dialCode})` : countryCode;
+    return {
+      valid: false,
+      error: `Invalid phone number format or length for ${countryLabel}. Please check your number.`
+    };
+  }
+};
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
@@ -441,6 +500,8 @@ export default function Settings({ user, setUser }) {
   });
   const [phoneOtpMethod, setPhoneOtpMethod] = useState('sms'); // 'sms' | 'whatsapp'
   const [phoneOtpCode,   setPhoneOtpCode]   = useState('');
+  const [selectedCountry, setSelectedCountry] = useState('GH'); // Ghana default (+233)
+  const [phoneError, setPhoneError] = useState('');
 
   // Email verification flow (inline in Account tab)
   const [emailVerifyStep,   setEmailVerifyStep]   = useState('idle'); // idle | otp | verifying
@@ -698,19 +759,22 @@ export default function Settings({ user, setUser }) {
   };
 
   const handleSendPhoneOtp = async () => {
-    // Clean the phone: strip spaces, dashes, parens before sending
-    const raw   = accountForm.phone || '';
-    const phone = raw.trim().replace(/[\s\-()]/g, '');
-    if (!phone) { toast.error('Please enter your phone number first'); return; }
-    if (!phone.startsWith('+')) {
-      toast.error('Please include your country code, e.g. +233 for Ghana, +234 for Nigeria');
+    setPhoneError('');
+    const raw = accountForm.phone || '';
+    const valResult = validatePhoneFrontend(raw, selectedCountry);
+    if (!valResult.valid) {
+      setPhoneError(valResult.error);
+      toast.error(valResult.error);
       return;
     }
-    // Sync cleaned version back to the form so verify call uses exact same string
-    setAccountForm(prev => ({ ...prev, phone }));
+    const cleanE164 = valResult.e164;
+    setAccountForm(prev => ({ ...prev, phone: cleanE164 }));
     setPhoneStep('sending');
     try {
-      const r = await axios.post(`${API_URL}/users/send-phone-otp`, { phone, method: phoneOtpMethod }, { headers: authH() });
+      const r = await axios.post(`${API_URL}/users/send-phone-otp`,
+        { phone: cleanE164, country: selectedCountry, method: phoneOtpMethod },
+        { headers: authH() }
+      );
       setPhoneStep('otp');
       if (r.data?.devCode) {
         setPhoneOtpCode(r.data.devCode);
@@ -721,18 +785,19 @@ export default function Settings({ user, setUser }) {
       }
     } catch (e) {
       const errData = e?.response?.data;
+      const errMsg = errData?.error || 'Failed to send code. Please try again.';
+      setPhoneError(errMsg);
       if (errData?.devCode) {
         setPhoneOtpCode(errData.devCode);
         setPhoneStep('otp');
         toast.warning(`Send failed — dev code auto-filled: ${errData.devCode}`, { autoClose: 10000 });
       } else {
-        // If backend suggests switching to alternate method, auto-switch and hint the user
         if (errData?.suggestAlt) {
           setPhoneOtpMethod(errData.suggestAlt);
           const altLabel = errData.suggestAlt === 'whatsapp' ? 'WhatsApp' : 'SMS';
-          toast.error(`${errData.error || 'Delivery failed.'} Switched to ${altLabel} — tap Send again.`, { autoClose: 8000 });
+          toast.error(`${errMsg} Switched to ${altLabel} — tap Send again.`, { autoClose: 8000 });
         } else {
-          toast.error(errData?.error || 'Failed to send code. Please try again.');
+          toast.error(errMsg);
         }
         setPhoneStep('idle');
       }
@@ -741,14 +806,20 @@ export default function Settings({ user, setUser }) {
 
   const handleVerifyPhoneOtp = async () => {
     if (phoneOtpCode.length < 6) { toast.error('Enter the full 6-digit code'); return; }
+    const valResult = validatePhoneFrontend(accountForm.phone, selectedCountry);
+    if (!valResult.valid) {
+      toast.error(valResult.error);
+      return;
+    }
+    const cleanE164 = valResult.e164;
     setPhoneStep('verifying');
     try {
       await axios.post(`${API_URL}/users/verify-phone-otp`,
-        { phone: accountForm.phone, otp: phoneOtpCode },
+        { phone: cleanE164, country: selectedCountry, otp: phoneOtpCode },
         { headers: authH() }
       );
       toast.success('Phone number verified! ✅');
-      markPhoneVerifiedLocally(accountForm.phone);
+      markPhoneVerifiedLocally(cleanE164);
     } catch (e) {
       toast.error(e?.response?.data?.error || 'Invalid or expired code. Tap Resend to get a new one.');
       setPhoneStep('otp');
@@ -1382,14 +1453,55 @@ export default function Settings({ user, setUser }) {
                                   {/* Idle: enter phone + pick method + send */}
                                   {phoneStep === 'idle' && (
                                     <>
-                                      <input
-                                        type="tel"
-                                        placeholder="+233 XX XXX XXXX"
-                                        value={accountForm.phone || ''}
-                                        onChange={e => setAccountForm({ ...accountForm, phone: e.target.value })}
-                                        className="w-full px-3 py-2 border-2 rounded-xl text-sm focus:outline-none"
-                                        style={{ borderColor: accountForm.phone ? C.green : C.g200, color: C.g800, backgroundColor: 'white' }}
-                                      />
+                                      <div className="flex gap-2 flex-col sm:flex-row">
+                                        <div className="flex items-center gap-2 px-3 py-2 border-2 rounded-xl bg-white sm:w-60" style={{ borderColor: C.g200 }}>
+                                          <img
+                                            src={`https://flagcdn.com/w40/${selectedCountry.toLowerCase()}.png`}
+                                            alt={selectedCountry}
+                                            className="w-6 h-4 object-cover rounded shadow-xs flex-shrink-0"
+                                            onError={(e) => { e.target.style.display = 'none'; }}
+                                          />
+                                          <select
+                                            value={selectedCountry}
+                                            onChange={e => {
+                                              setSelectedCountry(e.target.value);
+                                              setPhoneError('');
+                                            }}
+                                            className="w-full text-sm font-bold bg-transparent focus:outline-none cursor-pointer"
+                                            style={{ color: '#0f172a' }}
+                                          >
+                                            {COUNTRY_OPTIONS.map(c => (
+                                              <option key={c.code} value={c.code} style={{ backgroundColor: '#ffffff', color: '#0f172a' }}>
+                                                {c.name} ({c.dialCode})
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                        <input
+                                          type="tel"
+                                          placeholder={
+                                            COUNTRY_OPTIONS.find(c => c.code === selectedCountry)?.dialCode
+                                              ? `${COUNTRY_OPTIONS.find(c => c.code === selectedCountry).dialCode} XX XXX XXXX`
+                                              : '+233 XX XXX XXXX'
+                                          }
+                                          value={accountForm.phone || ''}
+                                          onChange={e => {
+                                            setAccountForm({ ...accountForm, phone: e.target.value });
+                                            setPhoneError('');
+                                          }}
+                                          className="flex-1 px-3 py-2 border-2 rounded-xl text-sm focus:outline-none"
+                                          style={{
+                                            borderColor: phoneError ? C.danger : accountForm.phone ? C.green : C.g200,
+                                            color: C.g800,
+                                            backgroundColor: 'white'
+                                          }}
+                                        />
+                                      </div>
+                                      {phoneError && (
+                                        <p className="text-xs font-bold text-red-500 flex items-center gap-1">
+                                          ⚠️ {phoneError}
+                                        </p>
+                                      )}
                                       <p className="text-xs font-bold" style={{ color: '#1e40af' }}>Receive code via:</p>
                                       <div className="flex gap-2">
                                         <button
@@ -2503,4 +2615,5 @@ export default function Settings({ user, setUser }) {
     </div>
   );
 }
+
 
