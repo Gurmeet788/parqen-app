@@ -1372,7 +1372,11 @@ export default function Profile({ userId: propUserId }) {
             <span style={{ color: 'white', fontWeight: 900, fontSize: 15, fontFamily: "'Syne',sans-serif" }}>PRAQEN</span>
           </div>
           <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginBottom: 16 }}>The world's most trusted P2P Bitcoin platform.</p>
-          <a href="/blog" style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, display: 'block', marginBottom: 8 }}>Blog</a>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
+            <a href="/blog" style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>Blog</a>
+            <a href="/privacy" style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>Privacy</a>
+            <a href="/terms" style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>Terms</a>
+          </div>
           <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: 11, textAlign: 'center' }}>© {new Date().getFullYear()} PRAQEN. All rights reserved.</p>
         </div>
       </footer>

@@ -2481,7 +2481,7 @@ export default function Settings({ user, setUser }) {
             <div>
               <p className="text-white font-black text-sm mb-3">Account</p>
               <div className="space-y-2">
-                {[['Profile', '/profile'], ['My Trades', '/my-trades'], ['My Listings', '/my-listings'], ['Wallet', '/wallet'], ['Dashboard', '/dashboard'], ['Blog', '/blog']].map(([l, h]) => (
+                {[['Profile', '/profile'], ['My Trades', '/my-trades'], ['My Listings', '/my-listings'], ['Wallet', '/wallet'], ['Dashboard', '/dashboard'], ['Blog', '/blog'], ['Privacy', '/privacy'], ['Terms', '/terms']].map(([l, h]) => (
                   <a key={l} href={h} className="block text-xs hover:text-white transition" style={{ color: 'rgba(255,255,255,0.4)' }}>{l}</a>
                 ))}
               </div>

@@ -175,14 +175,18 @@ export default function Navbar({ user, onLogout }) {
           </button>
 
           {marketDrop && (
-            <div style={{
+            <div className="prq-dropdown" style={{
               position: 'absolute', top: 'calc(100% + 10px)', left: 0,
-              width: '210px', background: '#fff', borderRadius: '16px',
+              transformOrigin: 'top left',
+              width: '218px', background: '#fff', borderRadius: '16px',
               boxShadow: '0 20px 60px rgba(0,0,0,0.18)', border: `1px solid ${C.g100}`,
               overflow: 'hidden', zIndex: 50,
             }}>
+              <p style={{ margin: 0, padding: '10px 16px 6px', fontSize: 10, fontWeight: 800, letterSpacing: '0.6px', color: C.g400, textTransform: 'uppercase' }}>Bitcoin</p>
               <Link to="/buy-bitcoin" onClick={() => setMarketDrop(false)}
-                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '13px 16px', textDecoration: 'none', borderBottom: `1px solid ${C.g100}`, background: isActive('/buy-bitcoin') ? C.mist : '#fff', transition: 'background 0.15s' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', textDecoration: 'none', background: isActive('/buy-bitcoin') ? C.mist : '#fff', transition: 'background 0.15s' }}
+                onMouseEnter={e => { if (!isActive('/buy-bitcoin')) e.currentTarget.style.background = C.g100; }}
+                onMouseLeave={e => { if (!isActive('/buy-bitcoin')) e.currentTarget.style.background = '#fff'; }}>
                 <div style={{ width: 34, height: 34, borderRadius: 10, background: '#DCFCE7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <ShoppingCart size={16} color="#16A34A" />
                 </div>
@@ -192,7 +196,9 @@ export default function Navbar({ user, onLogout }) {
                 </div>
               </Link>
               <Link to="/sell-bitcoin" onClick={() => setMarketDrop(false)}
-                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '13px 16px', textDecoration: 'none', borderBottom: `1px solid ${C.g100}`, background: isActive('/sell-bitcoin') ? C.mist : '#fff', transition: 'background 0.15s' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', textDecoration: 'none', borderBottom: `1px solid ${C.g100}`, background: isActive('/sell-bitcoin') ? C.mist : '#fff', transition: 'background 0.15s' }}
+                onMouseEnter={e => { if (!isActive('/sell-bitcoin')) e.currentTarget.style.background = C.g100; }}
+                onMouseLeave={e => { if (!isActive('/sell-bitcoin')) e.currentTarget.style.background = '#fff'; }}>
                 <div style={{ width: 34, height: 34, borderRadius: 10, background: '#FEF9C3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <Tag size={16} color={C.goldDark} />
                 </div>
@@ -201,10 +207,11 @@ export default function Navbar({ user, onLogout }) {
                   <p style={{ margin: 0, fontSize: 10, color: C.g400 }}>Get paid in local currency</p>
                 </div>
               </Link>
-              {/* USDT divider */}
-              <div style={{ height: 1, background: C.g100, margin: '0 12px' }} />
+              <p style={{ margin: 0, padding: '10px 16px 6px', fontSize: 10, fontWeight: 800, letterSpacing: '0.6px', color: C.g400, textTransform: 'uppercase' }}>USDT</p>
               <Link to="/buy-usdt" onClick={() => setMarketDrop(false)}
-                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '13px 16px', textDecoration: 'none', borderBottom: `1px solid ${C.g100}`, background: isActive('/buy-usdt') ? C.mist : '#fff', transition: 'background 0.15s' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', textDecoration: 'none', background: isActive('/buy-usdt') ? C.mist : '#fff', transition: 'background 0.15s' }}
+                onMouseEnter={e => { if (!isActive('/buy-usdt')) e.currentTarget.style.background = C.g100; }}
+                onMouseLeave={e => { if (!isActive('/buy-usdt')) e.currentTarget.style.background = '#fff'; }}>
                 <div style={{ width: 34, height: 34, borderRadius: 10, background: '#D1FAE5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <span style={{ fontSize: 14, fontWeight: 900, color: '#0D9488' }}>₮</span>
                 </div>
@@ -214,7 +221,9 @@ export default function Navbar({ user, onLogout }) {
                 </div>
               </Link>
               <Link to="/sell-usdt" onClick={() => setMarketDrop(false)}
-                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '13px 16px', textDecoration: 'none', background: isActive('/sell-usdt') ? C.mist : '#fff', transition: 'background 0.15s' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px 13px', textDecoration: 'none', background: isActive('/sell-usdt') ? C.mist : '#fff', transition: 'background 0.15s' }}
+                onMouseEnter={e => { if (!isActive('/sell-usdt')) e.currentTarget.style.background = C.g100; }}
+                onMouseLeave={e => { if (!isActive('/sell-usdt')) e.currentTarget.style.background = '#fff'; }}>
                 <div style={{ width: 34, height: 34, borderRadius: 10, background: '#FEF9C3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <span style={{ fontSize: 14, fontWeight: 900, color: C.goldDark }}>₮</span>
                 </div>
@@ -310,19 +319,26 @@ export default function Navbar({ user, onLogout }) {
       paddingTop: 'env(safe-area-inset-top, 0px)',
       paddingLeft: 'env(safe-area-inset-left, 0px)',
       paddingRight: 'env(safe-area-inset-right, 0px)',
-    }}>      <style>{`@keyframes prqPulseDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.75)}}`}</style>
+    }}>      <style>{`
+        @keyframes prqPulseDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.75)}}
+        @keyframes prqDropIn{from{opacity:0;transform:translateY(-6px) scale(0.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+        .prq-dropdown{animation:prqDropIn 0.16s cubic-bezier(0.16,1,0.3,1)}
+        /* Brand name always stays visible — just runs a bit smaller on narrow phones
+           so there's still room for the wallet balance, avatar and bell. */
+        @media (max-width: 400px) { .prq-logo-wordmark { font-size: 16px !important; } }
+      `}</style>
       <div className="max-w-[1400px] mx-auto px-4 md:px-10">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 64, gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 64, gap: 8 }}>
 
           {/* Logo */}
-          <Link to="/" style={{ textDecoration: 'none', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 9 }}>
+          <Link to="/" style={{ textDecoration: 'none', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{
               width: 30, height: 30, borderRadius: 9, background: C.gold,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 16, fontWeight: 900, color: C.dark, fontFamily: 'Georgia,serif',
               boxShadow: '0 2px 8px rgba(244,164,34,0.45)', flexShrink: 0,
             }}>P</div>
-            <span style={{ fontSize: 21, fontWeight: 900, letterSpacing: '-0.5px' }}>
+            <span className="prq-logo-wordmark" style={{ fontSize: 21, fontWeight: 900, letterSpacing: '-0.5px', flexShrink: 0 }}>
               <span style={{ color: C.forest }}>PRA</span><span style={{ color: C.gold }}>QEN</span>
             </span>
           </Link>
@@ -331,21 +347,20 @@ export default function Navbar({ user, onLogout }) {
           <DesktopNavLinks />
 
           {/* Right: Wallet (desktop) · Avatar · Bell */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
 
-            {/* Wallet — compact mobile pill */}
-            <div className="flex md:hidden items-center"
-              style={{ background: C.mist, border: `1px solid #c8e6d4`, borderRadius: 8, overflow: 'hidden' }}>
+            {/* Wallet — compact mobile pill. Balance text is never truncated. */}
+            <div className="flex md:hidden items-center" style={{ background: C.mist, border: `1px solid #c8e6d4`, borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
               <Link to="/wallet"
-                style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '5px 8px', textDecoration: 'none' }}>
-                <Wallet size={12} color={C.forest} />
-                <span style={{ fontSize: 11, fontWeight: 900, color: C.forest, whiteSpace: 'nowrap', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '5px 6px', textDecoration: 'none' }}>
+                <Wallet size={12} color={C.forest} style={{ flexShrink: 0 }} />
+                <span style={{ fontSize: 11, fontWeight: 900, color: C.forest, whiteSpace: 'nowrap' }}>
                   {showBal ? `${localCode} ${sym}${fmt(totalLocal, 2)}` : '•••'}
                 </span>
               </Link>
               <button
                 onClick={() => setShowBal(!showBal)}
-                style={{ background: 'none', border: 'none', borderLeft: `1px solid #c8e6d4`, cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '5px 6px' }}>
+                style={{ background: 'none', border: 'none', borderLeft: `1px solid #c8e6d4`, cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '5px 5px', flexShrink: 0 }}>
                 {showBal ? <Eye size={11} color={C.green} /> : <EyeOff size={11} color={C.g400} />}
               </button>
             </div>
@@ -372,8 +387,8 @@ export default function Navbar({ user, onLogout }) {
             {/* Divider */}
             <div className="hidden md:block" style={{ width: 1, height: 24, background: C.g200 }} />
 
-            {/* Avatar + dropdown */}
-            <div style={{ position: 'relative' }} ref={dropRef}>
+            {/* Avatar + dropdown — flexShrink:0 so it's never squeezed out on narrow phones */}
+            <div style={{ position: 'relative', flexShrink: 0 }} ref={dropRef}>
               <button
                 onClick={() => setProfileDrop(!profileDrop)}
                 style={{
@@ -408,8 +423,9 @@ export default function Navbar({ user, onLogout }) {
 
               {/* Dropdown */}
               {profileDrop && (
-                <div style={{
+                <div className="prq-dropdown" style={{
                   position: 'absolute', top: 'calc(100% + 8px)', right: 0,
+                  transformOrigin: 'top right',
                   width: 240, background: '#fff', borderRadius: 16,
                   boxShadow: '0 20px 60px rgba(0,0,0,0.18)', border: `1px solid ${C.g100}`,
                   overflow: 'hidden', zIndex: 50,
@@ -463,7 +479,9 @@ export default function Navbar({ user, onLogout }) {
                           padding: '9px 16px', textDecoration: 'none',
                           background: isActive(to) ? C.mist : '#fff',
                           transition: 'background 0.15s',
-                        }}>
+                        }}
+                        onMouseEnter={e => { if (!isActive(to)) e.currentTarget.style.background = C.g100; }}
+                        onMouseLeave={e => { if (!isActive(to)) e.currentTarget.style.background = '#fff'; }}>
                         <Icon size={14} color={isActive(to) ? C.forest : color} style={{ flexShrink: 0 }} />
                         <span style={{ fontSize: 13, fontWeight: 800, color: isActive(to) ? C.forest : C.g800 }}>{label}</span>
                       </Link>
