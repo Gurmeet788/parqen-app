@@ -3545,6 +3545,18 @@ async function sendSmsOtp(phone, message) {
 }
 
 async function checkOtp(contact, token) {
+  // Check if any OTP was ever generated for this phone number
+  const { data: anyOtp } = await supabaseAdmin
+    .from('otp_codes')
+    .select('id')
+    .eq('phone', contact)
+    .limit(1)
+    .maybeSingle();
+
+  if (!anyOtp) {
+    return { valid: false, reason: 'no_otp_requested' };
+  }
+
   const { data: latestActive } = await supabaseAdmin
     .from('otp_codes')
     .select('*')
@@ -3713,7 +3725,9 @@ app.post('/api/auth/verify-otp', otpLimiter, async (req, res) => {
       if (ch !== 'email') recordPhoneFailure(normalizedContact);
       const errMsg = result.reason === 'invalid_code'
         ? 'Incorrect OTP. Please check the 6-digit code sent to your phone and try again.'
-        : 'Code expired or already used. Tap "Resend code" to get a new one.';
+        : result.reason === 'no_otp_requested'
+        ? 'No OTP requested for this phone number. Make sure your phone number matches the one used to request the code.'
+        : 'Code expired, already used, or phone number mismatch. Tap "Resend code" to get a new code for this number.';
       return res.status(400).json({ error: errMsg });
     }
 
