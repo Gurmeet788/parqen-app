@@ -439,7 +439,7 @@ export default function Settings({ user, setUser }) {
     if (user?.is_phone_verified || user?.phone_verified) return 'done';
     return 'idle';
   });
-  const [phoneOtpMethod, setPhoneOtpMethod] = useState('email'); // 'email' | 'whatsapp'
+  const [phoneOtpMethod, setPhoneOtpMethod] = useState('sms'); // 'sms' | 'whatsapp'
   const [phoneOtpCode,   setPhoneOtpCode]   = useState('');
 
   // Email verification flow (inline in Account tab)
@@ -716,12 +716,8 @@ export default function Settings({ user, setUser }) {
         setPhoneOtpCode(r.data.devCode);
         toast.info(`Dev: code auto-filled (${r.data.devCode})`, { autoClose: 8000 });
       } else {
-        const msg = phoneOtpMethod === 'email'
-          ? 'Code sent to your email! Check inbox and spam folder.'
-          : phoneOtpMethod === 'sms'
-          ? 'Code sent via SMS to your phone!'
-          : 'Code sent via WhatsApp!';
-        toast.success(msg);
+        const label = phoneOtpMethod === 'whatsapp' ? 'WhatsApp 💬' : 'SMS 📱';
+        toast.success(`Code sent via ${label}`);
       }
     } catch (e) {
       const errData = e?.response?.data;
@@ -730,7 +726,14 @@ export default function Settings({ user, setUser }) {
         setPhoneStep('otp');
         toast.warning(`Send failed — dev code auto-filled: ${errData.devCode}`, { autoClose: 10000 });
       } else {
-        toast.error(errData?.error || 'Failed to send code. Please try again.');
+        // If backend suggests switching to alternate method, auto-switch and hint the user
+        if (errData?.suggestAlt) {
+          setPhoneOtpMethod(errData.suggestAlt);
+          const altLabel = errData.suggestAlt === 'whatsapp' ? 'WhatsApp' : 'SMS';
+          toast.error(`${errData.error || 'Delivery failed.'} Switched to ${altLabel} — tap Send again.`, { autoClose: 8000 });
+        } else {
+          toast.error(errData?.error || 'Failed to send code. Please try again.');
+        }
         setPhoneStep('idle');
       }
     }
@@ -1387,13 +1390,8 @@ export default function Settings({ user, setUser }) {
                                         className="w-full px-3 py-2 border-2 rounded-xl text-sm focus:outline-none"
                                         style={{ borderColor: accountForm.phone ? C.green : C.g200, color: C.g800, backgroundColor: 'white' }}
                                       />
-                                      <p className="text-xs font-bold" style={{ color: '#1e40af' }}>How would you like to receive your code?</p>
+                                      <p className="text-xs font-bold" style={{ color: '#1e40af' }}>Receive code via:</p>
                                       <div className="flex gap-2">
-                                        <button
-                                          onClick={() => setPhoneOtpMethod('email')}
-                                          className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border-2 text-xs font-black transition ${phoneOtpMethod === 'email' ? 'border-blue-500 bg-blue-50 text-blue-800' : 'border-gray-200 bg-white text-gray-500'}`}>
-                                          <Mail size={12}/> 📧 Email
-                                        </button>
                                         <button
                                           onClick={() => setPhoneOtpMethod('sms')}
                                           className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border-2 text-xs font-black transition ${phoneOtpMethod === 'sms' ? 'border-orange-500 bg-orange-50 text-orange-800' : 'border-gray-200 bg-white text-gray-500'}`}>
@@ -1411,7 +1409,7 @@ export default function Settings({ user, setUser }) {
                                         className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-60"
                                         style={{ backgroundColor: C.paid }}>
                                         <Smartphone size={13}/>
-                                        Send Verification Code →
+                                        {phoneOtpMethod === 'whatsapp' ? 'Send WhatsApp Code →' : 'Send SMS Code →'}
                                       </button>
                                     </>
                                   )}
@@ -1428,12 +1426,8 @@ export default function Settings({ user, setUser }) {
                                   {(phoneStep === 'otp' || phoneStep === 'verifying') && (
                                     <>
                                       <p className="text-xs" style={{ color: '#1e40af' }}>
-                                        {phoneOtpMethod === 'email'
-                                          ? 'Code sent to your email — check inbox and spam folder:'
-                                          : phoneOtpMethod === 'sms'
-                                          ? `Code sent via SMS to ${accountForm.phone}:`
-                                          : `Code sent via WhatsApp to ${accountForm.phone}:`}
-                                      </p>
+                                          Code sent via {phoneOtpMethod === 'whatsapp' ? 'WhatsApp ??' : 'SMS ??'} to {accountForm.phone}:
+                                        </p>
                                       <div className="flex gap-2 flex-wrap items-center">
                                         <input
                                           type="text" inputMode="numeric" maxLength={6}
@@ -2509,3 +2503,4 @@ export default function Settings({ user, setUser }) {
     </div>
   );
 }
+
