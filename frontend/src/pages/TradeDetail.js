@@ -1588,10 +1588,10 @@ export default function TradeDetail({user}) {
                 style={{ backgroundColor: isSeller ? C.danger : C.green }}>
                 <p className="text-xs leading-snug font-black uppercase tracking-wide" style={{color:'#fff'}}>
                   {isBuyer
-                    ? `YOU ARE BUYING ${fmtBtc(btcReceived)} BTC FOR ${userPays.toFixed(2)} ${cur} ${payMethod}`
+                    ? `YOU ARE BUYING ${fmtBtc(btcReceived)} BTC FOR ${userPays.toFixed(2)} (${cur}) WITH ${payMethod}`
                     : isSeller
-                      ? `YOU ARE SELLING ${fmtBtc(btcReceived)} BTC FOR ${userPays.toFixed(2)} ${cur} ${payMethod}`
-                      : `PAY ${userPays.toFixed(2)} ${cur} VIA ${payMethod} FOR ${fmtBtc(btcReceived)} BTC`
+                      ? `YOU ARE SELLING ${fmtBtc(btcReceived)} BTC FOR ${userPays.toFixed(2)} (${cur}) WITH ${payMethod}`
+                      : `PAY ${userPays.toFixed(2)} (${cur}) VIA ${payMethod} FOR ${fmtBtc(btcReceived)} BTC`
                   }
                 </p>
               </div>
