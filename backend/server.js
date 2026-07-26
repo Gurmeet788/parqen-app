@@ -3582,76 +3582,50 @@ async function checkOtp(contact, token) {
 
 app.post('/api/auth/send-otp', otpLimiter, async (req, res) => {
   try {
-    const { phone, email, channel } = req.body;
-    const ch = channel || 'email';
-    const contact = ch === 'email' ? email : toE164(phone);
-    if (!contact) return res.status(400).json({ error: 'Phone or email required' });
+    const { phone, channel } = req.body;
+    const ch = channel || 'sms';
+
+    // Only phone (SMS/WhatsApp) is supported for phone verification
+    if (ch === 'email') {
+      return res.status(400).json({ error: 'Email verification is not supported for phone verification. Please use your phone number.' });
+    }
+
+    const contact = toE164(phone);
+    if (!contact) return res.status(400).json({ error: 'A valid phone number is required.' });
+
+    const limit = checkPhoneRateLimit(contact);
+    if (limit.blocked) return res.status(429).json({ error: limit.error });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = Date.now() + 10 * 60 * 1000;
-
     const isDev = process.env.NODE_ENV !== 'production';
 
-    if (ch === 'email') {
-      // Store in all three places — any failure is non-fatal so email always fires
-      verificationCodes.set(contact, { code: otp, expiresAt });
-      storeOtp(contact, otp).catch(e => console.warn('[send-otp] DB store warn:', e.message));
-      try {
-        await supabaseAdmin.from('users').update({
-          verification_code: otp,
-          verification_code_expires: new Date(expiresAt).toISOString(),
-        }).eq('email', contact);
-      } catch (e) {
-        console.warn('[send-otp] User update warn:', e.message);
-      }
+    storeOtp(contact, otp).catch(e => console.warn('[send-otp phone] DB store warn:', e.message));
 
-      let emailSent = false;
-      try {
-        await sendVerificationEmail(contact, otp);
-        emailSent = true;
-      } catch (emailErr) {
-        console.error('[send-otp email] failed:', emailErr.message);
-      }
+    let smsSent = false;
+    let smsError = null;
+    try {
+      await sendSmsOtp(contact, `Your PRAQEN code is: ${otp}. Valid 10 min. Do not share.`);
+      smsSent = true;
+    } catch (smsErr) {
+      smsError = smsErr.message;
+      console.error('[send-otp sms] all channels failed:', smsErr.message);
+    }
 
-      console.log(`[OTP send] email to=${contact} sent=${emailSent} code=${otp}`);
-      return res.json({
-        success: true,
-        message: emailSent ? 'Code sent! Check your inbox and spam folder.' : 'Email delivery issue — check spam, or use the code below if in dev mode.',
-        devCode: isDev ? otp : undefined,
-        _hint: isDev && !emailSent ? 'Dev mode: use devCode above to complete verification' : undefined,
-      });
-    } else {
-      const limit = checkPhoneRateLimit(contact);
-      if (limit.blocked) return res.status(429).json({ error: limit.error });
+    recordPhoneRequest(contact);
+    console.log(`[OTP send] sms to=${contact} sent=${smsSent} code=${otp}`);
 
-      storeOtp(contact, otp).catch(e => console.warn('[send-otp phone] DB store warn:', e.message));
-
-      let smsSent = false;
-      let smsError = null;
-      try {
-        await sendSmsOtp(contact, `Your PRAQEN code is: ${otp}. Valid 10 min. Do not share.`);
-        smsSent = true;
-      } catch (smsErr) {
-        smsError = smsErr.message;
-        console.error('[send-otp sms] all channels failed:', smsErr.message);
-      }
-
-      recordPhoneRequest(contact);
-      console.log(`[OTP send] sms to=${contact} sent=${smsSent} code=${otp}`);
-
-      if (!smsSent) {
-        return res.status(502).json({
-          error: `SMS delivery failed for this number. ${isDev ? `(${smsError})` : 'Please try email verification instead, or contact support.'}`,
-          devCode: isDev ? otp : undefined,
-        });
-      }
-
-      return res.json({
-        success: true,
-        message: 'Code sent to your phone!',
+    if (!smsSent) {
+      return res.status(502).json({
+        error: `SMS delivery failed for this number. ${isDev ? `(${smsError})` : 'Please contact support.'}`,
         devCode: isDev ? otp : undefined,
       });
     }
+
+    return res.json({
+      success: true,
+      message: 'Code sent to your phone via SMS.',
+      devCode: isDev ? otp : undefined,
+    });
   } catch (error) {
     console.error('[OTP send error]', error);
     res.status(500).json({ error: 'Failed to send code. Please try again.' });
@@ -3660,7 +3634,8 @@ app.post('/api/auth/send-otp', otpLimiter, async (req, res) => {
 
 app.post('/api/auth/send-phone-otp', otpLimiter, async (req, res) => {
   try {
-    const { phone } = req.body;
+    const { phone, method } = req.body; // method: 'sms' | 'whatsapp'
+    const deliveryMethod = (method === 'whatsapp') ? 'whatsapp' : 'sms';
     if (!phone) return res.status(400).json({ error: 'Phone required' });
     const contact = toE164(phone);
 
@@ -3678,35 +3653,83 @@ app.post('/api/auth/send-phone-otp', otpLimiter, async (req, res) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     storeOtp(contact, otp).catch(e => console.warn('[send-phone-otp] DB store warn:', e.message));
 
+    const msgText = `Your PRAQEN code is: ${otp}. Valid 10 min. Do not share.`;
+
     try {
-      await sendSmsOtp(contact, `Your PRAQEN code is: ${otp}. Valid 10 min. Do not share.`);
-    } catch (smsErr) {
-      console.error('[OTP send-phone error]', smsErr.message);
+      if (deliveryMethod === 'whatsapp') {
+        // WhatsApp only — no SMS fallback
+        if (!TWILIO_ENABLED) throw new Error('WhatsApp not configured');
+        await getTwilioClient().messages.create({
+          body: `*PRAQEN Verification* ⚡\n${msgText}`,
+          from: TWILIO_WA_FROM,
+          to: `whatsapp:${contact}`,
+        });
+        console.log(`[OTP send-phone] WhatsApp → ${contact}`);
+      } else {
+        // SMS only — no WhatsApp fallback
+        const forceTwilio = FORCE_TWILIO_PREFIXES.some(p => contact.startsWith(p));
+        let smsSent = false;
+
+        if (atSms && !forceTwilio) {
+          const senderId = process.env.AFRICASTALKING_SENDER_ID;
+          const atAttempts = senderId ? [{ from: senderId }, {}] : [{}];
+          for (const extra of atAttempts) {
+            try {
+              const result = await atSms.send({ to: [contact], message: msgText, ...extra });
+              const recip = result?.SMSMessageData?.Recipients?.[0];
+              if (recip?.statusCode === 101 || (recip?.status || '').toLowerCase() === 'success') {
+                console.log(`[OTP send-phone] SMS (AT) → ${contact}`);
+                smsSent = true;
+                break;
+              }
+            } catch (_) { }
+          }
+        }
+
+        if (!smsSent && TWILIO_ENABLED && TWILIO_PHONE) {
+          await getTwilioClient().messages.create({ body: msgText, from: TWILIO_PHONE, to: contact });
+          console.log(`[OTP send-phone] SMS (Twilio) → ${contact}`);
+          smsSent = true;
+        }
+
+        if (!smsSent) throw new Error('All SMS gateways failed');
+      }
+    } catch (deliveryErr) {
+      console.error(`[OTP send-phone ${deliveryMethod} error]`, deliveryErr.message);
       recordPhoneRequest(contact);
+      const altMethod = deliveryMethod === 'sms' ? 'WhatsApp' : 'SMS';
       return res.status(502).json({
-        error: `SMS delivery failed: ${smsErr.message}. Please try the WhatsApp option or contact support.`,
+        error: `${deliveryMethod === 'sms' ? 'SMS' : 'WhatsApp'} delivery failed. Please try ${altMethod} instead.`,
+        suggestAlt: deliveryMethod === 'sms' ? 'whatsapp' : 'sms',
       });
     }
 
     recordPhoneRequest(contact);
-    console.log(`[OTP send-phone] to=${contact}`);
-    res.json({ success: true, message: 'Code sent!' });
+    console.log(`[OTP send-phone] to=${contact} via=${deliveryMethod}`);
+    res.json({ success: true, message: `Code sent via ${deliveryMethod === 'sms' ? 'SMS' : 'WhatsApp'}!` });
   } catch (error) {
     console.error('[OTP send-phone outer error]', error.message);
     res.status(500).json({ error: 'Failed to send code. Please try again.' });
   }
 });
 
+
 app.post('/api/auth/verify-otp', otpLimiter, async (req, res) => {
   try {
-    const { phone, email, code, channel, contact, otp } = req.body;
+    const { phone, code, channel, contact, otp } = req.body;
     const ch = channel || 'sms';
-    const rawContact = ch === 'email' ? (email || contact) : (phone || contact);
-    const normalizedContact = ch === 'email' ? rawContact : toE164(rawContact);
+
+    // Only phone (SMS/WhatsApp) is supported
+    if (ch === 'email') {
+      return res.status(400).json({ error: 'Email verification is not supported. Please use your phone number.' });
+    }
+
+    const rawContact = phone || contact;
+    const normalizedContact = toE164(rawContact);
     const token = (code || otp || '').trim();
 
     if (!normalizedContact || !token) {
-      return res.status(400).json({ error: 'Phone/email and code are required' });
+      return res.status(400).json({ error: 'Phone number and code are required.' });
     }
     if (!/^\d{6}$/.test(token)) {
       return res.status(400).json({ error: 'OTP must be a 6-digit number.' });
@@ -3714,15 +3737,12 @@ app.post('/api/auth/verify-otp', otpLimiter, async (req, res) => {
 
     console.log(`[OTP verify] channel=${ch} contact=${normalizedContact} token=${token}`);
 
-    // Lock check for SMS channel
-    if (ch !== 'email') {
-      const limit = checkPhoneRateLimit(normalizedContact, true);
-      if (limit.blocked) return res.status(429).json({ error: limit.error });
-    }
+    const limit = checkPhoneRateLimit(normalizedContact, true);
+    if (limit.blocked) return res.status(429).json({ error: limit.error });
 
     const result = await checkOtp(normalizedContact, token);
     if (!result.valid) {
-      if (ch !== 'email') recordPhoneFailure(normalizedContact);
+      recordPhoneFailure(normalizedContact);
       const errMsg = result.reason === 'invalid_code'
         ? 'Incorrect OTP. Please check the 6-digit code sent to your phone and try again.'
         : result.reason === 'no_otp_requested'
@@ -3731,21 +3751,21 @@ app.post('/api/auth/verify-otp', otpLimiter, async (req, res) => {
       return res.status(400).json({ error: errMsg });
     }
 
-    // Update phone_verified flag for SMS verifications
-    if (ch !== 'email') {
-      try {
-        await supabaseAdmin.from('users')
-          .update({ phone_verified: true, phone: normalizedContact })
-          .eq('phone', normalizedContact);
-      } catch (_) { }
-    }
+    // Update phone_verified flag
+    try {
+      await supabaseAdmin.from('users')
+        .update({ phone_verified: true, phone: normalizedContact })
+        .eq('phone', normalizedContact);
+    } catch (_) { }
 
     // Advance welcome bonus: step 1 (registered) → step 2 (verified, $1 locked)
     setImmediate(async () => {
       try {
-        let q = supabaseAdmin.from('users').select('id, bonus_step, bonus_expires_at');
-        q = ch !== 'email' ? q.eq('phone', normalizedContact) : q.eq('email', normalizedContact);
-        const { data: bonusUser } = await q.single();
+        const { data: bonusUser } = await supabaseAdmin
+          .from('users')
+          .select('id, bonus_step, bonus_expires_at')
+          .eq('phone', normalizedContact)
+          .single();
         if (bonusUser?.id && bonusUser.bonus_step === 1 &&
           bonusUser.bonus_expires_at && new Date(bonusUser.bonus_expires_at) > new Date()) {
           supabaseAdmin.from('users').update({ bonus_step: 2 }).eq('id', bonusUser.id).then(null, () => { });
@@ -3754,7 +3774,7 @@ app.post('/api/auth/verify-otp', otpLimiter, async (req, res) => {
     });
 
     console.log(`[OTP verify] success for ${normalizedContact}`);
-    return res.json({ success: true, message: 'Verified!' });
+    return res.json({ success: true, message: 'Phone number verified successfully!' });
   } catch (error) {
     console.error('[OTP verify unexpected error]', error.message);
     res.status(500).json({ error: `Verification failed: ${error.message}` });
