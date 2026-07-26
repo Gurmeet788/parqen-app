@@ -1508,31 +1508,70 @@ export default function SellUSDT({user}) {
             ))}
           </div>
         )}
+{/* ── Sell Safety Banner ── */}
+<div style={{display:'flex',alignItems:'center',gap:11,padding:'13px 15px',borderRadius:12,background:'linear-gradient(135deg,#FFFBEB,#FEF3C7)',border:'1.5px solid #FCD34D',boxShadow:'0 2px 8px rgba(217,119,6,0.12)'}}>
+  <div style={{width:34,height:34,borderRadius:9,background:'#FDE68A',border:'1px solid #FCD34D',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+    <AlertTriangle size={17} style={{color:'#B45309'}}/>
+  </div>
+  <div>
+    <p style={{margin:0,fontSize:13,fontWeight:900,color:'#92400E',lineHeight:1.3}}>Sell Safely</p>
+    <p style={{margin:0,fontSize:11,color:'#92400E',fontWeight:600,lineHeight:1.4,marginTop:1}}>Never release USDT before confirming payment. All trades are escrow-protected.</p>
+  </div>
+</div>
 
-        {/* ── Sell Safety Banner ── */}
-        <div style={{display:'flex',alignItems:'center',gap:8,padding:'9px 12px',borderRadius:10,background:'linear-gradient(135deg,#FFFBEB,#FEF9EE)',border:'1px solid #FDE68A',boxShadow:'0 1px 4px rgba(217,119,6,0.08)'}}>
-          <div style={{width:26,height:26,borderRadius:7,background:'#FEF3C7',border:'1px solid #FDE68A',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-            <AlertTriangle size={12} style={{color:'#D97706'}}/>
-          </div>
-          <div>
-            <p style={{margin:0,fontSize:10,fontWeight:900,color:'#92400E',lineHeight:1.3}}>Sell Safely</p>
-            <p style={{margin:0,fontSize:9,color:'#B45309',fontWeight:500,lineHeight:1.4,marginTop:1}}>Never release USDT before confirming payment. All trades are escrow-protected.</p>
-          </div>
-        </div>
+{/* ── USDT AFFILIATE SECTION — full parity, sell-page amber/gold theme ── */}
+<div style={{borderRadius:16,overflow:'hidden',boxShadow:'0 6px 28px rgba(180,83,9,0.2)'}}>
 
-        {/* ── USDT AFFILIATE SECTION ── */}
-        <div className="rounded-2xl overflow-hidden border" style={{borderColor:C.g200, background:'#FFFBEB'}}>
-          <div className="p-5 sm:p-7">
-            <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:3}}>
-              <span style={{fontSize:9,fontWeight:800,color:'#F59E0B',background:'#FEF3C7',border:'1px solid #FDE68A',borderRadius:4,padding:'1px 6px',letterSpacing:0.4,textTransform:'uppercase'}}>₮ USDT Affiliate</span>
-              <span style={{fontSize:9,color:'#94A3B8',fontWeight:500}}>Earn on every referral trade</span>
-            </div>
-            <p style={{margin:0,fontSize:13,fontWeight:800,color:'#1E293B',lineHeight:1.2}}>Invite friends. Earn USDT forever.</p>
-            <p style={{margin:'4px 0 0',fontSize:11,color:'#64748B',lineHeight:1.4}}>
-              Share your unique referral link and earn commissions when your referrals complete trades.
-            </p>
-          </div>
+  {/* Header — amber/brown, distinct from Buy's teal so Sell stays visually differentiated */}
+  <div style={{padding:'20px 18px 18px',background:'linear-gradient(135deg,#92400E,#D97706)',position:'relative',overflow:'hidden'}}>
+    <div style={{position:'absolute',inset:0,opacity:0.08,backgroundImage:'radial-gradient(circle at 2px 2px,white 1px,transparent 0)',backgroundSize:'18px 18px'}}/>
+    <div style={{position:'absolute',top:-30,right:-20,width:140,height:140,borderRadius:'50%',background:C.gold,opacity:0.15,filter:'blur(40px)'}}/>
+    <div style={{position:'relative',display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
+      <div>
+        <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:8}}>
+          <span style={{display:'flex',alignItems:'center',gap:4,fontSize:11,fontWeight:900,color:'#92400E',background:C.gold,borderRadius:6,padding:'3px 9px',letterSpacing:0.5,textTransform:'uppercase'}}>
+            ₮ USDT Affiliate
+          </span>
+          <span style={{display:'flex',alignItems:'center',gap:4,fontSize:9,fontWeight:700,color:'#fff',background:'rgba(255,255,255,0.15)',borderRadius:5,padding:'2px 8px'}}>
+            <span style={{width:6,height:6,borderRadius:'50%',background:'#6EE7B7',display:'inline-block'}}/>LIVE
+          </span>
         </div>
+        <p style={{margin:0,fontSize:20,fontWeight:900,color:'#fff',lineHeight:1.2}}>Earn USDT on every referral trade.</p>
+        <p style={{margin:0,fontSize:12,color:'rgba(255,255,255,0.75)',marginTop:5,fontWeight:500}}>Share your link — your earnings are paid in USDT, for life.</p>
+      </div>
+      <button onClick={()=>navigate(user ? '/dashboard?tab=affiliate' : '/register')}
+        style={{flexShrink:0,padding:'12px 20px',borderRadius:11,border:'none',cursor:'pointer',background:C.gold,color:'#92400E',fontWeight:900,fontSize:13,whiteSpace:'nowrap',boxShadow:'0 4px 16px rgba(244,164,34,0.45)'}}>
+        Get Link <ArrowRight size={14} style={{display:'inline',marginLeft:4,verticalAlign:'-2px'}}/>
+      </button>
+    </div>
+  </div>
+
+  {/* Commission tiers — single amber-family progression */}
+  <div style={{padding:'12px 16px',background:'#fff',borderBottom:`1px solid ${C.g100}`}}>
+    <p style={{margin:'0 0 8px',fontSize:10,fontWeight:800,color:C.g500,textTransform:'uppercase',letterSpacing:0.8}}>Commission Tiers</p>
+    <div style={{position:'relative'}}>
+      <div style={{display:'flex',gap:6,overflowX:'auto',paddingBottom:2}}>
+        {[
+          {refs:'0–9',   rate:'0.20%', c:'#FCD34D'},
+          {refs:'10–24', rate:'0.25%', c:'#F59E0B'},
+          {refs:'25–49', rate:'0.35%', c:'#D97706'},
+          {refs:'50–99', rate:'0.40%', c:'#B45309'},
+          {refs:'100+',  rate:'0.50%', c:'#92400E'},
+        ].map(t=>(
+          <div key={t.refs} style={{flex:'0 0 auto',background:`${t.c}0D`,border:`1.5px solid ${t.c}30`,borderRadius:10,padding:'9px 12px',textAlign:'center',minWidth:58}}>
+            <div style={{fontSize:14,fontWeight:900,color:t.c,lineHeight:1}}>{t.rate}</div>
+            <div style={{fontSize:9,color:C.g400,fontWeight:600,marginTop:3,lineHeight:1}}>{t.refs} refs</div>
+          </div>
+        ))}
+      </div>
+      <div style={{position:'absolute',top:0,right:0,bottom:2,width:24,background:'linear-gradient(to right, transparent, #ffffff)',pointerEvents:'none'}}/>
+    </div>
+  </div>
+
+  <div style={{padding:'10px 16px',textAlign:'center',background:'#fff'}}>
+    <p style={{margin:0,fontSize:10,color:C.g400,fontWeight:600}}>Free to join · No minimum payout · Lifetime commission</p>
+  </div>
+</div>
 
       </div>
 
