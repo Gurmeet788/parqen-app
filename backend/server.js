@@ -3427,10 +3427,39 @@ app.post('/api/auth/change-password', verifyToken, async (req, res) => {
 
 // ── OTP (Twilio Verify) ───────────────────────────────────────────────────────
 
-const toE164 = raw => {
-  if (!raw) return null;
-  const s = String(raw).trim();
-  return s.startsWith('+') ? s : `+${s}`;
+const { parsePhoneNumberWithError } = require('libphonenumber-js');
+
+function validatePhone(phoneInput, defaultCountry = 'GH') {
+  if (!phoneInput || typeof phoneInput !== 'string' || !phoneInput.trim()) {
+    return { valid: false, error: 'Phone number is required.' };
+  }
+  const cleaned = phoneInput.trim().replace(/[\s\-()]/g, '');
+  try {
+    const phoneNumber = parsePhoneNumberWithError(cleaned, defaultCountry || 'GH');
+    if (!phoneNumber || !phoneNumber.isValid()) {
+      const countryLabel = phoneNumber?.country || defaultCountry || 'selected country';
+      return {
+        valid: false,
+        error: `Invalid phone number format or length for ${countryLabel}. Please check your phone number.`
+      };
+    }
+    return {
+      valid: true,
+      e164: phoneNumber.number,
+      country: phoneNumber.country,
+      countryCallingCode: `+${phoneNumber.countryCallingCode}`
+    };
+  } catch (err) {
+    return {
+      valid: false,
+      error: `Invalid phone number format, length, or country code. Please enter a valid number.`
+    };
+  }
+}
+
+const toE164 = (raw, defaultCountry = 'GH') => {
+  const result = validatePhone(raw, defaultCountry);
+  return result.valid ? result.e164 : null;
 };
 
 // Diagnostic endpoint — protected so only logged-in users can access
@@ -3582,7 +3611,7 @@ async function checkOtp(contact, token) {
 
 app.post('/api/auth/send-otp', otpLimiter, async (req, res) => {
   try {
-    const { phone, channel } = req.body;
+    const { phone, country = 'GH', channel } = req.body;
     const ch = channel || 'sms';
 
     // Only phone (SMS/WhatsApp) is supported for phone verification
@@ -3590,8 +3619,11 @@ app.post('/api/auth/send-otp', otpLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Email verification is not supported for phone verification. Please use your phone number.' });
     }
 
-    const contact = toE164(phone);
-    if (!contact) return res.status(400).json({ error: 'A valid phone number is required.' });
+    const valResult = validatePhone(phone, country);
+    if (!valResult.valid) {
+      return res.status(400).json({ error: valResult.error });
+    }
+    const contact = valResult.e164;
 
     const limit = checkPhoneRateLimit(contact);
     if (limit.blocked) return res.status(429).json({ error: limit.error });
@@ -3634,10 +3666,14 @@ app.post('/api/auth/send-otp', otpLimiter, async (req, res) => {
 
 app.post('/api/auth/send-phone-otp', otpLimiter, async (req, res) => {
   try {
-    const { phone, method } = req.body; // method: 'sms' | 'whatsapp'
+    const { phone, country = 'GH', method } = req.body; // method: 'sms' | 'whatsapp'
     const deliveryMethod = (method === 'whatsapp') ? 'whatsapp' : 'sms';
-    if (!phone) return res.status(400).json({ error: 'Phone required' });
-    const contact = toE164(phone);
+    
+    const valResult = validatePhone(phone, country);
+    if (!valResult.valid) {
+      return res.status(400).json({ error: valResult.error });
+    }
+    const contact = valResult.e164;
 
     const limit = checkPhoneRateLimit(contact);
     if (limit.blocked) return res.status(429).json({ error: limit.error });
@@ -3716,7 +3752,7 @@ app.post('/api/auth/send-phone-otp', otpLimiter, async (req, res) => {
 
 app.post('/api/auth/verify-otp', otpLimiter, async (req, res) => {
   try {
-    const { phone, code, channel, contact, otp } = req.body;
+    const { phone, code, channel, contact, otp, country = 'GH' } = req.body;
     const ch = channel || 'sms';
 
     // Only phone (SMS/WhatsApp) is supported
@@ -3725,7 +3761,11 @@ app.post('/api/auth/verify-otp', otpLimiter, async (req, res) => {
     }
 
     const rawContact = phone || contact;
-    const normalizedContact = toE164(rawContact);
+    const valResult = validatePhone(rawContact, country);
+    if (!valResult.valid) {
+      return res.status(400).json({ error: valResult.error });
+    }
+    const normalizedContact = valResult.e164;
     const token = (code || otp || '').trim();
 
     if (!normalizedContact || !token) {
@@ -4195,19 +4235,17 @@ app.post('/api/users/verify-email-code', verifyToken, otpLimiter, async (req, re
 // Phone is NOT saved here — it is saved only when the user successfully verifies (verify-phone-otp).
 app.post('/api/users/send-phone-otp', otpLimiter, verifyToken, async (req, res) => {
   try {
-    const { phone, method = 'email' } = req.body;
+    const { phone, country = 'GH', method = 'sms' } = req.body;
     if (!phone) return res.status(400).json({ error: 'Phone number required' });
     if (!['email', 'sms', 'whatsapp'].includes(method)) {
       return res.status(400).json({ error: 'Delivery method must be "email", "sms", or "whatsapp"' });
     }
 
-    // Normalise: strip spaces/dashes/parens, add + if missing, strip leading 0
-    const cleaned = String(phone).replace(/[\s\-()]/g, '');
-    const e164 = cleaned.startsWith('+') ? cleaned : `+${cleaned.replace(/^0+/, '')}`;
-
-    if (!/^\+[1-9]\d{6,14}$/.test(e164)) {
-      return res.status(400).json({ error: 'Invalid phone number. Use international format, e.g. +233XXXXXXXXX for Ghana, +92XXXXXXXXXX for Pakistan, or +234XXXXXXXXXX for Nigeria.' });
+    const valResult = validatePhone(phone, country);
+    if (!valResult.valid) {
+      return res.status(400).json({ error: valResult.error });
     }
+    const e164 = valResult.e164;
 
     const limit = checkPhoneRateLimit(e164);
     if (limit.blocked) return res.status(429).json({ error: limit.error });
@@ -4286,8 +4324,9 @@ app.post('/api/users/send-phone-otp', otpLimiter, verifyToken, async (req, res) 
         });
       } catch (smsErr) {
         console.error('[send-phone-otp] SMS error:', smsErr.message);
-        return res.status(500).json({
-          error: 'SMS delivery failed. Please try the email option instead.',
+        return res.status(502).json({
+          error: 'SMS delivery failed. Please try the WhatsApp option instead.',
+          suggestAlt: 'whatsapp',
           devCode: isDev ? otp : undefined,
         });
       }
@@ -4296,8 +4335,9 @@ app.post('/api/users/send-phone-otp', otpLimiter, verifyToken, async (req, res) 
     // ── WhatsApp ───────────────────────────────────────────────────────────────
     if (method === 'whatsapp') {
       if (!TWILIO_ENABLED) {
-        return res.status(500).json({
-          error: 'WhatsApp is not configured on this server. Please use the email option.',
+        return res.status(502).json({
+          error: 'WhatsApp is not configured on this server. Please try the SMS option.',
+          suggestAlt: 'sms',
           devCode: isDev ? otp : undefined,
         });
       }
@@ -4327,8 +4367,9 @@ app.post('/api/users/send-phone-otp', otpLimiter, verifyToken, async (req, res) 
         });
       } catch (waErr) {
         console.error('[send-phone-otp] WhatsApp error:', waErr.message);
-        return res.status(500).json({
-          error: 'WhatsApp delivery failed. Please use the email option instead.',
+        return res.status(502).json({
+          error: 'WhatsApp delivery failed. Please try the SMS option instead.',
+          suggestAlt: 'sms',
           devCode: isDev ? otp : undefined,
         });
       }
@@ -4427,12 +4468,14 @@ app.post('/api/users/submit-phone', verifyToken, async (req, res) => {
 // POST /api/users/verify-phone-otp — verify phone OTP and mark phone verified
 app.post('/api/users/verify-phone-otp', verifyToken, async (req, res) => {
   try {
-    const { phone, otp } = req.body;
+    const { phone, otp, country = 'GH' } = req.body;
     if (!phone || !otp) return res.status(400).json({ error: 'Phone and OTP required' });
 
-    // Normalise phone the same way send-phone-otp does (strip spaces/dashes, add +, remove leading 0)
-    const cleaned = String(phone).replace(/[\s\-()]/g, '');
-    const e164 = cleaned.startsWith('+') ? cleaned : `+${cleaned.replace(/^0+/, '')}`;
+    const valResult = validatePhone(phone, country);
+    if (!valResult.valid) {
+      return res.status(400).json({ error: valResult.error });
+    }
+    const e164 = valResult.e164;
     const code = String(otp).trim();
 
     if (code.length !== 6) return res.status(400).json({ error: 'Enter the full 6-digit code' });
