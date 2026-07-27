@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import CountryFlag, { resolveCode } from '../components/CountryFlag';
-import { BadgeChip, BADGE_COLORS } from '../lib/badge';
+import { deriveBadge, BadgeChip, BADGE_COLORS } from '../lib/badge';
 import ActiveTradeCard from '../components/ActiveTradeCard';
 import PRQFooter from '../components/PRQFooter';
 
