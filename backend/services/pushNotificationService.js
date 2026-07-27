@@ -30,27 +30,49 @@ async function send({ userIds, title, message, url }) {
     url: url || 'https://praqen.com',
   };
 
-  console.error(`[Push] Sending to user(s): ${userIds.join(',')} | title: ${title}`);
+  console.log(`[Push] Sending to user(s): ${userIds.join(',')} | title: ${title}`);
 
   try {
     const response = await axios.post('https://onesignal.com/api/v1/notifications', body, {
       headers: {
-        Authorization: `Key ${API_KEY}`,
+        Authorization: `Basic ${API_KEY}`,  // ✅ FIXED: 'Key' → 'Basic'
         'Content-Type': 'application/json',
       },
       timeout: 8000,
     });
     const { id, recipients, errors } = response.data || {};
     if (recipients === 0) {
-      console.error(`[Push] 0 recipients for user(s) ${userIds.join(',')} — their browser may not have called OS.login(userId) yet. Check frontend identifyUser.`);
+      console.log(`[Push] ⚠️ 0 recipients for user(s) ${userIds.join(',')} — their browser may not have called OneSignal.login(userId) yet. Check frontend identifyUser.`);
     } else {
-      console.error(`[Push] Delivered — notification id: ${id} | recipients: ${recipients}`);
+      console.log(`[Push] ✅ Delivered — notification id: ${id} | recipients: ${recipients}`);
     }
     if (errors) console.error('[Push] OneSignal errors:', JSON.stringify(errors));
     return response.data;
   } catch (e) {
     const detail = e.response?.data || e.message;
-    console.error('[Push] OneSignal API error:', JSON.stringify(detail));
+    console.error('[Push] ❌ OneSignal API error:', JSON.stringify(detail));
+
+    // 🔥 ADDED: Try with User Auth Key if REST API Key fails
+    if (e.response?.status === 401 || e.response?.status === 403) {
+      console.log('[Push] 🔄 Trying with User Auth Key instead...');
+      try {
+        const userAuthKey = process.env.ONESIGNAL_USER_AUTH_KEY;
+        if (userAuthKey && userAuthKey !== 'your-user-auth-key-here') {
+          const retryResponse = await axios.post('https://onesignal.com/api/v1/notifications', body, {
+            headers: {
+              Authorization: `Basic ${userAuthKey}`,
+              'Content-Type': 'application/json',
+            },
+            timeout: 8000,
+          });
+          const { id, recipients } = retryResponse.data || {};
+          console.log(`[Push] ✅ Retry successful — notification id: ${id} | recipients: ${recipients}`);
+          return retryResponse.data;
+        }
+      } catch (retryErr) {
+        console.error('[Push] ❌ Retry also failed:', retryErr.response?.data || retryErr.message);
+      }
+    }
   }
 }
 
@@ -144,23 +166,23 @@ async function sendBroadcastPush(title, message, url) {
     url:               url || 'https://praqen.com',
   };
 
-  console.error(`[Push] Broadcast to ALL — title: ${title}`);
+  console.log(`[Push] Broadcast to ALL — title: ${title}`);
 
   try {
     const response = await axios.post('https://onesignal.com/api/v1/notifications', body, {
       headers: {
-        Authorization:  `Key ${API_KEY}`,
+        Authorization: `Basic ${API_KEY}`,  // ✅ FIXED: 'Key' → 'Basic'
         'Content-Type': 'application/json',
       },
       timeout: 10000,
     });
     const { id, recipients, errors } = response.data || {};
-    console.error(`[Push] Broadcast delivered — id: ${id} | recipients: ${recipients}`);
+    console.log(`[Push] ✅ Broadcast delivered — id: ${id} | recipients: ${recipients}`);
     if (errors) console.error('[Push] OneSignal broadcast errors:', JSON.stringify(errors));
     return response.data;
   } catch (e) {
     const detail = e.response?.data || e.message;
-    console.error('[Push] OneSignal broadcast error:', JSON.stringify(detail));
+    console.error('[Push] ❌ OneSignal broadcast error:', JSON.stringify(detail));
   }
 }
 
