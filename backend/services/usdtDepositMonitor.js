@@ -193,17 +193,19 @@ class USDTDepositMonitor {
 
     console.log(`[USDTMonitor] Scanning ${wallets.length} Tron address(es)...`);
 
-    // Process in batches of 5 — respects TronGrid rate limits
-    const BATCH = 5;
-    for (let i = 0; i < wallets.length; i += BATCH) {
-      const batch = wallets.slice(i, i + BATCH);
-      await Promise.allSettled(batch.map(w => this.checkUserDeposit({
+    // Sequential, one request at a time — this TronGrid key's actual sustainable
+    // rate is ~2 req/sec; firing several requests concurrently (the old batch-of-5
+    // approach) got almost every request 429'd. A full pass over many addresses
+    // now takes longer, but actually succeeds instead of mostly failing.
+    const REQUEST_SPACING_MS = 550;
+    for (const w of wallets) {
+      await this.checkUserDeposit({
         userId:          w.user_id,
         address:         w.tron_address,
         username:        nameMap[w.user_id] || w.user_id.slice(0, 8),
         lastOnchainUsdt: parseFloat(w.last_onchain_usdt || 0),
-      })));
-      if (i + BATCH < wallets.length) await this.sleep(1000);
+      });
+      await this.sleep(REQUEST_SPACING_MS);
     }
   }
 
