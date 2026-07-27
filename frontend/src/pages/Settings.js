@@ -71,42 +71,7 @@ const validatePhoneFrontend = (phoneInput, countryCode = 'GH') => {
   }
 };
 
-import {
-  requestNotificationPermission,
-  getNotificationPermission,
-  isPushSupported,
-} from "../utils/notifications";
-import {
-  User,
-  Lock,
-  Mail,
-  Phone,
-  CreditCard,
-  Bell,
-  Shield,
-  Globe,
-  Save,
-  Eye,
-  EyeOff,
-  CheckCircle,
-  AlertCircle,
-  Smartphone,
-  LogOut,
-  ChevronRight,
-  Camera,
-  BadgeCheck,
-  Clock,
-  Upload,
-  RefreshCw,
-  FileText,
-  DollarSign,
-  Languages,
-  MapPin,
-  X,
-  ToggleLeft,
-  ToggleRight,
-} from "lucide-react";
-import { toast } from "react-toastify";
+
 
 const API_URL = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
 
@@ -2474,275 +2439,184 @@ export default function Settings({ user, setUser }) {
                               >
                                 {done ? <CheckCircle size={18} /> : 2}
                               </div>
-<div className="flex-1 min-w-0">
-  <div className="flex items-center gap-2 flex-wrap">
-    <p className={`font-bold text-sm ${done ? "text-green-800" : emailVerified ? "text-blue-800" : "text-gray-600"}`}>
-      Phone Number
-    </p>
-    <span className={`text-xs font-black px-2 py-0.5 rounded-full ${done ? "bg-green-200 text-green-800" : "bg-gray-200 text-gray-600"}`}>
-      {done ? "✓ Verified" : "Not Verified"}
-    </span>
-  </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className={`font-bold text-sm ${done ? "text-green-800" : emailVerified ? "text-blue-800" : "text-gray-600"}`}>
+                                    Phone Number
+                                  </p>
+                                  <span className={`text-xs font-black px-2 py-0.5 rounded-full ${done ? "bg-green-200 text-green-800" : "bg-gray-200 text-gray-600"}`}>
+                                    {done ? "✓ Verified" : "Not Verified"}
+                                  </span>
+                                </div>
 
-  <p className={`text-xs mt-0.5 ${done ? 'text-green-600' : emailVerified ? 'text-blue-600' : 'text-gray-400'}`}>
-    {done
-      ? accountForm.phone ? `${accountForm.phone} — verified ✓` : 'Phone verified — you can now trade up to $2,000 ✓'
-      : 'Add your phone number to unlock the $2,000 trade limit'}
-  </p>
+                                <p className={`text-xs mt-0.5 ${done ? 'text-green-600' : emailVerified ? 'text-blue-600' : 'text-gray-400'}`}>
+                                  {done
+                                    ? accountForm.phone ? `${accountForm.phone} — verified ✓` : 'Phone verified — you can now trade up to $2,000 ✓'
+                                    : 'Add your phone number to unlock the $2,000 trade limit'}
+                                </p>
 
-  {/* OTP flow — only shown when email verified and phone not yet done */}
-  {!done && emailVerified && (
-    <div className="mt-3 space-y-2">
+                                {/* OTP flow — only shown when email verified and phone not yet done */}
+                                {!done && emailVerified && (
+                                  <div className="mt-3 space-y-2">
 
-      {/* Idle: enter phone + pick method + send */}
-      {phoneStep === 'idle' && (
-        <>
-          <div className="flex gap-2 flex-col sm:flex-row">
-            <div className="flex items-center gap-2 px-3 py-2 border-2 rounded-xl bg-white sm:w-60" style={{ borderColor: C.g200 }}>
-              <img
-                src={`https://flagcdn.com/w40/${selectedCountry.toLowerCase()}.png`}
-                alt={selectedCountry}
-                className="w-6 h-4 object-cover rounded shadow-xs flex-shrink-0"
-                onError={(e) => { e.target.style.display = 'none'; }}
-              />
-              <select
-                value={selectedCountry}
-                onChange={e => {
-                  setSelectedCountry(e.target.value);
-                  setPhoneError('');
-                }}
-                className="w-full text-sm font-bold bg-transparent focus:outline-none cursor-pointer"
-                style={{ color: '#0f172a' }}
-              >
-                {COUNTRY_OPTIONS.map(c => (
-                  <option key={c.code} value={c.code} style={{ backgroundColor: '#ffffff', color: '#0f172a' }}>
-                    {c.name} ({c.dialCode})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <input
-              type="tel"
-              placeholder={
-                COUNTRY_OPTIONS.find(c => c.code === selectedCountry)?.dialCode
-                  ? `${COUNTRY_OPTIONS.find(c => c.code === selectedCountry).dialCode} XX XXX XXXX`
-                  : '+233 XX XXX XXXX'
-              }
-              value={accountForm.phone || ''}
-              onChange={e => {
-                setAccountForm({ ...accountForm, phone: e.target.value });
-                setPhoneError('');
-              }}
-              className="flex-1 px-3 py-2 border-2 rounded-xl text-sm focus:outline-none"
-              style={{
-                borderColor: phoneError ? C.danger : accountForm.phone ? C.green : C.g200,
-                color: C.g800,
-                backgroundColor: 'white'
-              }}
-            />
-          </div>
+                                    {/* Idle: enter phone + pick method + send */}
+                                    {phoneStep === 'idle' && (
+                                      <>
+                                        <div className="flex gap-2 flex-col sm:flex-row">
+                                          <div className="flex items-center gap-2 px-3 py-2 border-2 rounded-xl bg-white sm:w-60" style={{ borderColor: C.g200 }}>
+                                            <img
+                                              src={`https://flagcdn.com/w40/${selectedCountry.toLowerCase()}.png`}
+                                              alt={selectedCountry}
+                                              className="w-6 h-4 object-cover rounded shadow-xs flex-shrink-0"
+                                              onError={(e) => { e.target.style.display = 'none'; }}
+                                            />
+                                            <select
+                                              value={selectedCountry}
+                                              onChange={e => {
+                                                setSelectedCountry(e.target.value);
+                                                setPhoneError('');
+                                              }}
+                                              className="w-full text-sm font-bold bg-transparent focus:outline-none cursor-pointer"
+                                              style={{ color: '#0f172a' }}
+                                            >
+                                              {COUNTRY_OPTIONS.map(c => (
+                                                <option key={c.code} value={c.code} style={{ backgroundColor: '#ffffff', color: '#0f172a' }}>
+                                                  {c.name} ({c.dialCode})
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </div>
+                                          <input
+                                            type="tel"
+                                            placeholder={
+                                              COUNTRY_OPTIONS.find(c => c.code === selectedCountry)?.dialCode
+                                                ? `${COUNTRY_OPTIONS.find(c => c.code === selectedCountry).dialCode} XX XXX XXXX`
+                                                : '+233 XX XXX XXXX'
+                                            }
+                                            value={accountForm.phone || ''}
+                                            onChange={e => {
+                                              setAccountForm({ ...accountForm, phone: e.target.value });
+                                              setPhoneError('');
+                                            }}
+                                            className="flex-1 px-3 py-2 border-2 rounded-xl text-sm focus:outline-none"
+                                            style={{
+                                              borderColor: phoneError ? C.danger : accountForm.phone ? C.green : C.g200,
+                                              color: C.g800,
+                                              backgroundColor: 'white'
+                                            }}
+                                          />
+                                        </div>
 
-          {phoneError && (
-            <p className="text-xs font-bold text-red-500 flex items-center gap-1">
-              ⚠️ {phoneError}
-            </p>
-          )}
+                                        {phoneError && (
+                                          <p className="text-xs font-bold text-red-500 flex items-center gap-1">
+                                            ⚠️ {phoneError}
+                                          </p>
+                                        )}
 
-          <p className="text-xs font-bold" style={{ color: '#1e40af' }}>Receive code via:</p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPhoneOtpMethod('sms')}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border-2 text-xs font-black transition ${phoneOtpMethod === 'sms' ? 'border-orange-500 bg-orange-50 text-orange-800' : 'border-gray-200 bg-white text-gray-500'}`}>
-              📱 SMS
-            </button>
-            <button
-              onClick={() => setPhoneOtpMethod('whatsapp')}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border-2 text-xs font-black transition ${phoneOtpMethod === 'whatsapp' ? 'border-green-500 bg-green-50 text-green-800' : 'border-gray-200 bg-white text-gray-500'}`}>
-              💬 WhatsApp
-            </button>
-          </div>
-
-          <button
-            onClick={handleSendPhoneOtp}
-            disabled={!accountForm.phone}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-60"
-            style={{ backgroundColor: C.paid }}>
-            <Smartphone size={13}/>
-            {phoneOtpMethod === 'whatsapp' ? 'Send WhatsApp Code →' : 'Send SMS Code →'}
-          </button>
-        </>
-      )}
-
-      {/* Sending spinner */}
-      {phoneStep === 'sending' && (
-        <div className="flex items-center gap-2 text-xs font-bold" style={{ color: '#1e40af' }}>
-          <RefreshCw size={13} className="animate-spin"/>
-          Sending your code…
-        </div>
-      )}
-
-      {/* OTP code input */}
-      {(phoneStep === 'otp' || phoneStep === 'verifying') && (
-        <>
-          <p className="text-xs" style={{ color: '#1e40af' }}>
-            Code sent via {phoneOtpMethod === 'whatsapp' ? 'WhatsApp' : 'SMS'} to {accountForm.phone}:
-          </p>
-          <div className="flex gap-2 flex-wrap items-center">
-            {/* your OTP digit inputs / verify button go here — this part was cut off in the original paste, so double check it against your source before dropping it in */}
-          </div>
-        </>
-      )}
-    </div>
-  )}
-</div>
-                                        <input
-                                          type="tel"
-                                          placeholder="+233 XX XXX XXXX"
-                                          value={accountForm.phone || ""}
-                                          onChange={(e) =>
-                                            setAccountForm({
-                                              ...accountForm,
-                                              phone: e.target.value,
-                                            })
-                                          }
-                                          className="w-full px-3 py-2 border-2 rounded-xl text-sm focus:outline-none"
-                                          style={{
-                                            borderColor: accountForm.phone
-                                              ? C.green
-                                              : C.g200,
-                                            color: C.g800,
-                                            backgroundColor: "white",
-                                          }}
-                                        />
-                                        <p
-                                          className="text-xs font-bold"
-                                          style={{ color: "#1e40af" }}
-                                        >
-                                          How would you like to receive your
-                                          code?
-                                        </p>
+                                        <p className="text-xs font-bold" style={{ color: '#1e40af' }}>Receive code via:</p>
                                         <div className="flex gap-2">
                                           <button
-                                            onClick={() =>
-                                              setPhoneOtpMethod("email")
-                                            }
-                                            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border-2 text-xs font-black transition ${phoneOtpMethod === "email" ? "border-blue-500 bg-blue-50 text-blue-800" : "border-gray-200 bg-white text-gray-500"}`}
-                                          >
-                                            <Mail size={12} /> 📧 Email
-                                          </button>
-                                          <button
-                                            onClick={() =>
-                                              setPhoneOtpMethod("sms")
-                                            }
-                                            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border-2 text-xs font-black transition ${phoneOtpMethod === "sms" ? "border-orange-500 bg-orange-50 text-orange-800" : "border-gray-200 bg-white text-gray-500"}`}
-                                          >
+                                            onClick={() => setPhoneOtpMethod('sms')}
+                                            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border-2 text-xs font-black transition ${phoneOtpMethod === 'sms' ? 'border-orange-500 bg-orange-50 text-orange-800' : 'border-gray-200 bg-white text-gray-500'}`}>
                                             📱 SMS
                                           </button>
                                           <button
-                                            onClick={() =>
-                                              setPhoneOtpMethod("whatsapp")
-                                            }
-                                            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border-2 text-xs font-black transition ${phoneOtpMethod === "whatsapp" ? "border-green-500 bg-green-50 text-green-800" : "border-gray-200 bg-white text-gray-500"}`}
-                                          >
+                                            onClick={() => setPhoneOtpMethod('whatsapp')}
+                                            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border-2 text-xs font-black transition ${phoneOtpMethod === 'whatsapp' ? 'border-green-500 bg-green-50 text-green-800' : 'border-gray-200 bg-white text-gray-500'}`}>
                                             💬 WhatsApp
                                           </button>
                                         </div>
+
                                         <button
                                           onClick={handleSendPhoneOtp}
                                           disabled={!accountForm.phone}
                                           className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-60"
-                                          style={{ backgroundColor: C.paid }}
-                                        >
-                                          <Smartphone size={13} />
-                                          Send Verification Code →
+                                          style={{ backgroundColor: C.paid }}>
+                                          <Smartphone size={13}/>
+                                          {phoneOtpMethod === 'whatsapp' ? 'Send WhatsApp Code →' : 'Send SMS Code →'}
                                         </button>
                                       </>
                                     )}
 
                                     {/* Sending spinner */}
-                                    {phoneStep === "sending" && (
-                                      <div
-                                        className="flex items-center gap-2 text-xs font-bold"
-                                        style={{ color: "#1e40af" }}
-                                      >
-                                        <RefreshCw
-                                          size={13}
-                                          className="animate-spin"
-                                        />
+                                    {phoneStep === 'sending' && (
+                                      <div className="flex items-center gap-2 text-xs font-bold" style={{ color: '#1e40af' }}>
+                                        <RefreshCw size={13} className="animate-spin"/>
                                         Sending your code…
                                       </div>
                                     )}
 
-                             {/* OTP code input */}
-                                {(phoneStep === "otp" || phoneStep === "verifying") && (
-                                  <>
-                                    <p className="text-xs" style={{ color: "#1e40af" }}>
-                                      {phoneOtpMethod === "email"
-                                        ? "Code sent to your email — check inbox and spam folder:"
-                                        : phoneOtpMethod === "sms"
-                                          ? `Code sent via SMS to ${accountForm.phone}:`
-                                          : `Code sent via WhatsApp to ${accountForm.phone}:`}
-                                    </p>
-                                    <div className="flex gap-2 flex-wrap items-center">
-                                      <input
-                                        type="text"
-                                        inputMode="numeric"
-                                        maxLength={6}
-                                        placeholder="000000"
-                                        value={phoneOtpCode}
-                                        onChange={(e) =>
-                                          setPhoneOtpCode(
-                                            e.target.value.replace(/\D/g, "").slice(0, 6),
-                                          )
-                                        }
-                                        className="px-3 py-2 border-2 rounded-xl text-sm font-black focus:outline-none w-36"
-                                        style={{
-                                          borderColor: "#3b82f6",
-                                          letterSpacing: "0.2em",
-                                          color: C.g800,
-                                        }}
-                                        autoFocus
-                                      />
-                                      <button
-                                        onClick={handleVerifyPhoneOtp}
-                                        disabled={phoneStep === "verifying" || phoneOtpCode.length < 6}
-                                        className="px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-50"
-                                        style={{ backgroundColor: C.success }}
-                                      >
-                                        {phoneStep === "verifying" ? "Verifying…" : "✓ Verify"}
-                                      </button>
-                                      <button
-                                        onClick={() => {
-                                          setPhoneStep("idle");
-                                          setPhoneOtpCode("");
-                                        }}
-                                        className="text-xs underline text-gray-400"
-                                      >
-                                        Resend
-                                      </button>
+                                    {/* OTP code input */}
+                                    {(phoneStep === 'otp' || phoneStep === 'verifying') && (
+                                      <>
+                                        <p className="text-xs" style={{ color: '#1e40af' }}>
+                                          {phoneOtpMethod === 'sms'
+                                            ? `Code sent via SMS to ${accountForm.phone}:`
+                                            : `Code sent via WhatsApp to ${accountForm.phone}:`}
+                                        </p>
+                                        <div className="flex gap-2 flex-wrap items-center">
+                                          <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            maxLength={6}
+                                            placeholder="000000"
+                                            value={phoneOtpCode}
+                                            onChange={(e) =>
+                                              setPhoneOtpCode(
+                                                e.target.value.replace(/\D/g, "").slice(0, 6),
+                                              )
+                                            }
+                                            className="px-3 py-2 border-2 rounded-xl text-sm font-black focus:outline-none w-36"
+                                            style={{
+                                              borderColor: "#3b82f6",
+                                              letterSpacing: "0.2em",
+                                              color: C.g800,
+                                            }}
+                                            autoFocus
+                                          />
+                                          <button
+                                            onClick={handleVerifyPhoneOtp}
+                                            disabled={phoneStep === "verifying" || phoneOtpCode.length < 6}
+                                            className="px-4 py-2 rounded-xl text-white text-xs font-black disabled:opacity-50"
+                                            style={{ backgroundColor: C.success }}
+                                          >
+                                            {phoneStep === "verifying" ? "Verifying…" : "✓ Verify"}
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              setPhoneStep("idle");
+                                              setPhoneOtpCode("");
+                                            }}
+                                            className="text-xs underline text-gray-400"
+                                          >
+                                            Resend
+                                          </button>
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* EMAIL REQUIRED BANNER — shown when email not yet verified */}
+                                {!done && !emailVerified && (
+                                  <div className="mt-3 rounded-xl overflow-hidden" style={{ border: '2px solid #f59e0b' }}>
+                                    <div className="px-4 py-2.5 flex items-center gap-2" style={{ backgroundColor: '#fffbeb', borderBottom: '1px solid #fde68a' }}>
+                                      <span className="text-sm">🔒</span>
+                                      <p className="text-xs font-black" style={{ color: '#92400e' }}>Email Verification Required</p>
                                     </div>
-                                  </>
+                                    <div className="px-4 py-3 flex flex-col gap-2" style={{ backgroundColor: '#fff7ed' }}>
+                                      <p className="text-xs leading-relaxed" style={{ color: '#78350f' }}>
+                                        You must <strong>verify your email address</strong> (Step 1) before you can add and verify your phone number.
+                                      </p>
+                                      <div className="flex items-center gap-1.5 text-xs font-black" style={{ color: '#d97706' }}>
+                                        <span>📧</span>
+                                        <span>Complete Step 1 above to unlock Phone Verification →</span>
+                                      </div>
+                                    </div>
+                                  </div>
                                 )}
                               </div>
 
-                              {/* EMAIL REQUIRED BANNER — shown when email not yet verified */}
-                              {!done && !emailVerified && (
-                                <div className="mt-3 rounded-xl overflow-hidden" style={{ border: '2px solid #f59e0b' }}>
-                                  <div className="px-4 py-2.5 flex items-center gap-2" style={{ backgroundColor: '#fffbeb', borderBottom: '1px solid #fde68a' }}>
-                                    <span className="text-sm">🔒</span>
-                                    <p className="text-xs font-black" style={{ color: '#92400e' }}>Email Verification Required</p>
-                                  </div>
-                                  <div className="px-4 py-3 flex flex-col gap-2" style={{ backgroundColor: '#fff7ed' }}>
-                                    <p className="text-xs leading-relaxed" style={{ color: '#78350f' }}>
-                                      You must <strong>verify your email address</strong> (Step 1) before you can add and verify your phone number.
-                                    </p>
-                                    <div className="flex items-center gap-1.5 text-xs font-black" style={{ color: '#d97706' }}>
-                                      <span>📧</span>
-                                      <span>Complete Step 1 above to unlock Phone Verification →</span>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
                               {done ? (
                                 <CheckCircle size={16} className="text-green-500 flex-shrink-0 mt-0.5" />
                               ) : emailVerified ? null : (
@@ -2967,40 +2841,6 @@ export default function Settings({ user, setUser }) {
                                         receive an in-app notification when
                                         approved or if we need more information.
                                       </p>
-
-                                    )}
-                                   <p 
-  className="text-xs leading-relaxed" 
-  style={{color:'#7F1D1D'}}
->
-  Please re-submit your documents with clearer, well-lit photos. Make sure all text on the ID is readable.
-</p>
-
-<button
-  onClick={() => {
-    setKycStatus(null);
-    setKycSubmitted(false);
-    setKycStep('select');
-    setKycFiles({ front: null, back: null });
-    setKycIdType('');
-    localStorage.removeItem('praqen_kyc');
-  }}
-  className="w-full mt-1 py-2 rounded-xl text-xs font-black"
-  style={{
-    backgroundColor:'#EF4444',
-    color:'#fff'
-  }}
->
-  Re-submit KYC Documents
-</button>
-
-<a
-  href="mailto:hello@praqen.com"
-  className="inline-flex items-center gap-1.5 text-xs font-black mt-2"
-  style={{color:'#D97706'}}
->
-  <Mail size={11}/> Need help? Contact hello@praqen.com
-</a>
                                     </div>
                                   </div>
                                 )}
@@ -3079,7 +2919,29 @@ export default function Settings({ user, setUser }) {
                                   </div>
                                 )}
 
-                                {/* KYC multi-step upload form */}
+                                 {/* PHONE REQUIRED BANNER — shown when phone not yet verified */}
+                                 {!kycVerified &&
+                                   !kycPending &&
+                                   kycStatus !== "approved" &&
+                                   !phoneVerified && (
+                                     <div className="mt-3 rounded-xl overflow-hidden" style={{ border: '2px solid #f59e0b' }}>
+                                       <div className="px-4 py-2.5 flex items-center gap-2" style={{ backgroundColor: '#fffbeb', borderBottom: '1px solid #fde68a' }}>
+                                         <span className="text-sm">🔒</span>
+                                         <p className="text-xs font-black" style={{ color: '#92400e' }}>Phone Verification Required</p>
+                                       </div>
+                                       <div className="px-4 py-3 flex flex-col gap-2" style={{ backgroundColor: '#fff7ed' }}>
+                                         <p className="text-xs leading-relaxed" style={{ color: '#78350f' }}>
+                                           You must <strong>verify your phone number</strong> (Step 2) before you can submit identity documents for KYC verification.
+                                         </p>
+                                         <div className="flex items-center gap-1.5 text-xs font-black" style={{ color: '#d97706' }}>
+                                           <span>📱</span>
+                                           <span>Complete Step 2 above to unlock Identity Verification →</span>
+                                         </div>
+                                       </div>
+                                     </div>
+                                   )}
+
+                                 {/* KYC multi-step upload form */}
                                 {!kycVerified &&
                                   !kycPending &&
                                   kycStatus !== "approved" &&
@@ -3723,7 +3585,6 @@ export default function Settings({ user, setUser }) {
                             if (hasUpper) metCount++;
                             if (hasNum) metCount++;
                             if (hasSpec) metCount++;
-                            const strengthLabel = metCount <= 1 ? 'Weak' : metCount === 2 ? 'Medium' : 'Strong';
                             const color = metCount <= 1 ? C.danger : metCount === 2 ? C.warn : C.success;
                             return <div key={i} className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: i <= metCount ? color : C.g200 }} />;
 
