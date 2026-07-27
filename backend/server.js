@@ -3931,9 +3931,13 @@ app.patch('/api/users/toggle-2fa', verifyToken, async (req, res) => {
       // The TOTP flow sets both two_factor_enabled and two_factor_method via /totp/confirm, so this
       // toggle for TOTP should only reset the method if already enabled
 
-      await supabaseAdmin.from('users')
+      const { error: enableError } = await supabaseAdmin.from('users')
         .update({ two_factor_enabled: true, two_factor_method: method, updated_at: new Date() })
         .eq('id', req.userId);
+      if (enableError) {
+        console.error('[2FA-toggle] DB update failed:', enableError.message);
+        return res.status(500).json({ error: 'Failed to enable 2FA. Database error: ' + enableError.message });
+      }
       console.log(`[2FA] Enabled via ${method} for user ${req.userId.slice(0,8)}`);
       return res.json({ success: true, message: `2FA enabled via ${method}!` });
 
@@ -3946,9 +3950,13 @@ app.patch('/api/users/toggle-2fa', verifyToken, async (req, res) => {
       const valid = await bcrypt.compare(password, user.password_hash);
       if (!valid) return res.status(400).json({ error: 'Current password is incorrect' });
 
-      await supabaseAdmin.from('users')
+      const { error: disableError } = await supabaseAdmin.from('users')
         .update({ two_factor_enabled: false, two_factor_method: null, updated_at: new Date() })
         .eq('id', req.userId);
+      if (disableError) {
+        console.error('[2FA-toggle] DB update failed:', disableError.message);
+        return res.status(500).json({ error: 'Failed to disable 2FA. Database error: ' + disableError.message });
+      }
       console.log(`[2FA] Disabled for user ${req.userId.slice(0,8)}`);
       return res.json({ success: true, message: '2FA disabled successfully!' });
 
@@ -4764,13 +4772,13 @@ app.get('/api/bonus/status', verifyToken, async (req, res) => {
 app.get('/api/users/profile', verifyToken, async (req, res) => {
   try {
     // Core columns — confirmed to exist in every PRAQEN DB schema
-    const coreCols = 'id, email, username, full_name, bio, location, website, phone, avatar_url, average_rating, total_trades, completion_rate, created_at, is_admin, is_moderator, is_id_verified, is_email_verified, is_phone_verified, total_feedback_count, positive_feedback, negative_feedback, last_login, last_seen_at, badge, country';
+    const coreCols = 'id, email, username, full_name, bio, location, website, phone, avatar_url, average_rating, total_trades, completion_rate, created_at, is_admin, is_moderator, is_id_verified, is_email_verified, is_phone_verified, total_feedback_count, positive_feedback, negative_feedback, last_login, last_seen_at, badge, country, two_factor_enabled, two_factor_method';
     let { data, error } = await supabaseAdmin.from('users')
       .select(coreCols)
       .eq('id', req.userId).single();
     // Fallback if a column doesn't exist in the DB (e.g. is_phone_verified, badge, country)
     if (error && (error.code === '42703' || (error.message && error.message.includes('does not exist')))) {
-      const essential = 'id, email, username, full_name, avatar_url, average_rating, total_trades, completion_rate, created_at, is_admin, is_moderator, is_id_verified, is_email_verified, total_feedback_count, positive_feedback, negative_feedback, last_login';
+      const essential = 'id, email, username, full_name, avatar_url, average_rating, total_trades, completion_rate, created_at, is_admin, is_moderator, is_id_verified, is_email_verified, total_feedback_count, positive_feedback, negative_feedback, last_login, two_factor_enabled, two_factor_method';
       console.warn('[GET /api/users/profile] Column missing — falling back to essentials:', error.message);
       const fallback = await supabaseAdmin.from('users').select(essential).eq('id', req.userId).single();
       if (fallback.error) { error = fallback.error; data = null; }
@@ -6637,6 +6645,19 @@ app.post('/api/trades/:id/mark-paid', tradeLimiter, verifyToken, async (req, res
 
 app.post('/api/trades/:id/release', tradeLimiter, verifyToken, async (req, res) => {
   try {
+    // ── 2FA: enforce that user has 2FA enabled before releasing BTC ─────────
+    const { data: releaseUser2FA } = await supabaseAdmin
+      .from('users')
+      .select('two_factor_enabled')
+      .eq('id', req.userId)
+      .single();
+    if (!releaseUser2FA?.two_factor_enabled) {
+      return res.status(403).json({
+        error: 'You must enable 2FA (email or authenticator) before releasing funds. Go to Settings → Security to enable 2FA.',
+        require2FA: true,
+      });
+    }
+
     // ── 2FA: require email action code before releasing BTC ─────────────────
     const { actionCode } = req.body;
     if (!actionCode) {
@@ -10239,6 +10260,19 @@ app.post('/api/wallet/usdt/send', verifyToken, async (req, res) => {
 
   try {
     const { toAddress, amount, actionCode } = req.body;
+
+    // ── 2FA: enforce that user has 2FA enabled before sending USDT ────────
+    const { data: usdtSendUser2FA } = await supabaseAdmin
+      .from('users')
+      .select('two_factor_enabled')
+      .eq('id', req.userId)
+      .single();
+    if (!usdtSendUser2FA?.two_factor_enabled) {
+      return res.status(403).json({
+        error: 'You must enable 2FA (email or authenticator) before sending funds. Go to Settings → Security to enable 2FA.',
+        require2FA: true,
+      });
+    }
 
     // ── 2FA gate ──────────────────────────────────────────────────────────
     if (!actionCode) {

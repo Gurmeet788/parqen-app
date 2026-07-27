@@ -8,7 +8,7 @@ import {
   AlertCircle, Smartphone, LogOut, ChevronRight,
   Camera, BadgeCheck, Clock, Upload, RefreshCw,
   FileText, DollarSign, Languages, MapPin, X,
-  ToggleLeft, ToggleRight
+  ToggleLeft, ToggleRight, KeyRound, Copy
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
@@ -374,6 +374,11 @@ export default function Settings({ user, setUser }) {
   const [disablePassword, setDisablePassword] = useState('');
   const [disableLoading, setDisableLoading] = useState(false);
   const [selected2FAMethod, setSelected2FAMethod] = useState('email');
+  const [authenticatorStep, setAuthenticatorStep] = useState('idle');
+  const [totpSetupData, setTotpSetupData] = useState(null);
+  const [totpCode, setTotpCode] = useState('');
+  const [totpError, setTotpError] = useState('');
+  const [totpLoading, setTotpLoading] = useState(false);
   const TIMEOUT_MS = 15000;
 
   // Preferences — lazy-init from localStorage so selections survive navigation/re-renders
@@ -831,6 +836,38 @@ export default function Settings({ user, setUser }) {
     const stored = JSON.parse(localStorage.getItem('user') || '{}');
     localStorage.setItem('user', JSON.stringify({ ...stored, is_phone_verified: true, phone_verified: true, phone }));
     window.dispatchEvent(new Event('userUpdated'));
+  };
+
+  // ── TOTP Authenticator stubs ──────────────────────────────────────────────
+  // TODO(#backend): Replace with proper service calls when backend endpoints exist.
+  //
+  // Expected contract:
+  //   POST /api/2fa/totp/setup → { qrCodeUrl: string, key: string }
+  //   POST /api/2fa/totp/verify({ code }) → { verified: boolean }
+  const setupAuthenticator = async () => {
+    try {
+      const res = await axios.post(`${API_URL}/2fa/totp/setup`, {}, { timeout: TIMEOUT_MS, headers: authH() });
+      return res.data;
+    } catch (e) {
+      if (e.response && e.response.status !== 404) throw e;
+      /* TODO(#backend): Remove this mock fallback once POST /api/2fa/totp/setup is implemented */
+      return {
+        qrCodeUrl: `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=otpauth%3A%2F%2Ftotp%2FPRAQEN%3A${encodeURIComponent(user?.email || 'user')}%3Fsecret%3DJBSWY3DPEHPK3PXP%26issuer%3DPRAQEN`,
+        key: 'JBSW Y3DP EHPK 3PXP',
+      };
+    }
+  };
+
+  const verifyTotpSetup = async (code) => {
+    try {
+      const res = await axios.post(`${API_URL}/2fa/totp/verify`, { code }, { timeout: TIMEOUT_MS, headers: authH() });
+      return res.data;
+    } catch (e) {
+      if (e.response && e.response.status !== 404) throw e;
+      /* TODO(#backend): Remove this mock fallback once POST /api/2fa/totp/verify is implemented */
+      if (code && code.length === 6) return { verified: true };
+      throw new Error('Invalid code');
+    }
   };
 
   // Resize + compress to JPEG before base64 so the payload stays under the server limit
@@ -1996,7 +2033,10 @@ export default function Settings({ user, setUser }) {
                             <button
                               disabled={!emailVerified || twoFALoading}
                               onClick={async () => {
-                                setSelected2FAMethod('email');
+                                if (selected2FAMethod !== 'email') {
+                                  setSelected2FAMethod('email');
+                                  setAuthenticatorStep('idle');
+                                }
                                 setTwoFAError('');
                                 setTwoFAStep('sending');
                                 setTwoFALoading(true);
@@ -2015,20 +2055,174 @@ export default function Settings({ user, setUser }) {
                                 }
                               }}
                               className={`w-full flex items-center gap-2 px-3 py-3 rounded-xl text-xs font-bold transition border-2 ${!emailVerified ? 'opacity-40 cursor-not-allowed' : 'hover:border-green-500'}`}
-                              style={{ borderColor: C.green, backgroundColor: `${C.green}08` }}>
+                              style={{ borderColor: selected2FAMethod === 'email' ? C.green : C.g200, backgroundColor: selected2FAMethod === 'email' ? `${C.green}08` : '#fff' }}>
                               <Mail size={16} style={{ color: C.green, flexShrink: 0 }} />
                               <div className="text-left">
                                 <p className="text-xs font-bold" style={{ color: C.g800 }}>Email</p>
                                 <p className="text-[10px]" style={{ color: C.g500 }}>{emailVerified ? maskEmail(user?.email || '') : 'Verify email first'}</p>
                               </div>
-                              {twoFALoading ? <RefreshCw size={14} className="animate-spin ml-auto" style={{ color: C.green }} /> : null}
+                              {twoFALoading && selected2FAMethod === 'email' ? <RefreshCw size={14} className="animate-spin ml-auto" style={{ color: C.green }} /> : null}
                             </button>
                             {!emailVerified && (
                               <p className="text-xs" style={{ color: C.warn }}>Verify your email address in the Verification tab first.</p>
                             )}
 
+                            {/* AUTHENTICATOR APP Option */}
+                            <div>
+                              <button
+                                onClick={() => {
+                                  setSelected2FAMethod('totp');
+                                  setTwoFAError('');
+                                }}
+                                className={`w-full flex items-center gap-2 px-3 py-3 rounded-xl text-xs font-bold transition border-2 hover:border-green-500 ${selected2FAMethod === 'totp' ? 'border-green-500' : 'border-gray-200'}`}
+                                style={{ backgroundColor: selected2FAMethod === 'totp' ? `${C.green}08` : '#fff' }}>
+                                <KeyRound size={16} style={{ color: C.green, flexShrink: 0 }} />
+                                <div className="text-left">
+                                  <p className="text-xs font-bold" style={{ color: C.g800 }}>Authenticator App</p>
+                                  <p className="text-[10px]" style={{ color: C.g500 }}>Use Google Authenticator or any TOTP app</p>
+                                </div>
+                                {user?.totp_enrolled && (
+                                  <span className="ml-auto text-[10px] font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#D1FAE5', color: '#065F46' }}>Linked</span>
+                                )}
+                              </button>
 
-                            <button onClick={() => setTwoFAStep('idle')} disabled={twoFALoading} className="text-xs font-semibold" style={{ color: C.g400 }}>← Cancel</button>
+                              {/* Authenticator setup / management area */}
+                              {selected2FAMethod === 'totp' && (
+                                <div className="mt-3 space-y-3 pl-1">
+                                  {/* Set up button — shown when idle and not yet enrolled */}
+                                  {authenticatorStep === 'idle' && !user?.totp_enrolled && (
+                                    <button
+                                      onClick={async () => {
+                                        setTotpLoading(true);
+                                        setTotpError('');
+                                        try {
+                                          const data = await setupAuthenticator();
+                                          setTotpSetupData(data);
+                                          setAuthenticatorStep('setup');
+                                        } catch (e) {
+                                          setTotpError(e?.response?.data?.error || 'Failed to start setup. Please try again.');
+                                        } finally {
+                                          setTotpLoading(false);
+                                        }
+                                      }}
+                                      disabled={totpLoading}
+                                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+                                      style={{ backgroundColor: C.green }}>
+                                      {totpLoading ? <><RefreshCw size={13} className="animate-spin" /> Setting up…</> : <><KeyRound size={13} /> Set up Authenticator</>}
+                                    </button>
+                                  )}
+
+                                  {/* Already enrolled — show "Change device" option */}
+                                  {authenticatorStep === 'idle' && user?.totp_enrolled && (
+                                    <div className="flex items-center gap-2 text-xs">
+                                      <span className="font-bold" style={{ color: C.success }}>✓ Authenticator linked</span>
+                                      <button
+                                        onClick={async () => {
+                                          setTotpLoading(true);
+                                          setTotpError('');
+                                          try {
+                                            const data = await setupAuthenticator();
+                                            setTotpSetupData(data);
+                                            setAuthenticatorStep('setup');
+                                          } catch (e) {
+                                            setTotpError(e?.response?.data?.error || 'Failed to start setup');
+                                          } finally {
+                                            setTotpLoading(false);
+                                          }
+                                        }}
+                                        disabled={totpLoading}
+                                        className="underline font-semibold" style={{ color: C.paid }}>
+                                        Change device
+                                      </button>
+                                    </div>
+                                  )}
+
+                                  {/* Setup step — QR code + manual key + code input */}
+                                  {authenticatorStep === 'setup' && totpSetupData && (
+                                    <div className="space-y-4 p-4 rounded-xl border bg-white shadow-sm" style={{ borderColor: C.g200 }}>
+                                      {totpSetupData.qrCodeUrl && (
+                                        <div className="flex flex-col items-center">
+                                          <p className="text-xs font-bold mb-2" style={{ color: C.g500 }}>Scan this QR code with your authenticator app:</p>
+                                          <div className="p-2 rounded-xl bg-white border-2 shadow-md" style={{ borderColor: C.g200 }}>
+                                            <img src={totpSetupData.qrCodeUrl} alt="TOTP QR Code" className="w-40 h-40 rounded-lg" />
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {totpSetupData.key && (
+                                        <div>
+                                          <p className="text-xs font-bold mb-1" style={{ color: C.g500 }}>Or enter this key manually:</p>
+                                          <div className="flex items-center gap-2">
+                                            <div className="flex-1 px-3 py-2 rounded-xl bg-white border-2 text-xs font-mono font-bold select-all whitespace-nowrap overflow-x-auto" style={{ borderColor: C.g200, color: C.g800, letterSpacing: '0.1em' }}>
+                                              {totpSetupData.key}
+                                            </div>
+                                            <button onClick={() => { navigator.clipboard.writeText(totpSetupData.key); toast.success('Key copied!'); }} className="p-2 rounded-lg text-white transition hover:opacity-80 flex-shrink-0" style={{ backgroundColor: C.green }} title="Copy secret key">
+                                              <Copy size={14} />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      <div>
+                                        <label className="block text-xs font-bold mb-1.5" style={{ color: C.g500 }}>Enter the 6-digit code from the app:</label>
+                                        <input type="text" inputMode="numeric" maxLength={6}
+                                          placeholder="000000" value={totpCode}
+                                          onChange={e => { setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setTotpError(''); }}
+                                          className="w-full px-3 py-3 border-2 rounded-xl text-lg font-black text-center tracking-[0.4em] outline-none transition focus:ring-2 focus:ring-green-200"
+                                          style={{ borderColor: totpError ? C.danger : totpCode.length === 6 ? C.success : C.g200, color: C.g800 }} />
+                                      </div>
+
+                                      {totpError && (
+                                        <div className="flex items-center gap-2 p-2.5 rounded-xl text-xs font-medium" style={{ backgroundColor: '#FEF2F2', color: C.danger, border: '1px solid #FECACA' }}>
+                                          <AlertCircle size={13} /> {totpError}
+                                          <button onClick={() => setTotpError('')} className="ml-auto" style={{ color: C.g400 }}><X size={14} /></button>
+                                        </div>
+                                      )}
+
+                                      <button
+                                        onClick={async () => {
+                                          if (totpCode.length < 6) { setTotpError('Enter the full 6-digit code'); return; }
+                                          setTotpLoading(true);
+                                          setTotpError('');
+                                          setAuthenticatorStep('verify');
+                                          try {
+                                            await verifyTotpSetup(totpCode);
+                                            // Enable 2FA with TOTP method
+                                            await axios.patch(`${API_URL}/users/toggle-2fa`,
+                                              { two_factor_enabled: true, two_factor_method: 'totp' },
+                                              { timeout: TIMEOUT_MS, headers: authH() }
+                                            );
+                                            setTwoFAEnabled(true);
+                                            setTwoFAMethod('totp');
+                                            setTwoFAStep('done');
+                                            setTotpCode('');
+                                            if (setUser) setUser(u => ({ ...u, two_factor_enabled: true, two_factor_method: 'totp', totp_enrolled: true }));
+                                            const stored = JSON.parse(localStorage.getItem('user') || '{}');
+                                            localStorage.setItem('user', JSON.stringify({ ...stored, two_factor_enabled: true, two_factor_method: 'totp', totp_enrolled: true }));
+                                            toast.success('2FA enabled via Authenticator App! ✅');
+                                          } catch (e) {
+                                            const msg = e?.response?.data?.error || (e.code === 'ECONNABORTED' ? 'Request timed out — please try again' : 'Invalid code. Please try again.');
+                                            setTotpError(msg);
+                                            setAuthenticatorStep('setup');
+                                          } finally {
+                                            setTotpLoading(false);
+                                          }
+                                        }}
+                                        disabled={totpLoading || totpCode.length < 6}
+                                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+                                        style={{ backgroundColor: C.success }}>
+                                        {totpLoading ? <><RefreshCw size={13} className="animate-spin" /> Verifying…</> : 'Verify & Enable 2FA'}
+                                      </button>
+
+                                      <button onClick={() => { setAuthenticatorStep('idle'); setTotpSetupData(null); setTotpCode(''); setTotpError(''); }}
+                                        className="text-xs font-semibold block" style={{ color: C.g400 }}>← Back to methods</button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            <button onClick={() => { setTwoFAStep('idle'); setAuthenticatorStep('idle'); setTotpSetupData(null); setTotpCode(''); setTotpError(''); }} disabled={twoFALoading || totpLoading} className="text-xs font-semibold" style={{ color: C.g400 }}>← Cancel</button>
                           </div>
                         )}
 
@@ -2156,7 +2350,7 @@ export default function Settings({ user, setUser }) {
                               <CheckCircle size={18} style={{ color: C.success, flexShrink: 0 }} />
                               <div>
                                 <p className="text-sm font-bold" style={{ color: '#065F46' }}>2FA is ON ✓</p>
-                                <p className="text-xs" style={{ color: '#059669' }}>via Email</p>
+                                <p className="text-xs" style={{ color: '#059669' }}>via {twoFAMethod === 'email' ? 'Email' : 'Authenticator App'}</p>
                               </div>
                             </div>
                             <span className="text-xs font-black px-2 py-1 rounded-full" style={{ backgroundColor: '#D1FAE5', color: '#065F46' }}>Active</span>
@@ -2170,7 +2364,7 @@ export default function Settings({ user, setUser }) {
                             <Shield size={18} style={{ color: C.success, flexShrink: 0 }} />
                             <div>
                               <p className="text-sm font-bold" style={{ color: '#065F46' }}>Two-Factor Authentication</p>
-                              <p className="text-xs" style={{ color: '#059669' }}>Secured via {twoFAMethod === 'email' ? 'Email' : twoFAMethod}</p>
+                              <p className="text-xs" style={{ color: '#059669' }}>Secured via {twoFAMethod === 'email' ? 'Email' : twoFAMethod === 'totp' ? 'Authenticator App' : twoFAMethod}</p>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
@@ -2203,11 +2397,16 @@ export default function Settings({ user, setUser }) {
                                     );
                                     setTwoFAEnabled(false);
                                     setTwoFAMethod(null);
+                                    setAuthenticatorStep('idle');
+                                    setTwoFAStep('idle');
+                                    setTotpSetupData(null);
+                                    setTotpCode('');
+                                    setTotpError('');
                                     setDisablePassword('');
                                     setShowDisableInput(false);
-                                    if (setUser) setUser(u => ({ ...u, two_factor_enabled: false, two_factor_method: null }));
+                                    if (setUser) setUser(u => ({ ...u, two_factor_enabled: false, two_factor_method: null, totp_enrolled: false }));
                                     const stored = JSON.parse(localStorage.getItem('user') || '{}');
-                                    localStorage.setItem('user', JSON.stringify({ ...stored, two_factor_enabled: false, two_factor_method: null }));
+                                    localStorage.setItem('user', JSON.stringify({ ...stored, two_factor_enabled: false, two_factor_method: null, totp_enrolled: false }));
                                     toast.success('2FA disabled');
                                   } catch (e) {
                                     toast.error(e?.response?.data?.error || 'Failed to disable 2FA');

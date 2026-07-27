@@ -45,7 +45,7 @@ const fmtDate = d => {
 };
 
 // ─── Withdraw Modal ────────────────────────────────────────────────────────────
-function WithdrawModal({ balance, btcPrice, onClose, onSend, kycStatus, onSwitchToInternal }) {
+function WithdrawModal({ balance, btcPrice, onClose, onSend, kycStatus, twoFactorEnabled, onSwitchToInternal }) {
   const [address,   setAddress]   = useState('');
   const [amount,    setAmount]    = useState('');
   const [usdAmount, setUsdAmount] = useState('');
@@ -386,20 +386,35 @@ function WithdrawModal({ balance, btcPrice, onClose, onSend, kycStatus, onSwitch
             {/* ── Step 1: Send code ── */}
             {step === 'form' && (
               <div className="space-y-3">
-                <button onClick={requestCode} disabled={!valid || !confirm || sending2FA}
-                  className="w-full py-4 rounded-2xl text-white font-black text-sm flex items-center justify-center gap-2 transition active:scale-98 disabled:opacity-40"
-                  style={{ background: (!valid || !confirm || sending2FA) ? '#94a3b8' : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', boxShadow: (!valid || !confirm) ? 'none' : '0 6px 20px rgba(239,68,68,0.4)' }}>
-                  {sending2FA
-                    ? <><RefreshCw size={15} className="animate-spin" /> Sending security code…</>
-                    : <><Shield size={15} /> Get Security Code &amp; Continue</>}
-                </button>
-                <div className="flex items-center gap-2.5 px-4 py-3 rounded-2xl"
-                  style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a' }}>
-                  <AlertTriangle size={13} style={{ color: '#d97706', flexShrink: 0 }} />
-                  <p className="text-xs font-semibold" style={{ color: '#92400e' }}>
-                    A 6-digit security code will be emailed to you to confirm this withdrawal.
-                  </p>
-                </div>
+                {!twoFactorEnabled ? (
+                  <div className="p-4 rounded-2xl text-center" style={{backgroundColor: '#fffbeb', border: '1px solid #fde68a'}}>
+                    <AlertTriangle size={24} style={{color: '#d97706', margin: '0 auto 8px', display: 'block'}} />
+                    <p className="font-bold text-sm" style={{color: '#92400e'}}>Enable Two-Factor Authentication</p>
+                    <p className="text-xs mt-1" style={{color: '#92400e'}}>You must enable 2FA before sending Bitcoin. Go to Settings → Security to enable it.</p>
+                    <button onClick={() => window.location.href = '/settings'}
+                      className="mt-3 px-5 py-2.5 rounded-xl text-white font-bold text-xs transition hover:opacity-90"
+                      style={{backgroundColor: '#2D6A4F'}}>
+                      Go to Settings
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <button onClick={requestCode} disabled={!valid || !confirm || sending2FA}
+                      className="w-full py-4 rounded-2xl text-white font-black text-sm flex items-center justify-center gap-2 transition active:scale-98 disabled:opacity-40"
+                      style={{ background: (!valid || !confirm || sending2FA) ? '#94a3b8' : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', boxShadow: (!valid || !confirm) ? 'none' : '0 6px 20px rgba(239,68,68,0.4)' }}>
+                      {sending2FA
+                        ? <><RefreshCw size={15} className="animate-spin" /> Sending security code…</>
+                        : <><Shield size={15} /> Get Security Code &amp; Continue</>}
+                    </button>
+                    <div className="flex items-center gap-2.5 px-4 py-3 rounded-2xl"
+                      style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a' }}>
+                      <AlertTriangle size={13} style={{ color: '#d97706', flexShrink: 0 }} />
+                      <p className="text-xs font-semibold" style={{ color: '#92400e' }}>
+                        A 6-digit security code will be emailed to you to confirm this withdrawal.
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
@@ -1262,7 +1277,7 @@ function InternalTransferModal({ balance, btcPrice, displayCurrency, fxRate, cur
 }
 
 // ─── USDT Withdraw Modal ──────────────────────────────────────────────────────
-function UsdtWithdrawModal({ balance, onClose, onSend, kycStatus, onSwitchToInternal }) {
+function UsdtWithdrawModal({ balance, onClose, onSend, kycStatus, twoFactorEnabled, onSwitchToInternal }) {
   const [address,       setAddress]       = useState('');
   const [amount,        setAmount]        = useState('');
   const [inputMode,     setInputMode]     = useState('usdt'); // 'usdt' | 'usd'
@@ -1611,15 +1626,30 @@ function UsdtWithdrawModal({ balance, onClose, onSend, kycStatus, onSwitchToInte
           </label>
           {step === 'form' && (
             <div className="space-y-3">
-              <button onClick={requestCode} disabled={!valid || !confirm || sending2FA}
-                className="w-full py-4 rounded-2xl text-white font-black text-sm flex items-center justify-center gap-2 transition disabled:opacity-40"
-                style={{ background: (!valid || !confirm || sending2FA) ? '#94a3b8' : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', boxShadow: (valid && confirm && !sending2FA) ? '0 6px 20px rgba(239,68,68,0.4)' : 'none' }}>
-                {sending2FA ? <><RefreshCw size={15} className="animate-spin" /> Sending code…</> : <><Shield size={15} /> Get Security Code &amp; Continue</>}
-              </button>
-              <div className="flex items-center gap-2.5 px-4 py-3 rounded-2xl" style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a' }}>
-                <AlertTriangle size={13} style={{ color: '#d97706', flexShrink: 0 }} />
-                <p className="text-xs font-semibold" style={{ color: '#92400e' }}>A 6-digit security code will be emailed to confirm this withdrawal.</p>
-              </div>
+              {!twoFactorEnabled ? (
+                <div className="p-4 rounded-2xl text-center" style={{backgroundColor: '#fffbeb', border: '1px solid #fde68a'}}>
+                  <AlertTriangle size={24} style={{color: '#d97706', margin: '0 auto 8px', display: 'block'}} />
+                  <p className="font-bold text-sm" style={{color: '#92400e'}}>Enable Two-Factor Authentication</p>
+                  <p className="text-xs mt-1" style={{color: '#92400e'}}>You must enable 2FA before sending USDT. Go to Settings → Security to enable it.</p>
+                  <button onClick={() => window.location.href = '/settings'}
+                    className="mt-3 px-5 py-2.5 rounded-xl text-white font-bold text-xs transition hover:opacity-90"
+                    style={{backgroundColor: '#2D6A4F'}}>
+                    Go to Settings
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <button onClick={requestCode} disabled={!valid || !confirm || sending2FA}
+                    className="w-full py-4 rounded-2xl text-white font-black text-sm flex items-center justify-center gap-2 transition disabled:opacity-40"
+                    style={{ background: (!valid || !confirm || sending2FA) ? '#94a3b8' : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', boxShadow: (valid && confirm && !sending2FA) ? '0 6px 20px rgba(239,68,68,0.4)' : 'none' }}>
+                    {sending2FA ? <><RefreshCw size={15} className="animate-spin" /> Sending code…</> : <><Shield size={15} /> Get Security Code &amp; Continue</>}
+                  </button>
+                  <div className="flex items-center gap-2.5 px-4 py-3 rounded-2xl" style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a' }}>
+                    <AlertTriangle size={13} style={{ color: '#d97706', flexShrink: 0 }} />
+                    <p className="text-xs font-semibold" style={{ color: '#92400e' }}>A 6-digit security code will be emailed to confirm this withdrawal.</p>
+                  </div>
+                </>
+              )}
             </div>
           )}
           {step === 'code' && (
@@ -3526,8 +3556,8 @@ export default function WalletPage({ user }) {
 
       {selectedTx && <TxReceiptModal tx={selectedTx} btcPrice={btcPrice} onClose={() => setSelectedTx(null)}
           onRepeat={(username) => { setSelectedTx(null); setRepeatUsername(username); setShowInternal(true); }} />}
-      {showSend && <WithdrawModal balance={availableBal} btcPrice={btcPrice} onClose={() => setShowSend(false)} onSend={sendBitcoin} kycStatus={userVerif} onSwitchToInternal={() => { setShowSend(false); setShowInternal(true); }} />}
-      {showUsdtSend && <UsdtWithdrawModal balance={usdtData?.balance_usdt || 0} onClose={() => setShowUsdtSend(false)} onSend={sendUsdt} kycStatus={userVerif} onSwitchToInternal={() => { setShowUsdtSend(false); setShowUsdtInternal(true); }} />}
+      {showSend && <WithdrawModal balance={availableBal} btcPrice={btcPrice} onClose={() => setShowSend(false)} onSend={sendBitcoin} kycStatus={userVerif} twoFactorEnabled={user?.two_factor_enabled} onSwitchToInternal={() => { setShowSend(false); setShowInternal(true); }} />}
+      {showUsdtSend && <UsdtWithdrawModal balance={usdtData?.balance_usdt || 0} onClose={() => setShowUsdtSend(false)} onSend={sendUsdt} kycStatus={userVerif} twoFactorEnabled={user?.two_factor_enabled} onSwitchToInternal={() => { setShowUsdtSend(false); setShowUsdtInternal(true); }} />}
       {showUsdtInternal && <UsdtInternalTransferModal balance={usdtData?.balance_usdt || 0} onClose={() => setShowUsdtInternal(false)} onTransfer={doUsdtInternalTransfer} onSwitchToExternal={() => { setShowUsdtInternal(false); setShowUsdtSend(true); }} />}
       {showRecv && (
         <ReceiveModal
