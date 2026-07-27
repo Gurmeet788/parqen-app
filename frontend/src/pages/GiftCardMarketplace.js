@@ -10,10 +10,11 @@ import {
   Home, Wallet, User, Gift, Bitcoin,
   ChevronDown, CreditCard, ThumbsUp, ThumbsDown, Repeat2,
   Phone, Mail, Ban, ArrowUp, ArrowDown,
+  Crown, Zap,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import CountryFlag, { resolveCode } from '../components/CountryFlag';
-import { TRUST_MAP, deriveBadge } from '../lib/badge';
+import { BadgeChip, BADGE_COLORS, deriveBadge } from '../lib/badge';
 import ActiveTradeCard from '../components/ActiveTradeCard';
 import PRQFooter from '../components/PRQFooter';
 
@@ -33,7 +34,8 @@ const C = {
 // ── Featured badge config ─────────────────────────────────────────────────────
 const FEATURED = {
   fast_responder: {
-    tag:         '⚡ FAST RESPONDER OF THE WEEK',
+    TagIcon:     Zap,
+    tag:         'FAST RESPONDER OF THE WEEK',
     ribbon:      'linear-gradient(90deg,#1E3A8A 0%,#3730A3 18%,#6366F1 38%,#A5B4FC 50%,#6366F1 62%,#3730A3 82%,#1E3A8A 100%)',
     border:      '#4F46E5',
     glow:        'rgba(79,70,229,0.38)',
@@ -46,7 +48,8 @@ const FEATURED = {
     pulse:       true,
   },
   active_trader: {
-    tag:         '👑 ACTIVE TRADER OF THE WEEK',
+    TagIcon:     Crown,
+    tag:         'ACTIVE TRADER OF THE WEEK',
     ribbon:      'linear-gradient(90deg,#92400E 0%,#B45309 18%,#F59E0B 38%,#FDE68A 50%,#F59E0B 62%,#B45309 82%,#92400E 100%)',
     border:      '#D97706',
     glow:        'rgba(217,119,6,0.38)',
@@ -330,7 +333,6 @@ function Avatar({user, size=48, radius='rounded-xl'}) {
 function GCCard({listing, btcPriceUSD, onViewSeller, onTrade, featuredType}) {
   const {rates:USD_RATES} = useRates();
   const u        = getUser(listing.users);
-  const badge    = deriveBadge(u);
   const [seen, setSeen] = useState(() => getLastSeen(u));
   useEffect(() => {
     const id = setInterval(() => setSeen(getLastSeen(u)), 30000);
@@ -428,11 +430,7 @@ function GCCard({listing, btcPriceUSD, onViewSeller, onTrade, featuredType}) {
                 {getDisplayName(u) || 'Seller'}
               </button>
               {isVerified(u) && <BadgeCheck size={13} style={{color:'#3B82F6',flexShrink:0}}/>}
-              <span className={`inline-flex items-center gap-px font-medium px-1 py-0 rounded-full border flex-shrink-0 ${badge.animate ? 'shadow-md' : ''}`}
-                style={{background:badge.bg, borderColor:badge.borderColor, fontSize:'8px', boxShadow: badge.glow ? `0 0 8px ${badge.glow}` : undefined}}>
-                <span style={{color:badge.iconColor||badge.textColor}}>{badge.icon}</span>
-                <span style={{color:badge.textColor}}>{badge.label}</span>
-              </span>
+              <BadgeChip user={u} size="xs" />
             </div>
 
             {/* Stats row — all chips wrap naturally, nothing pushed off-screen */}
@@ -1800,7 +1798,7 @@ export default function GiftCards({user}) {
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap'}}>
                         <span style={{fontSize:10,fontWeight:700,color:'#1E293B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.username}</span>
-                        <span style={{fontSize:7,fontWeight:900,color:bc,background:`${bc}12`,border:`1px solid ${bc}30`,borderRadius:3,padding:'1px 4px',letterSpacing:0.4,flexShrink:0,textTransform:'uppercase'}}>{u.badge||'BEGINNER'}</span>
+                        <BadgeChip user={u} badgeName={u.badge} size="xs" />
                       </div>
                       <span style={{fontSize:8,color:'#94A3B8',fontWeight:500}}>{u.referrals} refs · {u.affiliate_trades||u.total_trades} trades</span>
                     </div>

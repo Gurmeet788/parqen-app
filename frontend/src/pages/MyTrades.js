@@ -947,7 +947,7 @@ export default function MyTrades({user}) {
             <div>
               <p className="text-white font-black text-sm mb-3">Trade</p>
               <div className="space-y-2">
-                {[['Buy Bitcoin','/buy-bitcoin'],['Sell Bitcoin','/sell-bitcoin'],['Gift Cards','/gift-cards'],['Create Offer','/create-offer'],['My Listings','/my-listings']].map(([l,h])=>(
+                {[['Buy Bitcoin','/buy-bitcoin'],['Sell Bitcoin','/sell-bitcoin'],['Gift Cards','/gift-cards'],['Create Offer','/create-offer'],['My Listings','/my-listings'],['Blog','/blog'],['Privacy','/privacy'],['Terms','/terms']].map(([l,h])=>(
                   <a key={l} href={h} className="block text-xs hover:text-white transition" style={{color:'rgba(255,255,255,0.4)'}}>{l}</a>
                 ))}
               </div>

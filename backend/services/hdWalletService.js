@@ -10,6 +10,7 @@ const { ECPairFactory } = require('ecpair');
 const crypto = require('crypto');
 const axios  = require('axios');
 const { createClient } = require('@supabase/supabase-js');
+const tronWalletService = require('./tronWalletService');
 
 const ECPair = ECPairFactory(ecc);
 
@@ -95,12 +96,22 @@ class HDWalletService {
   }
 
   // ── Try request against primary API then fallbacks ────────────────────────
+  // Remembers whichever API actually answered, and demotes a failing one to the
+  // back of the rotation — otherwise every call re-tries a dead primary and eats
+  // its full timeout before falling back, every single time (confirmed: this was
+  // silently adding ~15s to every balance check / UTXO fetch while mempool.space
+  // was unreachable, which is what made the sweep cycle crawl).
   async apiGet(path) {
     const apis = [this.apiBase, ...this.apiFallbacks];
     let lastError;
     for (const base of apis) {
       try {
         const r = await axios.get(`${base}${path}`, { timeout: 15000 });
+        if (this.apiBase !== base) {
+          console.log(`[hdWalletService] Switching primary API to: ${base}`);
+          this.apiFallbacks = [this.apiBase, ...this.apiFallbacks.filter(a => a !== base)];
+          this.apiBase = base;
+        }
         return r.data;
       } catch (err) {
         console.warn(`[apiGet] ${base}${path} failed: ${err.message}`);
@@ -119,6 +130,11 @@ class HDWalletService {
           headers: { 'Content-Type': 'text/plain' },
           timeout: 30000,
         });
+        if (this.apiBase !== base) {
+          console.log(`[hdWalletService] Switching primary API to: ${base}`);
+          this.apiFallbacks = [this.apiBase, ...this.apiFallbacks.filter(a => a !== base)];
+          this.apiBase = base;
+        }
         return r.data;
       } catch (err) {
         console.warn(`[apiPost] ${base}${path} failed: ${err.message}`);
@@ -174,14 +190,21 @@ class HDWalletService {
       if (error) console.error(`[ensureWalletExists] wallets address backfill failed for ${userId}:`, error.message);
     }
 
-    // ── user_wallets — read by depositMonitor / realtimeDepositService to find addresses ──
+    // ── user_wallets — read by depositMonitor / realtimeDepositService / usdtDepositMonitor ──
     const { data: uwRow } = await supabaseAdmin
-      .from('user_wallets').select('user_id, btc_address').eq('user_id', userId).maybeSingle();
+      .from('user_wallets').select('user_id, btc_address, tron_address').eq('user_id', userId).maybeSingle();
+
+    // Tron/USDT address generated here too (not just lazily on first /wallet/usdt visit) so
+    // every new user has a real USDT deposit address from signup, before ever opening the wallet page.
+    const tronAddress = (!uwRow || !uwRow.tron_address)
+      ? tronWalletService.generateUserAddress(userId).address
+      : uwRow.tron_address;
 
     if (!uwRow) {
       const { error } = await supabaseAdmin.from('user_wallets').insert({
         user_id:     userId,
         btc_address: address,
+        tron_address: tronAddress,
         network:     'mainnet',
         balance_btc: 0,
         created_at:  nowIso,
@@ -190,10 +213,16 @@ class HDWalletService {
       if (error && !error.message?.includes('duplicate')) {
         console.error(`[ensureWalletExists] user_wallets insert failed for ${userId}:`, error.message);
       }
-    } else if (!uwRow.btc_address) {
-      const { error } = await supabaseAdmin.from('user_wallets')
-        .update({ btc_address: address, updated_at: nowIso }).eq('user_id', userId);
-      if (error) console.error(`[ensureWalletExists] user_wallets address backfill failed for ${userId}:`, error.message);
+    } else {
+      const patch = {};
+      if (!uwRow.btc_address)  patch.btc_address  = address;
+      if (!uwRow.tron_address) patch.tron_address = tronAddress;
+      if (Object.keys(patch).length) {
+        patch.updated_at = nowIso;
+        const { error } = await supabaseAdmin.from('user_wallets')
+          .update(patch).eq('user_id', userId);
+        if (error) console.error(`[ensureWalletExists] user_wallets address backfill failed for ${userId}:`, error.message);
+      }
     }
 
     // ── users.bitcoin_wallet_address — legacy fallback source also read by depositMonitor ──
@@ -207,6 +236,27 @@ class HDWalletService {
     }
 
     return { address, isNew: !walletRow };
+  }
+
+  // ── Safely set wallets.balance_btc to an absolute value for a user who may or may not ──
+  // ── already have a wallets row. Select-then-insert/update — NEVER upsert — same reason ──
+  // ── as ensureWalletExists: wallets.user_id has no unique constraint, so ON CONFLICT ──
+  // ── upserts fail silently and were the actual cause of credits vanishing from `wallets` ──
+  // ── while secondary tables (user_balances/user_wallets) still recorded them, producing ──
+  // ── a stale/lower balance in `wallets` than what those mirror tables showed.
+  async setWalletBalance(userId, newBalanceBtc) {
+    const nowIso = new Date().toISOString();
+    const { data: existing } = await supabaseAdmin
+      .from('wallets').select('user_id').eq('user_id', userId).maybeSingle();
+
+    if (existing) {
+      return supabaseAdmin.from('wallets')
+        .update({ balance_btc: newBalanceBtc, updated_at: nowIso })
+        .eq('user_id', userId);
+    }
+    return supabaseAdmin.from('wallets').insert({
+      user_id: userId, balance_btc: newBalanceBtc, locked_balance_btc: 0, updated_at: nowIso,
+    });
   }
 
   getPraqenFeeAddress() {
