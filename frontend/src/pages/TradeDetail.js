@@ -6,7 +6,7 @@ import {
   Send, Star, Clock, CheckCircle, AlertCircle, Lock,
   MessageCircle, Bitcoin, Shield, AlertTriangle,
   X, RefreshCw, Info, Check, CheckCheck, Timer,
-  Paperclip, Flag, BadgeCheck, FileText, Copy,
+  Paperclip, Flag, BadgeCheck, FileText, Copy, Globe,
   ChevronDown, ChevronUp, DollarSign, CreditCard,
 Smartphone, Building2, ThumbsUp, ThumbsDown, Gift, Repeat2, Heart,
 } from 'lucide-react';
@@ -877,11 +877,16 @@ export default function TradeDetail({user}) {
   const [profLabel, setProfLabel] = useState('');
   const [loadErr,   setLoadErr]   = useState(false);
   const [errMsg,    setErrMsg]    = useState('');
+  const [paidAt,    setPaidAt]    = useState(null);
+  const [now,       setNow]       = useState(Date.now());
+
+  const DISPUTE_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes before dispute can be opened after marking paid
   const toastShown  = useRef(false);
   const [infoOpen,  setInfoOpen]  = useState(false);
   const [showDisputeModal,  setShowDisputeModal]  = useState(false);
   const [disputeSubmitting, setDisputeSubmitting] = useState(false);
   const [cpTyping,  setCpTyping]  = useState(false);
+  const [activeTab, setActiveTab]  = useState('chat');
 
   const status = (trade?.status||'').toUpperCase();
   const isBuyer     = user&&trade&&String(user.id)===String(trade.buyer_id);
@@ -962,6 +967,17 @@ export default function TradeDetail({user}) {
     const distFromBottom=el.scrollHeight-el.scrollTop-el.clientHeight;
     if(distFromBottom<150) el.scrollTop=el.scrollHeight;
   },[messages]);
+
+  // ── Dispute cooldown timer ──────────────────────────────────────────────
+  useEffect(()=>{
+    if(isPaid && !paidAt) setPaidAt(Date.now() - DISPUTE_COOLDOWN_MS);
+  },[isPaid]);
+
+  useEffect(()=>{
+    if(!isPaid) return;
+    const iv=setInterval(()=>setNow(Date.now()), 1000);
+    return ()=>clearInterval(iv);
+  },[isPaid]);
 
   const loadAll=async()=>{
     await Promise.all([loadTrade(), loadMessages(), loadImages()]);
@@ -1050,7 +1066,7 @@ export default function TradeDetail({user}) {
       await axios.post(`${API_URL}/messages`,{tradeId:id,message:msg},{headers:authH()});
       setMsg('');await loadMessages();
       setTimeout(()=>{if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight;},100);
-    }catch{toast.error('Send failed');}
+    }catch(error){const serverError=error?.response?.data?.error||error?.response?.data?.message;toast.error(serverError||'Send failed');}
     finally{setSending(false);}
   };
 
@@ -1282,7 +1298,10 @@ export default function TradeDetail({user}) {
 
   const showMarkPaid  = isGiftCardTrade ? (isSeller&&isEscrow&&isActive) : (isBuyer&&isEscrow&&isActive);
   const showRelease   = isGiftCardTrade ? (isBuyer&&isPaid&&isActive)    : (isSeller&&isPaid&&isActive);
-  const showDispute   = isActive&&!isDisputed&&(isBuyer||isSeller);
+  const showDispute   = isPaid&&isActive&&!isDisputed&&(isBuyer||isSeller);
+  const paidDuration       = paidAt ? now - paidAt : 0;
+  const disputeReady       = isPaid && paidAt && paidDuration >= DISPUTE_COOLDOWN_MS;
+  const disputeCountdownS  = paidAt ? Math.max(0, Math.ceil((DISPUTE_COOLDOWN_MS - paidDuration) / 1000)) : 0;
 
   // ── Cancel eligibility ────────────────────────────────────────────────────
   // Mirrors the backend rule in POST /api/trades/:id/cancel exactly:
@@ -1310,10 +1329,14 @@ export default function TradeDetail({user}) {
       {/* ── MAIN CONTENT ─────────────────────────────────────────────────── */}
       <div className="max-w-7xl mx-auto w-full px-3 py-3 pb-4">
 
-        <div className="grid lg:grid-cols-12 gap-3 lg:[height:calc(100vh-56px)]">
+        <div className="flex flex-col gap-3 lg:h-[calc(100vh-64px)] md:h-[calc(100vh-64px)] h-[calc(100vh-80px)] max-w-3xl md:max-w-5xl lg:max-w-6xl mx-auto w-full">
+          <div className="flex-1 min-w-0 md:flex md:flex-row md:gap-3 overflow-hidden">
 
-          {/* ── LEFT PANEL ───────────────────────────────────────────────── */}
-          <div className="order-2 lg:order-1 lg:col-span-4 space-y-3 lg:overflow-y-auto pb-3 lg:[max-height:calc(100vh-56px)]">
+            {/* ── ACTIONS PANEL (desktop: fixed-width left column; mobile: tab-controlled) ── */}
+            <div className={`w-full h-full overflow-y-auto pb-4 ${
+              activeTab === 'actions' ? 'block' : 'hidden'
+            } md:block md:w-80 md:flex-shrink-0 md:overflow-y-auto md:h-full md:pb-0`}>
+              <div className="space-y-3 pr-1">
 
             {/* ── TRADE PROGRESS ───────────────────────────────────────── */}
             <div className="bg-white rounded-2xl border shadow-sm p-4" style={{borderColor:C.g200}}>
@@ -1368,11 +1391,11 @@ export default function TradeDetail({user}) {
                 </div>
               )}
 
-              {/* ── MARK PAID / SENT CODE button — desktop only; mobile uses sticky bar ── */}
+              {/* ── MARK PAID / SENT CODE button ── */}
               {showMarkPaid&&(
                 <button onClick={()=>setShowPayConfirm(true)} disabled={submitting}
-                  className="hidden lg:flex w-full py-4 rounded-xl font-black text-base shadow-lg hover:opacity-90 disabled:opacity-50 items-center justify-center gap-2 transition"
-                  style={{backgroundColor:C.gold,color:C.forest}}>
+                  className="w-full py-4 rounded-xl font-black text-base shadow-lg flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed bg-[#2D6A4F] text-white hover:bg-[#D1FAE5] hover:text-[#2D6A4F] hover:border-[#2D6A4F]"
+                  style={{border:'2px solid transparent'}}>
                   {submitting
                     ?<><RefreshCw size={16} className="animate-spin"/>Processing…</>
                     :isGiftCardTrade
@@ -1381,10 +1404,10 @@ export default function TradeDetail({user}) {
                 </button>
               )}
 
-              {/* ── RELEASE BITCOIN button — desktop only; mobile uses sticky bar ── */}
+              {/* ── RELEASE BITCOIN button ── */}
               {showRelease&&(
                 <button onClick={()=>setShowRelConfirm(true)} disabled={submitting}
-                  className="hidden lg:flex w-full py-4 rounded-xl text-white font-black text-base shadow-lg hover:opacity-90 disabled:opacity-50 items-center justify-center gap-2 transition"
+                  className="w-full py-4 rounded-xl text-white font-black text-base shadow-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2 transition"
                   style={{backgroundColor:C.green}}>
                   {submitting
                     ?<><RefreshCw size={16} className="animate-spin"/>Processing…</>
@@ -1392,13 +1415,22 @@ export default function TradeDetail({user}) {
                 </button>
               )}
               {showDispute&&(
-                <button onClick={openDispute}
-                  className="w-full py-2.5 rounded-xl font-semibold text-xs border flex items-center justify-center gap-1.5 hover:bg-red-50 transition"
-                  style={{borderColor:`${C.danger}40`,color:C.danger}}>
-                  <Flag size={12}/> Open Dispute
+                <button onClick={disputeReady ? openDispute : undefined}
+                  className={`w-full py-2.5 rounded-xl font-semibold text-xs border flex items-center justify-center gap-1.5 transition ${
+                    disputeReady ? 'hover:bg-red-50' : 'opacity-60'
+                  }`}
+                  style={{
+                    borderColor: disputeReady ? `${C.danger}40` : C.g300,
+                    color: disputeReady ? C.danger : C.g400,
+                    cursor: disputeReady ? 'pointer' : 'not-allowed',
+                  }}>
+                  <Flag size={12}/>
+                  {disputeReady
+                    ? 'Open Dispute'
+                    : `⏳ Dispute in ${Math.floor(disputeCountdownS/60)}:${String(disputeCountdownS%60).padStart(2,'0')}`}
                 </button>
               )}
-              {showCancelBtn&&(
+              {showCancelBtn&&!isPaid&&(
                 <button onClick={()=>setShowCancel(true)}
                   className="w-full py-2 rounded-xl font-semibold text-xs border hover:bg-gray-50 transition"
                   style={{borderColor:C.g200,color:C.g500}}>
@@ -1434,6 +1466,39 @@ export default function TradeDetail({user}) {
                 </div>
               )}
             </div>
+
+              {/* ── Payment confirmed banner (mobile only — moves here from chat on small screens) ── */}
+              {isActive&&isPaid&&(
+                <div className="md:hidden flex-shrink-0 rounded-xl overflow-hidden"
+                  style={{border:'2px solid #2563EB',boxShadow:'0 2px 12px rgba(37,99,235,0.20)'}}>
+                  <div className="flex items-center gap-2 px-3 py-2"
+                    style={{background:'linear-gradient(135deg,#1E3A8A,#2563EB)'}}>
+                    <span className="text-sm">{isBuyer ? '⏳' : '🔔'}</span>
+                    <span className="text-xs font-black text-white tracking-wide flex-1">
+                      {isBuyer
+                        ? 'Payment Sent — Awaiting Seller Confirmation'
+                        : '⚡ Action Required — Release Bitcoin'}
+                    </span>
+                  </div>
+                  <div className="px-3 py-2.5" style={{backgroundColor:'#EFF6FF'}}>
+                    {isBuyer ? (
+                      <p className="text-xs font-semibold leading-relaxed" style={{color:'#1E40AF'}}>
+                        ✅ Your payment has been sent successfully. The seller has been notified and will check their account now. Once they confirm receipt, your Bitcoin will be released to you automatically.
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-xs font-bold leading-relaxed" style={{color:'#1E40AF'}}>
+                          💰 The buyer has confirmed payment. Please check your {payMethod} account right now.
+                        </p>
+                        <p className="text-xs font-semibold mt-1" style={{color:'#1D4ED8'}}>
+                          ✅ Payment received? → Scroll up and tap <strong>RELEASE BITCOIN</strong> to complete the trade.<br/>
+                          ❌ Not received? → Open a dispute so a moderator can help.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
 
             {/* Trade instructions accordion */}
             <OfferTerms trade={trade}/>
@@ -1542,11 +1607,15 @@ export default function TradeDetail({user}) {
                 </div>
               )}
             </div>
-          </div>
 
-          {/* ── CHAT COLUMN ──────────────────────────────────────────────── */}
-          <div className="order-1 lg:order-2 lg:col-span-8 flex flex-col min-h-[55vh] lg:min-h-0 lg:[max-height:calc(100vh-56px)]">
-            <div className="bg-white rounded-2xl border shadow-sm overflow-hidden flex flex-col flex-1"
+              </div>
+            </div>
+
+            {/* ── CHAT COLUMN (desktop: right column, flex-fill; mobile: tab-controlled) ── */}
+            <div className={`w-full h-full flex-col ${
+              activeTab === 'chat' ? 'flex' : 'hidden'
+            } md:flex md:flex-1 md:h-full md:min-w-0 md:overflow-hidden`}>
+            <div className="bg-white rounded-2xl border shadow-sm overflow-hidden flex flex-col min-h-0 flex-1"
               style={{borderColor:C.g200}}>
 
  
@@ -1558,8 +1627,10 @@ export default function TradeDetail({user}) {
   className="flex items-center gap-2.5 hover:opacity-80 active:opacity-60 transition">
   <Avatar user={cp} size={44} />
   <span className="font-black text-base" style={{color:C.g800}}>{cp?.username || 'User'}</span>
-  <span style={{fontSize:20}}>{isoToFlag(resolveCode(cp?.country))}</span>
+  <span style={{fontSize:20}}>{cp?.country ? isoToFlag(resolveCode(cp.country)) : null}</span>
+                  {!cp?.country && <Globe size={14} style={{color:C.g400}}/>}
 </button>
+                  {/* TODO: Confirm positive_feedback/negative_feedback are returned on cp object from /trades/:id — if not, the ?? 0 fallback hides the gap */}
                   <div className="flex items-center gap-2">
                     <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-sm font-black" style={{background:'#DCFCE7',color:'#166534'}}>
                       <ThumbsUp size={13}/> {cp?.positive_feedback ?? cp?.thumbs_up ?? 0}
@@ -1764,58 +1835,90 @@ export default function TradeDetail({user}) {
                   );
 
                   /* ── USER chat bubbles ───────────────────────────────── */
-                  // Own messages: deep forest green | Other user: deep navy blue
-                  const ownBg   = 'linear-gradient(135deg,#166534,#15803D)';
-                  const otherBg = 'linear-gradient(135deg,#1E3A5F,#1D4ED8)';
                   const isImage = text.startsWith('data:image/');
+                  /* Group messages from same sender — tighter gap */
+                  const prevMsg = i > 0 ? messages[i-1] : null;
+                  const prevIsSameSender = prevMsg && String(prevMsg.sender_id) === String(m.sender_id);
+                  const groupMargin = prevIsSameSender ? 'mt-1' : 'mt-4';
                   return(
-                    <div key={i} className={`flex ${isOwn?'justify-end':'justify-start'} items-end gap-2`}>
+                    <div key={i} className={`flex ${isOwn?'justify-end':'justify-start'} items-end gap-2 ${groupMargin}`}>
+                      {/* Avatar — left for received */}
                       {!isOwn&&(
                         <button onClick={()=>{setProfUser(cp);setProfLabel(isBuyer?'Seller':'Buyer');}}
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 shadow-md hover:opacity-80 transition"
-                          style={{background:otherBg,color:'#fff'}}>
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 shadow-sm hover:opacity-80 transition"
+                          style={{backgroundColor:C.green,color:'#fff'}}>
                           {cp?.username?.charAt(0)?.toUpperCase()||'?'}
                         </button>
                       )}
-                      <div className={`max-w-[72%] ${isOwn?'items-end':'items-start'} flex flex-col`}>
-                        {!isOwn&&<p className="text-xs font-bold mb-1 ml-1" style={{color:'#1D4ED8'}}>{cp?.username}</p>}
+                      <div className="max-w-[72%] flex flex-col">
                         {isImage?(
-                          <button onClick={()=>setImgSrc(text)}
-                            className="block rounded-2xl overflow-hidden hover:opacity-90 transition shadow-lg"
-                            style={{border:`2px solid ${isOwn?'#16A34A':'#1D4ED8'}`,maxWidth:220}}>
-                            <img src={text} alt="Shared" className="block w-full h-auto object-cover" style={{maxHeight:280}}
-                              onError={e=>{e.currentTarget.style.display='none';e.currentTarget.parentElement.innerHTML='<span style="padding:8px;font-size:12px;color:#94A3B8">Image unavailable</span>';}}/>
-                            <p className="text-center text-xs py-1.5 font-bold" style={{background:isOwn?ownBg:otherBg,color:'rgba(255,255,255,0.9)'}}>
-                              📎 Tap to enlarge
-                            </p>
-                          </button>
-                    ):(
-                          <div className={`flex items-end gap-2 ${isOwn?'flex-row-reverse':''}`}>
-                            {!isOwn && <Avatar user={cp} size={28} />}
-                            <div className="rounded-2xl px-3.5 py-2.5 shadow-sm max-w-[75%]"
-                              style={{ background: isOwn ? '#2563EB' : '#F1F5F9' }}>
-                              <div className="flex items-center justify-between gap-3 mb-1">
-                                <p className="text-xs font-semibold" style={{color: isOwn ? 'rgba(255,255,255,0.85)' : C.g500}}>
-                                  {isOwn ? 'You' : (cp?.username || 'User')}
+                          <div className="rounded-2xl overflow-hidden shadow-sm"
+                            style={{border:`2px solid ${isOwn?'#0B8FD9':'#E5E7EB'}`}}>
+                            {/* Sender name inside bubble — top */}
+                            {!isOwn && (
+                              <div className="flex items-center justify-between px-3 pt-2.5 pb-1"
+                                style={{background:'#E5E7EB'}}>
+                                <p className="text-xs font-bold" style={{color:'#64748B'}}>
+                                  {cp?.username || 'User'}
                                 </p>
-                                <button
-                                  type="button"
-                                  onClick={()=>copyToClipboard(text, 'Message copied!')}
-                                  className="flex items-center justify-center"
-                                  title="Copy message">
-                                  <Copy size={13} style={{color: isOwn ? 'rgba(255,255,255,0.7)' : C.g400}}/>
-                                </button>
                               </div>
-                              <p className="text-sm font-bold break-words" style={{color: isOwn ? '#fff' : C.g800}}>
-                                {text}
-                              </p>
-                              <p className="text-xs mt-1" style={{color: isOwn ? 'rgba(255,255,255,0.65)' : C.g400}}>
+                            )}
+                            <button onClick={()=>setImgSrc(text)} className="block w-full">
+                              <img src={text} alt="Shared" className="w-full h-auto object-cover" style={{maxHeight:280}}
+                                onError={e=>{e.currentTarget.style.display='none';e.currentTarget.parentElement.innerHTML='<span style="padding:8px;font-size:12px;color:#94A3B8">Image unavailable</span>';}}/>
+                            </button>
+                            {/* Timestamp inside bubble — bottom */}
+                            <div className="px-3 pb-2.5 pt-1"
+                              style={{background:isOwn?'#0B8FD9':'#E5E7EB'}}>
+                              <p className="text-xs" style={{color:isOwn?'rgba(255,255,255,0.6)':'#94A3B8'}}>
                                 {new Date(m.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})} {new Date(m.created_at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',hour12:false})}
                               </p>
                             </div>
                           </div>
+                        ):(
+                          <div className="rounded-2xl px-4 py-3 shadow-sm"
+                            style={{ background: isOwn ? '#0B8FD9' : '#E5E7EB' }}>
+                            {/* ── TOP: sender name + copy icon (received only — own messages don't show name) ── */}
+                            {!isOwn && (
+                              <div className="flex items-center justify-between mb-2">
+                                <p className="text-xs font-bold" style={{color:'#64748B'}}>
+                                  {cp?.username || 'User'}
+                                </p>
+                                <button type="button"
+                                  onClick={()=>copyToClipboard(text, 'Message copied!')}
+                                  className="flex-shrink-0 flex items-center justify-center w-5 h-5"
+                                  title="Copy message">
+                                  <Copy size={13} style={{color:'rgba(0,0,0,0.35)'}}/>
+                                </button>
+                              </div>
+                            )}
+                            {/* ── MIDDLE: message text ── */}
+                            <p className="text-sm font-bold break-words leading-relaxed mb-2"
+                              style={{color: isOwn ? '#fff' : '#1E293B'}}>
+                              {text}
+                            </p>
+                            {/* ── BOTTOM: timestamp + copy icon (right for sent) ── */}
+                            {isOwn ? (
+                              <div className="flex items-center justify-between">
+                                <p className="text-xs" style={{color:'rgba(255,255,255,0.6)'}}>
+                                  {new Date(m.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})} {new Date(m.created_at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',hour12:false})}
+                                </p>
+                                <button type="button"
+                                  onClick={()=>copyToClipboard(text, 'Message copied!')}
+                                  className="flex-shrink-0 flex items-center justify-center w-5 h-5"
+                                  title="Copy message">
+                                  <Copy size={13} style={{color:'rgba(255,255,255,0.7)'}}/>
+                                </button>
+                              </div>
+                            ) : (
+                              <p className="text-xs" style={{color:'#94A3B8'}}>
+                                {new Date(m.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})} {new Date(m.created_at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',hour12:false})}
+                              </p>
+                            )}
+                          </div>
                         )}
-                        <div className={`flex items-center gap-1 mt-1 ${isOwn?'justify-end':'ml-9'}`}>
+                        {/* Read receipts */}
+                        <div className={`flex items-center gap-1 mt-0.5 ${isOwn?'justify-end':'justify-start'}`}>
                           {isOwn&&(
                             m.is_read||new Date(m.created_at).getTime()<lastCpMsgTime
                               ?<CheckCheck size={12} style={{color:'#3B82F6'}}/>
@@ -1823,12 +1926,7 @@ export default function TradeDetail({user}) {
                           )}
                         </div>
                       </div>
-                      {isOwn&&(
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 shadow-md"
-                          style={{background:ownBg,color:'#fff'}}>
-                          {user?.username?.charAt(0)?.toUpperCase()||'Y'}
-                        </div>
-                      )}
+                      {/* Avatar — right for sent (removed — own profile shouldn't show) */}
                     </div>
                   );
                 })}
@@ -1883,9 +1981,9 @@ export default function TradeDetail({user}) {
                 <div ref={msgEnd}/>
               </div>
 
-              {/* ── Payment confirmed banner — pinned above input, visible to both users ── */}
+              {/* ── Payment confirmed banner — pinned above input (desktop only; moves to Actions tab on mobile) ── */}
               {isActive&&isPaid&&(
-                <div className="flex-shrink-0 mx-3 mb-2 rounded-xl overflow-hidden"
+                <div className="hidden md:block flex-shrink-0 mx-3 mb-2 rounded-xl overflow-hidden"
                   style={{border:'2px solid #2563EB',boxShadow:'0 2px 12px rgba(37,99,235,0.20)'}}>
                   {/* header */}
                   <div className="flex items-center gap-2 px-3 py-2"
@@ -1918,31 +2016,32 @@ export default function TradeDetail({user}) {
                 </div>
               )}
 
-              {/* Input */}
+              {/* Input — floating pill composer */}
               {isActive?(
-                <div className="border-t flex-shrink-0" style={{borderColor:C.g200,backgroundColor:'#fff',padding:'10px 12px 8px'}}>
-                  <form onSubmit={sendMessage} className="flex items-center gap-2">
+                <div className="flex-shrink-0 px-4 pb-4 pt-2 bg-[#F9FAFB] rounded-b-2xl">
+                  <form onSubmit={sendMessage}
+                    className="flex items-center gap-3 p-1.5 pl-3 pr-1.5 bg-white border border-[#E5E7EB] rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
                     <button type="button" onClick={()=>fileRef.current?.click()} disabled={uploading}
-                      className="w-10 h-10 rounded-xl flex items-center justify-center border-2 hover:bg-gray-50 disabled:opacity-40 flex-shrink-0 transition"
-                      style={{borderColor:C.g200,backgroundColor:'#F8FAFC'}}>
+                      className="w-9 h-9 rounded-full flex items-center justify-center border border-[#E5E7EB] bg-white hover:bg-gray-50 disabled:opacity-40 flex-shrink-0 transition"
+                      style={{outline:'none'}}>
                       {uploading?<RefreshCw size={15} className="animate-spin" style={{color:C.green}}/>
                         :<Paperclip size={15} style={{color:C.green}}/>}
                     </button>
                     <input ref={fileRef} type="file" accept="image/*" onChange={e=>uploadImage(e.target.files[0])} className="hidden"/>
                     <input type="text" value={msg}
                       onChange={e=>{setMsg(e.target.value);sendTypingPing();}}
-                      placeholder={`Message ${cp?.username||'counterparty'}…`}
-                      className="flex-1 px-4 py-3 font-medium border-2 rounded-2xl focus:outline-none transition"
-                      style={{borderColor:msg?C.green:C.g200,fontSize:15,color:C.g800,backgroundColor:'#F8FAFC'}}/>
+                      placeholder="Write a message..."
+                      className="flex-1 min-w-0 px-2 py-2 font-medium bg-transparent border-0 focus:outline-none focus:ring-0 text-slate-800 placeholder-slate-400"
+                      style={{fontSize:15}}/>
                     <button type="submit" disabled={!msg.trim()||sending}
-                      className="w-10 h-10 rounded-xl flex items-center justify-center text-white flex-shrink-0 transition disabled:opacity-30 shadow-sm"
-                      style={{backgroundColor:msg.trim()?C.green:C.g300}}>
-                      {sending?<RefreshCw size={15} className="animate-spin"/>:<Send size={15}/>}
+                      className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition disabled:opacity-100 disabled:cursor-not-allowed shadow-sm"
+                      style={{
+                        backgroundColor: !msg.trim()||sending ? '#F1F5F9' : C.green,
+                        color: !msg.trim()||sending ? '#94A3B8' : '#ffffff'
+                      }}>
+                      {sending?<RefreshCw size={14} className="animate-spin"/>:<Send size={15}/>}
                     </button>
                   </form>
-                  <p className="text-xs text-center mt-1.5 font-medium" style={{color:C.g400}}>
-                    📎 Tap the clip to attach payment proof · 🔒 Encrypted
-                  </p>
                 </div>
               ):(
                 <div className="border-t p-3 text-center text-sm font-bold flex-shrink-0"
@@ -1953,34 +2052,34 @@ export default function TradeDetail({user}) {
             </div>
           </div>
         </div>
+
+          {/* Tab Navigation Switcher (mobile only — hidden entirely at md and above) */}
+          <div className="flex-shrink-0 bg-white border border-[#E5E7EB] rounded-[24px] shadow-[0_4px_16px_rgba(0,0,0,0.06)] p-2 flex gap-2 max-w-sm mx-auto w-full md:hidden">
+            <button type="button" onClick={() => setActiveTab('actions')}
+              className={`flex-1 py-3 px-4 rounded-[16px] font-black text-sm flex items-center justify-center gap-2 transition duration-200 outline-none ${
+                activeTab === 'actions'
+                  ? 'bg-[#6B4A16] text-white shadow-sm'
+                  : 'bg-white text-slate-700 hover:bg-slate-50 border border-transparent'
+              }`}>
+              <Flag size={16} />
+              <span>Actions</span>
+            </button>
+            
+            <button type="button" onClick={() => setActiveTab('chat')}
+              className={`flex-1 py-3 px-4 rounded-[16px] font-black text-sm flex items-center justify-center gap-2 transition duration-200 outline-none ${
+                activeTab === 'chat'
+                  ? 'bg-[#6B4A16] text-white shadow-sm'
+                  : 'bg-white text-slate-700 hover:bg-slate-50 border border-transparent'
+              }`}>
+              <MessageCircle size={16} />
+              <span>Chat</span>
+            </button>
+          </div>
+
+        </div>
       </div>
 
-      {/* ── MOBILE STICKY ACTION BAR ─────────────────────────────────────── */}
-      {(showMarkPaid||showRelease)&&(
-        <div className="lg:hidden fixed left-0 right-0 z-40 px-3 py-2.5"
-          style={{bottom:'calc(60px + env(safe-area-inset-bottom, 0px))',backgroundColor:'rgba(255,255,255,0.97)',borderTop:`1px solid ${C.g200}`,backdropFilter:'blur(8px)'}}>
-          {showMarkPaid&&(
-            <button onClick={()=>setShowPayConfirm(true)} disabled={submitting}
-              className="w-full py-4 rounded-2xl font-black text-base shadow-lg active:opacity-80 disabled:opacity-50 flex items-center justify-center gap-2"
-              style={{backgroundColor:C.gold,color:C.forest}}>
-              {submitting
-                ?<><RefreshCw size={16} className="animate-spin"/>Processing…</>
-                :isGiftCardTrade
-                  ?<><Check size={18}/>🎁 I SENT THE CODE</>
-                  :<><Check size={18}/>✅ I HAVE PAID</>}
-            </button>
-          )}
-          {showRelease&&(
-            <button onClick={()=>setShowRelConfirm(true)} disabled={submitting}
-              className="w-full py-4 rounded-2xl text-white font-black text-base shadow-lg active:opacity-80 disabled:opacity-50 flex items-center justify-center gap-2"
-              style={{backgroundColor:C.green}}>
-              {submitting
-                ?<><RefreshCw size={16} className="animate-spin"/>Processing…</>
-                :<><Bitcoin size={18}/>🔓 RELEASE BITCOIN</>}
-            </button>
-          )}
-        </div>
-      )}
+      {/* MOBILE STICKY ACTION BAR disabled — Actions buttons are now inside the Actions tab directly */}
 
       {/* ── MODALS ─────────────────────────────────────────────────────────── */}
       {profUser && <ProfilePopup user={profUser} label={profLabel} trade={trade} onClose={()=>setProfUser(null)}/>}
@@ -2083,5 +2182,6 @@ export default function TradeDetail({user}) {
         </div>
       )}
     </div>
+    // </div>
   );
 }

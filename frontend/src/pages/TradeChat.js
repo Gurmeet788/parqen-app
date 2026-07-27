@@ -80,24 +80,37 @@ export default function TradeChat({ user }) {
   const otherName = isBuyer ? trade?.seller_name : trade?.buyer_name;
 
   return (
-    <div className="max-w-2xl mx-auto flex flex-col" style={{ height: 'calc(100vh - 64px)' }}>
-      <div className="flex items-center gap-2 px-4 py-3 border-b flex-shrink-0">
-        <MessageCircle size={20} style={{ color: C.green }} />
-        <h3 className="text-lg font-bold text-slate-900">Chat with {otherName || 'counterparty'}</h3>
+    <div className="max-w-2xl mx-auto flex flex-col" style={{ height: 'calc(100vh - 64px)', overflow: 'hidden' }}>
+      {/* ── TOP BAR (sticky) ───────────────────────────────────────── */}
+      <div className="flex-shrink-0 px-4 py-3 border-b bg-white">
+        <div className="flex items-center gap-3">
+          {/* Avatar circle with initial */}
+          <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-base flex-shrink-0 shadow-sm"
+            style={{ backgroundColor: C.green }}>
+            {(otherName || '?')[0].toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            {/* Name row + online dot */}
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-bold text-slate-900 truncate">{otherName || 'Counterparty'}</h3>
+              <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block flex-shrink-0" title="Online" />
+            </div>
+            {/* Trade summary line */}
+            {trade && (
+              <p className="text-xs font-black uppercase tracking-wide mt-0.5"
+                style={{ color: isSeller ? C.danger : C.green }}>
+                {isBuyer
+                  ? `BUYING ${fmtBtc(btcAmt)} BTC  ·  ${fiatAmt.toFixed(2)} ${cur}  ·  ${payMethod}`
+                  : isSeller
+                    ? `SELLING ${fmtBtc(btcAmt)} BTC  ·  ${fiatAmt.toFixed(2)} ${cur}  ·  ${payMethod}`
+                    : `${fmtBtc(btcAmt)} BTC  ·  ${fiatAmt.toFixed(2)} ${cur}`}
+              </p>
+            )}
+          </div>
+        </div>
       </div>
 
-      {trade && (
-        <div className="flex-shrink-0 px-3 py-2.5" style={{ backgroundColor: isSeller ? C.danger : C.green }}>
-          <p className="text-xs leading-snug font-black uppercase tracking-wide" style={{ color: '#fff' }}>
-            {isBuyer
-              ? `YOU ARE BUYING ${fmtBtc(btcAmt)} BTC FOR ${fiatAmt.toFixed(2)} ${cur} ${payMethod}`
-              : isSeller
-                ? `YOU ARE SELLING ${fmtBtc(btcAmt)} BTC FOR ${fiatAmt.toFixed(2)} ${cur} ${payMethod}`
-                : `TRADE: ${fmtBtc(btcAmt)} BTC FOR ${fiatAmt.toFixed(2)} ${cur}`}
-          </p>
-        </div>
-      )}
-
+      {/* ── MESSAGES AREA (scrollable) ────────────────────────────── */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ backgroundColor: '#F9FAFB', minHeight: 0 }}>
         {messages.length === 0 ? (
           <div className="text-center py-12 text-gray-500">
@@ -133,32 +146,40 @@ export default function TradeChat({ user }) {
         <div ref={messagesEndRef} />
       </div>
 
-      <form onSubmit={sendMessage} className="flex-shrink-0 flex items-end gap-2 p-3 border-t bg-white">
-        <button type="button" className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-full hover:bg-gray-100">
-          <Paperclip size={18} style={{ color: C.g400 }} />
-        </button>
-        <textarea
-          ref={textareaRef}
-          value={newMessage}
-          onChange={(e) => {
-            setNewMessage(e.target.value);
-            e.target.style.height = 'auto';
-            e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(e); }
-          }}
-          placeholder="Type a message..."
-          rows={1}
-          className="flex-1 px-4 py-2.5 border-2 rounded-2xl focus:outline-none resize-none"
-          style={{ borderColor: newMessage ? C.green : C.g200, fontSize: 15, maxHeight: 120, overflowY: 'auto', lineHeight: 1.4 }}
-        />
-        <button type="submit" disabled={!newMessage.trim()}
-          className="w-10 h-10 flex-shrink-0 rounded-full flex items-center justify-center text-white disabled:opacity-40"
-          style={{ background: C.green }}>
-          <Send size={17} />
-        </button>
-      </form>
+      <div className="flex-shrink-0 px-4 pb-4 pt-2 bg-[#F9FAFB]">
+        <form onSubmit={sendMessage}
+          className="flex items-center gap-3 p-1.5 pl-3 pr-1.5 bg-white border border-[#E5E7EB] rounded-[24px] shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+          <button type="button"
+            className="w-9 h-9 rounded-full flex items-center justify-center border border-[#E5E7EB] bg-white hover:bg-gray-50 flex-shrink-0 transition"
+            style={{outline:'none'}}>
+            <Paperclip size={16} style={{color:C.green}}/>
+          </button>
+          <textarea
+            ref={textareaRef}
+            value={newMessage}
+            onChange={(e) => {
+              setNewMessage(e.target.value);
+              e.target.style.height = 'auto';
+              e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(e); }
+            }}
+            placeholder="Write a message..."
+            rows={1}
+            className="flex-1 min-w-0 px-2 py-2 font-medium bg-transparent border-0 focus:outline-none focus:ring-0 resize-none text-slate-800 placeholder-slate-400"
+            style={{fontSize:15,maxHeight:120,overflowY:'auto',lineHeight:1.4}}
+          />
+          <button type="submit" disabled={!newMessage.trim()}
+            className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition disabled:opacity-100 disabled:cursor-not-allowed shadow-sm"
+            style={{
+              backgroundColor: !newMessage.trim() ? '#F1F5F9' : C.green,
+              color: !newMessage.trim() ? '#94A3B8' : '#ffffff'
+            }}>
+            <Send size={15} />
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
