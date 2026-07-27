@@ -6,6 +6,7 @@ import {
   Bell, X, CheckCheck, ArrowRight,
   Megaphone, Eye, UserCircle, MessageCircle, Send, ChevronLeft,
 } from 'lucide-react';
+import CountryFlag from './CountryFlag';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
@@ -35,10 +36,6 @@ const TYPE_PALETTE = {
 const CUR_SYM = { GHS:'₵', NGN:'₦', KES:'KSh', ZAR:'R', USD:'$', GBP:'£', EUR:'€', UGX:'USh', TZS:'TSh', XAF:'CFA', XOF:'CFA' };
 const fmt    = n => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(n || 0);
 const fmtBtc = n => parseFloat(n || 0).toFixed(6);
-
-const flag = c =>
-  !c || c.length !== 2 ? '' :
-  c.toUpperCase().replace(/./g, ch => String.fromCodePoint(0x1F1E0 + ch.charCodeAt(0) - 65));
 
 const relTime = d => {
   if (!d) return '';
@@ -81,6 +78,7 @@ function NCard({ n, onNavigate, children }) {
   const shadowH = '0 4px 18px rgba(0,0,0,0.13)';
   return (
     <div onClick={() => onNavigate(n)}
+      className={n._isNew ? 'notif-card-new' : ''}
       style={{
         background: '#fff', borderRadius: 16, margin: '0 0 10px',
         border: `1px solid ${n.is_read ? '#E8EEF4' : '#CBD5E1'}`,
@@ -240,25 +238,25 @@ function OfferViewCard({ n, onNavigate }) {
 const TRADE_STATUS = {
   COMPLETED:           { label: 'Completed',  color: '#059669', bg: '#ECFDF5' },
   COMPLETE:            { label: 'Completed',  color: '#059669', bg: '#ECFDF5' },
-  CANCELLED:           { label: 'Canceled',   color: '#DC2626', bg: '#FEF2F2' },
-  CANCELED:            { label: 'Canceled',   color: '#DC2626', bg: '#FEF2F2' },
-  CANCELLED_BY_BUYER:  { label: 'Canceled',   color: '#DC2626', bg: '#FEF2F2' },
-  CANCELLED_BY_SELLER: { label: 'Canceled',   color: '#DC2626', bg: '#FEF2F2' },
+  CANCELLED:           { label: 'Cancelled',  color: '#DC2626', bg: '#FEF2F2' },
+  CANCELED:            { label: 'Cancelled',  color: '#DC2626', bg: '#FEF2F2' },
+  CANCELLED_BY_BUYER:  { label: 'Cancelled',  color: '#DC2626', bg: '#FEF2F2' },
+  CANCELLED_BY_SELLER: { label: 'Cancelled',  color: '#DC2626', bg: '#FEF2F2' },
   EXPIRED:             { label: 'Expired',    color: '#6B7280', bg: '#F9FAFB' },
   EXPIRE:              { label: 'Expired',    color: '#6B7280', bg: '#F9FAFB' },
-  DISPUTED:            { label: 'Dispute',    color: '#6D28D9', bg: '#F5F3FF' },
-  IN_DISPUTE:          { label: 'Dispute',    color: '#6D28D9', bg: '#F5F3FF' },
+  DISPUTED:            { label: 'Dispute',    color: '#B45309', bg: '#FFFBEB' },
+  IN_DISPUTE:          { label: 'Dispute',    color: '#B45309', bg: '#FFFBEB' },
   IN_REVIEW:           { label: 'In Review',  color: '#6D28D9', bg: '#F5F3FF' },
   RESOLVED:            { label: 'Resolved',   color: '#6D28D9', bg: '#F5F3FF' },
   PAYMENT_SENT:        { label: 'Paid',       color: '#2563EB', bg: '#EFF6FF' },
   PAID:                { label: 'Paid',       color: '#2563EB', bg: '#EFF6FF' },
-  ESCROW:              { label: '🔒 Active Trade', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
-  FUNDS_LOCKED:        { label: '🔒 Active Trade', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
-  ACTIVE:              { label: '🔒 Active Trade', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
-  IN_PROGRESS:         { label: '🔒 Active Trade', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
-  OPEN:                { label: '🔒 Active Trade', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
-  CREATED:             { label: '🔒 Active Trade', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
-  PENDING:             { label: '🔒 Active Trade', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
+  ESCROW:              { label: 'Active', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
+  FUNDS_LOCKED:        { label: 'Active', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
+  ACTIVE:              { label: 'Active', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
+  IN_PROGRESS:         { label: 'Active', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
+  OPEN:                { label: 'Active', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
+  CREATED:             { label: 'Active', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
+  PENDING:             { label: 'Active', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
 };
 
 const tradeTimeStr = (ts) => {
@@ -353,23 +351,32 @@ function TradeNotifCard({ n, trade, userId, onNavigate, isChat = false }) {
     }
   }
 
+  const roleTag = isBuyer ? 'Buyer' : 'Seller';
+
   return (
     <NCard n={n} onNavigate={onNavigate}>
-      {/* Header: direction + icon + date + status (avatar is in row 2, not here) */}
-      <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <span style={{ fontWeight: 900, fontSize: 15, color: '#0F172A' }}>{dirLabel}</span>
+      {/* Header: coin icon + direction/role + date + status */}
+      <div style={{ padding: '14px 16px 12px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, minWidth: 0 }}>
           {isGiftCard ? (
-            <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#059669,#047857)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 1px 4px rgba(5,150,105,0.4)' }}>
-              <span style={{ fontSize: 13, lineHeight: 1 }}>🎁</span>
+            <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'linear-gradient(135deg,#059669,#047857)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 2px 6px rgba(5,150,105,0.4)' }}>
+              <span style={{ fontSize: 16, lineHeight: 1 }}>🎁</span>
             </div>
           ) : (
-            <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#F7931A,#E8790A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 1px 4px rgba(247,147,26,0.4)' }}>
-              <span style={{ fontSize: 11, color: '#fff', fontWeight: 900 }}>₿</span>
+            <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'linear-gradient(135deg,#F7931A,#E8790A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 2px 6px rgba(247,147,26,0.4)' }}>
+              <span style={{ fontSize: 17, color: '#fff', fontWeight: 900 }}>₿</span>
             </div>
           )}
-          <span style={{ fontSize: 12, color: T.g400, fontWeight: 600 }}>{dateStr}</span>
-          {!n.is_read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3B82F6', display: 'inline-block', flexShrink: 0 }} />}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 900, fontSize: 15, color: '#0F172A' }}>{dirLabel}</span>
+              <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', color: T.g400 }}>{roleTag}</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
+              <span style={{ fontSize: 12, color: T.g400, fontWeight: 600 }}>{dateStr}</span>
+              {!n.is_read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3B82F6', display: 'inline-block', flexShrink: 0 }} />}
+            </div>
+          </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
           {(isChat || n._hasUnreadMsg) && (
@@ -391,7 +398,7 @@ function TradeNotifCard({ n, trade, userId, onNavigate, isChat = false }) {
             <Avatar user={cp} name={cp.username} size={32} color={T.forest} />
             <div>
               <span style={{ fontSize: 13, color: '#EC4899', fontWeight: 700, display: 'block' }}>{cp.username}</span>
-              {cp.country && <span style={{ fontSize: 13, lineHeight: 1 }}>{flag(cp.country)}</span>}
+              {cp.country && <CountryFlag countryCode={cp.country} className="w-4 h-3" />}
             </div>
           </div>
         ) : (
@@ -405,13 +412,13 @@ function TradeNotifCard({ n, trade, userId, onNavigate, isChat = false }) {
       <div style={{ padding: '11px 16px 14px', display: 'flex', alignItems: 'center' }}>
         <div style={{ flex: 1 }}>
           <p style={{ margin: 0, fontSize: 11, color: T.g400, fontWeight: 500, marginBottom: 3 }}>{leftLabel}</p>
-          <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#F7931A', lineHeight: 1.2 }}>{leftStr}</p>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#0F172A', lineHeight: 1.2 }}>{leftStr}</p>
           {leftSubStr && <p style={{ margin: '3px 0 0', fontSize: 12, color: T.g500, fontWeight: 700 }}>{leftSubStr}</p>}
         </div>
         <div style={{ padding: '0 10px', color: T.g400, fontSize: 20, fontWeight: 300, flexShrink: 0 }}>→</div>
         <div style={{ flex: 1, textAlign: 'right' }}>
           <p style={{ margin: 0, fontSize: 11, color: T.g400, fontWeight: 500, marginBottom: 3 }}>{rightLabel}</p>
-          <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#F7931A', lineHeight: 1.2 }}>{rightStr}</p>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#0F172A', lineHeight: 1.2 }}>{rightStr}</p>
           {rightSubStr && <p style={{ margin: '3px 0 0', fontSize: 12, color: T.g500, fontWeight: 700 }}>{rightSubStr}</p>}
         </div>
       </div>
@@ -498,14 +505,14 @@ function BasicCard({ n, userId, onNavigate }) {
   // ── TRADE-RELATED: image-style card ──────────────────────────────────────────
   if (isTradeRelated) {
     const statusMap = {
-      cancel:      { label: 'Canceled',          color: '#DC2626', bg: '#FEF2F2' },
+      cancel:      { label: 'Cancelled',          color: '#DC2626', bg: '#FEF2F2' },
       expire:      { label: 'Expired',            color: '#6B7280', bg: '#F9FAFB' },
-      dispute:     { label: 'Dispute',            color: '#6D28D9', bg: '#F5F3FF' },
+      dispute:     { label: 'Dispute',            color: '#B45309', bg: '#FFFBEB' },
       resolved:    { label: 'Resolved',           color: '#6D28D9', bg: '#F5F3FF' },
       payment:     { label: 'Paid',               color: '#2563EB', bg: '#EFF6FF' },
-      activeTrade: { label: '🔒 Active Trade',    color: '#059669', bg: '#ECFDF5' },
+      activeTrade: { label: 'Active',             color: '#1D4ED8', bg: '#EFF6FF' },
       completed:   { label: 'Completed',          color: '#059669', bg: '#ECFDF5' },
-      trade:       { label: '🔒 Active Trade',    color: '#059669', bg: '#ECFDF5' },
+      trade:       { label: 'Active',             color: '#1D4ED8', bg: '#EFF6FF' },
     };
     const status = isCancelled ? statusMap.cancel
       : isExpired   ? statusMap.expire
@@ -623,23 +630,32 @@ function BasicCard({ n, userId, onNavigate }) {
       if (/seller/i.test(parsedActorName)) dirLabel = 'Buy BTC';
     }
 
+    const roleTag = dirLabel === 'Buy BTC' ? 'Buyer' : dirLabel === 'Sell BTC' ? 'Seller' : null;
+
     return (
       <NCard n={n} onNavigate={onNavigate}>
-        {/* Header: direction + icon + date + status (NO avatar here) */}
-        <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-            <span style={{ fontWeight: 900, fontSize: 15, color: '#0F172A' }}>{dirLabel}</span>
+        {/* Header: coin icon + direction/role + date + status */}
+        <div style={{ padding: '14px 16px 12px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, minWidth: 0 }}>
             {basicIsGiftCard ? (
-              <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#059669,#047857)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 1px 4px rgba(5,150,105,0.4)' }}>
-                <span style={{ fontSize: 13, lineHeight: 1 }}>🎁</span>
+              <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'linear-gradient(135deg,#059669,#047857)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 2px 6px rgba(5,150,105,0.4)' }}>
+                <span style={{ fontSize: 16, lineHeight: 1 }}>🎁</span>
               </div>
             ) : (
-              <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#F7931A,#E8790A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 1px 4px rgba(247,147,26,0.35)' }}>
-                <span style={{ fontSize: 11, color: '#fff', fontWeight: 900 }}>₿</span>
+              <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'linear-gradient(135deg,#F7931A,#E8790A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 2px 6px rgba(247,147,26,0.35)' }}>
+                <span style={{ fontSize: 17, color: '#fff', fontWeight: 900 }}>₿</span>
               </div>
             )}
-            <span style={{ fontSize: 12, color: T.g400, fontWeight: 600 }}>{tradeTimeStr(n.created_at)}</span>
-            {!n.is_read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3B82F6', display: 'inline-block', flexShrink: 0 }} />}
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 900, fontSize: 15, color: '#0F172A' }}>{dirLabel}</span>
+                {roleTag && <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', color: T.g400 }}>{roleTag}</span>}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
+                <span style={{ fontSize: 12, color: T.g400, fontWeight: 600 }}>{tradeTimeStr(n.created_at)}</span>
+                {!n.is_read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3B82F6', display: 'inline-block', flexShrink: 0 }} />}
+              </div>
+            </div>
           </div>
           <span style={{ fontSize: 12, fontWeight: 700, color: status.color, background: status.bg, padding: '4px 12px', borderRadius: 8, flexShrink: 0 }}>
             {status.label}
@@ -656,7 +672,7 @@ function BasicCard({ n, userId, onNavigate }) {
               <Avatar user={displayActor} name={displayActor.username} size={32} color={T.forest} />
               <div>
                 <span style={{ fontSize: 13, color: '#EC4899', fontWeight: 700, display: 'block' }}>{displayActor.username}</span>
-                {displayActor.country && <span style={{ fontSize: 13, lineHeight: 1 }}>{flag(displayActor.country)}</span>}
+                {displayActor.country && <CountryFlag countryCode={displayActor.country} className="w-4 h-3" />}
               </div>
             </div>
           ) : parsedLocalStr ? (
@@ -672,13 +688,13 @@ function BasicCard({ n, userId, onNavigate }) {
         <div style={{ padding: '11px 16px 14px', display: 'flex', alignItems: 'center' }}>
           <div style={{ flex: 1 }}>
             <p style={{ margin: 0, fontSize: 11, color: T.g400, fontWeight: 500, marginBottom: 3 }}>{bLeftLabel}</p>
-            <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#F7931A', lineHeight: 1.2 }}>{bLeftStr}</p>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#0F172A', lineHeight: 1.2 }}>{bLeftStr}</p>
             {bLeftSubStr && <p style={{ margin: '3px 0 0', fontSize: 12, color: T.g500, fontWeight: 700 }}>{bLeftSubStr}</p>}
           </div>
           <div style={{ padding: '0 10px', color: T.g400, fontSize: 20, fontWeight: 300, flexShrink: 0 }}>→</div>
           <div style={{ flex: 1, textAlign: 'right' }}>
             <p style={{ margin: 0, fontSize: 11, color: T.g400, fontWeight: 500, marginBottom: 3 }}>{bRightLabel}</p>
-            <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#F7931A', lineHeight: 1.2 }}>{bRightStr}</p>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#0F172A', lineHeight: 1.2 }}>{bRightStr}</p>
             {bRightSubStr && <p style={{ margin: '3px 0 0', fontSize: 12, color: T.g500, fontWeight: 700 }}>{bRightSubStr}</p>}
           </div>
         </div>
@@ -777,7 +793,7 @@ function ReferralCard({ referral, onChat }) {
           <span style={{ fontWeight: 800, fontSize: 14, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {referral.username}
           </span>
-          {referral.country && <span style={{ fontSize: 15, flexShrink: 0 }}>{flag(referral.country)}</span>}
+          {referral.country && <CountryFlag countryCode={referral.country} className="w-5 h-4 flex-shrink-0" />}
         </div>
         <p style={{ margin: '3px 0 0', fontSize: 11, fontWeight: 500 }}>
           {tc > 0
@@ -817,10 +833,11 @@ const dedupByTrade = list => {
     if (!tid) return;
     const isMsg = n.type === 'message';
     if (!groups.has(tid)) {
-      groups.set(tid, { best: n, hasUnread: isMsg && !n.is_read, count: isMsg && !n.is_read ? 1 : 0 });
+      groups.set(tid, { best: n, hasUnread: isMsg && !n.is_read, count: isMsg && !n.is_read ? 1 : 0, hasNew: !!n._isNew });
     } else {
       const g = groups.get(tid);
       if (isMsg && !n.is_read) { g.hasUnread = true; g.count++; }
+      if (n._isNew) g.hasNew = true;
       if (g.best.type === 'message' && !isMsg) g.best = n;
     }
   });
@@ -831,7 +848,7 @@ const dedupByTrade = list => {
     if (seen.has(tid)) return acc;
     seen.add(tid);
     const g = groups.get(tid);
-    acc.push({ ...g.best, _hasUnreadMsg: g.hasUnread, _msgCount: g.count });
+    acc.push({ ...g.best, _hasUnreadMsg: g.hasUnread, _msgCount: g.count, _isNew: g.hasNew });
     return acc;
   }, []);
 };
@@ -927,6 +944,7 @@ export default function Notifications({ user }) {
   const portalRef      = useRef(null);
   const seenIdsRef     = useRef(null); // tracks IDs from previous poll
   const errCountRef    = useRef(0);    // consecutive error count for backoff
+  const [justArrivedIds, setJustArrivedIds] = useState(() => new Set()); // briefly highlights newly-arrived cards at the top
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 640);
@@ -963,8 +981,10 @@ export default function Notifications({ user }) {
     try {
       const r = await axios.get(`${API_URL}/notifications`, { headers: hdrs(), timeout: 10000 });
       errCountRef.current = 0;
-      const incoming = r.data.notifications || [];
-      setNotifs(incoming);
+      // Backend already orders by created_at desc — re-sort defensively so the
+      // newest notification always lands first regardless of any future backend change.
+      const incoming = [...(r.data.notifications || [])]
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
       if (seenIdsRef.current === null) {
         // First load: show toasts for unread notifications created in the last 30 seconds
@@ -975,11 +995,17 @@ export default function Notifications({ user }) {
           .slice(0, 3)
           .forEach(showToast);
       } else {
-        // Subsequent polls: toast anything that is new AND unread since the last poll
-        const fresh = incoming.filter(n => !n.is_read && !seenIdsRef.current.has(n.id));
-        fresh.slice(0, 3).forEach(showToast);
+        // Subsequent polls: toast anything that is new since the last poll, and briefly
+        // highlight those cards so the latest activity visibly "pops in" at the top.
+        const freshIds = incoming.filter(n => !seenIdsRef.current.has(n.id)).map(n => n.id);
+        if (freshIds.length) {
+          setJustArrivedIds(new Set(freshIds));
+          setTimeout(() => setJustArrivedIds(new Set()), 2600);
+        }
+        incoming.filter(n => !n.is_read && freshIds.includes(n.id)).slice(0, 3).forEach(showToast);
       }
       seenIdsRef.current = new Set(incoming.map(n => n.id));
+      setNotifs(incoming);
     } catch { errCountRef.current += 1; /* keep previous */ }
     finally { setLoading(false); }
   };
@@ -987,9 +1013,10 @@ export default function Notifications({ user }) {
   useEffect(() => {
     if (!user) return;
     load();
-    // 30s base interval — prevents hammering the DB with the trade_ref lookup.
-    // Visibility handler (below) triggers an immediate refresh when tab re-focuses.
-    const iv = setInterval(load, 30000);
+    // 15s base interval — fast enough that new trade activity feels near-live without
+    // hammering the DB with the trade_ref lookup. Visibility handler (below) also
+    // triggers an immediate refresh the moment the tab regains focus.
+    const iv = setInterval(load, 15000);
     return () => clearInterval(iv);
   }, [user]); // eslint-disable-line
 
@@ -1231,7 +1258,7 @@ export default function Notifications({ user }) {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ margin: 0, fontWeight: 900, fontSize: isMobile ? 15 : 13, color: '#fff', lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {chatRef.username}
-                  {chatRef.country && <span style={{ marginLeft: 6, fontSize: isMobile ? 14 : 12 }}>{flag(chatRef.country)}</span>}
+                  {chatRef.country && <CountryFlag countryCode={chatRef.country} className="w-4 h-3 inline-block align-middle ml-1.5" />}
                 </p>
                 <p style={{ margin: '3px 0 0', fontSize: isMobile ? 12 : 10, color: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', gap: 5 }}>
                   <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', backgroundColor: '#4ADE80', flexShrink: 0 }} />
@@ -1393,7 +1420,7 @@ export default function Notifications({ user }) {
             </div>
           ) : (
             /* ── NOTIFICATION LIST ── */
-            dedupByTrade(filtered).map(n => (
+            dedupByTrade(filtered.map(n => ({ ...n, _isNew: justArrivedIds.has(n.id) }))).map(n => (
               <NotifCard key={n.id} n={n} userId={user?.id} onNavigate={handleClick} />
             ))
           )}
@@ -1437,7 +1464,15 @@ export default function Notifications({ user }) {
   );
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative" ref={ref} style={{ flexShrink: 0 }}>
+      <style>{`
+        @keyframes notif-pop-in {
+          0%   { transform: scale(0.96) translateY(-6px); box-shadow: 0 0 0 0 rgba(45,106,79,0.35); }
+          40%  { transform: scale(1.01) translateY(0); box-shadow: 0 0 0 6px rgba(45,106,79,0.12); }
+          100% { transform: scale(1) translateY(0); box-shadow: 0 0 0 0 rgba(45,106,79,0); }
+        }
+        .notif-card-new { animation: notif-pop-in 0.55s ease-out; border-color: #2D6A4F !important; }
+      `}</style>
 
       {/* ── Bell button ── */}
       <button

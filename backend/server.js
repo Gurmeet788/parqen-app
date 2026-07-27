@@ -2540,6 +2540,189 @@ app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
   }
 });
 
+
+// ── Password Reset Email Template ────────────────────────────────────────────
+function buildPasswordResetEmailHtml(resetUrl) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PRAQEN Password Reset</title></head>
+<body style="margin:0;padding:0;background:#F0FAF5;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0FAF5;padding:32px 0;">
+    <tr><td align="center">
+      <table width="520" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(27,67,50,0.10);">
+        <tr><td style="background:linear-gradient(135deg,#1B4332 0%,#2D6A4F 100%);padding:32px 40px;text-align:center;">
+          <div style="display:inline-block;width:56px;height:56px;background:#F4A422;border-radius:14px;line-height:56px;font-size:28px;font-weight:900;color:#1B4332;font-family:Georgia,serif;text-align:center;">P</div>
+          <p style="margin:12px 0 0;color:#ffffff;font-size:20px;font-weight:800;letter-spacing:3px;font-family:Georgia,serif;">PRAQEN</p>
+          <p style="margin:4px 0 0;color:rgba(255,255,255,0.65);font-size:12px;letter-spacing:1px;">Password Reset Request</p>
+        </td></tr>
+        <tr><td style="padding:40px 40px 32px;text-align:center;">
+          <p style="margin:0 0 8px;font-size:16px;font-weight:600;color:#334155;">Reset Your Password</p>
+          <p style="margin:0 0 24px;font-size:13px;color:#64748B;line-height:1.6;">We received a request to reset the password for your PRAQEN account. Click the button below to set a new password. This link expires in <strong>1 hour</strong>.</p>
+          <a href="${resetUrl}" style="display:inline-block;background:linear-gradient(135deg,#1B4332,#2D6A4F);color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;padding:14px 36px;border-radius:10px;letter-spacing:0.5px;">Reset Password →</a>
+          <p style="margin:24px 0 8px;font-size:12px;color:#94A3B8;">If you didn't request this, you can safely ignore this email.</p>
+          <p style="margin:0;font-size:12px;color:#94A3B8;">Never share this link with anyone — PRAQEN will never ask for it.</p>
+        </td></tr>
+        <tr><td style="padding:0 40px 24px;">
+          <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:10px;padding:14px 18px;text-align:center;">
+            <p style="margin:0;font-size:12px;font-weight:700;color:#92400E;">⚠️ Always trade within PRAQEN — never outside our platform</p>
+          </div>
+        </td></tr>
+        <tr><td style="background:#F8FAFC;padding:20px 40px;text-align:center;border-top:1px solid #E2E8F0;">
+          <p style="margin:0 0 4px;font-size:12px;color:#94A3B8;">Need help? Contact us at <a href="mailto:support@praqen.com" style="color:#2D6A4F;font-weight:700;">support@praqen.com</a></p>
+          <p style="margin:0;font-size:11px;color:#CBD5E1;">© 2025 PRAQEN · The World's Most Trusted P2P Bitcoin Marketplace</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+// ── Send password reset email (reuses same working emailService pipeline as welcome/verification emails) ──
+async function sendPasswordResetEmail(email, resetUrl) {
+  const html = buildPasswordResetEmailHtml(resetUrl);
+  const subject = 'PRAQEN - Password Reset Request';
+  console.log(`📧 Sending password reset to ${email}`);
+
+  // Use emailService.sendEmail() — Brevo SMTP (primary) → Resend (fallback),
+  // same pipeline that successfully sends welcome/verification emails.
+  // emailService.js logs the actual error from each provider attempt.
+  const result = await emailService.sendEmail({
+    to: email,
+    subject,
+    html,
+    type: 'password_reset',
+    metadata: { reset_requested_at: new Date().toISOString() },
+  });
+
+  if (result.success) {
+    console.log(`✅ Password reset email sent via emailService to ${email} (${result.messageId})`);
+    return true;
+  }
+
+  // result.error contains the actual error from Brevo SMTP or Resend fallback
+  console.error('[sendPasswordResetEmail] emailService returned failure:', {
+    error: result.error,
+    providerChain: 'Brevo SMTP → Resend fallback',
+  });
+  throw new Error(`Email delivery failed: ${result.error || 'Unknown error'}`);
+}
+
+// ── Forgot Password: generate reset token & email link ────────────────────────
+app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const { data: user } = await supabaseAdmin
+      .from('users')
+      .select('id, email')
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+
+    if (!user) {
+      console.log(`[forgot-password] No account for ${normalizedEmail}`);
+      return res.json({ success: true, message: 'If an account exists with that email, a reset link has been sent.' });
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const tokenExpires = new Date(Date.now() + 60 * 60 * 1000);
+
+    const { error: updateError } = await supabaseAdmin
+      .from('users')
+      .update({
+        reset_password_token: resetToken,
+        reset_password_expires: tokenExpires.toISOString(),
+      })
+      .eq('id', user.id);
+
+    if (updateError) {
+      console.error('[forgot-password] DB update error:', updateError.message);
+      return res.status(500).json({ error: 'Failed to process request. Please try again.' });
+    }
+
+    const frontendUrl = (process.env.FRONTEND_URL || 'https://praqen.com').split(',')[0].trim();
+    const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}&email=${encodeURIComponent(normalizedEmail)}`;
+
+    sendPasswordResetEmail(normalizedEmail, resetUrl)
+      .then(() => console.log(`[forgot-password] Reset email sent to ${normalizedEmail}`))
+      .catch(e => console.error('[forgot-password] Email send failed:', e.message));
+
+    return res.json({ success: true, message: 'If an account exists with that email, a reset link has been sent.' });
+
+  } catch (err) {
+    console.error('[forgot-password] error:', err.message);
+    res.status(500).json({ error: 'Failed to process request. Please try again.' });
+  }
+});
+
+// ── Reset Password: validate token & update password ──────────────────────────
+app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
+  try {
+    const { email, newPassword, token } = req.body;
+
+    if (!email || !newPassword || !token) {
+      return res.status(400).json({ error: 'Email, new password, and reset token are required' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const { data: user, error: fetchError } = await supabaseAdmin
+      .from('users')
+      .select('id, email, reset_password_token, reset_password_expires, password_hash')
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+
+    if (fetchError || !user) {
+      console.error('[reset-password] DB fetch error:', fetchError?.message);
+      return res.status(400).json({ error: 'Invalid or expired reset link' });
+    }
+
+    if (!user.reset_password_token) {
+      return res.status(400).json({ error: 'No password reset has been requested for this account' });
+    }
+
+    if (user.reset_password_token !== token) {
+      return res.status(400).json({ error: 'Invalid or expired reset link' });
+    }
+
+    const expiresAt = new Date(user.reset_password_expires).getTime();
+    if (Date.now() > expiresAt) {
+      return res.status(400).json({ error: 'Reset link has expired. Please request a new one.' });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+
+    const { error: updateError } = await supabaseAdmin
+      .from('users')
+      .update({
+        password_hash: passwordHash,
+        reset_password_token: null,
+        reset_password_expires: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', user.id);
+
+    if (updateError) {
+      console.error('[reset-password] DB update error:', updateError.message);
+      return res.status(500).json({ error: 'Failed to reset password. Please try again.' });
+    }
+
+    console.log(`✅ Password reset successful for ${normalizedEmail}`);
+    return res.json({ success: true, message: 'Password has been reset successfully. You can now log in with your new password.' });
+
+  } catch (err) {
+    console.error('[reset-password] error:', err.message);
+    res.status(500).json({ error: 'Failed to reset password. Please try again.' });
+  }
+});
+
 // ── Team portal: explicit email allowlist ────────────────────────────────────
 // Deliberately a hand-maintained list of exact addresses, not a domain check —
 // anyone with an @praqen.com mailbox should NOT be able to self-enroll as a
@@ -5448,7 +5631,7 @@ app.get('/api/listings', async (req, res) => {
 
     // Step 1: fetch listings only (no join) — fast
     let listingsQ = supabaseAdmin.from('listings').select(
-      'id, seller_id, listing_type, gift_card_brand, status, bitcoin_price, margin, pricing_type, currency, currency_symbol, country, country_name, payment_method, payment_methods, amount_usd, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local, time_limit, trade_instructions, listing_terms, description, created_at, card_values, card_type, face_value'
+      'id, seller_id, listing_type, asset, gift_card_brand, status, bitcoin_price, margin, pricing_type, currency, currency_symbol, country, country_name, payment_method, payment_methods, amount_usd, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local, time_limit, trade_instructions, listing_terms, description, created_at, card_values, card_type, face_value'
     ).eq('status', 'ACTIVE').order('created_at', { ascending: false }).limit(200);
     if (brand)    listingsQ = listingsQ.ilike('gift_card_brand', `%${brand}%`);
     if (minPrice) listingsQ = listingsQ.gte('bitcoin_price', parseFloat(minPrice));
@@ -5689,7 +5872,7 @@ app.put('/api/listings/:id', verifyToken, async (req, res) => {
     const { id } = req.params;
     const { margin, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local,
             payment_method, trade_instructions, listing_terms, time_limit, status } = req.body;
-    const { data: listing, error: findError } = await supabaseAdmin.from('listings').select('seller_id, listing_type').eq('id', id).single();
+    const { data: listing, error: findError } = await supabaseAdmin.from('listings').select('seller_id, listing_type, asset').eq('id', id).single();
     if (findError || !listing) return res.status(404).json({ error: 'Listing not found' });
     if (listing.seller_id !== req.userId) return res.status(403).json({ error: 'You can only edit your own listings' });
     if (min_limit_usd !== undefined && parseFloat(min_limit_usd) < 10) {
@@ -9750,12 +9933,16 @@ app.post('/api/wallet/withdraw', verifyToken, authLimiter, requireEmailVerified,
         requireVerification: 'both'
       });
     }
-    const { data: bal } = await supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', req.userId).single();
+    // wallets = source of truth (matches escrow/trading/display everywhere else)
+    const { data: bal } = await supabaseAdmin.from('wallets').select('balance_btc').eq('user_id', req.userId).single();
     const current = parseFloat(bal?.balance_btc || 0);
     const amount  = parseFloat(amountBtc);
     if (current < amount) return res.status(400).json({ error: `Insufficient balance. You have ${current.toFixed(8)} BTC` });
-    const newBal = current - amount;
-    await supabaseAdmin.from('user_balances').update({ balance_btc: newBal, updated_at: new Date() }).eq('user_id', req.userId);
+    const newBal = parseFloat((current - amount).toFixed(8));
+    // wallets first (source of truth), then keep secondary tables in sync
+    await supabaseAdmin.from('wallets').update({ balance_btc: newBal, updated_at: new Date().toISOString() }).eq('user_id', req.userId);
+    await supabaseAdmin.from('user_balances').update({ balance_btc: newBal, updated_at: new Date().toISOString() }).eq('user_id', req.userId);
+    await supabaseAdmin.from('user_wallets').update({ balance_btc: newBal, updated_at: new Date().toISOString() }).eq('user_id', req.userId);
     await supabaseAdmin.from('wallet_transactions').insert({ user_id: req.userId, type: 'WITHDRAWAL', amount_btc: amount, status: 'PENDING', destination_address: address, created_at: new Date() }).maybeSingle();
     res.json({ success: true, message: `Withdrawal of ${amount} BTC to ${address} is pending processing.`, new_balance: newBal, note: 'Withdrawals are processed manually within 24 hours. Contact hello@praqen.com for urgent requests.' });
   } catch (error) {
@@ -10024,9 +10211,17 @@ app.post('/api/wallet/webhook', async (req, res) => {
       const userId = charge.metadata?.user_id;
       const btcAmt = parseFloat(charge.payments?.[0]?.value?.crypto?.amount || 0);
       if (userId && btcAmt > 0) {
-        const { data: bal } = await supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', userId).single();
-        const newBal = parseFloat(bal?.balance_btc || 0) + btcAmt;
-        await supabaseAdmin.from('user_balances').upsert({ user_id: userId, balance_btc: newBal, updated_at: new Date() });
+        // wallets = source of truth (matches escrow/trading/display everywhere else)
+        const { data: walletRow } = await supabaseAdmin.from('wallets').select('balance_btc').eq('user_id', userId).maybeSingle();
+        const newBal = parseFloat((parseFloat(walletRow?.balance_btc || 0) + btcAmt).toFixed(8));
+        if (walletRow) {
+          await supabaseAdmin.from('wallets').update({ balance_btc: newBal, updated_at: new Date().toISOString() }).eq('user_id', userId);
+        } else {
+          await supabaseAdmin.from('wallets').insert({ user_id: userId, balance_btc: newBal, locked_balance_btc: 0, updated_at: new Date().toISOString() });
+        }
+        // keep secondary tables in sync
+        await supabaseAdmin.from('user_balances').upsert({ user_id: userId, balance_btc: newBal, updated_at: new Date().toISOString() });
+        await supabaseAdmin.from('user_wallets').update({ balance_btc: newBal, updated_at: new Date().toISOString() }).eq('user_id', userId);
         await createNotification(userId, 'wallet', '💰 Bitcoin Received', `${btcAmt} BTC has been credited to your PRAQEN wallet.`, '/wallet');
       }
     }
@@ -10219,12 +10414,16 @@ app.get('/api/wallet/usdt', verifyToken, async (req, res) => {
     // Generate (or re-derive) this user's Tron deposit address
     const { address: tronAddress } = tronWalletService.generateUserAddress(req.userId);
 
-    // Persist tron_address to user_wallets so the deposit monitor can scan it
-    const { error: upsertErr } = await supabaseAdmin.from('user_wallets').upsert(
-      { user_id: req.userId, tron_address: tronAddress, updated_at: new Date().toISOString() },
-      { onConflict: 'user_id' }
-    );
-    if (upsertErr) console.warn('[GET /wallet/usdt] user_wallets upsert failed:', upsertErr.message);
+    // user_wallets.btc_address is NOT NULL — ensureWalletExists() guarantees a row
+    // with a real btc_address exists first, so the update below can never hit that
+    // constraint (this was previously a plain upsert that silently failed whenever
+    // a user hit this USDT route before ever loading their BTC wallet, which meant
+    // their tron_address never got saved and usdtDepositMonitor never watched it).
+    await hdWalletService.ensureWalletExists(req.userId);
+    const { error: upsertErr } = await supabaseAdmin.from('user_wallets')
+      .update({ tron_address: tronAddress, updated_at: new Date().toISOString() })
+      .eq('user_id', req.userId);
+    if (upsertErr) console.warn('[GET /wallet/usdt] user_wallets update failed:', upsertErr.message);
 
     // Read USDT balance from wallets table (single source of truth)
     const { data: walRow } = await supabaseAdmin
@@ -10532,12 +10731,13 @@ app.get('/api/wallet/usdt/check', verifyToken, async (req, res) => {
     // Derive the user's Tron address deterministically (same result every time)
     const { address: derivedAddress } = tronWalletService.generateUserAddress(req.userId);
 
-    // Persist to user_wallets (best-effort — scan still works even if this fails)
-    const { error: upsertErr } = await supabaseAdmin.from('user_wallets').upsert(
-      { user_id: req.userId, tron_address: derivedAddress, updated_at: new Date().toISOString() },
-      { onConflict: 'user_id' }
-    );
-    if (upsertErr) console.warn('[/wallet/usdt/check] upsert error (non-fatal):', upsertErr.message);
+    // user_wallets.btc_address is NOT NULL — ensure the row exists (with a real
+    // btc_address) before updating tron_address, same reasoning as GET /wallet/usdt.
+    await hdWalletService.ensureWalletExists(req.userId);
+    const { error: upsertErr } = await supabaseAdmin.from('user_wallets')
+      .update({ tron_address: derivedAddress, updated_at: new Date().toISOString() })
+      .eq('user_id', req.userId);
+    if (upsertErr) console.warn('[/wallet/usdt/check] update error (non-fatal):', upsertErr.message);
 
     // Read last_onchain_usdt if available (for idempotent deposit detection)
     let lastOnchainUsdt = 0;

@@ -8,7 +8,7 @@ import {
   X, RefreshCw, Info, Check, CheckCheck, Timer,
   Paperclip, Flag, BadgeCheck, FileText, Copy,
   ChevronDown, ChevronUp, DollarSign, CreditCard,
-  Smartphone, Building2, ThumbsUp, ThumbsDown, Gift, Repeat2, Heart,
+Smartphone, Building2, ThumbsUp, ThumbsDown, Gift, Repeat2, Heart,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { copyToClipboard } from '../utils/clipboard';
@@ -844,6 +844,7 @@ export default function TradeDetail({user}) {
   const msgEnd     = useRef(null);
   const chatRef    = useRef(null);
   const fileRef    = useRef(null);
+  const textareaRef = useRef(null);
   const scrolled        = useRef(false);
   const prevMsgCount    = useRef(0);
   const autoCancelled   = useRef(false);
@@ -1554,172 +1555,51 @@ export default function TradeDetail({user}) {
             <div className="bg-white rounded-2xl border shadow-sm overflow-hidden flex flex-col flex-1"
               style={{borderColor:C.g200}}>
 
-              {/* ── TRADE HEADER ─────────────────────────────────── */}
-              <div className="flex-shrink-0 border-b overflow-hidden"
-                style={{borderColor:C.g100, background:T.grad}}>
-
-                {/* Top row: avatar + name + timer */}
-                <div className="flex items-center justify-between gap-2 px-3 pt-2 pb-2">
-                  <button
-                    onClick={()=>{setProfUser(cp);setProfLabel(isBuyer?'Seller':'Buyer');}}
-                    className="flex items-center gap-2 min-w-0 text-left hover:opacity-80 active:opacity-60 transition">
-                    <div className="relative flex-shrink-0">
-                      <Avatar user={cp} size={28} radius="rounded-lg"/>
-                      <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2"
-                        style={{borderColor:T.dark,backgroundColor:cpOnline?C.online:C.g400}}/>
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-black text-white text-xs">{cp?.username||'—'}</span>
-                        {cp?.kyc_verified&&<BadgeCheck size={11} style={{color:'#93C5FD'}}/>}
-                        <span className={`inline-flex items-center gap-0.5 text-xs font-black px-1.5 py-0.5 rounded-full border ${cpBadge.animate?'shadow-md':''}`}
-                          style={{background:cpBadge.bg,borderColor:cpBadge.borderColor,boxShadow:cpBadge.glow?`0 0 8px ${cpBadge.glow}`:undefined}}>
-                          <span style={{color:cpBadge.iconColor||cpBadge.textColor}}>{cpBadge.icon}</span>
-                          <span style={{color:cpBadge.textColor}}>{cpBadge.label}</span>
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5" style={{fontSize:'10px',color:'rgba(255,255,255,0.55)'}}>
-                        <span style={{color:'#86EFAC'}}>👍{cpPos}</span>
-                        <span style={{color:'#FCA5A5'}}>👎{cpNeg}</span>
-                        <span className="opacity-40">·</span>
-                        <span>{fmt(cp?.total_trades||0)} trades</span>
-                        <span className="opacity-40">·</span>
-                        <span style={{color:cpOnline?'#86EFAC':'rgba(255,255,255,0.45)'}}>{cpSeen}</span>
-                      </div>
-                    </div>
-                  </button>
-                  {/* Status badge */}
-                  <div className="flex items-center gap-1 px-2 py-1 rounded-lg flex-shrink-0"
-                    style={{backgroundColor:'rgba(255,255,255,0.12)',fontSize:'10px'}}>
-                    <CfgIcon size={10} className="text-white/70"/>
-                    <span className="font-bold text-white/70">{cfg.label}</span>
+ 
+            {/* ── Partner Header ── */}
+              <div className="flex-shrink-0 px-4 py-3 border-b" style={{borderColor:C.g100}}>
+                <div className="flex items-center justify-between mb-2">
+                 <button
+  onClick={()=>{setProfUser(cp);setProfLabel(isBuyer?'Seller':'Buyer');}}
+  className="flex items-center gap-2.5 hover:opacity-80 active:opacity-60 transition">
+  <Avatar user={cp} size={44} />
+  <span className="font-black text-base" style={{color:C.g800}}>{cp?.username || 'User'}</span>
+  <span style={{fontSize:20}}>{isoToFlag(resolveCode(cp?.country))}</span>
+</button>
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-sm font-black" style={{background:'#DCFCE7',color:'#166534'}}>
+                      <ThumbsUp size={13}/> {cp?.positive_feedback ?? cp?.thumbs_up ?? 0}
+                    </span>
+                    <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-sm font-black" style={{background:'#FEE2E2',color:'#991B1B'}}>
+                      <ThumbsDown size={13}/> {cp?.negative_feedback ?? cp?.thumbs_down ?? 0}
+                    </span>
                   </div>
                 </div>
-
-                {/* ── Compact Trade Summary ── */}
-                <div className="mx-3 mb-2 p-2.5 rounded-xl"
-                  style={{border:'1px solid rgba(255,255,255,0.12)', backgroundColor:'rgba(255,255,255,0.06)'}}>
-
-                  {/* PAY | RECEIVE side by side */}
-                  <div className="grid grid-cols-2 gap-2 mb-2">
-                    <div>
-                      <p className="text-white/60 font-semibold mb-0.5 text-xs">{isSellFlow ? '₿ You Send' : '💵 You Pay'}</p>
-                      <p className="text-base font-black leading-tight" style={{color: isSellFlow ? C.gold : '#fff'}}>{isSellFlow ? `₿ ${btcReceived.toFixed(8)}` : `${sym}${fmt(userPays, 0)}`}</p>
-                      <p className="text-white/60 font-semibold mt-0.5 text-xs">{isSellFlow ? 'Bitcoin' : `${cur} · ${payMethod}`}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-white/60 font-semibold mb-0.5 text-xs">{isSellFlow ? '💰 You Receive' : '🛒 You Receive'}</p>
-                      <p className="text-base font-black text-white leading-tight">{isSellFlow ? `${sym}${fmt(userPays, 0)}` : `₿ ${btcReceived.toFixed(8)}`}</p>
-                      <p className="text-white/60 font-semibold mt-0.5 text-xs">{isSellFlow ? `${cur} · ${payMethod}` : `≈ ${sym}${fmt(btcValueInLocal, 2)} ${cur}`}</p>
-                    </div>
-                  </div>
-
-                  {/* Rate row */}
-                  <div className="flex items-center justify-between border-t border-white/10 pt-1.5">
-                    <div className="flex items-center gap-1 text-white/40" style={{fontSize:'10px'}}>
-                      <Lock size={9}/>
-                      <span>Rate locked</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-black text-white" style={{fontSize:'10px'}}>{sym}{fmt(sellerRate, 0)} {cur}/BTC</span>
-                      <span className="font-black px-1.5 py-0.5 rounded-full" style={{backgroundColor:'rgba(244,164,34,0.2)',color:C.gold,fontSize:'10px'}}>
-                        {margin > 0 ? `+${margin}%` : `${margin}%`}
-                      </span>
-                    </div>
-                  </div>
-
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-sm font-semibold" style={{color: (cp?.is_online ?? true) ? '#22C55E' : C.g400}}>
+                    <span className="w-2.5 h-2.5 rounded-full" style={{background: (cp?.is_online ?? true) ? '#22C55E' : C.g400}}/>
+                    {(cp?.is_online ?? true) ? 'Active' : fmtAge(cp?.last_seen_at)}
+                  </span>
+                 <button
+  type="button"
+  onClick={()=>{setProfUser(cp);setProfLabel(isBuyer?'Seller':'Buyer');}}
+  className="flex items-center gap-1.5 text-sm font-bold" style={{color:C.green}}>
+  <Info size={16}/> Partner details
+</button>
                 </div>
-
-                {/* ── Prominent Timer Banner — hidden once payment is marked ── */}
-                {isActive&&!isPaid&&(
-                  timeLeft===0
-                  ? (
-                    /* Grace period: timer hit 0 but buyer may have already sent payment */
-                    <div className="animate-pulse" style={{
-                      display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:4,
-                      padding:'10px 12px',
-                      backgroundColor:'#78350F',
-                      borderTop:'1px solid rgba(255,255,255,0.08)',
-                    }}>
-                      <div style={{display:'flex',alignItems:'center',gap:8}}>
-                        <Timer size={14} style={{color:'#FCD34D',flexShrink:0}}/>
-                        <span style={{fontWeight:900,color:'#FCD34D',fontSize:13,letterSpacing:'0.04em',lineHeight:1}}>
-                          Time's up — already paid? Tap Mark Paid now
-                        </span>
-                      </div>
-                      <span style={{color:'rgba(255,255,255,0.45)',fontSize:9,lineHeight:1}}>
-                        Trade will close shortly if payment is not confirmed
-                      </span>
-                    </div>
-                  ) : (
-                    <div className={urgent?'animate-pulse':''} style={{
-                      display:'flex',alignItems:'center',justifyContent:'center',gap:10,
-                      padding:'10px 12px',
-                      backgroundColor: urgent ? C.danger : 'rgba(0,0,0,0.28)',
-                      borderTop:'1px solid rgba(255,255,255,0.08)',
-                    }}>
-                      <Timer size={15} style={{color: urgent ? '#fff' : C.gold, flexShrink:0}}/>
-                      <span style={{fontWeight:900,color:'#fff',fontSize:22,letterSpacing:'0.06em',lineHeight:1}}>
-                        {fmtTimer(timeLeft)}
-                      </span>
-                      <div style={{display:'flex',flexDirection:'column',gap:1}}>
-                        <span style={{color:'rgba(255,255,255,0.5)',fontSize:10,fontWeight:600,lineHeight:1}}>
-                          {urgent ? '⚠️ Pay now!' : `${timeLimit} min limit`}
-                        </span>
-                        <span style={{color:'rgba(255,255,255,0.35)',fontSize:9,lineHeight:1}}>
-                          BTC returns to seller on expiry
-                        </span>
-                      </div>
-                    </div>
-                  )
-                )}
-                {/* ── Payment-locked banner — replaces timer once buyer marks paid ── */}
-                {isActive&&isPaid&&(
-                  <div style={{
-                    display:'flex',alignItems:'center',justifyContent:'center',gap:10,
-                    padding:'10px 12px',
-                    background:'linear-gradient(90deg,#065F46,#047857)',
-                    borderTop:'1px solid rgba(255,255,255,0.10)',
-                  }}>
-                    <Lock size={14} style={{color:'#6EE7B7',flexShrink:0}}/>
-                    <div style={{display:'flex',flexDirection:'column',gap:1}}>
-                      <span style={{fontWeight:900,color:'#fff',fontSize:13,letterSpacing:'0.04em',lineHeight:1}}>
-                        TRADE LOCKED — Payment Confirmed
-                      </span>
-                      <span style={{color:'rgba(255,255,255,0.6)',fontSize:9,lineHeight:1}}>
-                        {isSellFlow ? 'Verify payment in your account, then release Bitcoin' : 'Awaiting seller to release Bitcoin'}
-                      </span>
-                    </div>
-                  </div>
-                )}
               </div>
 
-              {/* Dispute active banner */}
-              {isDisputed&&(
-                <div className="px-4 py-2 border-b flex-shrink-0 flex items-center justify-center gap-2"
-                  style={{backgroundColor:'#EDE9FE',borderColor:'#8B5CF6'}}>
-                  <div className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse"/>
-                  <Shield size={12} style={{color:'#6D28D9'}}/>
-                  <span className="text-xs font-bold" style={{color:'#6D28D9'}}>
-                    👨‍⚖️ Dispute active — Moderator reviewing within 24h
-                  </span>
-                </div>
-              )}
-
-              {/* ── SYSTEM MESSAGE STRIP ── */}
-              <div className="flex-shrink-0 border-b px-3 py-2.5"
-                style={{borderColor:'rgba(34,197,94,0.25)', backgroundColor:'rgba(240,253,244,0.85)'}}>
-                <div className="flex items-start gap-2">
-                  <Shield size={11} style={{color:'#166534',flexShrink:0,marginTop:2}}/>
-                  <p className="text-xs leading-snug font-medium" style={{color:'#166534'}}>
-                    {isBuyer
-                      ? <>🔔 <strong>You are BUYING.</strong> Send payment via <span className="font-black">{payMethod}</span>, then tap <span className="font-black">✅ I HAVE PAID</span>. Only release after the seller confirms.</>
-                      : isSeller
-                        ? <>🔔 <strong>You are SELLING.</strong> Wait for the buyer to pay via <span className="font-black">{payMethod}</span>. Once payment arrives, tap <span className="font-black">✅ RELEASE BITCOIN</span> to complete the trade.</>
-                        : <>🔔 Pay via <span className="font-black">{payMethod}</span>, then tap <span className="font-black">✅ I HAVE PAID</span>. Do not trade outside escrow.</>
-                    }
-                  </p>
-                </div>
+              {/* ── Trade Summary Banner ── */}
+              <div className="flex-shrink-0 px-3 py-2.5"
+                style={{ backgroundColor: isSeller ? C.danger : C.green }}>
+                <p className="text-xs leading-snug font-black uppercase tracking-wide" style={{color:'#fff'}}>
+                  {isBuyer
+                    ? `YOU ARE BUYING ${fmtBtc(btcReceived)} BTC FOR ${userPays.toFixed(2)} (${cur}) WITH ${payMethod}`
+                    : isSeller
+                      ? `YOU ARE SELLING ${fmtBtc(btcReceived)} BTC FOR ${userPays.toFixed(2)} (${cur}) WITH ${payMethod}`
+                      : `PAY ${userPays.toFixed(2)} (${cur}) VIA ${payMethod} FOR ${fmtBtc(btcReceived)} BTC`
+                  }
+                </p>
               </div>
 
               {/* Messages */}
@@ -1915,20 +1795,33 @@ export default function TradeDetail({user}) {
                               📎 Tap to enlarge
                             </p>
                           </button>
-                        ):(
-                          <div className="px-3.5 py-2.5 text-sm font-medium break-words shadow-md"
-                            style={{
-                              background:isOwn?ownBg:otherBg,
-                              color:'#fff',
-                              fontWeight:500,
-                              lineHeight:'1.5',
-                              borderRadius:isOwn?'18px 18px 4px 18px':'4px 18px 18px 18px',
-                            }}>
-                            {text}
+                    ):(
+                          <div className={`flex items-end gap-2 ${isOwn?'flex-row-reverse':''}`}>
+                            {!isOwn && <Avatar user={cp} size={28} />}
+                            <div className="rounded-2xl px-3.5 py-2.5 shadow-sm max-w-[75%]"
+                              style={{ background: isOwn ? '#2563EB' : '#F1F5F9' }}>
+                              <div className="flex items-center justify-between gap-3 mb-1">
+                                <p className="text-xs font-semibold" style={{color: isOwn ? 'rgba(255,255,255,0.85)' : C.g500}}>
+                                  {isOwn ? 'You' : (cp?.username || 'User')}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={()=>copyToClipboard(text, 'Message copied!')}
+                                  className="flex items-center justify-center"
+                                  title="Copy message">
+                                  <Copy size={13} style={{color: isOwn ? 'rgba(255,255,255,0.7)' : C.g400}}/>
+                                </button>
+                              </div>
+                              <p className="text-sm font-bold break-words" style={{color: isOwn ? '#fff' : C.g800}}>
+                                {text}
+                              </p>
+                              <p className="text-xs mt-1" style={{color: isOwn ? 'rgba(255,255,255,0.65)' : C.g400}}>
+                                {new Date(m.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})} {new Date(m.created_at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',hour12:false})}
+                              </p>
+                            </div>
                           </div>
                         )}
-                        <div className={`flex items-center gap-1 mt-1 ${isOwn?'justify-end':'ml-1'}`}>
-                          <span className="text-xs" style={{color:C.g400}}>{ts}</span>
+                        <div className={`flex items-center gap-1 mt-1 ${isOwn?'justify-end':'ml-9'}`}>
                           {isOwn&&(
                             m.is_read||new Date(m.created_at).getTime()<lastCpMsgTime
                               ?<CheckCheck size={12} style={{color:'#3B82F6'}}/>

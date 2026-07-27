@@ -71,89 +71,105 @@ export default function BonusBanner({ userId }) {
       borderBottom: `3px solid ${C.gold}`,
       position: 'relative',
     }}>
-      <div style={{
-        maxWidth: 1152, margin: '0 auto',
-        padding: '10px 16px',
-        display: 'flex', alignItems: 'center', gap: 10,
-        flexWrap: 'wrap',
-      }}>
-        {/* Icon */}
-        <div style={{
-          background: C.gold, borderRadius: 10, width: 34, height: 34,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0, boxShadow: '0 2px 8px rgba(244,164,34,0.4)',
-        }}>
-          {bonus.step === 3 ? <CheckCircle size={18} color={C.forest} /> : <Gift size={18} color={C.forest} />}
+      <style>{`
+        .bonus-banner-inner {
+          max-width: 1152px; margin: 0 auto; padding: 10px 16px;
+          display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+        }
+        .bonus-banner-top {
+          display: flex; align-items: center; gap: 10px;
+          flex: 1 1 220px; min-width: 220px;
+        }
+        .bonus-banner-actions {
+          display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+          flex-wrap: wrap;
+        }
+        @media (max-width: 640px) {
+          .bonus-banner-inner { flex-direction: column; align-items: stretch; }
+          .bonus-banner-top { min-width: 0; flex-basis: auto; }
+          .bonus-banner-actions { justify-content: space-between; width: 100%; }
+        }
+      `}</style>
+
+      <div className="bonus-banner-inner">
+        {/* Icon + text */}
+        <div className="bonus-banner-top">
+          <div style={{
+            background: C.gold, borderRadius: 10, width: 34, height: 34,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0, boxShadow: '0 2px 8px rgba(244,164,34,0.4)',
+          }}>
+            {bonus.step === 3 ? <CheckCircle size={18} color={C.forest} /> : <Gift size={18} color={C.forest} />}
+          </div>
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {bonus.step === 1 && (
+              <>
+                <p style={{ margin: 0, color: C.white, fontWeight: 800, fontSize: 13 }}>
+                  🎁 $1 Bitcoin waiting — verify to claim it!
+                </p>
+                <p style={{ margin: 0, color: 'rgba(255,255,255,0.7)', fontSize: 11, marginTop: 1 }}>
+                  Verify your account to lock in your first $1 BTC · {fmtCountdown(msLeft)}
+                </p>
+              </>
+            )}
+            {bonus.step === 2 && (
+              <>
+                <p style={{ margin: 0, color: C.white, fontWeight: 800, fontSize: 13 }}>
+                  🔒 $1 BTC locked · Trade once to unlock $2 instantly!
+                </p>
+                <p style={{ margin: 0, color: 'rgba(255,255,255,0.7)', fontSize: 11, marginTop: 1 }}>
+                  ≈ {fmtBtc(bonus.locked_btc)} BTC locked · Complete your first trade · {fmtCountdown(msLeft)}
+                </p>
+              </>
+            )}
+            {bonus.step === 3 && (
+              <>
+                <p style={{ margin: 0, color: C.gold, fontWeight: 800, fontSize: 13 }}>
+                  🎉 $2 Bitcoin unlocked — check your wallet!
+                </p>
+                <p style={{ margin: 0, color: 'rgba(255,255,255,0.7)', fontSize: 11, marginTop: 1 }}>
+                  ≈ {fmtBtc(bonus.unlocked_btc)} BTC has been credited to your balance.
+                </p>
+              </>
+            )}
+          </div>
         </div>
 
-        {/* Text block */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {bonus.step === 1 && (
-            <>
-              <p style={{ margin: 0, color: C.white, fontWeight: 800, fontSize: 13 }}>
-                🎁 $1 Bitcoin waiting — verify to claim it!
-              </p>
-              <p style={{ margin: 0, color: 'rgba(255,255,255,0.7)', fontSize: 11, marginTop: 1 }}>
-                Verify your account to lock in your first $1 BTC · {fmtCountdown(msLeft)}
-              </p>
-            </>
-          )}
-          {bonus.step === 2 && (
-            <>
-              <p style={{ margin: 0, color: C.white, fontWeight: 800, fontSize: 13 }}>
-                🔒 $1 BTC locked · Trade once to unlock $2 instantly!
-              </p>
-              <p style={{ margin: 0, color: 'rgba(255,255,255,0.7)', fontSize: 11, marginTop: 1 }}>
-                ≈ {fmtBtc(bonus.locked_btc)} BTC locked · Complete your first trade · {fmtCountdown(msLeft)}
-              </p>
-            </>
-          )}
-          {bonus.step === 3 && (
-            <>
-              <p style={{ margin: 0, color: C.gold, fontWeight: 800, fontSize: 13 }}>
-                🎉 $2 Bitcoin unlocked — check your wallet!
-              </p>
-              <p style={{ margin: 0, color: 'rgba(255,255,255,0.7)', fontSize: 11, marginTop: 1 }}>
-                ≈ {fmtBtc(bonus.unlocked_btc)} BTC has been credited to your balance.
-              </p>
-            </>
-          )}
-        </div>
+        {/* Pills + CTA + dismiss */}
+        <div className="bonus-banner-actions">
+          <div style={{ display: 'flex', gap: 4 }}>
+            <StepPill icon={<CheckCircle size={10} />} label="Account" done={bonus.step >= 1} />
+            <StepPill icon={<Zap size={10} />}         label="Verify"  done={bonus.step >= 2} />
+            <StepPill icon={<Bitcoin size={10} />}      label="Trade"   done={bonus.step >= 3} />
+          </div>
 
-        {/* Step pills */}
-        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-          <StepPill icon={<CheckCircle size={10} />} label="Account" done={bonus.step >= 1} />
-          <StepPill icon={<Zap size={10} />}         label="Verify"  done={bonus.step >= 2} />
-          <StepPill icon={<Bitcoin size={10} />}      label="Trade"   done={bonus.step >= 3} />
-        </div>
+          {bonus.step < 3 && (
+            <button
+              onClick={() => navigate(bonus.step === 1 ? '/settings' : '/buy-bitcoin')}
+              style={{
+                background: C.gold, color: C.forest, border: 'none', borderRadius: 8,
+                padding: '6px 12px', fontWeight: 900, fontSize: 12, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {bonus.step === 1 ? 'Verify Now' : 'Trade Now'} <ChevronRight size={12} />
+            </button>
+          )}
 
-        {/* CTA */}
-        {bonus.step < 3 && (
           <button
-            onClick={() => navigate(bonus.step === 1 ? '/settings' : '/buy-bitcoin')}
+            onClick={handleDismiss}
             style={{
-              background: C.gold, color: C.forest, border: 'none', borderRadius: 8,
-              padding: '6px 12px', fontWeight: 900, fontSize: 12, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0,
-              whiteSpace: 'nowrap',
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              color: 'rgba(255,255,255,0.5)', padding: 4, flexShrink: 0,
+              display: 'flex', alignItems: 'center',
             }}
+            title="Dismiss"
           >
-            {bonus.step === 1 ? 'Verify Now' : 'Trade Now'} <ChevronRight size={12} />
+            <X size={14} />
           </button>
-        )}
-
-        {/* Dismiss */}
-        <button
-          onClick={handleDismiss}
-          style={{
-            background: 'transparent', border: 'none', cursor: 'pointer',
-            color: 'rgba(255,255,255,0.5)', padding: 4, flexShrink: 0,
-            display: 'flex', alignItems: 'center',
-          }}
-          title="Dismiss"
-        >
-          <X size={14} />
-        </button>
+        </div>
       </div>
     </div>
   );

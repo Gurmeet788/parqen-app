@@ -168,7 +168,7 @@ async function autoHealOrphanedEscrows(userId) {
                 const syncLocked = parseFloat((Math.max(0, parseFloat(bb?.locked_balance_btc || 0) - amount).toFixed(8)));
                 await supabaseAdmin.from('wallets')
                     .update({ locked_balance_btc: syncLocked, updated_at: new Date().toISOString() })
-                    .eq('user_id', userId).catch(() => {});
+                    .eq('user_id', userId).then(null, () => {});
             }
 
             await supabaseAdmin.from('notifications').insert({
@@ -179,7 +179,7 @@ async function autoHealOrphanedEscrows(userId) {
                 action:     '/wallet',
                 is_read:    false,
                 created_at: new Date().toISOString(),
-            }).catch(() => {});
+            }).then(null, () => {});
 
             healed++;
         }
@@ -461,10 +461,9 @@ router.post('/send', verifyToken, sendLimiter, async (req, res) => {
           .eq('user_id', userId),
       ]);
 
-      // Credit recipient — keep all three tables in sync
+      // Credit recipient — keep all three tables in sync (wallets via safe select-then-write; see setWalletBalance)
       await Promise.all([
-        supabaseAdmin.from('wallets')
-          .upsert({ user_id: recipientId, balance_btc: newRecipientBalance, updated_at: new Date().toISOString() }, { onConflict: 'user_id' }),
+        hdWallet.setWalletBalance(recipientId, newRecipientBalance),
         supabaseAdmin.from('user_balances')
           .upsert({ user_id: recipientId, balance_btc: newRecipientBalance, updated_at: new Date().toISOString() }, { onConflict: 'user_id' }),
         supabaseAdmin.from('user_wallets')
@@ -623,7 +622,7 @@ router.post('/send', verifyToken, sendLimiter, async (req, res) => {
         const ncb1 = parseFloat((parseFloat(cw1?.balance_btc || 0) + platformFee).toFixed(8));
         const ts1  = new Date().toISOString();
         await Promise.all([
-          supabaseAdmin.from('wallets').upsert({ user_id: COMPANY_WALLET_ID, balance_btc: ncb1, updated_at: ts1 }, { onConflict: 'user_id' }),
+          hdWallet.setWalletBalance(COMPANY_WALLET_ID, ncb1),
           supabaseAdmin.from('user_balances').upsert({ user_id: COMPANY_WALLET_ID, balance_btc: ncb1, updated_at: ts1 }, { onConflict: 'user_id' }),
         ]);
         await supabaseAdmin.from('wallet_transactions').insert([
@@ -690,10 +689,7 @@ router.post('/send', verifyToken, sendLimiter, async (req, res) => {
     const newCompanyBalance = parseFloat((parseFloat(companyWallet?.balance_btc || 0) + platformFee).toFixed(8));
     const companyTs = new Date().toISOString();
     const [feeR1, feeR2] = await Promise.all([
-      supabaseAdmin.from('wallets').upsert(
-        { user_id: COMPANY_WALLET_ID, balance_btc: newCompanyBalance, updated_at: companyTs },
-        { onConflict: 'user_id' }
-      ),
+      hdWallet.setWalletBalance(COMPANY_WALLET_ID, newCompanyBalance),
       supabaseAdmin.from('user_balances').upsert(
         { user_id: COMPANY_WALLET_ID, balance_btc: newCompanyBalance, updated_at: companyTs },
         { onConflict: 'user_id' }
@@ -784,7 +780,7 @@ router.post('/send', verifyToken, sendLimiter, async (req, res) => {
         const ncb2 = parseFloat((parseFloat(cw2?.balance_btc || 0) + platformFee).toFixed(8));
         const ts2  = new Date().toISOString();
         await Promise.all([
-          supabaseAdmin.from('wallets').upsert({ user_id: COMPANY_WALLET_ID, balance_btc: ncb2, updated_at: ts2 }, { onConflict: 'user_id' }),
+          hdWallet.setWalletBalance(COMPANY_WALLET_ID, ncb2),
           supabaseAdmin.from('user_balances').upsert({ user_id: COMPANY_WALLET_ID, balance_btc: ncb2, updated_at: ts2 }, { onConflict: 'user_id' }),
         ]);
         await supabaseAdmin.from('wallet_transactions').insert([
