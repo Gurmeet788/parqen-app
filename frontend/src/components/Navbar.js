@@ -39,18 +39,26 @@ export default function Navbar({ user, onLogout }) {
   const dropRef   = useRef(null);
   const marketRef = useRef(null);
 
-  useEffect(() => {
-    const sync = () => {
-      const s = JSON.parse(localStorage.getItem('user') || '{}');
-      if (s?.id) setLocalUser(s);
-    };
-    sync();
-    window.addEventListener('storage', sync);
-    window.addEventListener('userUpdated', sync);
-    return () => { window.removeEventListener('storage', sync); window.removeEventListener('userUpdated', sync); };
-  }, []);
 
-  useEffect(() => { if (user?.id) setLocalUser(user); }, [user?.id]);
+useEffect(() => {
+  const sync = () => {
+    const raw = localStorage.getItem('user');
+    if (!raw) { setLocalUser(null); return; }
+    const s = JSON.parse(raw);
+    setLocalUser(s?.id ? s : null);
+  };
+  sync();
+  window.addEventListener('storage', sync);
+  window.addEventListener('userUpdated', sync);
+  return () => {
+    window.removeEventListener('storage', sync);
+    window.removeEventListener('userUpdated', sync);
+  };
+}, []);
+
+useEffect(() => { setLocalUser(user?.id ? user : null); }, [user?.id]);
+
+
 
   useEffect(() => {
     const token = localStorage.getItem('token');

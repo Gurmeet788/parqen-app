@@ -300,6 +300,7 @@ function App() {
     localStorage.removeItem('user');
     delete axios.defaults.headers.common['Authorization'];
     toast.info('Logged out');
+    window.dispatchEvent(new Event('userUpdated'));
     // Unlink push subscription from this account on logout
     unidentifyUser().catch(() => {});
   };

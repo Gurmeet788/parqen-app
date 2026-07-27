@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import CountryFlag, { resolveCode } from '../components/CountryFlag';
-import { deriveBadge } from '../lib/badge';
+import { BadgeChip } from '../lib/badge';
 import ActiveTradeCard from '../components/ActiveTradeCard';
 import PRQFooter from '../components/PRQFooter';
 
@@ -245,7 +245,6 @@ function Avatar({user, size=36, radius='rounded-xl'}) {
 function OfferCard({listing, usdtPriceUSD, onViewBuyer, onSell, liked, onToggleLike, liveSeenAt, userSellAmt}) {
   const { rates: USD_RATES } = useRates();
   const u         = getUser(listing.users);
-  const badge     = deriveBadge(u);
   const [seen, setSeen] = useState(() => getLastSeen({ ...u, last_seen_at: liveSeenAt || u.last_seen_at }));
   useEffect(() => { setSeen(getLastSeen({ ...u, last_seen_at: liveSeenAt || u.last_seen_at })); }, [liveSeenAt]);
   useEffect(() => {
@@ -298,11 +297,7 @@ function OfferCard({listing, usdtPriceUSD, onViewBuyer, onSell, liked, onToggleL
                 style={{color:C.g800, maxWidth:'130px'}}>{getDisplayName(u) || 'Buyer'}</button>
               {isVerified(u) && <BadgeCheck size={14} style={{color:'#3B82F6', flexShrink:0}}/>}
               {u.country && <span className="text-xs font-semibold flex-shrink-0" style={{color:C.g500}}>· {resolveCode(u.country)?.toUpperCase() || u.country}</span>}
-              <span className={`inline-flex items-center gap-px font-medium px-1 py-0 rounded-full border flex-shrink-0 ${badge.animate ? 'shadow-md' : ''}`}
-                style={{background:badge.bg, borderColor:badge.borderColor, fontSize:'8px', boxShadow: badge.glow ? `0 0 8px ${badge.glow}` : undefined}}>
-                <span style={{color:badge.iconColor||badge.textColor}}>{badge.icon}</span>
-                <span style={{color:badge.textColor}}>{badge.label}</span>
-              </span>
+              <BadgeChip user={u} size="xs" />
             </div>
             <div className="flex items-center justify-between mt-1.5 gap-1">
               <div className="flex items-center gap-1.5">
@@ -419,7 +414,6 @@ function BuyerModal({buyer, listing, onClose, onTrade, usdtPriceUSD}) {
   }, [buyerId]);
 
   const u      = getUser(freshBuyer || buyer);
-  const badge  = deriveBadge(u);
   const seen   = getLastSeen(u);
   const trades = getTrades(u);
   const rating = parseFloat(u.average_rating || 0);
@@ -510,11 +504,7 @@ function BuyerModal({buyer, listing, onClose, onTrade, usdtPriceUSD}) {
                 <span className="text-white/40 text-xs">·</span>
                 <span className="text-white/60 text-xs">{seen.online ? '🟢 Active now' : seen.label}</span>
               </div>
-              <span className={`inline-flex items-center gap-px px-2 py-0.5 rounded-full border text-xs font-black ${badge.animate ? 'shadow' : ''}`}
-                style={{background:badge.bg, borderColor:badge.borderColor, boxShadow:badge.glow?`0 0 6px ${badge.glow}`:undefined}}>
-                <span style={{color:badge.iconColor||badge.textColor}}>{badge.icon}</span>
-                <span style={{color:badge.textColor}}>{badge.label}</span>
-              </span>
+              <BadgeChip user={u} size="sm" />
             </div>
           </div>
 
