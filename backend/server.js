@@ -4377,7 +4377,9 @@ app.post('/api/users/send-phone-otp', otpLimiter, verifyToken, async (req, res) 
 
   } catch (err) {
     console.error('[send-phone-otp] OUTER ERROR:', err.message, err.stack);
-    res.status(500).json({ error: `OTP send failed: ${err.message}` });
+    const methodUsed = req.body?.method || 'sms';
+    const alt = methodUsed === 'sms' ? 'whatsapp' : 'sms';
+    res.status(500).json({ error: `OTP send failed: ${err.message}`, suggestAlt: alt });
   }
 });
 
