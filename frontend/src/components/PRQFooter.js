@@ -81,7 +81,7 @@ export default function PRQFooter() {
               boxShadow: '0 2px 8px rgba(244,164,34,0.45)',
             }}>P</div>
             <span style={{ fontSize: 21, fontWeight: 900, letterSpacing: '-0.4px' }}>
-              <span style={{ color: '#6EE7B7' }}>PRA</span><span style={{ color: '#F4A422' }}>QEN</span>
+              <span style={{ color: '#ffffff' }}>PRA</span><span style={{ color: '#F4A422' }}>QEN</span>
             </span>
           </div>
           <p className="text-sm leading-relaxed mb-4" style={{ color: 'rgba(255,255,255,0.55)' }}>

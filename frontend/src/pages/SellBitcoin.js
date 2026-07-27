@@ -1646,44 +1646,43 @@ export default function SellBitcoin({user}) {
           <span style={{fontSize:13,color:'#92400E',lineHeight:1.4}}><strong style={{fontWeight:900}}>Sell Safely:</strong> <span style={{fontWeight:600}}>Never release Bitcoin before confirming payment. All trades are escrow-protected.</span></span>
         </div>
 
-        {/* ── NEW USER BONUS CARD — sell-page amber theme, no emoji ── */}
-        <div style={{borderRadius:14,overflow:'hidden',boxShadow:'0 4px 20px rgba(180,83,9,0.2)'}}>
-          <div style={{background:'linear-gradient(135deg,#78350F 0%,#B45309 60%,#D97706 100%)',padding:'16px 16px 14px',position:'relative',overflow:'hidden'}}>
-            <div style={{position:'absolute',inset:0,opacity:0.07,backgroundImage:'radial-gradient(circle at 2px 2px,white 1px,transparent 0)',backgroundSize:'16px 16px',pointerEvents:'none'}}/>
-            <div style={{position:'absolute',top:0,left:0,right:0,height:3,background:'linear-gradient(90deg,#F4A422,#FBBF24,#F4A422)'}}/>
-            <div style={{position:'relative',display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:8,marginBottom:11}}>
-              <div style={{display:'flex',alignItems:'center',gap:9}}>
-                <div style={{width:34,height:34,borderRadius:10,background:'#F4A422',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,boxShadow:'0 2px 8px rgba(244,164,34,0.45)'}}>
-                  <Gift size={16} style={{color:'#78350F'}}/>
-                </div>
-                <div>
-                  <p style={{margin:0,fontSize:13,fontWeight:900,color:'#FFFFFF',lineHeight:1.2}}>New users earn <span style={{color:'#FDE68A'}}>$2 FREE Bitcoin!</span></p>
-                  <p style={{margin:0,fontSize:10,color:'rgba(255,255,255,0.6)',marginTop:2}}>Offer valid 30 days · Share your link so friends can claim it</p>
-                </div>
-              </div>
-              <button onClick={()=>navigate('/register')}
-                style={{flexShrink:0,padding:'8px 14px',borderRadius:9,border:'none',cursor:'pointer',background:'#F4A422',color:'#78350F',fontWeight:900,fontSize:11,whiteSpace:'nowrap',boxShadow:'0 3px 10px rgba(244,164,34,0.4)'}}>
-                Claim <ArrowRight size={11} style={{display:'inline',marginLeft:2,verticalAlign:'-1px'}}/>
-              </button>
-            </div>
-            <div style={{position:'relative',display:'grid',gridTemplateColumns:'1fr auto 1fr auto 1fr',alignItems:'center',gap:4}}>
-              {[
-                {Icon:CheckCircle, label:'Register',sub:'$1 locked'},
-                {Icon:Zap,         label:'Verify',  sub:'stays safe'},
-                {Icon:Bitcoin,     label:'1 Trade', sub:'$2 unlocks'},
-              ].map(({Icon,label,sub},i,arr)=>(
-                <>
-                  <div key={label} style={{background:'rgba(255,255,255,0.09)',border:'1px solid rgba(255,255,255,0.15)',borderRadius:9,padding:'8px 5px',textAlign:'center'}}>
-                    <Icon size={14} style={{color:'#FDE68A',marginBottom:3}}/>
-                    <div style={{fontSize:10,fontWeight:800,color:'#fff',lineHeight:1}}>{label}</div>
-                    <div style={{fontSize:8,color:'rgba(255,255,255,0.5)',marginTop:2,lineHeight:1}}>{sub}</div>
-                  </div>
-                  {i<arr.length-1 && <div key={`sep-${i}`} style={{fontSize:11,color:'rgba(255,255,255,0.3)',flexShrink:0}}>›</div>}
-                </>
-              ))}
-            </div>
-          </div>
+{/* ── NEW USER BONUS CARD — sell-page amber theme, no emoji ── */}
+<div style={{borderRadius:14,overflow:'hidden',boxShadow:'0 4px 20px rgba(180,83,9,0.2)'}}>
+  <div style={{background:'linear-gradient(135deg,#78350F 0%,#B45309 60%,#D97706 100%)',padding:'16px 16px 14px',position:'relative',overflow:'hidden'}}>
+    <div style={{position:'absolute',inset:0,opacity:0.07,backgroundImage:'radial-gradient(circle at 2px 2px,white 1px,transparent 0)',backgroundSize:'16px 16px',pointerEvents:'none'}}/>
+    <div style={{position:'absolute',top:0,left:0,right:0,height:3,background:'linear-gradient(90deg,#F4A422,#FBBF24,#F4A422)'}}/>
+
+    <div style={{position:'relative',display:'flex',flexWrap:'wrap',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom:13}}>
+      <div style={{display:'flex',alignItems:'center',gap:10,minWidth:0,flex:'1 1 220px'}}>
+        <div style={{width:36,height:36,borderRadius:10,background:'#F4A422',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,boxShadow:'0 2px 8px rgba(244,164,34,0.45)'}}>
+          <Gift size={17} style={{color:'#78350F'}}/>
         </div>
+        <div style={{minWidth:0}}>
+          <p style={{margin:0,fontSize:13.5,fontWeight:900,color:'#FFFFFF',lineHeight:1.35}}>New users earn <span style={{color:'#FDE68A'}}>$2 FREE Bitcoin</span></p>
+          <p style={{margin:0,fontSize:10.5,color:'rgba(255,255,255,0.65)',marginTop:3,lineHeight:1.4}}>Offer valid 30 days · Share your link so friends can claim it</p>
+        </div>
+      </div>
+      <button onClick={()=>navigate('/register')}
+        style={{flexShrink:0,padding:'9px 16px',borderRadius:9,border:'none',cursor:'pointer',background:'#F4A422',color:'#78350F',fontWeight:900,fontSize:12,whiteSpace:'nowrap',boxShadow:'0 3px 10px rgba(244,164,34,0.4)'}}>
+        Claim <ArrowRight size={12} style={{display:'inline',marginLeft:3,verticalAlign:'-1px'}}/>
+      </button>
+    </div>
+
+<div style={{position:'relative',display:'flex',gap:7}}>
+  {[
+    {Icon:CheckCircle, label:'Register',sub:'$1 locked'},
+    {Icon:Zap,         label:'Verify',  sub:'stays safe'},
+    {Icon:Bitcoin,     label:'1 Trade', sub:'$2 unlocks'},
+  ].map(({Icon,label,sub})=>(
+    <div key={label} style={{flex:'1 1 0',minWidth:0,background:'rgba(255,255,255,0.1)',border:'1px solid rgba(255,255,255,0.16)',borderRadius:10,padding:'10px 6px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}>
+      <Icon size={15} style={{color:'#FDE68A',marginBottom:4}}/>
+      <div style={{fontSize:11,fontWeight:800,color:'#fff',lineHeight:1.2}}>{label}</div>
+      <div style={{fontSize:9,color:'rgba(255,255,255,0.6)',marginTop:2,lineHeight:1.2}}>{sub}</div>
+    </div>
+  ))}
+</div>
+  </div>
+</div>
 
         {/* ── AFFILIATE PROMO CARD ── */}
         <div style={{borderRadius:14,overflow:'hidden',boxShadow:'0 4px 20px rgba(217,119,6,0.15)'}}>
