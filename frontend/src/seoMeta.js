@@ -52,6 +52,22 @@ const PAGE_META = {
     h1: 'Create Your Free PRAQEN Account',
     intro: 'Join the world\'s most trusted P2P Bitcoin & USDT marketplace. Free account, instant email or phone verification, no bank account required. Start trading in minutes.',
   },
+  '/privacy': {
+    title: 'Privacy Policy | PRAQEN',
+    description: 'How PRAQEN collects, uses, and protects your personal data — including KYC verification, wallet information, and third-party services we use.',
+    ogTitle: 'Privacy Policy — PRAQEN',
+    ogDesc: 'How PRAQEN collects, uses, and protects your personal data.',
+    h1: 'Privacy Policy',
+    intro: "This Privacy Policy explains what information PRAQEN collects when you use our website and services, why we collect it, and how it is protected.",
+  },
+  '/terms': {
+    title: 'Terms of Service | PRAQEN',
+    description: 'The terms that govern your use of PRAQEN — trading, escrow, fees, wallet custody, disputes, and account rules.',
+    ogTitle: 'Terms of Service — PRAQEN',
+    ogDesc: 'The terms that govern your use of PRAQEN.',
+    h1: 'Terms of Service',
+    intro: 'These Terms of Service govern your access to and use of PRAQEN — trading, escrow, fees, wallet custody, disputes, and account rules.',
+  },
   '/login': {
     title: 'Sign In to PRAQEN | Global P2P Bitcoin & USDT Trading',
     description: 'Sign in to your PRAQEN account to buy and sell Bitcoin & USDT, trade gift cards, and manage your P2P trades worldwide.',

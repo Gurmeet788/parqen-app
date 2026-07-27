@@ -22,7 +22,10 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
 );
 
-const POLL_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes (same as BTC monitor)
+// USDT has no real-time push feed (unlike BTC's mempool.space websocket), so this poll
+// interval IS the deposit-detection latency users experience. Kept short — TronGrid is
+// called with an API key (TRONGRID_API_KEY, higher rate limit) and batched 5-at-a-time.
+const POLL_INTERVAL_MS = 90 * 1000; // 90 seconds
 const DUST_THRESHOLD   = 0.01;            // ignore deposits < $0.01 USDT
 
 const emailTransporter = nodemailer.createTransport({
@@ -95,8 +98,9 @@ function depositEmailHtml(username, depositUsdt, newBalance, address) {
 class USDTDepositMonitor {
 
   constructor() {
-    this.isRunning  = false;
-    this.intervalId = null;
+    this.isRunning       = false;
+    this.intervalId      = null;
+    this.cycleInProgress = false;
   }
 
   // ── Start background polling ───────────────────────────────────────────────
@@ -124,6 +128,13 @@ class USDTDepositMonitor {
 
   // ── One full polling cycle ─────────────────────────────────────────────────
   async runFullCycle() {
+    // With a 90s interval, guard against a slow cycle overlapping the next tick —
+    // overlapping cycles would double-hit TronGrid and race on the same rows.
+    if (this.cycleInProgress) {
+      console.log('[USDTMonitor] Previous cycle still running — skipping this tick');
+      return;
+    }
+    this.cycleInProgress = true;
     const start = Date.now();
     console.log(`\n[USDTMonitor] ⏱  Cycle start ${new Date().toISOString()}`);
     try {
@@ -138,6 +149,7 @@ class USDTDepositMonitor {
       console.error('[USDTMonitor] Pending sweep processor error:', err.message);
     }
     console.log(`[USDTMonitor] ✅ Cycle done in ${Date.now() - start}ms\n`);
+    this.cycleInProgress = false;
   }
 
   // ── Fetch all Tron addresses to scan ──────────────────────────────────────
