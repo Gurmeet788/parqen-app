@@ -786,19 +786,20 @@ export default function Settings({ user, setUser }) {
     } catch (e) {
       const errData = e?.response?.data;
       const errMsg = errData?.error || 'Failed to send code. Please try again.';
-      setPhoneError(errMsg);
+
+      // Always auto-switch selected method state to alternate channel on failure
+      const alt = errData?.suggestAlt || (phoneOtpMethod === 'sms' ? 'whatsapp' : 'sms');
+      setPhoneOtpMethod(alt);
+      const altLabel = alt === 'whatsapp' ? 'WhatsApp' : 'SMS';
+      const fullMsg = `${errMsg} Switched to ${altLabel} — tap Send again.`;
+      setPhoneError(fullMsg);
+
       if (errData?.devCode) {
         setPhoneOtpCode(errData.devCode);
-        setPhoneStep('otp');
-        toast.warning(`Send failed — dev code auto-filled: ${errData.devCode}`, { autoClose: 10000 });
+        setPhoneStep('idle');
+        toast.warning(`Delivery failed — switched to ${altLabel}. (Dev code: ${errData.devCode})`, { autoClose: 10000 });
       } else {
-        if (errData?.suggestAlt) {
-          setPhoneOtpMethod(errData.suggestAlt);
-          const altLabel = errData.suggestAlt === 'whatsapp' ? 'WhatsApp' : 'SMS';
-          toast.error(`${errMsg} Switched to ${altLabel} — tap Send again.`, { autoClose: 8000 });
-        } else {
-          toast.error(errMsg);
-        }
+        toast.error(fullMsg, { autoClose: 8000 });
         setPhoneStep('idle');
       }
     }
