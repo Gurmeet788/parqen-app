@@ -1567,11 +1567,23 @@ export default function Settings({ user, setUser }) {
                                 </div>
                               )}
 
-                              {/* Locked behind email — must verify email first */}
+                              {/* ── EMAIL REQUIRED BANNER — shown when email not yet verified ── */}
                               {!done && !emailVerified && (
-                                <p className="text-xs mt-2 font-bold" style={{ color: '#94a3b8' }}>
-                                  Complete email verification first (Step 1).
-                                </p>
+                                <div className="mt-3 rounded-xl overflow-hidden" style={{ border: '2px solid #f59e0b' }}>
+                                  <div className="px-4 py-2.5 flex items-center gap-2" style={{ backgroundColor: '#fffbeb', borderBottom: '1px solid #fde68a' }}>
+                                    <span className="text-sm">🔒</span>
+                                    <p className="text-xs font-black" style={{ color: '#92400e' }}>Email Verification Required</p>
+                                  </div>
+                                  <div className="px-4 py-3 flex flex-col gap-2" style={{ backgroundColor: '#fff7ed' }}>
+                                    <p className="text-xs leading-relaxed" style={{ color: '#78350f' }}>
+                                      You must <strong>verify your email address</strong> (Step 1) before you can add and verify your phone number.
+                                    </p>
+                                    <div className="flex items-center gap-1.5 text-xs font-black" style={{ color: '#d97706' }}>
+                                      <span>📧</span>
+                                      <span>Complete Step 1 above to unlock Phone Verification →</span>
+                                    </div>
+                                  </div>
+                                </div>
                               )}
                             </div>
                             {done
