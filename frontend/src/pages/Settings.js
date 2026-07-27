@@ -1704,6 +1704,25 @@ export default function Settings({ user, setUser }) {
                                 </div>
                               )}
 
+                              {/* ── PHONE REQUIRED BANNER — shown when phone not yet verified ── */}
+                              {!kycVerified && !kycPending && !kycRejected && !phoneVerified && (
+                                <div className="mt-3 rounded-xl overflow-hidden" style={{ border: '2px solid #f59e0b' }}>
+                                  <div className="px-4 py-2.5 flex items-center gap-2" style={{ backgroundColor: '#fffbeb', borderBottom: '1px solid #fde68a' }}>
+                                    <span className="text-sm">🔒</span>
+                                    <p className="text-xs font-black" style={{ color: '#92400e' }}>Phone Verification Required</p>
+                                  </div>
+                                  <div className="px-4 py-3 flex flex-col gap-2" style={{ backgroundColor: '#fff7ed' }}>
+                                    <p className="text-xs leading-relaxed" style={{ color: '#78350f' }}>
+                                      You must <strong>verify your phone number</strong> (Step 2) before you can submit your identity documents.
+                                    </p>
+                                    <div className="flex items-center gap-1.5 text-xs font-black" style={{ color: '#d97706' }}>
+                                      <span>📱</span>
+                                      <span>Complete Step 2 above to unlock KYC →</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
                               {/* KYC multi-step upload form */}
                               {!kycVerified && !kycPending && kycStatus !== 'approved' && phoneVerified && (
                                 <div className="mt-4 space-y-4">
