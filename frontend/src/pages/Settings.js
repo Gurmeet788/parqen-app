@@ -12,44 +12,6 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
-
-import {
-  requestNotificationPermission,
-  getNotificationPermission,
-  isPushSupported,
-} from "../utils/notifications";
-import {
-  User,
-  Lock,
-  Mail,
-  Phone,
-  CreditCard,
-  Bell,
-  Shield,
-  Globe,
-  Save,
-  Eye,
-  EyeOff,
-  CheckCircle,
-  AlertCircle,
-  Smartphone,
-  LogOut,
-  ChevronRight,
-  Camera,
-  BadgeCheck,
-  Clock,
-  Upload,
-  RefreshCw,
-  FileText,
-  DollarSign,
-  Languages,
-  MapPin,
-  X,
-  ToggleLeft,
-  ToggleRight,
-} from "lucide-react";
-import { toast } from "react-toastify";
-
 const API_URL = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
 
 const C = {
