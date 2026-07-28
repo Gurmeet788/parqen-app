@@ -14,7 +14,44 @@ import WelcomeBonusModal from './components/WelcomeBonusModal';
 import SuggestionsPanel from './components/SuggestionsPanel';
 import { NotificationPrompt, AndroidInstallBanner, IOSInstallGuide } from './components/PushSetup';
 
-// Monkeypatch react-toastify's toast object globally to redirect to CustomToastContainer
+// ── ✅ OneSignal Import ──────────────────────────────────────────────────────
+import OneSignal from 'react-onesignal';
+
+// ── ✅ OneSignal Init Function ──────────────────────────────────────────────
+async function initOneSignal(userId) {
+  try {
+    const appId = process.env.REACT_APP_ONESIGNAL_APP_ID;
+    if (!appId) {
+      console.warn('[Push] REACT_APP_ONESIGNAL_APP_ID not set');
+      return;
+    }
+
+    await OneSignal.init({
+      appId: appId,
+      allowLocalhostAsSecureOrigin: true,
+    });
+
+    console.log('[Push] ✅ OneSignal initialized');
+
+    const playerId = await OneSignal.getUserId();
+    if (playerId && userId) {
+      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+      await fetch(`${API_URL}/user/push-token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ player_id: playerId })
+      });
+      console.log('[Push] ✅ Player ID saved:', playerId);
+    }
+  } catch (error) {
+    console.error('[Push] Init error:', error);
+  }
+}
+
+// ── Monkeypatch react-toastify ──────────────────────────────────────────────
 const customToast = (message, options) => {
   window.dispatchEvent(new CustomEvent('custom-toast', { detail: { message, type: 'default', options } }));
   return options?.toastId || Math.random().toString();
@@ -44,21 +81,21 @@ customToast.update = () => {};
 customToast.onChange = () => () => {};
 Object.assign(toast, customToast);
 
-// Silence all non-error console output in production
+// ── Silence console in production ────────────────────────────────────────────
 if (process.env.NODE_ENV === 'production') {
   const noop = () => {};
-  console.log   = noop;
-  console.info  = noop;
+  console.log = noop;
+  console.info = noop;
   console.debug = noop;
-  console.warn  = noop;
+  console.warn = noop;
 }
 
-// Lazy-loaded pages — each becomes its own JS chunk
+// ── Lazy-loaded pages ────────────────────────────────────────────────────────
 const GiftCardMarketplace   = lazy(() => import('./pages/GiftCardMarketplace'));
 const Blog                  = lazy(() => import('./pages/Blog'));
-const BlogPost               = lazy(() => import('./pages/BlogPost'));
-const PrivacyPolicy          = lazy(() => import('./pages/PrivacyPolicy'));
-const TermsOfService          = lazy(() => import('./pages/TermsOfService'));
+const BlogPost              = lazy(() => import('./pages/BlogPost'));
+const PrivacyPolicy         = lazy(() => import('./pages/PrivacyPolicy'));
+const TermsOfService        = lazy(() => import('./pages/TermsOfService'));
 const LandingPage           = lazy(() => import('./pages/LandingPage'));
 const Register              = lazy(() => import('./pages/Register'));
 const Login                 = lazy(() => import('./pages/Login'));
@@ -90,62 +127,64 @@ const ResetPassword         = lazy(() => import('./pages/ResetPassword'));
 const EmailConfirmation     = lazy(() => import('./pages/EmailConfirmation'));
 const CheckEmail            = lazy(() => import('./pages/CheckEmail'));
 
+// ── Page Loader ──────────────────────────────────────────────────────────────
 function PageLoader() {
   return (
-    <div style={{
-      position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center',
-      background: 'linear-gradient(145deg,#1B4332 0%,#0c2418 50%,#2D6A4F 100%)',
-      zIndex: 9998,
-    }}>
       <div style={{
-        width: 56, height: 56, background: '#F4A422', borderRadius: 18,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 28, fontWeight: 900, color: '#1B4332',
-        fontFamily: 'Georgia,serif', marginBottom: 14,
-        animation: 'prq-pulse 1.6s ease-in-out infinite',
-        boxShadow: '0 0 30px rgba(244,164,34,0.4)',
-      }}>P</div>
-      <p style={{ color: '#fff', fontSize: 15, fontWeight: 800, letterSpacing: 3, fontFamily: 'Georgia,serif', margin: 0 }}>
-        PRAQEN
-      </p>
-      <style>{`@keyframes prq-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}`}</style>
-    </div>
+        position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        background: 'linear-gradient(145deg,#1B4332 0%,#0c2418 50%,#2D6A4F 100%)',
+        zIndex: 9998,
+      }}>
+        <div style={{
+          width: 56, height: 56, background: '#F4A422', borderRadius: 18,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 28, fontWeight: 900, color: '#1B4332',
+          fontFamily: 'Georgia,serif', marginBottom: 14,
+          animation: 'prq-pulse 1.6s ease-in-out infinite',
+          boxShadow: '0 0 30px rgba(244,164,34,0.4)',
+        }}>P</div>
+        <p style={{ color: '#fff', fontSize: 15, fontWeight: 800, letterSpacing: 3, fontFamily: 'Georgia,serif', margin: 0 }}>
+          PRAQEN
+        </p>
+        <style>{`@keyframes prq-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}`}</style>
+      </div>
   );
 }
 
-
-// API Base URL
+// ── API Base URL ─────────────────────────────────────────────────────────────
 export const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
-// Resolves /ref/:username → /signup?ref=CODE by looking up the real referral code
+// ── Ref Redirect ─────────────────────────────────────────────────────────────
 function RefRedirect() {
   const { username } = useParams();
   const navigate = useNavigate();
 
   useEffect(() => {
     axios.get(`${API_URL}/ref/${encodeURIComponent(username)}`)
-      .then(({ data }) => {
-        const code = data.referral_code || username;
-        navigate(`/signup?ref=${encodeURIComponent(code)}`, { replace: true });
-      })
-      .catch(() => {
-        navigate(`/signup?ref=${encodeURIComponent(username)}`, { replace: true });
-      });
+        .then(({ data }) => {
+          const code = data.referral_code || username;
+          navigate(`/signup?ref=${encodeURIComponent(code)}`, { replace: true });
+        })
+        .catch(() => {
+          navigate(`/signup?ref=${encodeURIComponent(username)}`, { replace: true });
+        });
   }, [username, navigate]);
 
   return <PageLoader />;
 }
 
+// ── App Shell ─────────────────────────────────────────────────────────────────
 function AppShell({ children }) {
   return (
-    <div className="min-h-screen pb-nav-mobile"
-      style={{ overflowX: 'hidden', maxWidth: '100vw' }}>
-      {children}
-    </div>
+      <div className="min-h-screen pb-nav-mobile"
+           style={{ overflowX: 'hidden', maxWidth: '100vw' }}>
+        {children}
+      </div>
   );
 }
 
+// ── Main App ─────────────────────────────────────────────────────────────────
 function App() {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem('token'));
@@ -153,7 +192,14 @@ function App() {
   const [showWelcome, setShowWelcome] = useState(false);
   const [showBonusModal, setShowBonusModal] = useState(false);
 
-  // Setup axios interceptor for auth
+  // ── ✅ OneSignal Init on Mount ────────────────────────────────────────────
+  useEffect(() => {
+    if (token && user?.id) {
+      initOneSignal(user.id);
+    }
+  }, [token, user?.id]);
+
+  // ── Setup axios interceptor ──────────────────────────────────────────────
   useEffect(() => {
     const storedToken = localStorage.getItem('token');
     if (storedToken) {
@@ -163,10 +209,7 @@ function App() {
     }
   }, [token]);
 
-  // Toast dismissal is handled natively by ToastContainer's closeOnClick prop
-
-  // Cleanup: remove any bad market cache (empty array or all-null users) so cards
-  // always have avatar/flag/feedback data on the next load.
+  // ── Cleanup market cache ──────────────────────────────────────────────────
   useEffect(() => {
     try {
       const c = JSON.parse(localStorage.getItem('praqen_market_all') || 'null');
@@ -178,14 +221,12 @@ function App() {
     } catch {}
   }, []);
 
-  // Pre-warm the backend and pre-fetch marketplace listings as soon as app loads.
-  // This means by the time the user clicks Buy/Sell, the server is already awake
-  // and the listings are cached — so those pages open instantly.
+  // ── Pre-fetch marketplace ──────────────────────────────────────────────────
   useEffect(() => {
     const prefetch = async () => {
       try {
         const c = JSON.parse(localStorage.getItem('praqen_market_all') || 'null');
-        if (c && Date.now() - c.ts < 60000) return; // already fresh, skip
+        if (c && Date.now() - c.ts < 60000) return;
         const r = await axios.get(`${API_URL}/listings`, { timeout: 20000 });
         const all = (r.data.listings || []).map(l => ({
           ...l, users: Array.isArray(l.users) ? l.users[0] : l.users,
@@ -195,40 +236,41 @@ function App() {
         }
       } catch {}
     };
-    // Delay 800ms so it doesn't compete with the auth/profile fetch on startup
     const t = setTimeout(prefetch, 800);
     return () => clearTimeout(t);
   }, []);
 
-  // Load user profile on mount
+  // ── Load user profile ──────────────────────────────────────────────────────
   useEffect(() => {
     if (token) {
       loadProfile();
-    } else
-    {
+    } else {
       setLoading(false);
     }
 
-    // Listen for user updates from other pages (e.g., Profile page)
     const handleUserUpdated = () => {
       const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
       if (storedUser && storedUser.id) {
         setUser(storedUser);
+        if (storedUser.id) {
+          identifyUser(storedUser.id).catch(() => {});
+          initOneSignal(storedUser.id);
+        }
       }
     };
 
     window.addEventListener('userUpdated', handleUserUpdated);
     return () => window.removeEventListener('userUpdated', handleUserUpdated);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // Show welcome bonus modal first, then the tour — each fires once per user
+  // ── Show welcome bonus modal ──────────────────────────────────────────────
   useEffect(() => {
     if (!user?.id) return;
     const bonusKey  = `prq_bonus_shown_${user.id}`;
     const tourKey   = `prq_welcomed_${user.id}`;
     if (!localStorage.getItem(bonusKey)) {
-      setShowBonusModal(true); // tour deferred until bonus modal closes
+      setShowBonusModal(true);
     } else if (!localStorage.getItem(tourKey)) {
       setShowWelcome(true);
     }
@@ -241,14 +283,14 @@ function App() {
       setUser(userData);
       localStorage.setItem('user', JSON.stringify(userData));
       window.dispatchEvent(new Event('userUpdated'));
-      // Re-link push subscription on every session restore (covers page refresh)
-      if (userData?.id) identifyUser(userData.id).catch(() => {});
+      if (userData?.id) {
+        identifyUser(userData.id).catch(() => {});
+        initOneSignal(userData.id);
+      }
     } catch (error) {
       if (error.response?.status === 401) {
-        // Token is invalid or expired — log out
         logout();
       } else {
-        // Network/server error — stay logged in using cached data
         const cached = JSON.parse(localStorage.getItem('user') || 'null');
         if (cached) setUser(cached);
       }
@@ -257,7 +299,7 @@ function App() {
     }
   };
 
-  // ── Online heartbeat: keep last_seen_at fresh while logged in ──────────────
+  // ── Online heartbeat ──────────────────────────────────────────────────────
   useEffect(() => {
     if (!token) return;
 
@@ -265,13 +307,9 @@ function App() {
       axios.post(`${API_URL}/users/heartbeat`).catch(() => {});
     };
 
-    // Fire immediately so status shows Online right away
     ping();
-
-    // Re-ping every 60 seconds
     const interval = setInterval(ping, 60000);
 
-    // Also ping whenever the user switches back to this tab
     const onVisible = () => { if (document.visibilityState === 'visible') ping(); };
     document.addEventListener('visibilitychange', onVisible);
 
@@ -289,8 +327,10 @@ function App() {
     window.dispatchEvent(new Event('userUpdated'));
     axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     toast.success('Logged in successfully!');
-    // Link this browser's push subscription to the user's account
-    if (userData?.id) identifyUser(userData.id).catch(() => {});
+    if (userData?.id) {
+      identifyUser(userData.id).catch(() => {});
+      initOneSignal(userData.id);
+    }
   };
 
   const logout = () => {
@@ -300,97 +340,101 @@ function App() {
     localStorage.removeItem('user');
     delete axios.defaults.headers.common['Authorization'];
     toast.info('Logged out');
+
+    // ✅ Safe call with optional chaining
+    if (typeof unidentifyUser === 'function') {
+      unidentifyUser().catch(() => {});
+    }
     window.dispatchEvent(new Event('userUpdated'));
-    // Unlink push subscription from this account on logout
     unidentifyUser().catch(() => {});
   };
 
   if (loading) return <PageLoader />;
 
   return (
-    <HelmetProvider>
-    <RatesProvider>
-    <Router>
-      <CustomToastContainer />
-      <Suspense fallback={<PageLoader />}>
-      <Routes>
-        {/* ── TEAM PORTAL — completely standalone, no main chrome ── */}
-        <Route path="/team" element={<TeamDashboard user={user} />} />
-        <Route path="/moderator" element={<ModeratorDashboard user={user} />} />
+      <HelmetProvider>
+        <RatesProvider>
+          <Router>
+            <CustomToastContainer />
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                {/* ── TEAM PORTAL ── */}
+                <Route path="/team" element={<TeamDashboard user={user} />} />
+                <Route path="/moderator" element={<ModeratorDashboard user={user} />} />
 
-        {/* ── ALL OTHER ROUTES — wrapped in main app chrome ── */}
-        <Route path="*" element={
-          <AppShell>
-            <Navbar user={user} onLogout={logout} />
+                {/* ── ALL OTHER ROUTES ── */}
+                <Route path="*" element={
+                  <AppShell>
+                    <Navbar user={user} onLogout={logout} />
 
-            {showBonusModal && user && (
-              <WelcomeBonusModal user={user} onClose={() => {
-                localStorage.setItem(`prq_bonus_shown_${user.id}`, '1');
-                setShowBonusModal(false);
-                if (!localStorage.getItem(`prq_welcomed_${user.id}`)) {
-                  setShowWelcome(true);
-                }
-              }} />
-            )}
+                    {showBonusModal && user && (
+                        <WelcomeBonusModal user={user} onClose={() => {
+                          localStorage.setItem(`prq_bonus_shown_${user.id}`, '1');
+                          setShowBonusModal(false);
+                          if (!localStorage.getItem(`prq_welcomed_${user.id}`)) {
+                            setShowWelcome(true);
+                          }
+                        }} />
+                    )}
 
-            {showWelcome && user && !showBonusModal && (
-              <WelcomeModal user={user} onClose={() => setShowWelcome(false)} />
-            )}
+                    {showWelcome && user && !showBonusModal && (
+                        <WelcomeModal user={user} onClose={() => setShowWelcome(false)} />
+                    )}
 
-            {user && <NotificationPrompt userId={user.id} />}
-            <AndroidInstallBanner />
-            <IOSInstallGuide />
+                    {user && <NotificationPrompt userId={user.id} />}
+                    <AndroidInstallBanner />
+                    <IOSInstallGuide />
 
-            <Routes>
-              <Route path="/" element={<LandingPage user={user} />} />
-              <Route path="/listing/:id" element={<ListingDetail user={user} />} />
-              <Route path="/gift-cards" element={<GiftCardMarketplace user={user} />} />
-              <Route path="/blog" element={<Blog />} />
-              <Route path="/blog/:slug" element={<BlogPost />} />
-              <Route path="/privacy" element={<PrivacyPolicy />} />
-              <Route path="/terms" element={<TermsOfService />} />
-              <Route path="/marketplace" element={<Navigate to="/gift-cards" />} />
-              <Route path="/register" element={!user ? <Register onLogin={login} /> : <Navigate to="/" />} />
-              <Route path="/signup" element={!user ? <Register onLogin={login} /> : <Navigate to="/" />} />
-              <Route path="/login" element={!user ? <Login onLogin={login} /> : <Navigate to="/" />} />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
-              <Route path="/verify-otp" element={<VerifyOTP onLogin={login} />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/auth/confirm" element={<EmailConfirmation />} />
-              <Route path="/verify-email" element={<CheckEmail onLogin={login} />} />
-              <Route path="/sell-gift-card" element={<SellGiftCardMarketplace user={user} />} />
-              <Route path="/buy-bitcoin" element={<BuyBitcoin user={user} />} />
-              <Route path="/sell-bitcoin" element={<SellBitcoin user={user} />} />
-              <Route path="/buy-usdt" element={<BuyUSDT user={user} />} />
-              <Route path="/sell-usdt" element={<SellUSDT user={user} />} />
-              <Route path="/dashboard" element={user ? <Dashboard user={user} /> : <Navigate to="/login" />} />
-              <Route path="/wallet" element={user ? <WalletPage user={user} /> : <Navigate to="/login" />} />
-              <Route path="/settings" element={user ? <Settings user={user} setUser={setUser} /> : <Navigate to="/login" />} />
-              <Route path="/profile/:id" element={<Profile />} />
-              <Route path="/profile" element={user ? <Profile userId={user.id} /> : <Navigate to="/login" />} />
-              <Route path="/create-listing" element={user ? <CreateListing user={user} /> : <Navigate to="/login" />} />
-              <Route path="/create-offer" element={user ? <CreateOffer user={user} /> : <Navigate to="/login" />} />
-              <Route path="/edit-listing/:id" element={user ? <EditListing user={user} /> : <Navigate to="/login" />} />
-              <Route path="/my-listings" element={user ? <MyListings user={user} /> : <Navigate to="/login" />} />
-              <Route path="/my-trades" element={user ? <MyTrades user={user} /> : <Navigate to="/login" />} />
-              <Route path="/trade/:id" element={user ? <TradeDetail user={user} /> : <Navigate to="/login" />} />
-              <Route path="/trade-chat/:id" element={user ? <TradeChat user={user} /> : <Navigate to="/login" />} />
-              <Route path="/feedback/:tradeId/:userId" element={user ? <Feedback user={user} /> : <Navigate to="/login" />} />
-              <Route path="/admin" element={<AdminDashboard user={user} onLogin={login} />} />
-              <Route path="/escrow/:id" element={user ? <EscrowVerification user={user} /> : <Navigate to="/login" />} />
-              <Route path="/ref/:username" element={<RefRedirect />} />
-              <Route path="*" element={<Navigate to="/" />} />
-            </Routes>
+                    <Routes>
+                      <Route path="/" element={<LandingPage user={user} />} />
+                      <Route path="/listing/:id" element={<ListingDetail user={user} />} />
+                      <Route path="/gift-cards" element={<GiftCardMarketplace user={user} />} />
+                      <Route path="/blog" element={<Blog />} />
+                      <Route path="/blog/:slug" element={<BlogPost />} />
+                      <Route path="/privacy" element={<PrivacyPolicy />} />
+                      <Route path="/terms" element={<TermsOfService />} />
+                      <Route path="/marketplace" element={<Navigate to="/gift-cards" />} />
+                      <Route path="/register" element={!user ? <Register onLogin={login} /> : <Navigate to="/" />} />
+                      <Route path="/signup" element={!user ? <Register onLogin={login} /> : <Navigate to="/" />} />
+                      <Route path="/login" element={!user ? <Login onLogin={login} /> : <Navigate to="/" />} />
+                      <Route path="/forgot-password" element={<ForgotPassword />} />
+                      <Route path="/verify-otp" element={<VerifyOTP onLogin={login} />} />
+                      <Route path="/reset-password" element={<ResetPassword />} />
+                      <Route path="/auth/confirm" element={<EmailConfirmation />} />
+                      <Route path="/verify-email" element={<CheckEmail onLogin={login} />} />
+                      <Route path="/sell-gift-card" element={<SellGiftCardMarketplace user={user} />} />
+                      <Route path="/buy-bitcoin" element={<BuyBitcoin user={user} />} />
+                      <Route path="/sell-bitcoin" element={<SellBitcoin user={user} />} />
+                      <Route path="/buy-usdt" element={<BuyUSDT user={user} />} />
+                      <Route path="/sell-usdt" element={<SellUSDT user={user} />} />
+                      <Route path="/dashboard" element={user ? <Dashboard user={user} /> : <Navigate to="/login" />} />
+                      <Route path="/wallet" element={user ? <WalletPage user={user} /> : <Navigate to="/login" />} />
+                      <Route path="/settings" element={user ? <Settings user={user} setUser={setUser} /> : <Navigate to="/login" />} />
+                      <Route path="/profile/:id" element={<Profile />} />
+                      <Route path="/profile" element={user ? <Profile userId={user.id} /> : <Navigate to="/login" />} />
+                      <Route path="/create-listing" element={user ? <CreateListing user={user} /> : <Navigate to="/login" />} />
+                      <Route path="/create-offer" element={user ? <CreateOffer user={user} /> : <Navigate to="/login" />} />
+                      <Route path="/edit-listing/:id" element={user ? <EditListing user={user} /> : <Navigate to="/login" />} />
+                      <Route path="/my-listings" element={user ? <MyListings user={user} /> : <Navigate to="/login" />} />
+                      <Route path="/my-trades" element={user ? <MyTrades user={user} /> : <Navigate to="/login" />} />
+                      <Route path="/trade/:id" element={user ? <TradeDetail user={user} /> : <Navigate to="/login" />} />
+                      <Route path="/trade-chat/:id" element={user ? <TradeChat user={user} /> : <Navigate to="/login" />} />
+                      <Route path="/feedback/:tradeId/:userId" element={user ? <Feedback user={user} /> : <Navigate to="/login" />} />
+                      <Route path="/admin" element={<AdminDashboard user={user} onLogin={login} />} />
+                      <Route path="/escrow/:id" element={user ? <EscrowVerification user={user} /> : <Navigate to="/login" />} />
+                      <Route path="/ref/:username" element={<RefRedirect />} />
+                      <Route path="*" element={<Navigate to="/" />} />
+                    </Routes>
 
-            <BottomNav user={user} />
-            <SuggestionsPanel user={user} />
-          </AppShell>
-        } />
-      </Routes>
-      </Suspense>
-    </Router>
-    </RatesProvider>
-    </HelmetProvider>
+                    <BottomNav user={user} />
+                    <SuggestionsPanel user={user} />
+                  </AppShell>
+                } />
+              </Routes>
+            </Suspense>
+          </Router>
+        </RatesProvider>
+      </HelmetProvider>
   );
 }
 
