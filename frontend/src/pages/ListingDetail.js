@@ -253,6 +253,9 @@ const loadAll = useCallback(async (isBackground = false) => {
   const maxLocal = listing.max_limit_local
     || (effectiveMaxUsd ? effectiveMaxUsd * usdRate : listing.max_limit_usd ? listing.max_limit_usd * usdRate : 1000 * usdRate);
   const sellerHasLowBalance = listing.seller_balance_btc !== undefined && listing.seller_balance_btc < (listing.min_limit_usd || 10) / (listing.bitcoin_price || 88000);
+  // Backend flags this when the seller's live balance can't cover the listing's own minimum —
+  // in that case maxLocal can end up below minLocal (e.g. MIN $50 / MAX $10), which is untradeable.
+  const sellerCantFulfillMin = listing.seller_can_fulfill_min === false || maxLocal < minLocal;
 
   const payAmtNum = parseFloat(payAmt) || 0;
 
@@ -852,6 +855,11 @@ const loadAll = useCallback(async (isBackground = false) => {
                 <div style={{ padding:'14px', borderRadius:14, background:'#FFFBEB', border:'2px solid #F59E0B', textAlign:'center' }}>
                   <p style={{ fontSize:14, fontWeight:900, color:'#92400E', margin:'0 0 4px' }}>⏸ Offer Paused</p>
                   <p style={{ fontSize:12, color:'#B45309', margin:0 }}>The seller has temporarily paused this offer. Try another offer.</p>
+                </div>
+              ) : sellerCantFulfillMin ? (
+                <div style={{ padding:'14px', borderRadius:14, background:'#FEF2F2', border:'2px solid #FCA5A5', textAlign:'center' }}>
+                  <p style={{ fontSize:14, fontWeight:900, color:'#B91C1C', margin:'0 0 4px' }}>⚠️ Offer unavailable</p>
+                  <p style={{ fontSize:12, color:'#B91C1C', margin:0 }}>The seller's available balance can't currently cover this offer's minimum amount. Try another offer.</p>
                 </div>
               ) : (
               <button

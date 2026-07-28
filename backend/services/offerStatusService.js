@@ -62,10 +62,10 @@ async function updateOfferStatus(userId) {
  */
 async function syncAllOfferStatuses() {
   try {
-    // Fetch all ACTIVE and PAUSED BTC/USDT-required listings (include limits for cap logic)
+    // Fetch all ACTIVE and PAUSED BTC/USDT-required listings
     const { data: listings, error } = await supabaseAdmin
       .from('listings')
-      .select('id, seller_id, status, listing_type, asset, bitcoin_price, min_limit_usd, max_limit_usd, max_limit_local')
+      .select('id, seller_id, status, listing_type, asset, bitcoin_price, min_limit_usd')
       .in('listing_type', BTC_REQUIRED_TYPES)
       .in('status', ['ACTIVE', 'PAUSED']);
 
@@ -95,25 +95,19 @@ async function syncAllOfferStatuses() {
       const btcPrice  = parseFloat(listing.bitcoin_price) || BTC_PRICE_APPROX;
       const balUsd    = (balMap[listing.seller_id] || 0) * btcPrice; // default to BTC balance
       const minUsd    = parseFloat(listing.min_limit_usd || 0);
-      const maxUsd    = parseFloat(listing.max_limit_usd || 0);
-      const maxLocal  = parseFloat(listing.max_limit_local || 0);
 
       // Pause if balance < $10 or can't meet the offer's own minimum
       const cantFulfil = balUsd < MIN_USD || (minUsd > 0 && balUsd < minUsd);
       if (listing.status === 'ACTIVE'  && cantFulfil)  toPause.push(listing.id);
       if (listing.status === 'PAUSED'  && !cantFulfil) toReactivate.push(listing.id);
 
-      // Cap max_limit_usd (and max_limit_local) in DB when seller balance is lower than listed max
-      if (maxUsd > 0 && balUsd > 0 && balUsd < maxUsd) {
-        const cappedMax      = Math.max(MIN_USD, parseFloat(balUsd.toFixed(2)));
-        const localRate      = maxUsd > 0 && maxLocal > 0 ? maxLocal / maxUsd : 1;
-        const cappedMaxLocal = parseFloat((cappedMax * localRate).toFixed(2));
-        supabaseAdmin.from('listings')
-          .update({ max_limit_usd: cappedMax, max_limit_local: cappedMaxLocal, updated_at: new Date().toISOString() })
-          .eq('id', listing.id)
-          .then(() => {})
-          .catch(e => console.error(`[syncAllOfferStatuses] cap error ${listing.id.slice(0,8)}:`, e.message));
-      }
+      // NOTE: we intentionally do NOT permanently cap max_limit_usd/max_limit_local to the
+      // live balance here. That used to clamp max down (with a $10 floor) but never restore
+      // it once balance recovered, and never checked the result against min_limit_usd — so a
+      // listing whose balance dipped once would be stuck forever with max_limit stuck below
+      // min_limit (an impossible, inverted range). The /api/listings and /api/listings/:id
+      // endpoints already cap the *effective* tradeable max to live balance at read time
+      // without mutating the stored listing, which is enough to prevent overselling.
     }
 
     if (toPause.length > 0) {
