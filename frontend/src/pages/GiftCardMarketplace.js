@@ -10,11 +10,11 @@ import {
   Home, Wallet, User, Gift, Bitcoin,
   ChevronDown, CreditCard, ThumbsUp, ThumbsDown, Repeat2,
   Phone, Mail, Ban, ArrowUp, ArrowDown,
-  Crown, Zap,
+  Zap, Lock, Users, TrendingUp, Award, Sparkles, Check,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import CountryFlag, { resolveCode } from '../components/CountryFlag';
-import { deriveBadge, BadgeChip, BADGE_COLORS } from '../lib/badge';
+import { TRUST_MAP, deriveBadge, BadgeChip, BADGE_COLORS } from '../lib/badge';
 import ActiveTradeCard from '../components/ActiveTradeCard';
 import PRQFooter from '../components/PRQFooter';
 
@@ -29,13 +29,14 @@ const C = {
   g600:'#475569', g700:'#334155', g800:'#1E293B',
   success:'#10B981', danger:'#EF4444', online:'#22C55E',
   warn:'#F59E0B',
+  // Design system constants
+  cardRadius: 16,
 };
 
 // ── Featured badge config ─────────────────────────────────────────────────────
 const FEATURED = {
   fast_responder: {
-    TagIcon:     Zap,
-    tag:         'FAST RESPONDER OF THE WEEK',
+    tag:         '⚡ FAST RESPONDER OF THE WEEK',
     ribbon:      'linear-gradient(90deg,#1E3A8A 0%,#3730A3 18%,#6366F1 38%,#A5B4FC 50%,#6366F1 62%,#3730A3 82%,#1E3A8A 100%)',
     border:      '#4F46E5',
     glow:        'rgba(79,70,229,0.38)',
@@ -48,8 +49,7 @@ const FEATURED = {
     pulse:       true,
   },
   active_trader: {
-    TagIcon:     Crown,
-    tag:         'ACTIVE TRADER OF THE WEEK',
+    tag:         '👑 ACTIVE TRADER OF THE WEEK',
     ribbon:      'linear-gradient(90deg,#92400E 0%,#B45309 18%,#F59E0B 38%,#FDE68A 50%,#F59E0B 62%,#B45309 82%,#92400E 100%)',
     border:      '#D97706',
     glow:        'rgba(217,119,6,0.38)',
@@ -322,7 +322,7 @@ function Avatar({user, size=48, radius='rounded-xl'}) {
       className={`object-cover flex-shrink-0 ${radius}`} style={{width:size,height:size}}/>
   );
   return (
-    <div className={`flex-shrink-0 flex items-center justify-center font-black text-white ${radius}`}
+    <div className={`flex-shrink-0 flex items-center justify-center font-bold text-white ${radius}`}
       style={{width:size,height:size,backgroundColor:C.accent,fontSize:Math.round(size*0.38)}}>
       {(u?.username||'?').charAt(0).toUpperCase()}
     </div>
@@ -333,6 +333,7 @@ function Avatar({user, size=48, radius='rounded-xl'}) {
 function GCCard({listing, btcPriceUSD, onViewSeller, onTrade, featuredType}) {
   const {rates:USD_RATES} = useRates();
   const u        = getUser(listing.users);
+  const badge    = deriveBadge(u);
   const [seen, setSeen] = useState(() => getLastSeen(u));
   useEffect(() => {
     const id = setInterval(() => setSeen(getLastSeen(u)), 30000);
@@ -384,7 +385,7 @@ function GCCard({listing, btcPriceUSD, onViewSeller, onTrade, featuredType}) {
         <div style={{position:'relative', overflow:'hidden'}}>
           <div className="flex items-center justify-center gap-2"
             style={{background: ft.ribbon, padding:'10px 16px'}}>
-            <span style={{fontSize:12, fontWeight:900, letterSpacing:'0.12em', color:'#fff', textShadow:'0 1px 6px rgba(0,0,0,0.45)', whiteSpace:'nowrap'}}>
+            <span style={{fontSize:13, fontWeight:800, letterSpacing:'0.08em', color:'#fff', textShadow:'0 1px 4px rgba(0,0,0,0.4)', whiteSpace:'nowrap'}}>
               {ft.tag}
             </span>
           </div>
@@ -425,12 +426,16 @@ function GCCard({listing, btcPriceUSD, onViewSeller, onTrade, featuredType}) {
                 countryCode={u?.country_code || u?.country || u?.location || null}
                 className="w-4 h-3 rounded-sm flex-shrink-0"/>
               <button onClick={onViewSeller}
-                className="font-black text-sm hover:underline leading-tight truncate flex-shrink min-w-0"
+                className="font-bold text-sm hover:underline leading-tight truncate flex-shrink min-w-0"
                 style={{color:C.g800, maxWidth:'110px'}}>
                 {getDisplayName(u) || 'Seller'}
               </button>
               {isVerified(u) && <BadgeCheck size={13} style={{color:'#3B82F6',flexShrink:0}}/>}
-              <BadgeChip user={u} size="xs" />
+              <span className={`inline-flex items-center gap-px font-medium px-1 py-0 rounded-full border flex-shrink-0 ${badge.animate ? 'shadow-md' : ''}`}
+                style={{background:badge.bg, borderColor:badge.borderColor, fontSize:11, boxShadow: badge.glow ? `0 0 8px ${badge.glow}` : undefined}}>
+                <span style={{color:badge.iconColor||badge.textColor}}>{badge.icon}</span>
+                <span style={{color:badge.textColor}}>{badge.label}</span>
+              </span>
             </div>
 
             {/* Stats row — all chips wrap naturally, nothing pushed off-screen */}
@@ -472,21 +477,21 @@ function GCCard({listing, btcPriceUSD, onViewSeller, onTrade, featuredType}) {
                   backgroundColor: ft ? `${ft.border}18` : `${C.accent}14`,
                   border: `1px solid ${ft ? `${ft.border}30` : `${C.accent}30`}`,
                 }}>
-                <span className="text-[10px] font-semibold leading-snug flex-shrink-0" style={{color: ft ? ft.labelColor : C.g500}}>Seller accepts</span>
-                <span className="text-xs font-black leading-snug tracking-wide truncate" style={{color: ft ? ft.labelColor : C.accent, maxWidth:'130px'}}>
+                <span className="text-[11px] font-semibold leading-snug flex-shrink-0" style={{color: ft ? ft.labelColor : C.g500}}>Seller accepts</span>
+                <span className="text-xs font-bold leading-snug tracking-wide truncate" style={{color: ft ? ft.labelColor : C.accent, maxWidth:'130px'}}>
                   {/card/i.test(brand) ? brand.toUpperCase() : `${brand.toUpperCase()} CARD`}
                 </span>
               </span>
               <div className="flex items-center gap-1 flex-wrap">
                 {(cardType==='physical'||cardType==='both') && (
                   <span className="inline-flex items-center font-bold rounded-full"
-                    style={{backgroundColor:'#DCFCE7', color:'#166534', fontSize:'8px', padding:'2px 7px'}}>
+                    style={{backgroundColor:'#DCFCE7', color:'#166534', fontSize:11, padding:'2px 8px'}}>
                     Physical
                   </span>
                 )}
                 {(cardType==='ecode'||cardType==='both') && (
                   <span className="inline-flex items-center font-bold rounded-full"
-                    style={{backgroundColor:'#EDE9FE', color:'#5B21B6', fontSize:'8px', padding:'2px 7px'}}>
+                    style={{backgroundColor:'#EDE9FE', color:'#5B21B6', fontSize:11, padding:'2px 8px'}}>
                     E-Code
                   </span>
                 )}
@@ -513,13 +518,13 @@ function GCCard({listing, btcPriceUSD, onViewSeller, onTrade, featuredType}) {
           </p>
           <div className="flex items-center gap-1.5 mt-0.5">
             <span className="flex items-center justify-center rounded-full flex-shrink-0"
-              style={{width:16, height:16, backgroundColor:`${C.gold}22`, border:`1px solid ${C.gold}55`, color:'#B4790A', fontSize:9, fontWeight:900}}>
+              style={{width:16, height:16, backgroundColor:`${C.gold}22`, border:`1px solid ${C.gold}55`, color:'#B4790A', fontSize:11, fontWeight:700}}>
               ₿
             </span>
             <p className="text-xs font-semibold truncate" style={{color:'#B4790A'}}>{fBtc(btcOut)}</p>
           </div>
           <span className="inline-flex items-center gap-1 mt-1.5 font-bold px-1.5 py-0.5 rounded-md"
-            style={{backgroundColor:`${marginBg}18`, color:marginBg, fontSize:'10px'}}>
+            style={{backgroundColor:`${marginBg}18`, color:marginBg, fontSize:11}}>
             {margin > 0 ? <ArrowUp size={8} strokeWidth={3.5}/> : margin < 0 ? <ArrowDown size={8} strokeWidth={3.5}/> : null}
             {marginLabel}
           </span>
@@ -528,7 +533,7 @@ function GCCard({listing, btcPriceUSD, onViewSeller, onTrade, featuredType}) {
 
       {/* ─ Denominations ────────────────────────────────────────── */}
       <div className="px-4 pb-2">
-        <p className="font-semibold mb-0.5" style={{color:C.g400, fontSize:'10px'}}>Available range</p>
+        <p className="font-semibold mb-0.5" style={{color:C.g400, fontSize:11}}>Available range</p>
         {!cardRange ? (
           <span className="text-xs font-bold" style={{color:C.g400}}>Any Value</span>
         ) : cardRange[0]?.isRange ? (
@@ -655,8 +660,8 @@ function SellerModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg mb-3"
             style={{backgroundColor:'rgba(255,255,255,0.15)'}}>
             <CreditCard size={11} className="text-white/70"/>
-            <span className="text-xs font-black text-white">{brand}</span>
-            {fv && <span className="text-xs font-black text-white/70">${fv}</span>}
+            <span className="text-xs font-bold text-white">{brand}</span>
+            {fv && <span className="text-xs font-bold text-white/70">${fv}</span>}
           </div>
 
           <div className="flex items-center gap-3 mb-4">
@@ -669,7 +674,7 @@ function SellerModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
               <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
                 <a href={u?.id ? `/profile/${u.id}` : '#'}
                   onClick={() => u?.id && axios.post(`${API_URL}/users/${u.id}/view-profile`).catch(()=>{})}
-                  className="font-black text-white text-base leading-tight truncate"
+                  className="font-bold text-white text-base leading-tight truncate"
                   style={{textDecoration:'none', borderBottom:'1.5px solid rgba(255,255,255,0.4)', paddingBottom:'1px'}}>
                   {getDisplayName(u) || 'Seller'}
                 </a>
@@ -679,7 +684,7 @@ function SellerModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
                 <CountryFlag countryCode={ccCode} className="w-4 h-3 rounded-sm"/>
                 <span className="text-white/60 text-xs">{seen.online ? '🟢 Active now' : seen.label}</span>
               </div>
-              <span className={`inline-flex items-center gap-px px-2 py-0.5 rounded-full border text-xs font-black ${badge.animate ? 'shadow' : ''}`}
+              <span className={`inline-flex items-center gap-px px-2 py-0.5 rounded-full border text-xs font-bold ${badge.animate ? 'shadow' : ''}`}
                 style={{background:badge.bg, borderColor:badge.borderColor, boxShadow:badge.glow?`0 0 6px ${badge.glow}`:undefined}}>
                 <span style={{color:badge.iconColor||badge.textColor}}>{badge.icon}</span>
                 <span style={{color:badge.textColor}}>{badge.label}</span>
@@ -693,7 +698,7 @@ function SellerModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
             <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
               <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{backgroundColor: seen.online ? '#4ADE80' : '#94A3B8'}}/>
               <div className="min-w-0">
-                <p className="text-white font-black text-xs leading-tight truncate">{seen.online ? 'Online now' : seen.label}</p>
+                <p className="text-white font-bold text-xs leading-tight truncate">{seen.online ? 'Online now' : seen.label}</p>
                 <p className="text-white/50 text-xs leading-tight">Last active</p>
               </div>
             </div>
@@ -701,7 +706,7 @@ function SellerModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
             <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
               <CountryFlag countryCode={ccCode} className="w-5 h-3.5 rounded-sm flex-shrink-0"/>
               <div className="min-w-0">
-                <p className="text-white font-black text-xs leading-tight truncate">{countryName}</p>
+                <p className="text-white font-bold text-xs leading-tight truncate">{countryName}</p>
                 <p className="text-white/50 text-xs leading-tight">Location</p>
               </div>
             </div>
@@ -709,7 +714,7 @@ function SellerModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
             <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
               <Timer size={14} style={{color:'#FDE68A', flexShrink:0}}/>
               <div className="min-w-0">
-                <p className="text-white font-black text-xs leading-tight">{avgPayDisplay}</p>
+                <p className="text-white font-bold text-xs leading-tight">{avgPayDisplay}</p>
                 <p className="text-white/50 text-xs leading-tight">Avg. response</p>
               </div>
             </div>
@@ -717,7 +722,7 @@ function SellerModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
             <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
               <Heart size={14} style={{color: pos > 0 ? '#86EFAC' : 'rgba(255,255,255,0.5)', flexShrink:0}}/>
               <div className="min-w-0">
-                <p className="text-white font-black text-xs leading-tight">{pos > 0 ? `${fmt(pos)} users` : 'No ratings yet'}</p>
+                <p className="text-white font-bold text-xs leading-tight">{pos > 0 ? `${fmt(pos)} users` : 'No ratings yet'}</p>
                 <p className="text-white/50 text-xs leading-tight">Trusted by</p>
               </div>
             </div>
@@ -771,7 +776,7 @@ function SellerModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
                 ].map(({label,value,sub}) => (
                   <div key={label} className="rounded-xl p-3 text-center"
                     style={{backgroundColor:C.mist, border:`1px solid ${C.g200}`}}>
-                    <p className="font-black text-sm" style={{color:C.forest}}>{value}</p>
+                    <p className="font-bold text-sm" style={{color:C.forest}}>{value}</p>
                     <p className="text-xs font-semibold mt-0.5" style={{color:C.g500}}>{label}</p>
                     <p className="text-xs" style={{color:C.g400}}>{sub}</p>
                   </div>
@@ -782,7 +787,7 @@ function SellerModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
                   style={{backgroundColor:'#F0FDF4', border:'1px solid #86EFAC'}}>
                   <ThumbsUp size={14} style={{color:'#16A34A', flexShrink:0}}/>
                   <div>
-                    <p className="font-black text-sm" style={{color:'#16A34A'}}>{fmt(pos)}</p>
+                    <p className="font-bold text-sm" style={{color:'#16A34A'}}>{fmt(pos)}</p>
                     <p className="text-xs" style={{color:'#166534'}}>Positive</p>
                   </div>
                 </div>
@@ -790,13 +795,13 @@ function SellerModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
                   style={{backgroundColor:'#FEF2F2', border:'1px solid #FCA5A5'}}>
                   <ThumbsDown size={14} style={{color:'#DC2626', flexShrink:0}}/>
                   <div>
-                    <p className="font-black text-sm" style={{color:'#DC2626'}}>{fmt(neg)}</p>
+                    <p className="font-bold text-sm" style={{color:'#DC2626'}}>{fmt(neg)}</p>
                     <p className="text-xs" style={{color:'#991B1B'}}>Negative</p>
                   </div>
                 </div>
               </div>
               <div className="rounded-xl overflow-hidden" style={{border:`1px solid ${C.g200}`}}>
-                <p className="text-xs font-black px-3 py-2 uppercase tracking-wider"
+                <p className="text-xs font-bold px-3 py-2 uppercase tracking-wider"
                   style={{color:C.g500, backgroundColor:C.g50}}>Verification</p>
                 {[
                   {label:'Phone Number', ok:phoneOk, icon:'📱'},
@@ -809,7 +814,7 @@ function SellerModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
                       <span className="text-sm">{icon}</span>
                       <span className="text-xs font-semibold" style={{color:C.g700}}>{label}</span>
                     </div>
-                    <span className="text-xs font-black px-2.5 py-1 rounded-full"
+                    <span className="text-xs font-bold px-2.5 py-1 rounded-full"
                       style={{backgroundColor: ok ? '#F0FDF4' : '#FEF2F2', color: ok ? '#16A34A' : '#DC2626'}}>
                       {ok ? '✓ Verified' : '✗ Not verified'}
                     </span>
@@ -836,7 +841,7 @@ function SellerModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
                   <div key={label} className="flex items-center justify-between px-3 py-2.5 border-b last:border-0"
                     style={{borderColor:C.g100}}>
                     <span className="text-xs font-semibold" style={{color:C.g500}}>{label}</span>
-                    <span className="text-xs font-black" style={{color:C.g800}}>{value}</span>
+                    <span className="text-xs font-bold" style={{color:C.g800}}>{value}</span>
                   </div>
                 ))}
               </div>
@@ -849,21 +854,21 @@ function SellerModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
               <div className="flex gap-2 p-3 rounded-xl"
                 style={{backgroundColor:C.mist, border:`1px solid ${C.g200}`}}>
                 <div className="text-center px-3">
-                  <p className="text-2xl font-black" style={{color:C.forest}}>{rating.toFixed(1)}</p>
+                  <p className="text-2xl font-bold" style={{color:C.forest}}>{rating.toFixed(1)}</p>
                   <p className="text-xs" style={{color:C.g400}}>Rating</p>
                 </div>
                 <div className="w-px" style={{backgroundColor:C.g200}}/>
                 <div className="flex-1 flex items-center gap-3 px-2">
                   <div className="text-center flex-1">
-                    <p className="font-black text-sm" style={{color:'#16A34A'}}>{fmt(pos)}</p>
+                    <p className="font-bold text-sm" style={{color:'#16A34A'}}>{fmt(pos)}</p>
                     <p className="text-xs" style={{color:C.g400}}>👍 Positive</p>
                   </div>
                   <div className="text-center flex-1">
-                    <p className="font-black text-sm" style={{color:'#DC2626'}}>{fmt(neg)}</p>
+                    <p className="font-bold text-sm" style={{color:'#DC2626'}}>{fmt(neg)}</p>
                     <p className="text-xs" style={{color:C.g400}}>👎 Negative</p>
                   </div>
                   <div className="text-center flex-1">
-                    <p className="font-black text-sm" style={{color:C.forest}}>{trust}%</p>
+                    <p className="font-bold text-sm" style={{color:C.forest}}>{trust}%</p>
                     <p className="text-xs" style={{color:C.g400}}>Trust</p>
                   </div>
                 </div>
@@ -903,11 +908,11 @@ function SellerModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
                       style={{borderColor: isPos ? '#86EFAC' : '#FCA5A5', backgroundColor: isPos ? '#F0FDF4' : '#FEF2F2'}}>
                       <div className="flex items-center justify-between mb-1.5">
                         <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-black text-white flex-shrink-0"
+                          <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
                             style={{backgroundColor: isPos ? '#16A34A' : '#DC2626'}}>
                             {isPos ? '👍' : '👎'}
                           </div>
-                          <span className="text-xs font-black" style={{color: isPos ? '#166534' : '#991B1B'}}>
+                          <span className="text-xs font-bold" style={{color: isPos ? '#166534' : '#991B1B'}}>
                             {rv.reviewer?.username || 'Anonymous'}
                           </span>
                         </div>
@@ -971,7 +976,7 @@ function SellerModal({seller, listing, onClose, onTrade, btcPriceUSD}) {
                 <div key={label} className="flex items-center justify-between px-3.5 py-3 border-b last:border-0"
                   style={{borderColor:C.g100}}>
                   <span className="text-xs font-semibold" style={{color:C.g500}}>{label}</span>
-                  <span className="text-xs font-black text-right ml-4" style={{color:C.g800, maxWidth:'60%'}}>{value}</span>
+                  <span className="text-xs font-bold text-right ml-4" style={{color:C.g800, maxWidth:'60%'}}>{value}</span>
                 </div>
               ))}
             </div>
@@ -1006,6 +1011,213 @@ function SkeletonCard() {
         <div className="h-2.5 rounded-lg w-1/2" style={{backgroundColor:C.g100}}/>
         <div className="h-9 rounded-xl mt-1" style={{backgroundColor:C.g200}}/>
       </div>
+    </div>
+  );
+}
+
+// ── Affiliate promo card ──────────────────────────────────────────────────────
+// Single accent color throughout (C.accent / C.forest), a real stepper for the
+// welcome bonus, and a one-hue commission ramp instead of a five-color mix.
+const AFF_TIERS = [
+  { refs:'0–9',   rate:'0.20%' },
+  { refs:'10–24', rate:'0.25%' },
+  { refs:'25–49', rate:'0.35%' },
+  { refs:'50–99', rate:'0.40%' },
+  { refs:'100+',  rate:'0.50%' },
+];
+const AFF_BADGE_COLORS = { BEGINNER:C.g500, PRO:C.accent, EXPERT:C.forest, AMBASSADOR:C.accent, LEGEND:C.gold };
+
+function AffiliatePromoCard({ navigate, btcPrice, affLeaderboard }) {
+  const step = 1; // 0 = registered, 1 = verify (current), 2 = trade complete
+  const STEPS = [
+    { label:'Register',         sub:'$1 unlocked' },
+    { label:'Verify identity',  sub:'keeps your funds safe' },
+    { label:'Complete 1 trade', sub:'$2 unlocked' },
+  ];
+
+  return (
+    <div style={{ background:'#fff', borderRadius:C.cardRadius, border:`1px solid ${C.g200}`, overflow:'hidden' }}>
+
+      {/* ── Welcome bonus ─────────────────────────────────────────── */}
+      <div style={{ padding:'18px 16px', borderBottom:`1px solid ${C.g100}` }}>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="flex items-start gap-3">
+            <div style={{
+              width:36, height:36, borderRadius:10, flexShrink:0,
+              background:C.mist, border:`1px solid ${C.accent}30`,
+              display:'flex', alignItems:'center', justifyContent:'center',
+            }}>
+              <Gift size={17} style={{ color:C.accent }}/>
+            </div>
+            <div>
+              <p style={{ margin:0, fontSize:14, fontWeight:800, color:C.g800, lineHeight:1.3 }}>
+                Earn $2 in Bitcoin as a new user
+              </p>
+              <p style={{ margin:'2px 0 0', fontSize:12, color:C.g500, lineHeight:1.4 }}>
+                Valid for 30 days after signup. Share your link so friends can claim theirs too.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={()=>navigate('/register')}
+            className="hover:opacity-90 transition"
+            style={{
+              flexShrink:0, padding:'8px 16px', borderRadius:10, border:'none', cursor:'pointer',
+              background:C.forest, color:'#fff', fontWeight:700, fontSize:12.5,
+            }}>
+            Claim bonus
+          </button>
+        </div>
+
+        {/* Stepper */}
+        <div className="flex items-center" style={{ marginTop:16 }}>
+          {STEPS.map((s, i) => {
+            const state = i < step ? 'done' : i === step ? 'active' : 'upcoming';
+            return (
+              <div key={s.label} style={{ display:'flex', alignItems:'center', flex: i < STEPS.length - 1 ? 1 : 'initial', minWidth:0 }}>
+                <div className="flex items-center gap-2" style={{ minWidth:0 }}>
+                  <div style={{
+                    width:24, height:24, borderRadius:'50%', flexShrink:0,
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    background: state==='done' ? C.forest : '#fff',
+                    border: state==='active' ? `2px solid ${C.forest}` : state==='done' ? 'none' : `1.5px solid ${C.g300}`,
+                  }}>
+                    {state==='done'
+                      ? <Check size={12} style={{ color:'#fff' }}/>
+                      : state==='upcoming'
+                        ? <Lock size={10} style={{ color:C.g400 }}/>
+                        : <span style={{ width:7, height:7, borderRadius:'50%', background:C.forest }}/>
+                    }
+                  </div>
+                  <div style={{ minWidth:0 }}>
+                    <p style={{
+                      margin:0, fontSize:12, fontWeight:700, whiteSpace:'nowrap',
+                      color: state==='upcoming' ? C.g400 : C.g800,
+                    }}>{s.label}</p>
+                    <p style={{
+                      margin:0, fontSize:10.5, whiteSpace:'nowrap',
+                      color: state==='upcoming' ? C.g400 : C.g500,
+                    }}>{s.sub}</p>
+                  </div>
+                </div>
+                {i < STEPS.length - 1 && (
+                  <div style={{
+                    flex:1, height:2, margin:'0 8px', minWidth:16,
+                    background: i < step ? C.forest : C.g200,
+                  }}/>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Affiliate program ─────────────────────────────────────── */}
+      <div style={{ padding:'16px' }}>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <span style={{
+              fontSize:10.5, fontWeight:800, color:C.accent, background:C.mist,
+              border:`1px solid ${C.accent}30`, borderRadius:5, padding:'2px 7px',
+              letterSpacing:0.3, textTransform:'uppercase',
+            }}>Affiliate program</span>
+            <p style={{ margin:'6px 0 0', fontSize:14, fontWeight:800, color:C.g800 }}>
+              Invite friends, earn BTC on every trade they make
+            </p>
+          </div>
+          <button
+            onClick={()=>navigate('/dashboard?tab=affiliate')}
+            className="hover:opacity-90 transition"
+            style={{
+              flexShrink:0, padding:'8px 14px', borderRadius:10, border:`1px solid ${C.g200}`,
+              cursor:'pointer', background:'#fff', color:C.forest, fontWeight:700, fontSize:12.5,
+              display:'flex', alignItems:'center', gap:6,
+            }}>
+            Get my link <ArrowRight size={13}/>
+          </button>
+        </div>
+
+        {/* Commission tiers — single hue ramp, increasing intensity */}
+        <p style={{ margin:'16px 0 8px', fontSize:11, fontWeight:700, color:C.g500, textTransform:'uppercase', letterSpacing:0.4 }}>
+          Commission by active referrals
+        </p>
+        <div className="grid grid-cols-5 gap-1.5">
+          {AFF_TIERS.map((t, i) => {
+            const intensity = 0.55 + i * 0.11;
+            return (
+              <div key={t.refs} style={{
+                padding:'8px 4px', borderRadius:9, textAlign:'center',
+                background:`rgba(13,148,136,${intensity*0.14})`,
+                border:`1px solid rgba(13,148,136,${intensity*0.35})`,
+              }}>
+                <div style={{ fontSize:12.5, fontWeight:800, color:C.forest }}>{t.rate}</div>
+                <div style={{ fontSize:10, fontWeight:600, color:C.g500, marginTop:2 }}>{t.refs} refs</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Leaderboard ────────────────────────────────────────────── */}
+      {affLeaderboard.length > 0 && (
+        <div style={{ borderTop:`1px solid ${C.g100}` }}>
+          <div className="flex items-center justify-between" style={{ padding:'9px 16px', background:C.g50 }}>
+            <span className="flex items-center gap-1.5" style={{ fontSize:11, fontWeight:800, color:C.g600, textTransform:'uppercase', letterSpacing:0.5 }}>
+              <TrendingUp size={12}/> Top earners
+            </span>
+            <span style={{ fontSize:11, color:C.g400, fontWeight:600 }}>All time</span>
+          </div>
+          {affLeaderboard.map((u, i) => {
+            const bc = AFF_BADGE_COLORS[u.badge] || C.g500;
+            const earnedUsd = (u.earned_btc || 0) * (btcPrice || 76000);
+            return (
+              <div key={u.username} style={{
+                display:'flex', alignItems:'center', gap:10, padding:'10px 16px',
+                borderBottom: i < affLeaderboard.length - 1 ? `1px solid ${C.g100}` : 'none',
+              }}>
+                <span style={{ width:18, textAlign:'center', fontSize:12, fontWeight:800, color: i===0 ? C.gold : C.g400 }}>
+                  {i + 1}
+                </span>
+                <div style={{
+                  width:28, height:28, borderRadius:'50%', flexShrink:0,
+                  background:C.mist, border:`1px solid ${C.accent}30`,
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  fontSize:12, fontWeight:800, color:C.accent,
+                }}>
+                  {(u.username||'?')[0].toUpperCase()}
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div className="flex items-center gap-2">
+                    <span style={{ fontSize:12.5, fontWeight:700, color:C.g800, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      {u.username}
+                    </span>
+                    <span style={{
+                      fontSize:9.5, fontWeight:800, color:bc, background:`${bc}14`,
+                      border:`1px solid ${bc}30`, borderRadius:4, padding:'1px 5px',
+                      letterSpacing:0.3, textTransform:'uppercase', flexShrink:0,
+                    }}>{u.badge || 'BEGINNER'}</span>
+                  </div>
+                  <span style={{ fontSize:11, color:C.g400, fontWeight:500 }}>
+                    {u.referrals} referrals · {u.affiliate_trades || u.total_trades} trades
+                  </span>
+                </div>
+                <div style={{ textAlign:'right', flexShrink:0 }}>
+                  <div style={{ fontSize:12.5, fontWeight:800, color:C.g800 }}>
+                    ${earnedUsd >= 1000 ? (earnedUsd/1000).toFixed(1)+'k' : earnedUsd < 0.01 ? '<0.01' : earnedUsd.toFixed(2)}
+                  </div>
+                  <div style={{ fontSize:10.5, color:C.g400, fontWeight:500 }}>
+                    ₿{(() => { const v=parseFloat(u.earned_btc||0); return v>0&&v<0.0001?v.toFixed(8):v.toFixed(5); })()}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <p style={{ margin:0, padding:'10px 16px', textAlign:'center', fontSize:11, color:C.g400, fontWeight:500, borderTop:`1px solid ${C.g100}` }}>
+        Free to join · No minimum payout · Commission paid for the lifetime of each referral
+      </p>
     </div>
   );
 }
@@ -1226,12 +1438,12 @@ export default function GiftCards({user}) {
                 Gift Card <span style={{color:C.gold}}>Marketplace</span>
               </p>
               <div className="flex items-center gap-2 whitespace-nowrap overflow-hidden">
-                <span className="text-xs font-semibold" style={{color:'rgba(255,255,255,0.5)'}}>
-                  1 BTC = <span className="font-black" style={{color:'rgba(255,255,255,0.9)'}}>${fmt(btcPrice)} USD</span>
+                <span className="text-xs font-medium" style={{color:'rgba(255,255,255,0.45)'}}>
+                  1 BTC = <span className="font-semibold" style={{color:'rgba(255,255,255,0.8)'}}>${fmt(btcPrice)} USD</span>
                 </span>
-                <span style={{color:'rgba(255,255,255,0.2)',fontSize:10}}>|</span>
-                <span className="text-xs font-semibold" style={{color:'rgba(255,255,255,0.5)'}}>
-                  1 USD = <span className="font-black" style={{color:'rgba(255,255,255,0.75)'}}>
+                <span style={{color:'rgba(255,255,255,0.18)',fontSize:11}}>|</span>
+                <span className="text-xs font-medium" style={{color:'rgba(255,255,255,0.45)'}}>
+                  1 USD = <span className="font-semibold" style={{color:'rgba(255,255,255,0.65)'}}>
                     {cur==='USD' ? `₵${fmt(USD_RATES['GHS']||1,2)} GHS` : `${sym}${fmt(usdRate,2)} ${cur}`}
                   </span>
                 </span>
@@ -1254,7 +1466,7 @@ export default function GiftCards({user}) {
         <div className="flex w-full">
           <div className="flex-1 relative">
             <button onClick={()=>setShowAssetMenu(v=>!v)}
-              className="w-full text-center py-3 text-xs font-black border-b-2 border-transparent transition-all flex items-center justify-center gap-1"
+              className="w-full text-center py-3 text-xs font-bold border-b-2 border-transparent transition-all flex items-center justify-center gap-1"
               style={{color:C.g400}}>
               Buy BTC <ChevronDown size={12} className={`transition-transform ${showAssetMenu?'rotate-180':''}`}/>
             </button>
@@ -1265,22 +1477,22 @@ export default function GiftCards({user}) {
                   style={{borderColor:C.g200}}>
                   <button onClick={()=>{setShowAssetMenu(false); navigate('/buy-bitcoin');}}
                     className="w-full flex items-center gap-2.5 px-3.5 py-3 text-left hover:bg-gray-50 transition">
-                    <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-black text-xs text-white"
+                    <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-xs text-white"
                       style={{background:'linear-gradient(135deg,#F7931A,#e8830a)'}}>₿</span>
                     <span className="flex-1 min-w-0">
-                      <span className="block text-xs font-black" style={{color:C.g800}}>Bitcoin</span>
-                      <span className="block text-[10px] font-semibold" style={{color:C.g400}}>BTC</span>
+                      <span className="block text-xs font-bold" style={{color:C.g800}}>Bitcoin</span>
+                      <span className="block text-[11px] font-semibold" style={{color:C.g400}}>BTC</span>
                     </span>
                     <ArrowRight size={13} style={{color:C.g300}}/>
                   </button>
                   <button onClick={()=>{setShowAssetMenu(false); navigate('/buy-usdt');}}
                     className="w-full flex items-center gap-2.5 px-3.5 py-3 text-left hover:bg-gray-50 transition border-t"
                     style={{borderColor:C.g100}}>
-                    <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-black text-xs text-white"
+                    <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-xs text-white"
                       style={{background:'#26A17B'}}>₮</span>
                     <span className="flex-1 min-w-0">
-                      <span className="block text-xs font-black" style={{color:C.g800}}>Tether</span>
-                      <span className="block text-[10px] font-semibold" style={{color:C.g400}}>USDT · TRC-20</span>
+                      <span className="block text-xs font-bold" style={{color:C.g800}}>Tether</span>
+                      <span className="block text-[11px] font-semibold" style={{color:C.g400}}>USDT · TRC-20</span>
                     </span>
                     <ArrowRight size={13} style={{color:C.g300}}/>
                   </button>
@@ -1290,7 +1502,7 @@ export default function GiftCards({user}) {
           </div>
           <div className="flex-1 relative">
             <button onClick={()=>setShowSellAssetMenu(v=>!v)}
-              className="w-full text-center py-3 text-xs font-black border-b-2 border-transparent transition-all flex items-center justify-center gap-1"
+              className="w-full text-center py-3 text-xs font-bold border-b-2 border-transparent transition-all flex items-center justify-center gap-1"
               style={{color:C.g400}}>
               Sell <ChevronDown size={12} className={`transition-transform ${showSellAssetMenu?'rotate-180':''}`}/>
             </button>
@@ -1301,22 +1513,22 @@ export default function GiftCards({user}) {
                   style={{borderColor:C.g200}}>
                   <button onClick={()=>{setShowSellAssetMenu(false); navigate('/sell-bitcoin');}}
                     className="w-full flex items-center gap-2.5 px-3.5 py-3 text-left hover:bg-gray-50 transition">
-                    <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-black text-xs text-white"
+                    <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-xs text-white"
                       style={{background:'linear-gradient(135deg,#F7931A,#e8830a)'}}>₿</span>
                     <span className="flex-1 min-w-0">
-                      <span className="block text-xs font-black" style={{color:C.g800}}>Bitcoin</span>
-                      <span className="block text-[10px] font-semibold" style={{color:C.g400}}>BTC</span>
+                      <span className="block text-xs font-bold" style={{color:C.g800}}>Bitcoin</span>
+                      <span className="block text-[11px] font-semibold" style={{color:C.g400}}>BTC</span>
                     </span>
                     <ArrowRight size={13} style={{color:C.g300}}/>
                   </button>
                   <button onClick={()=>{setShowSellAssetMenu(false); navigate('/sell-usdt');}}
                     className="w-full flex items-center gap-2.5 px-3.5 py-3 text-left hover:bg-gray-50 transition border-t"
                     style={{borderColor:C.g100}}>
-                    <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-black text-xs text-white"
+                    <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-xs text-white"
                       style={{background:'#26A17B'}}>₮</span>
                     <span className="flex-1 min-w-0">
-                      <span className="block text-xs font-black" style={{color:C.g800}}>Tether</span>
-                      <span className="block text-[10px] font-semibold" style={{color:C.g400}}>USDT · TRC-20</span>
+                      <span className="block text-xs font-bold" style={{color:C.g800}}>Tether</span>
+                      <span className="block text-[11px] font-semibold" style={{color:C.g400}}>USDT · TRC-20</span>
                     </span>
                     <ArrowRight size={13} style={{color:C.g300}}/>
                   </button>
@@ -1328,7 +1540,7 @@ export default function GiftCards({user}) {
             {label:'Gift Cards', path:'/gift-cards',   active:true,  color:'#0D9488'},
           ].map(tab=>(
             <Link key={tab.path} to={tab.path}
-              className="flex-1 text-center py-3 text-xs font-black border-b-2 transition-all"
+              className="flex-1 text-center py-3 text-xs font-bold border-b-2 transition-all"
               style={{
                 borderColor:     tab.active ? tab.color : 'transparent',
                 color:           tab.active ? tab.color : C.g400,
@@ -1350,7 +1562,7 @@ export default function GiftCards({user}) {
               <Wallet size={16} style={{color:'#D97706'}}/>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-black" style={{color:'#92400E'}}>Your gift card offer is off the market</p>
+              <p className="text-sm font-bold" style={{color:'#92400E'}}>Your gift card offer is off the market</p>
               <p className="text-xs mt-0.5 leading-relaxed" style={{color:'#B45309'}}>
                 Your Bitcoin wallet is empty, so your offer has been automatically paused. Top up your wallet to bring it back to the marketplace.
               </p>
@@ -1376,15 +1588,15 @@ export default function GiftCards({user}) {
 
             {/* ── AMOUNT ── */}
             <div>
-              <p className="text-xs font-black mb-1 tracking-wide" style={{color:C.g500}}>AMOUNT</p>
+              <p className="text-xs font-bold mb-1 tracking-wide" style={{color:C.g500}}>AMOUNT</p>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-black pointer-events-none select-none"
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold pointer-events-none select-none"
                   style={{color:amountInput?C.forest:C.g400}}>$</span>
                 <input
                   type="number" min="0" placeholder="e.g. 50"
                   value={amountInput}
                   onChange={e=>setAmountInput(e.target.value)}
-                  className="w-full pl-6 pr-7 py-2.5 rounded-xl border-2 font-black focus:outline-none"
+                  className="w-full pl-6 pr-7 py-2.5 rounded-xl border-2 font-bold focus:outline-none"
                   style={{
                     borderColor:amountInput?C.forest:C.g200,
                     color:C.g800,
@@ -1404,7 +1616,7 @@ export default function GiftCards({user}) {
 
             {/* ── CURRENCY ── */}
             <div>
-              <p className="text-xs font-black mb-1 tracking-wide" style={{color:C.g500}}>CURRENCY</p>
+              <p className="text-xs font-bold mb-1 tracking-wide" style={{color:C.g500}}>CURRENCY</p>
               <div className="relative" ref={currencyRef}>
                 <button onClick={()=>{setShowCurrency(!showCurrency);setCurrencySearch('');setShowBrand(false);setShowCountry(false);}}
                   className="w-full flex items-center gap-1.5 px-3 py-2.5 rounded-xl border-2 font-bold transition"
@@ -1413,8 +1625,8 @@ export default function GiftCards({user}) {
                     color:selCurrency.code!=='USD'?C.forest:C.g600,
                     backgroundColor:selCurrency.code!=='USD'?`${C.forest}08`:'transparent'
                   }}>
-                  <span className="text-xs font-black flex-shrink-0">{selCurrency.symbol}</span>
-                  <span className="text-xs font-black flex-1 text-left">{selCurrency.code}</span>
+                  <span className="text-xs font-bold flex-shrink-0">{selCurrency.symbol}</span>
+                  <span className="text-xs font-bold flex-1 text-left">{selCurrency.code}</span>
                   <ChevronDown size={12} className={`transition-transform flex-shrink-0 ${showCurrency?'rotate-180':''}`}
                     style={{color:C.g400}}/>
                 </button>
@@ -1436,7 +1648,7 @@ export default function GiftCards({user}) {
                           const regionHdr = !q && c.region !== lastRegion
                             ? (lastRegion = c.region, (
                                 <div key={`r-${c.region}`} className="px-3 py-1.5" style={{backgroundColor:'#F8FAFC',borderBottom:`1px solid ${C.g100}`}}>
-                                  <span className="text-xs font-black uppercase tracking-wider" style={{color:COUNTRY_REGIONS[c.region]||C.g500}}>{c.region}</span>
+                                  <span className="text-xs font-bold uppercase tracking-wider" style={{color:COUNTRY_REGIONS[c.region]||C.g500}}>{c.region}</span>
                                 </div>
                               ))
                             : (lastRegion = c.region, null);
@@ -1444,7 +1656,7 @@ export default function GiftCards({user}) {
                             <button key={c.code} onClick={()=>{setSelCurrency(c);setShowCurrency(false);setCurrencySearch('');}}
                               className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 border-b last:border-0 transition"
                               style={{borderColor:C.g50,backgroundColor:selCurrency.code===c.code?`${C.forest}08`:'transparent'}}>
-                              <span className="text-sm font-black w-6 text-center flex-shrink-0" style={{color:C.forest}}>{c.symbol}</span>
+                              <span className="text-sm font-bold w-6 text-center flex-shrink-0" style={{color:C.forest}}>{c.symbol}</span>
                               <div className="flex-1 text-left">
                                 <p className="font-bold text-xs" style={{color:C.g800}}>{c.code}</p>
                                 <p className="text-xs" style={{color:C.g400}}>{c.name}</p>
@@ -1462,7 +1674,7 @@ export default function GiftCards({user}) {
 
             {/* ── PAYMENT (Gift Card Brand) ── */}
             <div>
-              <p className="text-xs font-black mb-1 tracking-wide" style={{color:C.g500}}>PAYMENT</p>
+              <p className="text-xs font-bold mb-1 tracking-wide" style={{color:C.g500}}>PAYMENT</p>
               <div className="relative" ref={brandRef}>
                 <button onClick={()=>{setShowBrand(!showBrand);setBrandSearch('');setShowCurrency(false);setShowCountry(false);}}
                   className="w-full flex items-center gap-1.5 px-3 py-2.5 rounded-xl border-2 font-bold transition"
@@ -1471,7 +1683,7 @@ export default function GiftCards({user}) {
                     color:selBrand!=='All Brands'?C.forest:C.g600,
                     backgroundColor:selBrand!=='All Brands'?`${C.forest}08`:'transparent'
                   }}>
-                  <span className="text-xs font-black flex-1 text-left truncate">
+                  <span className="text-xs font-bold flex-1 text-left truncate">
                     {selBrand==='All Brands'?'All Cards':selBrand}
                   </span>
                   <ChevronDown size={12} className={`transition-transform flex-shrink-0 ${showBrand?'rotate-180':''}`}
@@ -1501,7 +1713,7 @@ export default function GiftCards({user}) {
                           <div key={group.cat||'all'}>
                             {group.cat && (
                               <div className="px-3 py-1.5 sticky top-0" style={{backgroundColor:'#F8FAFC',borderBottom:`1px solid ${C.g100}`}}>
-                                <span className="text-xs font-black uppercase tracking-wider" style={{color:group.color||C.g500}}>{group.cat}</span>
+                                <span className="text-xs font-bold uppercase tracking-wider" style={{color:group.color||C.g500}}>{group.cat}</span>
                               </div>
                             )}
                             {group.items.map(b=>(
@@ -1523,7 +1735,7 @@ export default function GiftCards({user}) {
 
             {/* ── COUNTRY ── */}
             <div>
-              <p className="text-xs font-black mb-1 tracking-wide" style={{color:C.g500}}>COUNTRY</p>
+              <p className="text-xs font-bold mb-1 tracking-wide" style={{color:C.g500}}>COUNTRY</p>
               <div className="relative" ref={countryRef}>
                 <button onClick={()=>{setShowCountry(!showCountry);setShowCurrency(false);setShowBrand(false);}}
                   className="w-full flex items-center gap-1.5 px-3 py-2.5 rounded-xl border-2 font-bold transition"
@@ -1533,7 +1745,7 @@ export default function GiftCards({user}) {
                     backgroundColor:selCountry.code!=='ALL'?`${C.forest}08`:'transparent'
                   }}>
                   <span className="text-xs">{selCountry.flag}</span>
-                  <span className="text-xs font-black flex-1 text-left">{selCountry.name}</span>
+                  <span className="text-xs font-bold flex-1 text-left">{selCountry.name}</span>
                   <ChevronDown size={12} className={`transition-transform flex-shrink-0 ${showCountry?'rotate-180':''}`}
                     style={{color:selCountry.code!=='ALL'?C.forest:C.g400}}/>
                 </button>
@@ -1554,7 +1766,7 @@ export default function GiftCards({user}) {
                       return filtered.map(c=>{
                         const regHdr = !q && c.region && c.region!==lastReg
                           ? (lastReg=c.region, <div key={`r-${c.region}`} className="px-3 py-1" style={{backgroundColor:'#F8FAFC'}}>
-                              <span className="text-xs font-black uppercase tracking-wider" style={{color:COUNTRY_REGIONS[c.region]||C.g500}}>{c.region}</span>
+                              <span className="text-xs font-bold uppercase tracking-wider" style={{color:COUNTRY_REGIONS[c.region]||C.g500}}>{c.region}</span>
                             </div>)
                           : (c.region&&(lastReg=c.region), null);
                         return [regHdr,
@@ -1577,7 +1789,7 @@ export default function GiftCards({user}) {
 
           {/* Sort + Search + Create + Clear — all on one line */}
           <div className="mt-2 flex items-center gap-2">
-            <span className="text-xs font-black flex-shrink-0" style={{color:C.g500}}>Sort:</span>
+            <span className="text-xs font-bold flex-shrink-0" style={{color:C.g500}}>Sort:</span>
             <select value={sortBy} onChange={e=>setSortBy(e.target.value)}
               className="flex-shrink-0 px-2 py-2 font-bold border-2 rounded-xl focus:outline-none"
               style={{borderColor:sortBy!=='rate_low'?C.forest:C.g200,color:C.g800,fontSize:'13px',width:'105px'}}>
@@ -1608,7 +1820,7 @@ export default function GiftCards({user}) {
             </button>
             {hasFilters&&(
               <button onClick={()=>{setAmountInput('');setSelBrand('All Brands');setSelCountry(COUNTRIES[0]);setTraderSearch('');setSortBy('rate_low');setCountrySearch('');}}
-                className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-xl text-xs font-black border-2 transition"
+                className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-xl text-xs font-bold border-2 transition"
                 style={{borderColor:C.danger,color:C.danger,backgroundColor:'#FEF2F2'}}>
                 ✕
               </button>
@@ -1643,11 +1855,11 @@ export default function GiftCards({user}) {
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full animate-pulse flex-shrink-0"
               style={{backgroundColor:C.online, boxShadow:`0 0 0 3px ${C.online}30`}}/>
-            <span className="text-xs font-black" style={{color:C.online}}>{onlineCnt} online</span>
+            <span className="text-xs font-bold" style={{color:C.online}}>{onlineCnt} online</span>
           </div>
-          <span style={{color:C.g300, fontSize:10}}>·</span>
+          <span style={{color:C.g300, fontSize:11}}>·</span>
           <span className="text-xs font-semibold" style={{color:C.g500}}>
-            <span className="font-black" style={{color:C.g800}}>{filtered.length}</span> active offer{filtered.length!==1?'s':''}
+            <span className="font-bold" style={{color:C.g800}}>{filtered.length}</span> active offer{filtered.length!==1?'s':''}
             {selCountry.code!=='ALL'?` in ${selCountry.flag} ${selCountry.name}`:''}
           </span>
         </div>
@@ -1655,7 +1867,7 @@ export default function GiftCards({user}) {
         {(loading && !listings.length) || retrying ? (
           <div className="bg-white rounded-2xl border p-8 text-center" style={{borderColor:C.g200}}>
             <p className="text-5xl mb-3">⏳</p>
-            <p className="font-black text-base mb-1" style={{color:C.g800}}>
+            <p className="font-bold text-base mb-1" style={{color:C.g800}}>
               {retrying ? 'Waking up server…' : 'Loading offers…'}
             </p>
             <p className="text-sm" style={{color:C.g400}}>
@@ -1668,7 +1880,7 @@ export default function GiftCards({user}) {
         ) : loadError && !listings.length ? (
           <div className="bg-white rounded-2xl border p-8 text-center" style={{borderColor:C.g200}}>
             <p className="text-5xl mb-3">📡</p>
-            <p className="font-black text-base mb-1" style={{color:C.g800}}>Couldn't load offers</p>
+            <p className="font-bold text-base mb-1" style={{color:C.g800}}>Couldn't load offers</p>
             <p className="text-sm mb-4" style={{color:C.g400}}>Server may be busy. Please try again.</p>
             <button onClick={()=>{ setLoading(true); loadListings(1, true); }}
               className="px-6 py-2.5 rounded-xl text-white text-sm font-black hover:opacity-90 transition flex items-center gap-2 mx-auto"
@@ -1679,7 +1891,7 @@ export default function GiftCards({user}) {
         ) : filtered.length===0?(
           <div className="bg-white rounded-2xl border p-10 text-center" style={{borderColor:C.g200}}>
             <p className="text-5xl mb-4">🎁</p>
-            <p className="font-black text-base mb-1" style={{color:C.g800}}>No gift card offers found</p>
+            <p className="font-bold text-base mb-1" style={{color:C.g800}}>No gift card offers found</p>
             <p className="text-sm" style={{color:C.g400}}>Try a different brand or be the first to post</p>
             <button onClick={()=>navigate('/create-offer')}
               className="mt-4 px-6 py-2.5 rounded-xl text-white text-sm font-black hover:opacity-90 transition"
@@ -1703,122 +1915,13 @@ export default function GiftCards({user}) {
         )}
 
         {/* Safety notice */}
-        <div style={{display:'flex',alignItems:'center',gap:6,padding:'7px 10px',borderRadius:8,background:'#F0FDF4',border:'1px solid #BBF7D0'}}>
-          <Shield size={11} style={{color:'#2D6A4F',flexShrink:0}}/>
-          <span style={{fontSize:11,color:'#166534',lineHeight:1.3}}><strong>Trade Safely:</strong> Only share gift card codes inside the active escrow trade. Every trade is platform-protected.</span>
+        <div className="flex items-start sm:items-center gap-2.5 rounded-xl px-3.5 py-2.5 sm:px-4 sm:py-3" style={{backgroundColor:C.mist,border:`1px solid ${C.green}30`}}>
+          <Shield size={14} style={{color:C.green,flexShrink:0,marginTop:'1px'}}/>
+          <span style={{fontSize:13,color:C.g800,lineHeight:1.4}}><strong style={{color:C.green}}>Trade Safely:</strong> Only share gift card codes inside the active escrow trade. Every trade is platform-protected.</span>
         </div>
 
-        {/* ── AFFILIATE PROMO card — aligned inside offer grid ── */}
-        <div style={{background:'#fff',borderRadius:12,border:'1px solid #E2E8F0',overflow:'hidden'}}>
-
-          {/* Welcome bonus strip — teal/gift card theme */}
-          <div style={{background:'linear-gradient(135deg,#134E4A 0%,#0F766E 60%,#0D9488 100%)',padding:'10px 12px',borderBottom:'2px solid #F4A422'}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginBottom:7}}>
-              <div style={{display:'flex',alignItems:'center',gap:6}}>
-                <div style={{width:26,height:26,borderRadius:8,background:'#F4A422',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:13}}>🎁</div>
-                <div>
-                  <p style={{margin:0,fontSize:11,fontWeight:900,color:'#FFFFFF',lineHeight:1.1}}>New users earn <span style={{color:'#99F6E4'}}>$2 FREE Bitcoin!</span></p>
-                  <p style={{margin:0,fontSize:9,color:'rgba(255,255,255,0.55)',marginTop:1}}>Offer valid 30 days · Share your link so friends can claim it</p>
-                </div>
-              </div>
-              <button
-                onClick={()=>navigate('/register')}
-                style={{flexShrink:0,padding:'5px 10px',borderRadius:7,border:'none',cursor:'pointer',background:'#F4A422',color:'#134E4A',fontWeight:900,fontSize:9,whiteSpace:'nowrap'}}>
-                Claim →
-              </button>
-            </div>
-            <div style={{display:'flex',alignItems:'center',gap:4}}>
-              {[
-                {icon:'✅',label:'Register',sub:'$1 locked'},
-                {icon:'⚡',label:'Verify',  sub:'stays safe'},
-                {icon:'₿', label:'1 Trade', sub:'$2 unlocks'},
-              ].map(({icon,label,sub},i,arr)=>(
-                <div key={label} style={{display:'flex',alignItems:'center',gap:4,flex:1}}>
-                  <div style={{flex:1,background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.15)',borderRadius:6,padding:'4px 6px',textAlign:'center'}}>
-                    <div style={{fontSize:11,lineHeight:1}}>{icon}</div>
-                    <div style={{fontSize:9,fontWeight:800,color:'#fff',marginTop:1,lineHeight:1}}>{label}</div>
-                    <div style={{fontSize:7,color:'rgba(255,255,255,0.45)',marginTop:1}}>{sub}</div>
-                  </div>
-                  {i<arr.length-1&&<div style={{fontSize:8,color:'rgba(255,255,255,0.3)',flexShrink:0}}>›</div>}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Top row: label + headline + CTA */}
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'10px 12px 8px'}}>
-            <div style={{minWidth:0}}>
-              <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:3}}>
-                <span style={{fontSize:9,fontWeight:800,color:'#F59E0B',background:'#FEF3C7',border:'1px solid #FDE68A',borderRadius:4,padding:'1px 6px',letterSpacing:0.4,textTransform:'uppercase'}}>₿ Affiliate</span>
-                <span style={{fontSize:9,color:'#94A3B8',fontWeight:500}}>Earn on every referral trade</span>
-              </div>
-              <p style={{margin:0,fontSize:13,fontWeight:800,color:'#1E293B',lineHeight:1.2}}>Invite friends. Earn BTC forever.</p>
-            </div>
-            <button
-              onClick={()=>navigate('/dashboard?tab=affiliate')}
-              style={{flexShrink:0,padding:'7px 12px',borderRadius:8,border:'none',cursor:'pointer',background:'linear-gradient(135deg,#0F766E,#0D9488)',color:'#fff',fontWeight:800,fontSize:10,whiteSpace:'nowrap',boxShadow:'0 2px 8px rgba(13,148,136,0.25)'}}>
-              Get Link →
-            </button>
-          </div>
-
-          {/* Commission tiers */}
-          <div style={{display:'flex',gap:4,padding:'0 12px 10px',overflowX:'auto'}}>
-            {[
-              {refs:'0–9',  rate:'0.20%',c:'#059669'},
-              {refs:'10–24',rate:'0.25%',c:'#0D9488'},
-              {refs:'25–49',rate:'0.35%',c:'#F59E0B'},
-              {refs:'50–99',rate:'0.40%',c:'#EA580C'},
-              {refs:'100+', rate:'0.50%',c:'#7C3AED'},
-            ].map(t=>(
-              <div key={t.refs} style={{flex:'0 0 auto',background:`${t.c}0D`,border:`1px solid ${t.c}30`,borderRadius:6,padding:'4px 8px',textAlign:'center'}}>
-                <div style={{fontSize:11,fontWeight:800,color:t.c,lineHeight:1}}>{t.rate}</div>
-                <div style={{fontSize:8,color:'#94A3B8',fontWeight:500,marginTop:1}}>{t.refs} refs</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Leaderboard */}
-          {affLeaderboard.length>0&&(
-            <div style={{borderTop:'1px solid #F1F5F9'}}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'6px 12px',borderBottom:'1px solid #F1F5F9',background:'#F8FAFC'}}>
-                <span style={{fontSize:9,fontWeight:800,color:'#64748B',textTransform:'uppercase',letterSpacing:0.8}}>Top Earners</span>
-                <span style={{fontSize:9,color:'#94A3B8',fontWeight:500}}>All Time</span>
-              </div>
-              {affLeaderboard.map((u,i)=>{
-                const medals=['🥇','🥈','🥉'];
-                const badgeColors={BEGINNER:'#7C3AED',PRO:'#059669',EXPERT:'#1E40AF',AMBASSADOR:'#0D9488',LEGEND:'#D97706'};
-                const bc=badgeColors[u.badge]||'#64748B';
-                const earnedUsd=((u.earned_btc||0)*(btcPrice||76000));
-                return(
-                  <div key={u.username} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 12px',borderBottom:i<affLeaderboard.length-1?'1px solid #F8FAFC':'none'}}>
-                    <span style={{fontSize:13,flexShrink:0}}>{medals[i]}</span>
-                    <div style={{width:22,height:22,borderRadius:'50%',flexShrink:0,background:`${bc}18`,border:`1.5px solid ${bc}40`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:900,color:bc}}>
-                      {(u.username||'?')[0].toUpperCase()}
-                    </div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap'}}>
-                        <span style={{fontSize:10,fontWeight:700,color:'#1E293B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.username}</span>
-                        <BadgeChip user={u} badgeName={u.badge} size="xs" />
-                      </div>
-                      <span style={{fontSize:8,color:'#94A3B8',fontWeight:500}}>{u.referrals} refs · {u.affiliate_trades||u.total_trades} trades</span>
-                    </div>
-                    <div style={{textAlign:'right',flexShrink:0}}>
-                      <div style={{fontSize:10,fontWeight:800,color:'#F59E0B'}}>₿{(()=>{const v=parseFloat(u.earned_btc||0);return v>0&&v<0.0001?v.toFixed(8):v.toFixed(5);})()}</div>
-                      <div style={{fontSize:8,color:'#94A3B8',fontWeight:500}}>${earnedUsd>=1000?(earnedUsd/1000).toFixed(1)+'k':earnedUsd>=1?earnedUsd.toFixed(2):earnedUsd<0.01?'<$0.01':earnedUsd.toFixed(2)}</div>
-                    </div>
-                  </div>
-                );
-              })}
-              <div style={{padding:'5px 12px',background:'#F0FDF4',borderTop:'1px solid #BBF7D0',textAlign:'center'}}>
-                <span style={{fontSize:9,color:'#166534',fontWeight:600}}>🏆 Could you be next?</span>
-              </div>
-            </div>
-          )}
-
-          <p style={{margin:0,padding:'6px 12px 10px',textAlign:'center',fontSize:9,color:'#94A3B8',fontWeight:500}}>
-            Free to join · No minimum payout · Lifetime commission
-          </p>
-        </div>
+        {/* ── AFFILIATE PROMO card — redesigned, single accent color, real stepper ── */}
+        <AffiliatePromoCard navigate={navigate} btcPrice={btcPrice} affLeaderboard={affLeaderboard} />
 
       </div>
 
