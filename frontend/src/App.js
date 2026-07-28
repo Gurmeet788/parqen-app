@@ -140,7 +140,7 @@ function RefRedirect() {
 function AppShell({ children }) {
   return (
     <div className="min-h-screen pb-nav-mobile"
-      style={{ overflowX: 'hidden', maxWidth: '100vw' }}>
+      style={{ overflowX: 'hidden', maxWidth: '100vw', paddingTop: 'var(--navbar-h)' }}>
       {children}
     </div>
   );

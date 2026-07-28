@@ -13,7 +13,7 @@ Smartphone, Building2, ThumbsUp, ThumbsDown, Gift, Repeat2, Heart,
 import { toast } from 'react-toastify';
 import { copyToClipboard } from '../utils/clipboard';
 import { deriveBadge } from '../lib/badge';
-import { resolveCode } from '../components/CountryFlag';
+import CountryFlag, { resolveCode } from '../components/CountryFlag';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
@@ -35,10 +35,7 @@ const authH  = ()      => { const t=localStorage.getItem('token'); return t?{Aut
 // USD_RATES is now provided by RatesContext — do NOT define a static object here
 const CUR_SYM   = {GHS:'₵',NGN:'₦',KES:'KSh',ZAR:'R',UGX:'USh',USD:'$',GBP:'£',EUR:'€'};
 
-function isoToFlag(code) {
-  if(!code||code.length!==2)return'🌍';
-  return code.toUpperCase().replace(/./g,c=>String.fromCodePoint(0x1F1E0+c.charCodeAt(0)-65));
-}
+
 
 
 const STATUS_CFG = {
@@ -448,7 +445,11 @@ function ProfilePopup({user, label, trade, onClose}) {
   const locCC      = ccCode ? ccCode.toUpperCase() : '';
   const CC_NAME    = {GH:'Ghana',NG:'Nigeria',KE:'Kenya',ZA:'S. Africa',UG:'Uganda',TZ:'Tanzania',RW:'Rwanda',CM:'Cameroon',SN:'Senegal',CI:"Côte d'Ivoire",ZM:'Zambia',ZW:'Zimbabwe',ET:'Ethiopia',EG:'Egypt',MA:'Morocco',US:'USA',GB:'UK',DE:'Germany',FR:'France',IT:'Italy',ES:'Spain',VN:'Vietnam',TH:'Thailand',ID:'Indonesia',PH:'Philippines',MY:'Malaysia',SG:'Singapore',CN:'China',IN:'India',JP:'Japan',KR:'S. Korea',PK:'Pakistan',BD:'Bangladesh',SA:'Saudi Arabia',AE:'UAE',QA:'Qatar',BR:'Brazil',MX:'Mexico',CA:'Canada',AU:'Australia'};
   const countryName= (u.country && u.country.length > 2) ? u.country : (CC_NAME[locCC] || u.location || locCC || '—');
-  const flagEmoji  = isoToFlag(locCC);
+  const flagComponent = locCC ? (
+    <CountryFlag countryCode={locCC} className="w-5 h-3.5 rounded-sm inline-block" />
+  ) : (
+    <Globe size={14} style={{color: 'rgba(255,255,255,0.4)'}}/>
+  );
 
   // Last active
   const rawSeen    = fmtAge(u.last_seen_at || u.last_login || u.updated_at);
@@ -511,7 +512,7 @@ function ProfilePopup({user, label, trade, onClose}) {
                 {kycOk && <BadgeCheck size={15} style={{color:'#93C5FD', flexShrink:0}}/>}
               </div>
               <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
-                <span className="text-xs">{flagEmoji}</span>
+                <span className="text-xs flex items-center">{flagComponent}</span>
                 <span className="text-white/60 text-xs">{isOnline ? '🟢 Active now' : rawSeen}</span>
               </div>
               <span className="inline-flex items-center gap-px px-2 py-0.5 rounded-full border text-xs font-black"
@@ -536,7 +537,7 @@ function ProfilePopup({user, label, trade, onClose}) {
             </div>
             <div className="flex items-center gap-2 rounded-xl px-3 py-2.5"
               style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
-              <span className="text-base flex-shrink-0">{flagEmoji}</span>
+              <span className="flex-shrink-0 flex items-center">{flagComponent}</span>
               <div className="min-w-0">
                 <p className="text-white font-black text-xs leading-tight truncate">{countryName}</p>
                 <p className="text-white/50 text-xs leading-tight">Location</p>
@@ -902,6 +903,13 @@ export default function TradeDetail({user}) {
     if (contextBtcUsd > 0) setBtcPrice(contextBtcUsd);
   }, [contextBtcUsd]);
 
+  // Lock document scroll on mobile so the body never scrolls — only the internal
+  // message list scroll container moves. Replaced the broken position:sticky approach.
+  useEffect(() => {
+    document.documentElement.classList.add('trade-page');
+    return () => document.documentElement.classList.remove('trade-page');
+  }, []);
+
   const isActive    = !isCompleted&&!isCancelled;
   const cfg         = getS(status);
   const CfgIcon     = cfg.icon;
@@ -970,9 +978,21 @@ export default function TradeDetail({user}) {
   },[messages]);
 
   // ── Dispute cooldown timer ──────────────────────────────────────────────
-  useEffect(()=>{
-    if(isPaid && !paidAt) setPaidAt(Date.now() - DISPUTE_COOLDOWN_MS);
-  },[isPaid]);
+  // Records when payment was actually made so the 30 min cooldown is accurate.
+  // Uses the server's paid_at (survives page refresh), then updated_at,
+  // then falls back to Date.now() (set by markPaid on first click).
+  // Previously this was Date.now() - DISPUTE_COOLDOWN_MS, which made the
+  // dispute button instantly available — the timer was a no-op.
+  useEffect(() => {
+    if (isPaid) {
+      if (!paidAt) {
+        const ts = trade?.paid_at || trade?.updated_at;
+        setPaidAt(ts ? new Date(ts).getTime() : Date.now());
+      }
+    } else {
+      setPaidAt(null);
+    }
+  }, [isPaid, trade?.paid_at, trade?.updated_at]);
 
   useEffect(()=>{
     if(!isPaid) return;
@@ -1095,6 +1115,7 @@ export default function TradeDetail({user}) {
     autoCancelled.current = true;
     try{
       await axios.post(`${API_URL}/trades/${id}/mark-paid`,{},{headers:authH()});
+      setPaidAt(Date.now()); // Start the 30-minute dispute cooldown immediately
       toast.success(isGiftCardTrade ? 'Code sent! Waiting for buyer to verify.' : 'Payment confirmed!');
       await loadTrade();
     }catch(e){
@@ -1277,6 +1298,10 @@ export default function TradeDetail({user}) {
   const cpBadge    = deriveBadge(cp);
   const cpSeen     = fmtAge(cp?.last_seen_at || cp?.last_login || cp?.updated_at);
   const cpOnline   = cpSeen==='Online';
+  const cpIsOnline = cp?.is_online === true;
+  const cpLastSeenVal = cp?.last_seen_at || cp?.last_login || cp?.updated_at;
+  const cpLastSeenSecs = cpLastSeenVal ? (Date.now() - new Date(cpLastSeenVal)) / 1000 : Infinity;
+  const cpIsAway   = !cpIsOnline && cpLastSeenSecs <= 1800;
   const cpPos      = parseInt(cp?.positive_feedback||0);
   const cpNeg      = parseInt(cp?.negative_feedback||0);
   const cpFeedbackPct = (cpPos+cpNeg)>0 ? ((cpPos/(cpPos+cpNeg))*100).toFixed(1) : (parseFloat(cp?.completion_rate||100).toFixed(1));
@@ -1330,13 +1355,13 @@ export default function TradeDetail({user}) {
     .reduce((max,m)=>Math.max(max,new Date(m.created_at).getTime()),0);
 
   return(
-    <div className="min-h-screen flex flex-col" style={{backgroundColor:C.g50,fontFamily:"'DM Sans',sans-serif"}}>
+    <div className="max-h-screen flex flex-col overflow-hidden trade-mobile-root" style={{backgroundColor:C.g50,fontFamily:"'DM Sans',sans-serif"}}>
 
       {/* ── MAIN CONTENT ─────────────────────────────────────────────────── */}
-      <div className="max-w-7xl mx-auto w-full px-3 py-3 pb-4">
+      <div className="max-w-7xl mx-auto w-full px-3 py-3 pb-4 flex-1 min-h-0 flex flex-col overflow-hidden">
 
-        <div className="flex flex-col gap-3 lg:h-[calc(100vh-64px)] md:h-[calc(100vh-64px)] h-[calc(100vh-80px)] max-w-3xl md:max-w-5xl lg:max-w-6xl mx-auto w-full">
-          <div className="flex-1 min-w-0 md:flex md:flex-row md:gap-3 overflow-hidden">
+        <div className="flex flex-col gap-3 lg:h-[calc(100vh-64px)] md:h-[calc(100vh-64px)] flex-1 min-h-0 max-w-3xl md:max-w-5xl lg:max-w-6xl mx-auto w-full">
+          <div className="flex-1 min-w-0 min-h-0 md:flex md:flex-row md:gap-3 overflow-clip">
 
             {/* ── ACTIONS PANEL (desktop: fixed-width left column; mobile: tab-controlled) ── */}
             <div className={`w-full h-full overflow-y-auto pb-4 ${
@@ -1436,7 +1461,7 @@ export default function TradeDetail({user}) {
                     : `⏳ Dispute in ${Math.floor(disputeCountdownS/60)}:${String(disputeCountdownS%60).padStart(2,'0')}`}
                 </button>
               )}
-              {showCancelBtn&&!isPaid&&(
+              {showCancelBtn && (!isPaid || !disputeReady) && (
                 <button onClick={()=>setShowCancel(true)}
                   className="w-full py-2 rounded-xl font-semibold text-xs border hover:bg-gray-50 transition"
                   style={{borderColor:C.g200,color:C.g500}}>
@@ -1621,7 +1646,7 @@ export default function TradeDetail({user}) {
             <div className={`w-full h-full flex-col ${
               activeTab === 'chat' ? 'flex' : 'hidden'
             } md:flex md:flex-1 md:h-full md:min-w-0 md:overflow-hidden`}>
-            <div className="bg-white rounded-2xl border shadow-sm overflow-hidden flex flex-col min-h-0 flex-1"
+            <div className="bg-white rounded-2xl border shadow-sm overflow-clip flex flex-col min-h-0 flex-1"
               style={{borderColor:C.g200}}>
 
  
@@ -1631,10 +1656,19 @@ export default function TradeDetail({user}) {
                  <button
   onClick={()=>{setProfUser(cp);setProfLabel(isBuyer?'Seller':'Buyer');}}
   className="flex items-center gap-2.5 hover:opacity-80 active:opacity-60 transition">
-  <Avatar user={cp} size={44} />
+  <div className="relative flex-shrink-0">
+    <Avatar user={cp} size={44} />
+    {((cp?.is_online ?? true) || cpIsAway) && (
+      <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white"
+        style={{backgroundColor: (cp?.is_online ?? true) ? '#22C55E' : '#F59E0B'}} />
+    )}
+  </div>
   <span className="font-black text-base" style={{color:C.g800}}>{cp?.username || 'User'}</span>
-  <span style={{fontSize:20}}>{cp?.country ? isoToFlag(resolveCode(cp.country)) : null}</span>
-                  {!cp?.country && <Globe size={14} style={{color:C.g400}}/>}
+  {cp?.country || cp?.location ? (
+    <CountryFlag countryCode={cp.country || cp.location} className="w-5 h-3.5 rounded-sm" />
+  ) : (
+    <Globe size={14} style={{color:C.g400}}/>
+  )}
 </button>
                   {/* TODO: Confirm positive_feedback/negative_feedback are returned on cp object from /trades/:id — if not, the ?? 0 fallback hides the gap */}
                   <div className="flex items-center gap-2">
@@ -1768,8 +1802,8 @@ export default function TradeDetail({user}) {
                       <div key={i} className="flex justify-center my-4 px-1">
                         <div className="w-full max-w-[95%] rounded-2xl overflow-hidden"
                           style={{
-                            background:'linear-gradient(145deg,#052e16,#065F46,#059669)',
-                            boxShadow:'0 0 0 2px #6EE7B7, 0 8px 32px rgba(5,150,105,0.55)',
+                            background:'linear-gradient(145deg,#1E3A5F,#1D4ED8,#2563EB)',
+                            boxShadow:'0 0 0 2px #93C5FD, 0 8px 32px rgba(37,99,235,0.55)',
                           }}>
                           <div className="flex items-center justify-between px-4 py-2.5"
                             style={{borderBottom:'1px solid rgba(255,255,255,0.15)'}}>
@@ -1785,7 +1819,7 @@ export default function TradeDetail({user}) {
                           <div className="px-4 py-3">
                             <p className="text-sm font-black text-white leading-snug">{text}</p>
                             <div className="mt-2.5 px-3 py-2 rounded-xl text-xs font-black"
-                              style={{background:'rgba(255,255,255,0.12)',color:'#A7F3D0',border:'1px solid rgba(255,255,255,0.2)'}}>
+                              style={{background:'rgba(37,99,235,0.15)',color:'#BFDBFE',border:'1px solid rgba(147,197,253,0.3)'}}>
                               ✅ Bitcoin has left escrow. Leave feedback to help the community!
                             </div>
                           </div>
@@ -1851,9 +1885,14 @@ export default function TradeDetail({user}) {
                       {/* Avatar — left for received */}
                       {!isOwn&&(
                         <button onClick={()=>{setProfUser(cp);setProfLabel(isBuyer?'Seller':'Buyer');}}
-                          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 shadow-sm hover:opacity-80 transition"
-                          style={{backgroundColor:C.green,color:'#fff'}}>
-                          {cp?.username?.charAt(0)?.toUpperCase()||'?'}
+                          className="flex-shrink-0 hover:opacity-80 active:opacity-60 transition">
+                          <div className="relative">
+                            <Avatar user={cp} size={28} radius="rounded-full" />
+                            {((cp?.is_online ?? true) || cpIsAway) && (
+                              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-1.5 border-white"
+                                style={{backgroundColor: (cp?.is_online ?? true) ? '#22C55E' : '#F59E0B'}} />
+                            )}
+                          </div>
                         </button>
                       )}
                       <div className="max-w-[72%] flex flex-col">
@@ -1882,7 +1921,7 @@ export default function TradeDetail({user}) {
                             </div>
                           </div>
                         ):(
-                          <div className="rounded-2xl px-4 py-3 shadow-sm"
+                          <div className={`rounded-2xl px-4 shadow-sm ${isOwn ? 'py-3' : 'pt-3 pb-1.5'}`}
                             style={{ background: isOwn ? '#0B8FD9' : '#E5E7EB' }}>
                             {/* ── TOP: sender name + copy icon (received only — own messages don't show name) ── */}
                             {!isOwn && (
@@ -1904,7 +1943,7 @@ export default function TradeDetail({user}) {
                               {text}
                             </p>
                             {/* ── BOTTOM: timestamp + copy icon (right for sent) ── */}
-                            {isOwn ? (
+                            {isOwn && (
                               <div className="flex items-center justify-between">
                                 <p className="text-xs" style={{color:'rgba(255,255,255,0.6)'}}>
                                   {new Date(m.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})} {new Date(m.created_at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',hour12:false})}
@@ -1916,12 +1955,13 @@ export default function TradeDetail({user}) {
                                   <Copy size={13} style={{color:'rgba(255,255,255,0.7)'}}/>
                                 </button>
                               </div>
-                            ) : (
-                              <p className="text-xs" style={{color:'#94A3B8'}}>
-                                {new Date(m.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})} {new Date(m.created_at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',hour12:false})}
-                              </p>
                             )}
                           </div>
+                        )}
+                        {!isOwn && (
+                          <p className="text-xs mt-1" style={{color:'#94A3B8'}}>
+                            {new Date(m.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})} {new Date(m.created_at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',hour12:false})}
+                          </p>
                         )}
                         {/* Read receipts */}
                         <div className={`flex items-center gap-1 mt-0.5 ${isOwn?'justify-end':'justify-start'}`}>
@@ -2085,7 +2125,20 @@ export default function TradeDetail({user}) {
         </div>
       </div>
 
-      {/* MOBILE STICKY ACTION BAR disabled — Actions buttons are now inside the Actions tab directly */}
+      {/* Constrain page height to exactly calc(100dvh - var(--navbar-h)) so the
+          body never overflows or scrolls. The flex column chain then constrains every child
+          properly — partner header stays pinned (flex-shrink-0) and only the message list
+          scrolls inside its own overflow-y:auto region. */}
+      <style>{`
+        html.trade-page, .trade-page body {
+          overflow:hidden!important;
+        }
+        .trade-mobile-root {
+          min-height:calc(100dvh - var(--navbar-h))!important;
+          max-height:calc(100dvh - var(--navbar-h))!important;
+          height:calc(100dvh - var(--navbar-h))!important;
+        }
+      `}</style>
 
       {/* ── MODALS ─────────────────────────────────────────────────────────── */}
       {profUser && <ProfilePopup user={profUser} label={profLabel} trade={trade} onClose={()=>setProfUser(null)}/>}
