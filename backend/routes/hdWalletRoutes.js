@@ -537,6 +537,19 @@ router.post('/send', verifyToken, sendLimiter, async (req, res) => {
 
     // ── EXTERNAL SEND — on-chain broadcast ───────────────────────────────────
 
+    // ── 2FA: enforce that user has 2FA enabled before sending BTC ──────────
+    const { data: sendUser2FA } = await supabaseAdmin
+      .from('users')
+      .select('two_factor_enabled')
+      .eq('id', userId)
+      .single();
+    if (!sendUser2FA?.two_factor_enabled) {
+      return res.status(403).json({
+        error: 'You must enable 2FA (email or authenticator) before sending funds. Go to Settings → Security to enable 2FA.',
+        require2FA: true,
+      });
+    }
+
     // ── 2FA: require email action code before broadcasting on-chain ──────────
     if (!actionCode) {
       return res.status(403).json({

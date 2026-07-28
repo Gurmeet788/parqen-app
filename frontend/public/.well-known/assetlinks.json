@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.praqen.app",
+        "sha256_cert_fingerprints": ["C4:00:AA:C6:2D:8B:AE:5A:DE:A8:63:85:17:C7:C3:E8:EA:AA:BA:38:96:C1:C9:D2:54:3F:41:36:5C:E6:E1:0C"]
+      }
+    }]

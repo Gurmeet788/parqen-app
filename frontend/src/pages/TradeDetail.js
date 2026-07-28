@@ -869,6 +869,7 @@ export default function TradeDetail({user}) {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [tradeCompleted, setTradeCompleted] = useState(false);
   const [show2FA,        setShow2FA]        = useState(false);
+  const [show2FAWarning, setShow2FAWarning] = useState(false);
   const [actionCode2FA,  setActionCode2FA]  = useState('');
   const [sending2FA,     setSending2FA]     = useState(false);
   const [imgSrc,    setImgSrc]    = useState(null);
@@ -1114,6 +1115,11 @@ export default function TradeDetail({user}) {
       toast.info('Security code sent to your email.');
     }catch(e){toast.error(e?.response?.data?.error||'Failed to send security code.');}
     finally{setSending2FA(false);}
+  };
+
+  const handleReleaseClick=()=>{
+    if(!user?.two_factor_enabled){setShow2FAWarning(true);return;}
+    setShowRelConfirm(true);
   };
 
   const releaseBtc=async()=>{
@@ -1406,8 +1412,8 @@ export default function TradeDetail({user}) {
 
               {/* ── RELEASE BITCOIN button ── */}
               {showRelease&&(
-                <button onClick={()=>setShowRelConfirm(true)} disabled={submitting}
-                  className="w-full py-4 rounded-xl text-white font-black text-base shadow-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2 transition"
+                <button onClick={handleReleaseClick} disabled={submitting}
+                  className="hidden lg:flex w-full py-4 rounded-xl text-white font-black text-base shadow-lg hover:opacity-90 disabled:opacity-50 items-center justify-center gap-2 transition"
                   style={{backgroundColor:C.green}}>
                   {submitting
                     ?<><RefreshCw size={16} className="animate-spin"/>Processing…</>
@@ -2176,6 +2182,39 @@ export default function TradeDetail({user}) {
                 className="flex-1 py-3 rounded-xl text-white font-black text-sm transition hover:opacity-90 disabled:opacity-40"
                 style={{backgroundColor:C.green}}>
                 {submitting?'Releasing…':'🔓 Release Bitcoin'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 2FA warning — user must enable 2FA before releasing ────────────── */}
+      {show2FAWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{backgroundColor:'rgba(0,0,0,0.6)',backdropFilter:'blur(4px)'}}>
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{backgroundColor:`${C.warn}20`}}>
+                <AlertTriangle size={20} style={{color:C.warn}} />
+              </div>
+              <div>
+                <h3 className="font-black text-base" style={{color:C.g800}}>2FA Required</h3>
+                <p className="text-xs" style={{color:C.g400}}>Enable two-factor authentication first</p>
+              </div>
+            </div>
+            <p className="text-sm mb-4" style={{color:C.g600}}>
+              You must enable 2FA (email or authenticator app) before you can release Bitcoin to a buyer.
+              This adds an extra layer of security to protect your account and funds.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={()=>setShow2FAWarning(false)}
+                className="flex-1 py-3 rounded-xl border font-semibold text-sm transition hover:bg-gray-50"
+                style={{borderColor:C.g200,color:C.g600}}>
+                Cancel
+              </button>
+              <button onClick={()=>{navigate('/settings');}}
+                className="flex-1 py-3 rounded-xl text-white font-black text-sm transition hover:opacity-90"
+                style={{backgroundColor:C.green}}>
+                Go to Settings
               </button>
             </div>
           </div>
