@@ -1,4 +1,4 @@
-// PRAQEN Backend Server - COMPLETE FIXED VERSION
+// PRAQEN Backend Server
 const path   = require('path');
 const dotenv = require('dotenv');
 
@@ -104,7 +104,7 @@ function bustCache() {
   _marketCache.clear();
   // Debounce: wait 1s then warm up the default listings key in the background
   clearTimeout(_cacheRefreshTimer);
-  _cacheRefreshTimer = setTimeout(() => _warmListingsCache(), 1000);
+  _cacheRefreshTimer = setTimeout(_warmListingsCache, 1000);
 }
 
 async function _warmListingsCache() {
@@ -9834,22 +9834,25 @@ app.get('/api/wallet/usdt', verifyToken, async (req, res) => {
     // Generate (or re-derive) this user's Tron deposit address
     const { address: tronAddress } = tronWalletService.generateUserAddress(req.userId);
 
-    // Persist tron_address to user_wallets so the deposit monitor can scan it
-    const { error: upsertErr } = await supabaseAdmin.from('user_wallets').upsert(
+    // ✅ FIXED: Use unique variable name - tronUpsertErr
+    const { error: tronUpsertErr } = await supabaseAdmin.from('user_wallets').upsert(
         { user_id: req.userId, tron_address: tronAddress, updated_at: new Date().toISOString() },
         { onConflict: 'user_id' }
     );
-    if (upsertErr) console.warn('[GET /wallet/usdt] user_wallets upsert failed:', upsertErr.message);
+    if (tronUpsertErr) console.warn('[GET /wallet/usdt] user_wallets upsert failed:', tronUpsertErr.message);
+
     // user_wallets.btc_address is NOT NULL — ensureWalletExists() guarantees a row
     // with a real btc_address exists first, so the update below can never hit that
     // constraint (this was previously a plain upsert that silently failed whenever
     // a user hit this USDT route before ever loading their BTC wallet, which meant
     // their tron_address never got saved and usdtDepositMonitor never watched it).
     await hdWalletService.ensureWalletExists(req.userId);
-    const { error: upsertErr } = await supabaseAdmin.from('user_wallets')
-      .update({ tron_address: tronAddress, updated_at: new Date().toISOString() })
-      .eq('user_id', req.userId);
-    if (upsertErr) console.warn('[GET /wallet/usdt] user_wallets update failed:', upsertErr.message);
+
+    // ✅ FIXED: Use unique variable name - walletUpdateErr
+    const { error: walletUpdateErr } = await supabaseAdmin.from('user_wallets')
+        .update({ tron_address: tronAddress, updated_at: new Date().toISOString() })
+        .eq('user_id', req.userId);
+    if (walletUpdateErr) console.warn('[GET /wallet/usdt] user_wallets update failed:', walletUpdateErr.message);
 
     // Read USDT balance from wallets table (single source of truth)
     const { data: walRow } = await supabaseAdmin
@@ -10153,10 +10156,10 @@ app.get('/api/wallet/usdt/check', verifyToken, async (req, res) => {
     // user_wallets.btc_address is NOT NULL — ensure the row exists (with a real
     // btc_address) before updating tron_address, same reasoning as GET /wallet/usdt.
     await hdWalletService.ensureWalletExists(req.userId);
-    const { error: upsertErr } = await supabaseAdmin.from('user_wallets')
-      .update({ tron_address: derivedAddress, updated_at: new Date().toISOString() })
-      .eq('user_id', req.userId);
-    if (upsertErr) console.warn('[/wallet/usdt/check] update error (non-fatal):', upsertErr.message);
+    const { error: walletUpdateErr } = await supabaseAdmin.from('user_wallets')
+        .update({ tron_address: derivedAddress, updated_at: new Date().toISOString() })
+        .eq('user_id', req.userId);
+    if (walletUpdateErr) console.warn('[/wallet/usdt/check] update error (non-fatal):', walletUpdateErr.message);
 
     // Read last_onchain_usdt if available (for idempotent deposit detection)
     let lastOnchainUsdt = 0;
@@ -10429,7 +10432,7 @@ app.post('/api/admin/hot-wallet/process-sweeps', verifyToken, async (req, res) =
     await tronHotWallet.processPendingSweeps();
     res.json({ success: true, message: 'Pending sweeps processed' });
   } catch (e) {
-    console.error('[POST /admin/hot-wallet/process-sweeps]', e.message);
+    console.error('[POST /api/admin/hot-wallet/process-sweeps]', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -10467,7 +10470,7 @@ app.post('/api/admin/hot-wallet/collect-fees', verifyToken, async (req, res) => 
 
     res.json({ success: true, ...result });
   } catch (e) {
-    console.error('[POST /admin/hot-wallet/collect-fees]', e.message);
+    console.error('[POST /api/admin/hot-wallet/collect-fees]', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -10490,7 +10493,7 @@ app.listen(PORT, () => {
   // Pre-warm the listings cache immediately so the very first request hits a warm cache
   _warmListingsCache();
   // Keep re-warming every 4 min so cache never expires between user visits
-  setInterval(() => _warmListingsCache(), 4 * 60 * 1000);
+  setInterval(_warmListingsCache, 4 * 60 * 1000);
 
   // Pause/reactivate offers based on live wallet balance — runs at startup then every 10 min
   syncAllOfferStatuses().catch(err => console.error('[startup] syncAllOfferStatuses:', err.message));
