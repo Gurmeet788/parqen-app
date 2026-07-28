@@ -16,6 +16,28 @@ const BTC_REQUIRED_TYPES = ['SELL', 'SELL_BITCOIN', 'BUY_GIFT_CARD'];
 const MIN_USD = 10;
 const BTC_PRICE_APPROX = 88000; // used only when listing has no bitcoin_price set
 
+// The in-memory market cache lives in server.js — wired up once at startup via
+// setCacheBuster() so every call site here (deposits, trades, the 10-min sweep)
+// invalidates it without each caller needing to know about it.
+let _bustCache = () => {};
+function setCacheBuster(fn) { _bustCache = fn; }
+
+async function _notifyLowBalancePause(userId, count) {
+  try {
+    await supabaseAdmin.from('notifications').insert([{
+      user_id:    userId,
+      type:       'offer_paused_low_balance',
+      title:      `⏸ Your offer${count > 1 ? 's have' : ' has'} been paused`,
+      message:    `Your ${count > 1 ? count + ' offers were' : 'offer was'} automatically paused because your wallet balance dropped below $10. Load your wallet to reactivate ${count > 1 ? 'them' : 'it'}.`,
+      action:     '/wallet',
+      is_read:    false,
+      created_at: new Date().toISOString(),
+    }]);
+  } catch (err) {
+    console.error('[_notifyLowBalancePause]', err.message);
+  }
+}
+
 /** Called by depositMonitor / tradeEscrowService after a balance change for one user. */
 async function updateOfferStatus(userId) {
   try {
@@ -41,6 +63,7 @@ async function updateOfferStatus(userId) {
         .update({ status: 'PAUSED', updated_at: new Date().toISOString() })
         .in('id', toPause);
       console.log(`[offerStatus] Paused ${toPause.length} offer(s) for user ${userId} (balance $${btcBalUsd.toFixed(2)})`);
+      await _notifyLowBalancePause(userId, toPause.length);
     }
     if (toReactivate.length > 0) {
       await supabaseAdmin.from('listings')
@@ -48,6 +71,7 @@ async function updateOfferStatus(userId) {
         .in('id', toReactivate);
       console.log(`[offerStatus] Reactivated ${toReactivate.length} offer(s) for user ${userId} (balance $${btcBalUsd.toFixed(2)})`);
     }
+    if (toPause.length > 0 || toReactivate.length > 0) _bustCache();
 
     return { paused: toPause.length, reactivated: toReactivate.length };
   } catch (err) {
@@ -115,6 +139,16 @@ async function syncAllOfferStatuses() {
         .update({ status: 'PAUSED', updated_at: new Date().toISOString() })
         .in('id', toPause);
       console.log(`[syncAllOfferStatuses] ⏸  Paused ${toPause.length} offer(s) with insufficient balance.`);
+
+      // One notification per affected seller, not per offer.
+      const pausedSet = new Set(toPause);
+      const countBySeller = {};
+      for (const l of listings) {
+        if (pausedSet.has(l.id)) countBySeller[l.seller_id] = (countBySeller[l.seller_id] || 0) + 1;
+      }
+      await Promise.all(
+        Object.entries(countBySeller).map(([sellerId, count]) => _notifyLowBalancePause(sellerId, count))
+      );
     }
     if (toReactivate.length > 0) {
       await supabaseAdmin.from('listings')
@@ -124,6 +158,8 @@ async function syncAllOfferStatuses() {
     }
     if (toPause.length === 0 && toReactivate.length === 0) {
       console.log('[syncAllOfferStatuses] ✅ All offer statuses are already correct.');
+    } else {
+      _bustCache();
     }
   } catch (err) {
     console.error('[syncAllOfferStatuses]', err.message);
@@ -212,4 +248,4 @@ async function deactivateStaleOffers() {
   }
 }
 
-module.exports = { updateOfferStatus, syncAllOfferStatuses, deactivateStaleOffers };
+module.exports = { updateOfferStatus, syncAllOfferStatuses, deactivateStaleOffers, setCacheBuster };

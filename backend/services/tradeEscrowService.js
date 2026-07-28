@@ -94,6 +94,7 @@ async function ensureWalletExists(userId) {
       const { error: insertErr } = await supabaseAdmin.from('wallets').insert({
         user_id:            userId,
         address:            hdWallet.generateUserAddress(userId).address,
+        private_key:        'placeholder_private_key', // never read back — keys are re-derived from MNEMONIC on demand
         balance_btc:        0,
         locked_balance_btc: 0,
         updated_at:         new Date().toISOString(),
@@ -482,10 +483,10 @@ class TradeEscrowService {
 
     console.log(`🔓 Release reference: ${releaseTxHash}`);
 
-    // ── Check escrow lock status before calling the RPC ──────────────────────
-    // The RPC praqen_release_escrow() is the atomic guard — it does UPDATE WHERE
-    // status='LOCKED' internally. We just need to ensure the lock exists and is
-    // in a releasable state before handing off to the RPC.
+    // ── Check escrow lock status before crediting ─────────────────────────────
+    // We guard the release ourselves (no DB-level atomic RPC is used anymore —
+    // see the credit logic below): confirm the lock exists and is releasable
+    // before touching any balances.
     const { data: currentLock } = await supabaseAdmin
         .from('escrow_locks')
         .select('id, status')
@@ -551,39 +552,38 @@ class TradeEscrowService {
       console.log(`[Escrow] ✅ USDT credited: ${symbol}${buyerGets.toFixed(decimals)} → receiver ${btcReceiverId.slice(0,8)}`);
 
     } else {
-      // ── BTC: use existing atomic RPC path ────────────────────────────────────
-      const buyerGetsUsd = parseFloat(((parseFloat(tradeData.amount_usd || 0)) * (1 - feeRate)).toFixed(2));
-      const { error: releaseErr } = await supabaseAdmin.rpc('praqen_release_escrow', {
-        p_trade_id:    tradeId,
-        p_receiver_id: btcReceiverId,
-        p_company_id:  COMPANY_WALLET_ID,
-        p_amount_btc:  amount,
-        p_fee_btc:     platformFee,
-        p_amount_usd:  buyerGetsUsd,
-        p_tx_hash:     releaseTxHash,
-      });
-      if (releaseErr) throw new Error(`Atomic escrow release failed: ${releaseErr.message}`);
+      // ── BTC: credit the receiver directly ────────────────────────────────────
+      // praqen_release_escrow() (the old "atomic" RPC) has a DB-level bug: it always
+      // tries to INSERT a wallets row for the receiver even when one already exists,
+      // and that INSERT never sets the required private_key column — so it fails
+      // with a NOT NULL violation on every call, for every trade type (buy, sell,
+      // and gift card all release through this same function). ensureWalletExists()
+      // above already guarantees both parties have a wallets row, so a plain credit
+      // here is safe and sufficient — we no longer depend on that RPC at all.
+      const newReceiverBalance = parseFloat((receiverBalanceBefore + buyerGets).toFixed(8));
+      const { error: creditErr } = await supabaseAdmin
+        .from('wallets')
+        .update({ balance_btc: newReceiverBalance, updated_at: new Date().toISOString() })
+        .eq('user_id', btcReceiverId);
+      if (creditErr) throw new Error(`BTC receiver credit failed: ${creditErr.message}`);
 
-      // Guard: verify RPC actually credited balance_btc (first-time buyers may have no row)
-      const { data: receiverAfter } = await supabaseAdmin
-          .from('wallets').select('balance_btc').eq('user_id', btcReceiverId).maybeSingle();
-      const receiverBalanceAfter = parseFloat(receiverAfter?.balance_btc || 0);
-      const rpcCredited = receiverBalanceAfter - receiverBalanceBefore;
-
-      if (rpcCredited < buyerGets * 0.99) {
-          console.warn(`[Escrow] RPC credited ₿${rpcCredited.toFixed(8)} (expected ₿${buyerGets.toFixed(8)}) — applying manual credit`);
-          const correctedBalance = parseFloat((receiverBalanceAfter + (buyerGets - rpcCredited)).toFixed(8));
-          const { error: manualCreditErr } = await supabaseAdmin
-              .from('wallets')
-              .update({ balance_btc: correctedBalance, locked_balance_btc: 0, updated_at: new Date().toISOString() })
-              .eq('user_id', btcReceiverId);
-          if (manualCreditErr) console.error(`[Escrow] Manual buyer credit failed: ${manualCreditErr.message}`);
-          else console.log(`[Escrow] ✅ Manual credit: ₿${correctedBalance.toFixed(8)} → buyer ${btcReceiverId.slice(0,8)}`);
-      }
+      const { error: lockErr } = await supabaseAdmin
+        .from('escrow_locks')
+        .update({ status: 'RELEASED', released_at: new Date().toISOString() })
+        .eq('trade_id', tradeId).eq('status', 'LOCKED');
+      if (lockErr) console.error(`[Escrow] escrow_locks mark-released failed: ${lockErr.message}`);
 
       await supabaseAdmin.from('trades')
-          .update({ buyer_btc_txhash: releaseTxHash })
+          .update({
+            status:             'COMPLETED',
+            buyer_btc_txhash:   releaseTxHash,
+            release_tx_hash:    releaseTxHash,
+            completed_at:       new Date().toISOString(),
+            buyer_received_btc: buyerGets,
+          })
           .eq('id', tradeId);
+
+      console.log(`[Escrow] ✅ BTC credited: ₿${buyerGets.toFixed(8)} → receiver ${btcReceiverId.slice(0,8)}`);
     }
 
     // ── Clear locked balance for the BTC/USDT provider ────────────────────────
