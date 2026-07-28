@@ -263,7 +263,11 @@ const loadAll = useCallback(async (isBackground = false) => {
   const activeRate   = quote ? quote.executableRate : sellerRateLocal;
 
   const btcGross    = payAmtNum > 0 && activeRate > 0 ? payAmtNum / activeRate : 0;
-  const btcAfterFee = btcGross * 0.995;
+  // Preview only — matches the real fee tradeEscrowService applies at release
+  // (1% on Buy/Sell, 2% on gift cards). This used to be a flat 0.995 regardless
+  // of trade type, which under-stated the fee shown to buyers.
+  const previewFeeRate = isGiftCard ? 0.02 : 0.01;
+  const btcAfterFee = btcGross * (1 - previewFeeRate);
 
   // CORRECT fiat equivalent calculation: localAmount / (1 + margin/100)
   const fiatEquivalent = payAmtNum > 0 ? payAmtNum / (1 + margin / 100) : 0;
@@ -323,13 +327,17 @@ const loadAll = useCallback(async (isBackground = false) => {
         }
       }
 
-      const lockedBtcGross    = activeQuote ? payAmtNum / activeQuote.executableRate : btcGross;
-      const lockedBtcAfterFee = lockedBtcGross * 0.995;
+      // Submit the GROSS BTC amount — no fee pre-deduction here. The platform
+      // fee (1% Buy/Sell, 2% gift cards) is applied exactly once, at release,
+      // by tradeEscrowService.js. Regular Buy/Sell trades get this value
+      // re-verified server-side anyway, but gift card trades use it as-is, so
+      // deducting a fee here as well used to double-charge gift card trades.
+      const lockedBtcGross = activeQuote ? payAmtNum / activeQuote.executableRate : btcGross;
 
       const r = await axios.post(`${API_URL}/trades`, {
         listingId:        listing.id || id,
         quoteId:          activeQuote?.quoteId || null,
-        amountBtc:        parseFloat(lockedBtcAfterFee.toFixed(8)),
+        amountBtc:        parseFloat(lockedBtcGross.toFixed(8)),
         amountLocal:      payAmtNum,
         currency:         cur,
         currencySymbol:   sym,

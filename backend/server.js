@@ -269,7 +269,8 @@ const tradeEscrowService = require('./services/tradeEscrowService');
 const actionCodeService = require('./services/actionCodeService');
 const balanceIntegrity = require('./services/balanceIntegrityService');
 const { checkAndAwardBadges } = require('./services/badgeService');
-const { syncAllOfferStatuses, deactivateStaleOffers } = require('./services/offerStatusService');
+const { syncAllOfferStatuses, deactivateStaleOffers, setCacheBuster } = require('./services/offerStatusService');
+setCacheBuster(bustCache);
 app.use('/api/hd-wallet', hdWalletRoutes);
 
 // NOTE: walletRoutes removed — wallet routes are defined inline below
@@ -6091,12 +6092,28 @@ app.patch('/api/listings/:id/status', verifyToken, async (req, res) => {
 
     const { data: listing, error: findError } = await supabaseAdmin
       .from('listings')
-      .select('seller_id, listing_type, min_limit_usd, bitcoin_price')
+      .select('seller_id, listing_type, asset, min_limit_usd, bitcoin_price')
       .eq('id', id).single();
     if (findError || !listing) return res.status(404).json({ error: 'Listing not found' });
     if (listing.seller_id !== req.userId) return res.status(403).json({ error: 'Unauthorized' });
 
-    // No balance check needed — offers are just preferences, escrow locks at trade time.
+    // Reactivating a SELL / SELL_BITCOIN / BUY_GIFT_CARD offer still requires >= $10 of the
+    // offer's asset — otherwise a user could bypass the wallet-balance requirement just by
+    // clicking "Activate" on a listing the balance sweep had already paused.
+    const btcRequiredTypes = ['SELL', 'SELL_BITCOIN', 'BUY_GIFT_CARD'];
+    if (status === 'ACTIVE' && btcRequiredTypes.includes(listing.listing_type)) {
+      const { data: wallet } = await supabaseAdmin
+        .from('wallets').select('balance_btc, balance_usdt').eq('user_id', req.userId).maybeSingle();
+      const balUsd = listing.asset === 'USDT'
+        ? parseFloat(wallet?.balance_usdt || 0)
+        : parseFloat(wallet?.balance_btc || 0) * 88000;
+      if (balUsd < 10) {
+        return res.status(400).json({
+          error: `You need at least $10 worth of ${listing.asset || 'BTC'} in your PRAQEN wallet to activate this offer. Please load your wallet first.`,
+        });
+      }
+    }
+
     const { data, error } = await supabaseAdmin
       .from('listings').update({ status, updated_at: new Date().toISOString() }).eq('id', id).select().single();
     if (error) return res.status(400).json({ error: error.message });
@@ -6361,14 +6378,22 @@ app.post('/api/offers', verifyToken, async (req, res) => {
     const cur = currency || 'USD';
     const curSym = currency_symbol || (cur === 'GHS' ? '₵' : cur === 'NGN' ? '₦' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : '$');
 
-    // For SELL offers: max_limit_usd must not exceed the seller's wallet balance for the chosen asset
-    if ((mappedType === 'SELL' || mappedType === 'SELL_BITCOIN') && max_limit_usd) {
+    // SELL / SELL_BITCOIN / BUY_GIFT_CARD offers all require the seller to already hold
+    // >= $10 of the offer's asset — SELL offers deliver BTC straight from this balance,
+    // and BUY_GIFT_CARD offers lock BTC in escrow to pay the gift-card seller.
+    if (mappedType === 'SELL' || mappedType === 'SELL_BITCOIN' || mappedType === 'BUY_GIFT_CARD') {
       const { data: sellerWallet } = await supabaseAdmin
         .from('wallets').select('balance_btc, balance_usdt').eq('user_id', userId).maybeSingle();
       const sellerBalUsd = offerAsset === 'USDT'
         ? parseFloat(sellerWallet?.balance_usdt || 0) // 1 USDT ≈ $1
         : parseFloat(sellerWallet?.balance_btc || 0) * 88000; // approximate BTC price for cap
-      if (parseFloat(max_limit_usd) > sellerBalUsd && sellerBalUsd > 0) {
+
+      if (sellerBalUsd < 10) {
+        return res.status(400).json({
+          error: `You need at least $10 worth of ${offerAsset} in your PRAQEN wallet to create this offer. Please top up your wallet first.`,
+        });
+      }
+      if (max_limit_usd && parseFloat(max_limit_usd) > sellerBalUsd) {
         return res.status(400).json({
           error: `Maximum trade limit ($${parseFloat(max_limit_usd).toFixed(0)}) exceeds your wallet balance ($${sellerBalUsd.toFixed(0)}). Please top up or lower the maximum.`,
         });
