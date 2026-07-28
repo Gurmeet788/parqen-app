@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 const SOCIALS = [
   { label: 'TikTok', href: 'https://www.tiktok.com/@praqen', bg: 'rgba(0,0,0,0.55)', color: '#ffffff',
@@ -14,53 +14,97 @@ const SOCIALS = [
     svg: 'M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z' },
 ];
 
-const COLUMNS = [
+// ── Icon set — plain stroke-based SVGs, no emoji ────────────────────────────
+const ICON_PATHS = {
+  search:   'M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.35-4.35',
+  card:     'M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7zM2 10h20M6 15h4',
+  zap:      'M13 2L4.5 13.5H11L10 22l8.5-11.5H12z',
+  bitcoin:  'M9.5 4.5v15M14 4.5v15M6 8h9.5a3 3 0 010 6H6m0-6v6m0-6H4.5M6 14h10a3 3 0 010 6H6m0-6v6m0-6H4.5m1.5 6H4.5',
+  rocket:   'M12 2c2.5 2 4 5.5 4 9 0 2-.5 3.5-1.5 5L12 19l-2.5-3c-1-1.5-1.5-3-1.5-5 0-3.5 1.5-7 4-9zM9 16l-3 1 1-3M15 16l3 1-1-3M10.5 9a1.5 1.5 0 103 0 1.5 1.5 0 00-3 0z',
+  lock:     'M6 11V8a6 6 0 1112 0v3M5 11h14a1 1 0 011 1v8a1 1 0 01-1 1H5a1 1 0 01-1-1v-8a1 1 0 011-1z',
+  shield:   'M12 2l8 3.5V11c0 5.2-3.4 9.9-8 11-4.6-1.1-8-5.8-8-11V5.5L12 2zM9 12l2 2 4-4',
+};
+
+function Icon({ name, size = 16, color = 'currentColor', strokeWidth = 2 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
+      strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={ICON_PATHS[name]} />
+    </svg>
+  );
+}
+
+const STEPS = [
+  { icon: 'search',  step: '01', title: 'Find Trusted Offer', desc: 'Browse listings & check seller profile, ratings & verified status' },
+  { icon: 'card',    step: '02', title: 'Select Payment', desc: 'Pick MTN MoMo, Bank or any preferred payment option' },
+  { icon: 'zap',     step: '03', title: 'Open Trade · 1 Min', desc: 'Funds locked in escrow instantly — safe & automatic' },
+  { icon: 'bitcoin', step: '04', title: 'BTC in Your Wallet', desc: 'Confirm payment · BTC released free to any wallet of your choice' },
+];
+
+const LINK_COLUMNS = [
   {
-    heading: 'Product',
+    heading: 'Marketplace',
     links: [
       { label: 'Buy Bitcoin', to: '/buy-bitcoin' },
-      { label: 'Sell Bitcoin', to: '/sell-bitcoin' },
-      { label: 'Gift Cards', to: '/gift-cards' },
-      { label: 'Wallet', to: '/wallet' },
-      { label: 'Affiliate Program', to: '/affiliate' },
-    ],
-  },
-  {
-    heading: 'Company',
-    links: [
-      { label: 'About Us', to: '/about' },
-      { label: 'Blog', to: '/blog' },
-      { label: 'Careers', to: '/careers' },
-      { label: 'Contact', to: '/contact' },
+      { label: 'Sell Bitcoin', to: '/create-offer' },
+      { label: 'Browse Offers', to: '/offers' },
+      { label: 'Verified Sellers', to: '/sellers' },
     ],
   },
   {
     heading: 'Support',
     links: [
       { label: 'Help Center', to: '/help' },
-      { label: 'Trust & Safety', to: '/trust-safety' },
+      { label: 'How Escrow Works', to: '/escrow' },
       { label: 'Fees', to: '/fees' },
-      { label: 'Status', to: '/status' },
+      { label: 'Contact Us', to: '/contact' },
     ],
   },
   {
-    heading: 'Legal',
+    heading: 'Company',
     links: [
+      { label: 'About Praqen', to: '/about' },
       { label: 'Terms of Service', to: '/terms' },
       { label: 'Privacy Policy', to: '/privacy' },
-      { label: 'AML Policy', to: '/aml' },
+      { label: 'Security', to: '/security' },
     ],
   },
 ];
 
-const TRUST_BADGES = [
-  { label: 'SSL Secured', icon: '🔒' },
-  { label: 'Escrow Protected', icon: '🛡️' },
-  { label: '24/7 Support', icon: '🕑' },
-];
+// ── Design tokens: one scale, used everywhere below ────────────────────────
+const T = {
+  primary: '#ffffff',
+  secondary: 'rgba(255,255,255,0.58)',
+  muted: 'rgba(255,255,255,0.38)',
+  micro: 11,
+  body: 12.5,
+  emph: 15,
+  tealBg: 'rgba(64,145,108,0.15)',
+  tealBorder: 'rgba(64,145,108,0.30)',
+  tealText: '#6EE7B7',
+  goldBg: 'rgba(244,164,34,0.12)',
+  goldBorder: 'rgba(244,164,34,0.35)',
+  gold: '#F4A422',
+};
+
+function Badge({ children, tone = 'teal' }) {
+  const isGold = tone === 'gold';
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      fontSize: T.micro, fontWeight: 700,
+      color: isGold ? T.gold : T.tealText,
+      background: isGold ? T.goldBg : T.tealBg,
+      border: `1px solid ${isGold ? T.goldBorder : T.tealBorder}`,
+      borderRadius: 5, padding: '3px 8px', whiteSpace: 'nowrap',
+    }}>
+      {children}
+    </span>
+  );
+}
 
 export default function PRQFooter() {
-  const [openSection, setOpenSection] = useState(null);
+  const nav = useNavigate();
 
   return (
     <footer style={{
@@ -69,92 +113,125 @@ export default function PRQFooter() {
       borderTop: '1px solid rgba(64,145,108,0.25)',
       width: '100%', boxSizing: 'border-box',
     }}>
-      <div className="max-w-6xl mx-auto px-5 sm:px-8 pt-10 sm:pt-14 pb-6">
-
-        {/* ── Brand block — shared by both mobile & desktop, own breathing room ── */}
-        <div className="mb-8 sm:hidden">
-          <div className="flex items-center gap-2 mb-3.5">
-            <div style={{
-              width: 32, height: 32, borderRadius: 9, background: '#F4A422',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 16, fontWeight: 900, color: '#0D1F14', fontFamily: 'Georgia,serif',
-              boxShadow: '0 2px 8px rgba(244,164,34,0.45)',
-            }}>P</div>
-            <span style={{ fontSize: 21, fontWeight: 900, letterSpacing: '-0.4px' }}>
-              <span style={{ color: '#ffffff' }}>PRA</span><span style={{ color: '#F4A422' }}>QEN</span>
-            </span>
+      <style>{`
+        .prq-footer-links {
+          grid-template-columns: minmax(220px, 1.2fr) repeat(3, minmax(140px, 1fr));
+        }
+        @media (max-width: 860px) {
+          .prq-footer-links {
+            grid-template-columns: repeat(2, 1fr) !important;
+          }
+        }
+        @media (max-width: 560px) {
+          .prq-footer-links {
+            grid-template-columns: 1fr !important;
+          }
+          .prq-footer-shell {
+            padding: 0 18px !important;
+          }
+        }
+      `}</style>
+      {/* Centered, max-width shell — this is what fixes the "everything glued to
+          the left edge" problem. Every section below shares this container so
+          content grows to fill the full footer width on desktop instead of
+          hugging the left side, and re-collapses gracefully on mobile. */}
+      <div className="prq-footer-shell" style={{ maxWidth: 1200, margin: '0 auto', padding: '0 32px', boxSizing: 'border-box' }}>
+        {/* ── How to Buy — 4 equal columns, fills full width ── */}
+        <div style={{ padding: '28px 0 22px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+            <span style={{ fontSize: T.micro, fontWeight: 800, color: T.muted, textTransform: 'uppercase', letterSpacing: 1.4, whiteSpace: 'nowrap' }}>How to Buy</span>
+            <span style={{ height: 1, flex: 1, background: 'rgba(255,255,255,0.06)' }} />
+            <Badge tone="teal"><Icon name="zap" size={11} /> 60 sec</Badge>
           </div>
-          <p className="text-sm leading-relaxed mb-4" style={{ color: 'rgba(255,255,255,0.55)' }}>
-            Africa's trusted peer-to-peer Bitcoin trading platform. Buy and sell BTC safely with escrow protection on every trade.
-          </p>
-          <div className="flex items-center gap-2.5">
-            {SOCIALS.map(s => (
-              <a key={s.label} href={s.href} target="_blank" rel="noopener noreferrer" title={s.label}
-                className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: s.bg }}>
-                <svg viewBox="0 0 24 24" width="16" height="16" fill={s.color} aria-hidden="true"><path d={s.svg} /></svg>
-              </a>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: 12,
+          }}>
+            {STEPS.map((s, i) => (
+              <div key={i} style={{
+                position: 'relative',
+                background: T.tealBg, border: `1px solid ${T.tealBorder}`,
+                borderRadius: 12, padding: '16px 16px 14px', boxSizing: 'border-box',
+              }}>
+                <span style={{
+                  position: 'absolute', top: 12, right: 12,
+                  fontSize: 10, fontWeight: 800, color: T.muted, letterSpacing: 0.5,
+                }}>{s.step}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: 26, height: 26, borderRadius: 7, flexShrink: 0,
+                    background: 'rgba(110,231,183,0.12)', color: T.tealText,
+                  }}>
+                    <Icon name={s.icon} size={14} />
+                  </span>
+                  <span style={{ fontSize: T.emph, fontWeight: 800, color: T.tealText, lineHeight: 1.2 }}>{s.title}</span>
+                </div>
+                <div style={{ fontSize: T.body, color: T.secondary, fontWeight: 500, lineHeight: 1.5 }}>{s.desc}</div>
+              </div>
             ))}
           </div>
         </div>
-
-        {/* ── Mobile: tap-to-expand accordion — avoids a long wall of cramped links ── */}
-        <div className="sm:hidden" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-          {COLUMNS.map(col => {
-            const isOpen = openSection === col.heading;
-            return (
-              <div key={col.heading} style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                <button
-                  onClick={() => setOpenSection(isOpen ? null : col.heading)}
-                  className="w-full flex items-center justify-between py-4"
-                  style={{ background: 'none', border: 'none' }}>
-                  <span className="text-sm font-black uppercase tracking-wider" style={{ color: isOpen ? '#fff' : 'rgba(255,255,255,0.7)' }}>
-                    {col.heading}
-                  </span>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2.5"
-                    style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
-                    <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-                {isOpen && (
-                  <ul className="pb-4 space-y-1">
-                    {col.links.map(l => (
-                      <li key={l.label}>
-                        <Link to={l.to} className="block text-sm font-medium py-2" style={{ color: 'rgba(255,255,255,0.65)' }}>
-                          {l.label}
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* ── Desktop / tablet: brand + full link columns, unchanged ── */}
-        <div className="hidden sm:grid grid-cols-3 lg:grid-cols-6 gap-x-6 gap-y-10">
-
-          <div className="col-span-3 lg:col-span-2 pr-0 lg:pr-6">
-            <div className="flex items-center gap-2 mb-3">
-              <div style={{
-                width: 28, height: 28, borderRadius: 9, background: '#F4A422',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 15, fontWeight: 900, color: '#0D1F14', fontFamily: 'Georgia,serif',
-                boxShadow: '0 2px 8px rgba(244,164,34,0.45)',
-              }}>P</div>
-              <span style={{ fontSize: 19, fontWeight: 900, letterSpacing: '-0.4px' }}>
-                <span style={{ color: '#eeeeee' }}>PRA</span><span style={{ color: '#F4A422' }}>QEN</span>
-              </span>
+        {/* ── Tagline + Create offer + Buy Now, spread across full width ── */}
+        <div style={{
+          padding: '22px 0', borderBottom: '1px solid rgba(255,255,255,0.06)',
+          display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 20,
+        }}>
+          <div style={{ minWidth: 240 }}>
+            <div style={{ fontSize: 20, fontWeight: 800, color: T.primary, lineHeight: 1.25 }}>
+              Keep Trading. <span style={{ color: T.gold }}>Keep Growing.</span>
             </div>
-            <p className="text-sm leading-relaxed mb-5" style={{ color: 'rgba(255,255,255,0.5)', maxWidth: 320 }}>
-              Africa's trusted peer-to-peer Bitcoin trading platform. Buy and sell BTC safely with escrow protection on every trade.
-            </p>
-            <div className="flex items-center gap-2">
+            <div style={{ fontSize: T.body, color: T.muted, fontWeight: 500, marginTop: 4 }}>
+              The world's most trusted P2P Bitcoin platform
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+            <div style={{ textAlign: 'right', marginRight: 4 }}>
+              <div style={{ fontSize: T.body, fontWeight: 800, color: T.gold, display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+                <Icon name="rocket" size={14} /> Create your offer
+              </div>
+              <div style={{ fontSize: T.micro, color: T.secondary, fontWeight: 500 }}>Sell BTC — instant payout via MTN MoMo or Bank</div>
+            </div>
+            <button onClick={() => nav('/create-offer')} style={{
+              flexShrink: 0, padding: '10px 18px', borderRadius: 9,
+              border: `1px solid ${T.goldBorder}`, background: T.goldBg, color: T.gold,
+              fontWeight: 800, fontSize: T.body, cursor: 'pointer', whiteSpace: 'nowrap',
+            }}>
+              + Create
+            </button>
+            <button onClick={() => nav('/buy-bitcoin')} style={{
+              flexShrink: 0, padding: '11px 20px', borderRadius: 9, border: 'none', cursor: 'pointer',
+              background: 'linear-gradient(135deg,#2D6A4F,#40916C)', color: '#fff',
+              fontWeight: 800, fontSize: T.body, boxShadow: '0 2px 10px rgba(45,106,79,0.35)', whiteSpace: 'nowrap',
+              display: 'inline-flex', alignItems: 'center', gap: 7,
+            }}>
+              <Icon name="bitcoin" size={14} /> Buy Now
+            </button>
+          </div>
+        </div>
+        {/* ── Link columns + brand/social block — the main width-filling row ── */}
+        <div className="prq-footer-links" style={{
+          padding: '30px 0 24px',
+          display: 'grid',
+          gap: 24,
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+        }}>
+          {/* Brand / contact / socials */}
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: T.primary, marginBottom: 8, letterSpacing: 0.3 }}>
+              PRA<span style={{ color: T.gold }}>Q</span>EN
+            </div>
+            <div style={{ fontSize: T.body, color: T.secondary, fontWeight: 500, lineHeight: 1.6, marginBottom: 14, maxWidth: 260 }}>
+              A secure, escrow-protected peer-to-peer marketplace for buying and selling Bitcoin.
+            </div>
+            <a href="mailto:hello@praqen.com" style={{ display: 'block', fontSize: T.body, fontWeight: 600, color: T.secondary, textDecoration: 'none', marginBottom: 12 }}>
+              hello@praqen.com
+            </a>
+            <div style={{ display: 'flex', gap: 8 }}>
               {SOCIALS.map(s => (
                 <a key={s.label} href={s.href} target="_blank" rel="noopener noreferrer" title={s.label}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition"
-                  style={{ backgroundColor: s.bg }}
+                  style={{ width: 30, height: 30, borderRadius: 7, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, backgroundColor: s.bg, textDecoration: 'none', transition: 'opacity 0.2s' }}
                   onMouseEnter={e => e.currentTarget.style.opacity = '0.75'}
                   onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
                   <svg viewBox="0 0 24 24" width="14" height="14" fill={s.color} aria-hidden="true"><path d={s.svg} /></svg>
@@ -162,49 +239,53 @@ export default function PRQFooter() {
               ))}
             </div>
           </div>
-
-          {COLUMNS.map(col => (
+          {/* Link columns */}
+          {LINK_COLUMNS.map(col => (
             <div key={col.heading}>
-              <h4 className="text-xs font-black uppercase tracking-wider mb-3.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
+              <div style={{ fontSize: T.micro, fontWeight: 800, color: T.muted, textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 14 }}>
                 {col.heading}
-              </h4>
-              <ul className="space-y-2.5">
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {col.links.map(l => (
-                  <li key={l.label}>
-                    <Link to={l.to} className="text-sm font-medium transition"
-                      style={{ color: 'rgba(255,255,255,0.65)' }}
-                      onMouseEnter={e => e.currentTarget.style.color = '#fff'}
-                      onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.65)'}>
-                      {l.label}
-                    </Link>
-                  </li>
+                  <a key={l.label} onClick={(e) => { e.preventDefault(); nav(l.to); }} href={l.to}
+                    style={{ fontSize: T.body, color: T.secondary, fontWeight: 500, textDecoration: 'none', width: 'fit-content' }}
+                    onMouseEnter={e => e.currentTarget.style.color = T.primary}
+                    onMouseLeave={e => e.currentTarget.style.color = T.secondary}>
+                    {l.label}
+                  </a>
                 ))}
-              </ul>
+              </div>
             </div>
           ))}
         </div>
-
-        {/* ── Bottom bar: copyright + trust badges ── */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-8 sm:mt-10 pt-6"
-          style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-          <div className="flex items-center gap-3 flex-wrap justify-center sm:justify-start">
-            <span className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
-              © {new Date().getFullYear()} PRAQEN. All rights reserved.
+        {/* ── Bottom bar: legal + trust badges, spread edge to edge ── */}
+        <div style={{
+          padding: '16px 0 22px',
+          display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+        }}>
+          <span style={{ fontSize: T.micro, color: T.muted, fontWeight: 500 }}>
+            © {new Date().getFullYear()} PRAQEN. All rights reserved.
+          </span>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+            <Badge tone="teal">24/7 Support</Badge>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: T.micro, color: T.muted, fontWeight: 500 }}>
+              <Icon name="lock" size={11} /> SSL Secured
             </span>
-            <a href="mailto:hello@praqen.com" className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
-              hello@praqen.com
-            </a>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap justify-center">
-            {TRUST_BADGES.map(b => (
-              <span key={b.label} className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full"
-                style={{ color: '#6EE7B7', background: 'rgba(64,145,108,0.15)', border: '1px solid rgba(64,145,108,0.3)' }}>
-                {b.icon} {b.label}
-              </span>
-            ))}
+            <span style={{ color: 'rgba(255,255,255,0.1)', fontSize: T.micro }}>·</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: T.micro, color: T.muted, fontWeight: 500 }}>
+              <Icon name="shield" size={11} /> Escrow Protected
+            </span>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              fontSize: T.micro, fontWeight: 700, color: '#F6821F',
+              background: 'rgba(246,130,31,0.1)', border: '1px solid rgba(246,130,31,0.25)',
+              padding: '3px 8px', borderRadius: 5, whiteSpace: 'nowrap',
+            }}>
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z" /></svg>
+              Cloudflare Protected
+            </span>
           </div>
         </div>
-
       </div>
     </footer>
   );
