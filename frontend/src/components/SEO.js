@@ -4,7 +4,7 @@ import { PAGE_META, NOINDEX_PAGES } from '../seoMeta';
 
 const SITE = 'https://praqen.com';
 
-export default function SEO({ title, description, noindex }) {
+export default function SEO({ title, description, noindex, image, ogType, publishedTime }) {
   const { pathname, search } = useLocation();
 
   const hasQueryParams = search.length > 1;
@@ -34,11 +34,13 @@ export default function SEO({ title, description, noindex }) {
       <meta property="og:title"       content={ogTitle} />
       <meta property="og:description" content={ogDesc} />
       <meta property="og:url"         content={canonical} />
-      <meta property="og:type"        content="website" />
+      <meta property="og:type"        content={ogType || 'website'} />
       <meta property="og:site_name"   content="PRAQEN" />
-      <meta property="og:image"       content="https://praqen.com/og-image.png" />
+      <meta property="og:image"       content={image || 'https://praqen.com/og-image.png'} />
+      {publishedTime && <meta property="article:published_time" content={publishedTime} />}
       <meta name="twitter:title"       content={ogTitle} />
       <meta name="twitter:description" content={ogDesc} />
+      <meta name="twitter:image"       content={image || 'https://praqen.com/og-image.png'} />
     </Helmet>
   );
 }

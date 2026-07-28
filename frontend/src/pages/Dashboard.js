@@ -11,9 +11,10 @@ import {
   Medal, Crown, Zap, BarChart3, ChevronRight,
   PlusCircle, X, Link, TrendingDown, Award, Flame,
   UserCheck, UserX, Target, Percent, Lock, ThumbsUp, ThumbsDown,
-  Download, Trophy
+  Download, Trophy, Rocket
 } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { BadgeChip, TRUST_MAP, deriveBadge, getNextBadge, renderBadgeIcon, BADGE_COLORS } from '../lib/badge';
 import { copyToClipboard } from '../utils/clipboard';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
@@ -26,23 +27,6 @@ const C = {
   g400:'#94A3B8', g500:'#64748B', g600:'#475569', g700:'#334155', g800:'#1E293B',
   success:'#10B981', danger:'#EF4444', warn:'#F59E0B', paid:'#3B82F6',
   online:'#22C55E', purple:'#8B5CF6',
-};
-
-// ─── Badge config ──────────────────────────────────────────────────────────────
-const BADGES = {
-  BEGINNER:   { label:'NEW ✦',     icon:'🌱', bg:'linear-gradient(135deg,#EDE9FE,#F5F3FF)', text:'#7C3AED', borderColor:'#C4B5FD', next:'PRO',        nextLabel:'Pro Trader' },
-  PRO:        { label:'PRO',       icon:'●',  bg:'linear-gradient(135deg,#D1FAE5,#A7F3D0)', text:'#065F46', borderColor:'#34D399', next:'EXPERT',     nextLabel:'Expert' },
-  EXPERT:     { label:'EXPERT',    icon:'▲',  bg:'linear-gradient(135deg,#1E3A5F,#1E40AF)', text:'#FFFFFF', borderColor:'#3B82F6', next:'AMBASSADOR', nextLabel:'Ambassador' },
-  AMBASSADOR: { label:'AMBASSADOR',icon:'◈',  bg:'linear-gradient(135deg,#0D9488,#2D6A4F)', text:'#FFFFFF', borderColor:'#0D9488', next:'LEGEND',     nextLabel:'Legend' },
-  LEGEND:     { label:'LEGEND',    icon:'♛',  bg:'linear-gradient(135deg,#FEF3C7,#FDE68A)', text:'#78350F', borderColor:'#F59E0B', next:null,         nextLabel:null },
-};
-
-// Badge thresholds — trades needed + referrals needed
-const BADGE_THRESHOLDS = {
-  PRO:        { trades:10,  referrals:0 },
-  EXPERT:     { trades:50,  referrals:3 },
-  AMBASSADOR: { trades:500, referrals:25 },
-  LEGEND:     { trades:1000, referrals:50 },
 };
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -111,13 +95,11 @@ function SectionHeader({ icon:Icon, title, action, onAction }) {
 // ─── Profile Summary ───────────────────────────────────────────────────────────
 function ProfileSummary({ user, profile, stats }) {
   const navigate = useNavigate();
-  const badgeKey = (profile?.badge || 'BEGINNER').toUpperCase();
-  const badge    = BADGES[badgeKey] || BADGES.BEGINNER;
+  const badgeKey = (profile?.badge || deriveBadge(profile || user).label).toUpperCase();
+  const badge    = TRUST_MAP[badgeKey] || TRUST_MAP.BEGINNER;
   const online  = isOnline(profile?.last_seen_at);
-  const nextKey = badge.next;
-  const thresh  = nextKey ? BADGE_THRESHOLDS[nextKey] : null;
-  const tradesProgress   = thresh ? Math.min(1, (stats.totalTrades||0) / thresh.trades) : 1;
-  const referralProgress = thresh ? Math.min(1, (stats.totalReferrals||0) / (thresh.referrals||1)) : 1;
+  const next    = getNextBadge(badgeKey);
+  const tradesProgress = next ? Math.min(1, (stats.totalTrades || 0) / next.tradesNeeded) : 1;
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border overflow-hidden mb-4" style={{borderColor:C.g200}}>
@@ -162,11 +144,7 @@ function ProfileSummary({ user, profile, stats }) {
         {/* Name + badge */}
         <div className="flex items-center gap-2 flex-wrap mb-1">
           <h2 className="font-black text-lg" style={{color:C.forest}}>{profile?.username || user?.username}</h2>
-          <span className="inline-flex items-center gap-0.5 text-xs font-black px-2 py-0.5 rounded-full border"
-            style={{background:badge.bg, borderColor:badge.borderColor}}>
-            <span style={{color:badge.icon==='♛'?'#92400E':badge.text}}>{badge.icon}</span>
-            <span style={{color:badge.text}}>{badge.label}</span>
-          </span>
+          <BadgeChip user={profile || user} size="sm" />
           {profile?.kyc_verified && <BadgeCheck size={16} style={{color:C.paid}} title="KYC Verified"/>}
         </div>
 
@@ -208,43 +186,32 @@ function ProfileSummary({ user, profile, stats }) {
         </div>
 
         {/* Next badge progress */}
-        {thresh && (
+        {next && (
           <div className="p-3 rounded-xl border" style={{backgroundColor:`${C.gold}08`, borderColor:`${C.gold}30`}}>
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-black" style={{color:C.g700}}>
-                Next: <span style={{color:C.amber}}>{badge.nextLabel} {BADGES[nextKey]?.icon}</span>
+              <p className="text-xs font-black flex items-center gap-1.5" style={{color:C.g700}}>
+                Next:
+                <span className="inline-flex items-center gap-1" style={{color:C.amber}}>
+                  {renderBadgeIcon(next, 12)}
+                  {next.label}
+                </span>
               </p>
             </div>
-            <div className="space-y-1.5">
-              {thresh.trades > 0 && (
-                <div>
-                  <div className="flex justify-between text-xs mb-0.5" style={{color:C.g500}}>
-                    <span>Trades</span>
-                    <span>{stats.totalTrades||0} / {thresh.trades}</span>
-                  </div>
-                  <div className="h-1.5 rounded-full" style={{backgroundColor:C.g200}}>
-                    <div className="h-1.5 rounded-full transition-all" style={{width:`${tradesProgress*100}%`, backgroundColor:C.gold}}/>
-                  </div>
-                </div>
-              )}
-              {thresh.referrals > 0 && (
-                <div>
-                  <div className="flex justify-between text-xs mb-0.5" style={{color:C.g500}}>
-                    <span>Referrals</span>
-                    <span>{stats.totalReferrals||0} / {thresh.referrals}</span>
-                  </div>
-                  <div className="h-1.5 rounded-full" style={{backgroundColor:C.g200}}>
-                    <div className="h-1.5 rounded-full transition-all" style={{width:`${referralProgress*100}%`, backgroundColor:C.purple}}/>
-                  </div>
-                </div>
-              )}
+            <div>
+              <div className="flex justify-between text-xs mb-0.5" style={{color:C.g500}}>
+                <span>Trades</span>
+                <span>{stats.totalTrades || 0} / {next.tradesNeeded}</span>
+              </div>
+              <div className="h-1.5 rounded-full" style={{backgroundColor:C.g200}}>
+                <div className="h-1.5 rounded-full transition-all" style={{width:`${tradesProgress * 100}%`, backgroundColor:C.gold}}/>
+              </div>
             </div>
           </div>
         )}
-        {!thresh && (
+        {!next && (
           <div className="flex items-center gap-2 p-3 rounded-xl" style={{backgroundColor:`${C.gold}12`}}>
-            <Crown size={16} style={{color:C.gold}}/>
-            <p className="text-xs font-black" style={{color:C.amber}}>You've reached the highest badge — LEGEND! 🎉</p>
+            {renderBadgeIcon(TRUST_MAP.GODMODE, 16)}
+            <p className="text-xs font-black" style={{color:C.amber}}>You&apos;ve reached the highest badge — GODMODE!</p>
           </div>
         )}
       </div>
@@ -253,7 +220,6 @@ function ProfileSummary({ user, profile, stats }) {
 }
 
 // ─── Affiliate Section — Premium Design ───────────────────────────────────────
-const BADGE_COLORS = { BEGINNER:'#7C3AED', PRO:'#065F46', EXPERT:'#1E40AF', AMBASSADOR:'#0D9488', LEGEND:'#D97706' };
 const RANK_MEDALS = ['🥇','🥈','🥉'];
 
 function AffiliateSection({ user, profile, earnings, referralData, btcPrice, onWithdraw, dbReferralCount, dbTotalEarnings, dbReferralTrades, leaderboard }) {
@@ -339,9 +305,9 @@ function AffiliateSection({ user, profile, earnings, referralData, btcPrice, onW
                 <strong className="text-yellow-300">0.1–0.3% commission</strong> in Bitcoin — instantly, automatically.
               </p>
             </div>
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 text-2xl"
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
               style={{backgroundColor:'rgba(255,255,255,0.15)'}}>
-              🚀
+              <Rocket size={28} color="#fff" strokeWidth={2} />
             </div>
           </div>
 
@@ -661,9 +627,8 @@ function AffiliateSection({ user, profile, earnings, referralData, btcPrice, onW
                     <p className="text-xs font-black truncate" style={{color:C.forest}}>
                       {entry.username}
                     </p>
-                    <span className="text-xs px-1.5 py-0.5 rounded-full font-bold flex-shrink-0"
-                      style={{backgroundColor:`${BADGE_COLORS[entry.badge]||C.green}18`, color:BADGE_COLORS[entry.badge]||C.green}}>
-                      {entry.badge}
+                    <span className="text-xs px-1.5 py-0.5 rounded-full font-bold flex-shrink-0">
+                      <BadgeChip user={{ badge: entry.badge }} badgeName={entry.badge} size="xs" />
                     </span>
                   </div>
                   <p className="text-xs mt-0.5" style={{color:C.g400}}>
@@ -1343,8 +1308,10 @@ export default function Dashboard({ user }) {
               <div className="p-4 md:p-5">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
-                      style={{backgroundColor:'rgba(255,255,255,0.15)'}}>🚀</div>
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{backgroundColor:'rgba(255,255,255,0.15)'}}>
+                      <Rocket size={18} color="#fff" strokeWidth={2} />
+                    </div>
                     <div>
                       <p className="text-sm font-black text-white">Your Affiliate Earnings</p>
                       <p className="text-xs" style={{color:'rgba(255,255,255,0.6)'}}>Earn BTC every time a referral trades</p>
@@ -1444,16 +1411,18 @@ export default function Dashboard({ user }) {
                 {label:'Trade Chat',     icon:'💬', route:'/my-trades',    color:C.paid,    sub:'Active trades'},
                 {label:'Profile',        icon:'👤', route:'/profile',      color:C.purple,  sub:'Your settings'},
                 {label:'My Listings',    icon:'📋', route:'/my-listings',  color:C.success, sub:'Your offers'},
-                {label:'Affiliate',      icon:'🚀', tab:'affiliate',       color:'#8B5CF6', sub:'Earn BTC'},
+                {label:'Affiliate',      icon:Rocket, tab:'affiliate',       color:'#8B5CF6', sub:'Earn BTC'},
                 {label:'Wallet',         icon:'👜', tab:'wallet',          color:C.mint,    sub:'BTC balance'},
-              ].map(({label,icon,route,tab,color,sub})=>(
+              ].map(({label,icon:IconOrChar,route,tab,color,sub})=>(
                 <button key={label}
                   onClick={()=>{ tab ? setActiveTab(tab) : navigate(route); }}
                   className="flex items-center gap-2.5 p-3 rounded-xl border hover:shadow-sm transition hover:-translate-y-0.5 text-left"
                   style={{borderColor:C.g100}}>
                   <div className="w-8 h-8 rounded-xl flex items-center justify-center text-base flex-shrink-0"
                     style={{backgroundColor:`${color}15`}}>
-                    {icon}
+                    {typeof IconOrChar === 'string'
+                      ? IconOrChar
+                      : <IconOrChar size={16} style={{ color }} strokeWidth={2} />}
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs font-black truncate" style={{color:C.forest}}>{label}</p>
@@ -1648,6 +1617,9 @@ export default function Dashboard({ user }) {
                   {label:'Create Offer',  route:'/create-offer'},
                   {label:'My Trades',     tab:'trades'},
                   {label:'My Offers',     route:'/my-listings'},
+                  {label:'Blog',          route:'/blog'},
+                  {label:'Privacy',       route:'/privacy'},
+                  {label:'Terms',         route:'/terms'},
                 ].map(({label,route,tab})=>(
                   <button key={label}
                     onClick={()=>{ if(tab){setActiveTab(tab)} else navigate(route); }}

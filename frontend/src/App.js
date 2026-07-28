@@ -92,6 +92,10 @@ if (process.env.NODE_ENV === 'production') {
 
 // ── Lazy-loaded pages ────────────────────────────────────────────────────────
 const GiftCardMarketplace   = lazy(() => import('./pages/GiftCardMarketplace'));
+const Blog                  = lazy(() => import('./pages/Blog'));
+const BlogPost               = lazy(() => import('./pages/BlogPost'));
+const PrivacyPolicy          = lazy(() => import('./pages/PrivacyPolicy'));
+const TermsOfService          = lazy(() => import('./pages/TermsOfService'));
 const LandingPage           = lazy(() => import('./pages/LandingPage'));
 const Register              = lazy(() => import('./pages/Register'));
 const Login                 = lazy(() => import('./pages/Login'));
@@ -240,7 +244,8 @@ function App() {
   useEffect(() => {
     if (token) {
       loadProfile();
-    } else {
+    } else
+    {
       setLoading(false);
     }
 
@@ -341,6 +346,9 @@ function App() {
     if (typeof unidentifyUser === 'function') {
       unidentifyUser().catch(() => {});
     }
+    window.dispatchEvent(new Event('userUpdated'));
+    // Unlink push subscription from this account on logout
+    unidentifyUser().catch(() => {});
   };
 
   if (loading) return <PageLoader />;
@@ -425,6 +433,89 @@ function App() {
           </Router>
         </RatesProvider>
       </HelmetProvider>
+    <HelmetProvider>
+    <RatesProvider>
+    <Router>
+      <CustomToastContainer />
+      <Suspense fallback={<PageLoader />}>
+      <Routes>
+        {/* ── TEAM PORTAL — completely standalone, no main chrome ── */}
+        <Route path="/team" element={<TeamDashboard user={user} />} />
+        <Route path="/moderator" element={<ModeratorDashboard user={user} />} />
+
+        {/* ── ALL OTHER ROUTES — wrapped in main app chrome ── */}
+        <Route path="*" element={
+          <AppShell>
+            <Navbar user={user} onLogout={logout} />
+
+            {showBonusModal && user && (
+              <WelcomeBonusModal user={user} onClose={() => {
+                localStorage.setItem(`prq_bonus_shown_${user.id}`, '1');
+                setShowBonusModal(false);
+                if (!localStorage.getItem(`prq_welcomed_${user.id}`)) {
+                  setShowWelcome(true);
+                }
+              }} />
+            )}
+
+            {showWelcome && user && !showBonusModal && (
+              <WelcomeModal user={user} onClose={() => setShowWelcome(false)} />
+            )}
+
+            {user && <NotificationPrompt userId={user.id} />}
+            <AndroidInstallBanner />
+            <IOSInstallGuide />
+
+            <Routes>
+              <Route path="/" element={<LandingPage user={user} />} />
+              <Route path="/listing/:id" element={<ListingDetail user={user} />} />
+              <Route path="/gift-cards" element={<GiftCardMarketplace user={user} />} />
+              <Route path="/blog" element={<Blog />} />
+              <Route path="/blog/:slug" element={<BlogPost />} />
+              <Route path="/privacy" element={<PrivacyPolicy />} />
+              <Route path="/terms" element={<TermsOfService />} />
+              <Route path="/marketplace" element={<Navigate to="/gift-cards" />} />
+              <Route path="/register" element={!user ? <Register onLogin={login} /> : <Navigate to="/" />} />
+              <Route path="/signup" element={!user ? <Register onLogin={login} /> : <Navigate to="/" />} />
+              <Route path="/login" element={!user ? <Login onLogin={login} /> : <Navigate to="/" />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/verify-otp" element={<VerifyOTP onLogin={login} />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/auth/confirm" element={<EmailConfirmation />} />
+              <Route path="/verify-email" element={<CheckEmail onLogin={login} />} />
+              <Route path="/sell-gift-card" element={<SellGiftCardMarketplace user={user} />} />
+              <Route path="/buy-bitcoin" element={<BuyBitcoin user={user} />} />
+              <Route path="/sell-bitcoin" element={<SellBitcoin user={user} />} />
+              <Route path="/buy-usdt" element={<BuyUSDT user={user} />} />
+              <Route path="/sell-usdt" element={<SellUSDT user={user} />} />
+              <Route path="/dashboard" element={user ? <Dashboard user={user} /> : <Navigate to="/login" />} />
+              <Route path="/wallet" element={user ? <WalletPage user={user} /> : <Navigate to="/login" />} />
+              <Route path="/settings" element={user ? <Settings user={user} setUser={setUser} /> : <Navigate to="/login" />} />
+              <Route path="/profile/:id" element={<Profile />} />
+              <Route path="/profile" element={user ? <Profile userId={user.id} /> : <Navigate to="/login" />} />
+              <Route path="/create-listing" element={user ? <CreateListing user={user} /> : <Navigate to="/login" />} />
+              <Route path="/create-offer" element={user ? <CreateOffer user={user} /> : <Navigate to="/login" />} />
+              <Route path="/edit-listing/:id" element={user ? <EditListing user={user} /> : <Navigate to="/login" />} />
+              <Route path="/my-listings" element={user ? <MyListings user={user} /> : <Navigate to="/login" />} />
+              <Route path="/my-trades" element={user ? <MyTrades user={user} /> : <Navigate to="/login" />} />
+              <Route path="/trade/:id" element={user ? <TradeDetail user={user} /> : <Navigate to="/login" />} />
+              <Route path="/trade-chat/:id" element={user ? <TradeChat user={user} /> : <Navigate to="/login" />} />
+              <Route path="/feedback/:tradeId/:userId" element={user ? <Feedback user={user} /> : <Navigate to="/login" />} />
+              <Route path="/admin" element={<AdminDashboard user={user} onLogin={login} />} />
+              <Route path="/escrow/:id" element={user ? <EscrowVerification user={user} /> : <Navigate to="/login" />} />
+              <Route path="/ref/:username" element={<RefRedirect />} />
+              <Route path="*" element={<Navigate to="/" />} />
+            </Routes>
+
+            <BottomNav user={user} />
+            <SuggestionsPanel user={user} />
+          </AppShell>
+        } />
+      </Routes>
+      </Suspense>
+    </Router>
+    </RatesProvider>
+    </HelmetProvider>
   );
 }
 

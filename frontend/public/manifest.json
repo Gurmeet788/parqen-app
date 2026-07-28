@@ -4,11 +4,6 @@
   "description": "The world's most trusted peer-to-peer Bitcoin and gift card trading platform.",
   "icons": [
     {
-      "src": "favicon.ico",
-      "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/x-icon"
-    },
-    {
       "src": "logo192.png",
       "type": "image/png",
       "sizes": "192x192"
@@ -16,10 +11,24 @@
     {
       "src": "logo512.png",
       "type": "image/png",
-      "sizes": "512x512"
+      "sizes": "512x512",
+      "purpose": "any"
+    },
+    {
+      "src": "logo192-maskable.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "maskable"
+    },
+    {
+      "src": "logo512-maskable.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "maskable"
     }
   ],
   "start_url": ".",
+  "scope": "/",
   "display": "standalone",
   "theme_color": "#1B4332",
   "background_color": "#1B4332",

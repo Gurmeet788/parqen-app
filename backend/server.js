@@ -5250,7 +5250,7 @@ app.get('/api/listings/:id', async (req, res) => {
         ? Math.min(sellerBalanceBtc * btcPriceVal, parseFloat(listing.max_limit_usd || 0) || sellerBalanceBtc * btcPriceVal)
         : parseFloat(listing.max_limit_usd || 0);
 
-    res.json({ listing: { ...listing, users: enrichedSeller.id ? [enrichedSeller] : [], seller_balance_btc: sellerBalanceBtc, effective_max_usd: effectiveMaxUsd } });
+    res.json({ listing: { ...listing, users: enrichedSeller.id ? [enrichedSeller] : [], seller_balance_btc: sellerBalanceBtc, effective_max_usd: effectiveMaxUsd, seller_can_fulfill_min: sellerCanFulfillMin } });
   } catch (error) {
     console.error('[listings/:id] error:', error);
     res.status(500).json({ error: error.message });
@@ -9311,12 +9311,16 @@ app.post('/api/wallet/withdraw', verifyToken, async (req, res) => {
         requireVerification: 'both'
       });
     }
-    const { data: bal } = await supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', req.userId).single();
+    // wallets = source of truth (matches escrow/trading/display everywhere else)
+    const { data: bal } = await supabaseAdmin.from('wallets').select('balance_btc').eq('user_id', req.userId).single();
     const current = parseFloat(bal?.balance_btc || 0);
     const amount  = parseFloat(amountBtc);
     if (current < amount) return res.status(400).json({ error: `Insufficient balance. You have ${current.toFixed(8)} BTC` });
-    const newBal = current - amount;
-    await supabaseAdmin.from('user_balances').update({ balance_btc: newBal, updated_at: new Date() }).eq('user_id', req.userId);
+    const newBal = parseFloat((current - amount).toFixed(8));
+    // wallets first (source of truth), then keep secondary tables in sync
+    await supabaseAdmin.from('wallets').update({ balance_btc: newBal, updated_at: new Date().toISOString() }).eq('user_id', req.userId);
+    await supabaseAdmin.from('user_balances').update({ balance_btc: newBal, updated_at: new Date().toISOString() }).eq('user_id', req.userId);
+    await supabaseAdmin.from('user_wallets').update({ balance_btc: newBal, updated_at: new Date().toISOString() }).eq('user_id', req.userId);
     await supabaseAdmin.from('wallet_transactions').insert({ user_id: req.userId, type: 'WITHDRAWAL', amount_btc: amount, status: 'PENDING', destination_address: address, created_at: new Date() }).maybeSingle();
     res.json({ success: true, message: `Withdrawal of ${amount} BTC to ${address} is pending processing.`, new_balance: newBal, note: 'Withdrawals are processed manually within 24 hours. Contact hello@praqen.com for urgent requests.' });
   } catch (error) {
@@ -9628,9 +9632,17 @@ app.post('/api/wallet/webhook', async (req, res) => {
       const userId = charge.metadata?.user_id;
       const btcAmt = parseFloat(charge.payments?.[0]?.value?.crypto?.amount || 0);
       if (userId && btcAmt > 0) {
-        const { data: bal } = await supabaseAdmin.from('user_balances').select('balance_btc').eq('user_id', userId).single();
-        const newBal = parseFloat(bal?.balance_btc || 0) + btcAmt;
-        await supabaseAdmin.from('user_balances').upsert({ user_id: userId, balance_btc: newBal, updated_at: new Date() });
+        // wallets = source of truth (matches escrow/trading/display everywhere else)
+        const { data: walletRow } = await supabaseAdmin.from('wallets').select('balance_btc').eq('user_id', userId).maybeSingle();
+        const newBal = parseFloat((parseFloat(walletRow?.balance_btc || 0) + btcAmt).toFixed(8));
+        if (walletRow) {
+          await supabaseAdmin.from('wallets').update({ balance_btc: newBal, updated_at: new Date().toISOString() }).eq('user_id', userId);
+        } else {
+          await supabaseAdmin.from('wallets').insert({ user_id: userId, balance_btc: newBal, locked_balance_btc: 0, updated_at: new Date().toISOString() });
+        }
+        // keep secondary tables in sync
+        await supabaseAdmin.from('user_balances').upsert({ user_id: userId, balance_btc: newBal, updated_at: new Date().toISOString() });
+        await supabaseAdmin.from('user_wallets').update({ balance_btc: newBal, updated_at: new Date().toISOString() }).eq('user_id', userId);
         await createNotification(userId, 'wallet', '💰 Bitcoin Received', `${btcAmt} BTC has been credited to your PRAQEN wallet.`, '/wallet');
       }
     }
@@ -9828,6 +9840,16 @@ app.get('/api/wallet/usdt', verifyToken, async (req, res) => {
         { onConflict: 'user_id' }
     );
     if (upsertErr) console.warn('[GET /wallet/usdt] user_wallets upsert failed:', upsertErr.message);
+    // user_wallets.btc_address is NOT NULL — ensureWalletExists() guarantees a row
+    // with a real btc_address exists first, so the update below can never hit that
+    // constraint (this was previously a plain upsert that silently failed whenever
+    // a user hit this USDT route before ever loading their BTC wallet, which meant
+    // their tron_address never got saved and usdtDepositMonitor never watched it).
+    await hdWalletService.ensureWalletExists(req.userId);
+    const { error: upsertErr } = await supabaseAdmin.from('user_wallets')
+      .update({ tron_address: tronAddress, updated_at: new Date().toISOString() })
+      .eq('user_id', req.userId);
+    if (upsertErr) console.warn('[GET /wallet/usdt] user_wallets update failed:', upsertErr.message);
 
     // Read USDT balance from wallets table (single source of truth)
     const { data: walRow } = await supabaseAdmin
@@ -10128,6 +10150,13 @@ app.get('/api/wallet/usdt/check', verifyToken, async (req, res) => {
         { onConflict: 'user_id' }
     );
     if (upsertErr) console.warn('[/wallet/usdt/check] upsert error (non-fatal):', upsertErr.message);
+    // user_wallets.btc_address is NOT NULL — ensure the row exists (with a real
+    // btc_address) before updating tron_address, same reasoning as GET /wallet/usdt.
+    await hdWalletService.ensureWalletExists(req.userId);
+    const { error: upsertErr } = await supabaseAdmin.from('user_wallets')
+      .update({ tron_address: derivedAddress, updated_at: new Date().toISOString() })
+      .eq('user_id', req.userId);
+    if (upsertErr) console.warn('[/wallet/usdt/check] update error (non-fatal):', upsertErr.message);
 
     // Read last_onchain_usdt if available (for idempotent deposit detection)
     let lastOnchainUsdt = 0;

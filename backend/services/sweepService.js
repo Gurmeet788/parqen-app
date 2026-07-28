@@ -162,7 +162,12 @@ class SweepService {
 
       // Step 2 — Calculate how much we can sweep after network fee
       const totalSats     = utxos.reduce((sum, u) => sum + u.value, 0);
-      const estimatedSize = 110 + (68 * utxos.length) + 31; // 1 output = all to hot wallet
+      // hdWallet.sendBitcoin() always budgets for 2 outputs (destination + possible
+      // change, in case the sweep amount doesn't consume the exact UTXO value) — this
+      // pre-check must match that assumption or it can underestimate the fee sendBitcoin
+      // will actually require, causing every sweep of that address to fail forever
+      // with "Not enough to cover fee" (confirmed happening: a 155-sat shortfall).
+      const estimatedSize = 110 + (68 * utxos.length) + (31 * 2);
       const feeSats       = estimatedSize * FEE_RATE_SATS;
       const sendSats      = totalSats - feeSats;
 
@@ -202,8 +207,12 @@ class SweepService {
         destination_address: hotAddress,
         notes:               `Auto-sweep to hot wallet — tx: ${result.txid}`,
         created_at:          new Date().toISOString(),
-      }).catch(logErr => {
-        // Logging failure is non-fatal — the BTC is already safely in hot wallet
+      }).then(null, logErr => {
+        // Logging failure is non-fatal — the BTC is already safely in hot wallet.
+        // NOTE: Supabase's query builder is thenable but not a real Promise, so
+        // .catch() throws "is not a function" instead of catching — .then(null, fn)
+        // works on both. That bug was previously making every successful sweep log
+        // as "Could not sweep" even though the BTC had already been sent correctly.
         console.warn('[SweepService] Audit log failed (funds safe):', logErr.message);
       });
 

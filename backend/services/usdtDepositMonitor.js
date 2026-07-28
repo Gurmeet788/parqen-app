@@ -22,7 +22,10 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
 );
 
-const POLL_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes (same as BTC monitor)
+// USDT has no real-time push feed (unlike BTC's mempool.space websocket), so this poll
+// interval IS the deposit-detection latency users experience. Kept short — TronGrid is
+// called with an API key (TRONGRID_API_KEY, higher rate limit) and batched 5-at-a-time.
+const POLL_INTERVAL_MS = 90 * 1000; // 90 seconds
 const DUST_THRESHOLD   = 0.01;            // ignore deposits < $0.01 USDT
 
 const emailTransporter = nodemailer.createTransport({
@@ -95,8 +98,9 @@ function depositEmailHtml(username, depositUsdt, newBalance, address) {
 class USDTDepositMonitor {
 
   constructor() {
-    this.isRunning  = false;
-    this.intervalId = null;
+    this.isRunning       = false;
+    this.intervalId      = null;
+    this.cycleInProgress = false;
   }
 
   // ── Start background polling ───────────────────────────────────────────────
@@ -124,6 +128,13 @@ class USDTDepositMonitor {
 
   // ── One full polling cycle ─────────────────────────────────────────────────
   async runFullCycle() {
+    // With a 90s interval, guard against a slow cycle overlapping the next tick —
+    // overlapping cycles would double-hit TronGrid and race on the same rows.
+    if (this.cycleInProgress) {
+      console.log('[USDTMonitor] Previous cycle still running — skipping this tick');
+      return;
+    }
+    this.cycleInProgress = true;
     const start = Date.now();
     console.log(`\n[USDTMonitor] ⏱  Cycle start ${new Date().toISOString()}`);
     try {
@@ -138,6 +149,7 @@ class USDTDepositMonitor {
       console.error('[USDTMonitor] Pending sweep processor error:', err.message);
     }
     console.log(`[USDTMonitor] ✅ Cycle done in ${Date.now() - start}ms\n`);
+    this.cycleInProgress = false;
   }
 
   // ── Fetch all Tron addresses to scan ──────────────────────────────────────
@@ -181,17 +193,19 @@ class USDTDepositMonitor {
 
     console.log(`[USDTMonitor] Scanning ${wallets.length} Tron address(es)...`);
 
-    // Process in batches of 5 — respects TronGrid rate limits
-    const BATCH = 5;
-    for (let i = 0; i < wallets.length; i += BATCH) {
-      const batch = wallets.slice(i, i + BATCH);
-      await Promise.allSettled(batch.map(w => this.checkUserDeposit({
+    // Sequential, one request at a time — this TronGrid key's actual sustainable
+    // rate is ~2 req/sec; firing several requests concurrently (the old batch-of-5
+    // approach) got almost every request 429'd. A full pass over many addresses
+    // now takes longer, but actually succeeds instead of mostly failing.
+    const REQUEST_SPACING_MS = 550;
+    for (const w of wallets) {
+      await this.checkUserDeposit({
         userId:          w.user_id,
         address:         w.tron_address,
         username:        nameMap[w.user_id] || w.user_id.slice(0, 8),
         lastOnchainUsdt: parseFloat(w.last_onchain_usdt || 0),
-      })));
-      if (i + BATCH < wallets.length) await this.sleep(1000);
+      });
+      await this.sleep(REQUEST_SPACING_MS);
     }
   }
 

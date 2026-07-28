@@ -99,8 +99,22 @@ class TronWalletService {
         { headers: tronHeaders(), timeout: 15000 }
       );
     } catch (err) {
-      // Network error or timeout — throw so caller can keep sweep PENDING
-      throw new Error(`TronGrid API error for ${address?.slice(0, 12)}…: ${err.message}`);
+      // A single 429 is often just a transient burst — wait and retry once
+      // before giving up, instead of failing the whole check immediately.
+      if (err.response?.status === 429) {
+        await new Promise(r => setTimeout(r, 1200));
+        try {
+          resp = await axios.get(
+            `${TRONGRID_BASE}/v1/accounts/${address}`,
+            { headers: tronHeaders(), timeout: 15000 }
+          );
+        } catch (retryErr) {
+          throw new Error(`TronGrid API error for ${address?.slice(0, 12)}…: ${retryErr.message}`);
+        }
+      } else {
+        // Network error or timeout — throw so caller can keep sweep PENDING
+        throw new Error(`TronGrid API error for ${address?.slice(0, 12)}…: ${err.message}`);
+      }
     }
 
     const accountData = resp.data?.data?.[0];
