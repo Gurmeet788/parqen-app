@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useParams, useNavigat
 import { HelmetProvider } from 'react-helmet-async';
 import { RatesProvider } from './contexts/RatesContext';
 import axios from 'axios';
-import { identifyUser, unidentifyUser, initNotifications } from './utils/notifications';
+import { identifyUser, unidentifyUser } from './utils/notifications';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import CustomToastContainer from './components/CustomToastContainer';
