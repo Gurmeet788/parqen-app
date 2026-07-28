@@ -9,8 +9,8 @@ import {
   X, Info, ArrowRight, PlusCircle, MapPin, Heart,
   Filter, Home, Wallet, User, Gift, Shield,
   ChevronDown, ThumbsUp, ThumbsDown, Repeat2,
-  Phone, Mail, Ban, ArrowUp, ArrowDown,
-  Flame,
+  Phone, Mail, Ban, ArrowUp, ArrowDown, Trophy, Zap,
+Flame,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import CountryFlag, { resolveCode } from '../components/CountryFlag';
@@ -1670,76 +1670,86 @@ export default function SellBitcoin({user}) {
           </div>
         )}
 
-        <div style={{display:'flex',alignItems:'center',gap:6,padding:'7px 10px',borderRadius:8,background:'#FFFBEB',border:'1px solid #FDE68A'}}>
-          <AlertTriangle size={11} style={{color:'#D97706',flexShrink:0}}/>
-          <span style={{fontSize:11,color:'#92400E',lineHeight:1.3}}><strong>Sell Safely:</strong> Never release Bitcoin before confirming payment. All trades are escrow-protected.</span>
+        <div style={{display:'flex',alignItems:'center',gap:11,padding:'13px 15px',borderRadius:12,background:'linear-gradient(135deg,#FFFBEB,#FEF3C7)',border:'1.5px solid #FCD34D',boxShadow:'0 2px 8px rgba(217,119,6,0.12)'}}>
+          <div style={{width:34,height:34,borderRadius:9,background:'#FDE68A',border:'1px solid #FCD34D',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+            <AlertTriangle size={17} style={{color:'#B45309'}}/>
+          </div>
+          <span style={{fontSize:13,color:'#92400E',lineHeight:1.4}}><strong style={{fontWeight:900}}>Sell Safely:</strong> <span style={{fontWeight:600}}>Never release Bitcoin before confirming payment. All trades are escrow-protected.</span></span>
         </div>
 
-        {/* ── AFFILIATE PROMO card — aligned inside offer grid ── */}
-        <div style={{background:'#fff',borderRadius:12,border:'1px solid #E2E8F0',overflow:'hidden'}}>
+{/* ── NEW USER BONUS CARD — sell-page amber theme, no emoji ── */}
+<div style={{borderRadius:14,overflow:'hidden',boxShadow:'0 4px 20px rgba(180,83,9,0.2)'}}>
+  <div style={{background:'linear-gradient(135deg,#78350F 0%,#B45309 60%,#D97706 100%)',padding:'16px 16px 14px',position:'relative',overflow:'hidden'}}>
+    <div style={{position:'absolute',inset:0,opacity:0.07,backgroundImage:'radial-gradient(circle at 2px 2px,white 1px,transparent 0)',backgroundSize:'16px 16px',pointerEvents:'none'}}/>
+    <div style={{position:'absolute',top:0,left:0,right:0,height:3,background:'linear-gradient(90deg,#F4A422,#FBBF24,#F4A422)'}}/>
 
-          {/* Welcome bonus strip — amber/sell theme */}
-          <div style={{background:'linear-gradient(135deg,#78350F 0%,#B45309 60%,#D97706 100%)',padding:'10px 12px',borderBottom:'2px solid #F4A422'}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginBottom:7}}>
-              <div style={{display:'flex',alignItems:'center',gap:6}}>
-                <div style={{width:26,height:26,borderRadius:8,background:'#F4A422',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:13}}>🎁</div>
-                <div>
-                  <p style={{margin:0,fontSize:11,fontWeight:900,color:'#FFFFFF',lineHeight:1.1}}>New users earn <span style={{color:'#FDE68A'}}>$2 FREE Bitcoin!</span></p>
-                  <p style={{margin:0,fontSize:9,color:'rgba(255,255,255,0.55)',marginTop:1}}>Offer valid 30 days · Share your link so friends can claim it</p>
+    <div style={{position:'relative',display:'flex',flexWrap:'wrap',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom:13}}>
+      <div style={{display:'flex',alignItems:'center',gap:10,minWidth:0,flex:'1 1 220px'}}>
+        <div style={{width:36,height:36,borderRadius:10,background:'#F4A422',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,boxShadow:'0 2px 8px rgba(244,164,34,0.45)'}}>
+          <Gift size={17} style={{color:'#78350F'}}/>
+        </div>
+        <div style={{minWidth:0}}>
+          <p style={{margin:0,fontSize:13.5,fontWeight:900,color:'#FFFFFF',lineHeight:1.35}}>New users earn <span style={{color:'#FDE68A'}}>$2 FREE Bitcoin</span></p>
+          <p style={{margin:0,fontSize:10.5,color:'rgba(255,255,255,0.65)',marginTop:3,lineHeight:1.4}}>Offer valid 30 days · Share your link so friends can claim it</p>
+        </div>
+      </div>
+      <button onClick={()=>navigate('/register')}
+        style={{flexShrink:0,padding:'9px 16px',borderRadius:9,border:'none',cursor:'pointer',background:'#F4A422',color:'#78350F',fontWeight:900,fontSize:12,whiteSpace:'nowrap',boxShadow:'0 3px 10px rgba(244,164,34,0.4)'}}>
+        Claim <ArrowRight size={12} style={{display:'inline',marginLeft:3,verticalAlign:'-1px'}}/>
+      </button>
+    </div>
+
+<div style={{position:'relative',display:'flex',gap:7}}>
+  {[
+    {Icon:CheckCircle, label:'Register',sub:'$1 locked'},
+    {Icon:Zap,         label:'Verify',  sub:'stays safe'},
+    {Icon:Bitcoin,     label:'1 Trade', sub:'$2 unlocks'},
+  ].map(({Icon,label,sub})=>(
+    <div key={label} style={{flex:'1 1 0',minWidth:0,background:'rgba(255,255,255,0.1)',border:'1px solid rgba(255,255,255,0.16)',borderRadius:10,padding:'10px 6px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}>
+      <Icon size={15} style={{color:'#FDE68A',marginBottom:4}}/>
+      <div style={{fontSize:11,fontWeight:800,color:'#fff',lineHeight:1.2}}>{label}</div>
+      <div style={{fontSize:9,color:'rgba(255,255,255,0.6)',marginTop:2,lineHeight:1.2}}>{sub}</div>
+    </div>
+  ))}
+</div>
+  </div>
+</div>
+
+        {/* ── AFFILIATE PROMO CARD ── */}
+        <div style={{borderRadius:14,overflow:'hidden',boxShadow:'0 4px 20px rgba(217,119,6,0.15)'}}>
+
+          {/* Header — sell-theme gradient so it pops, matches the bonus card above */}
+          <div style={{padding:'16px 16px 14px',background:'linear-gradient(135deg,#B45309,#D97706)',position:'relative',overflow:'hidden'}}>
+            <div style={{position:'absolute',top:-24,right:-16,width:110,height:110,borderRadius:'50%',background:'#F4A422',opacity:0.18,filter:'blur(35px)'}}/>
+            <div style={{position:'relative',display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}>
+              <div>
+                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
+                  <span style={{display:'flex',alignItems:'center',gap:3,fontSize:10,fontWeight:900,color:'#78350F',background:'#F4A422',borderRadius:5,padding:'2px 8px',letterSpacing:0.4,textTransform:'uppercase'}}>
+                    <Bitcoin size={10}/>Affiliate
+                  </span>
+                  <span style={{fontSize:9,color:'rgba(255,255,255,0.65)',fontWeight:500}}>Earn on every referral trade</span>
                 </div>
+                <p style={{margin:0,fontSize:16,fontWeight:900,color:'#fff',lineHeight:1.2}}>Invite friends. Earn BTC forever.</p>
               </div>
-              <button
-                onClick={()=>navigate('/register')}
-                style={{flexShrink:0,padding:'5px 10px',borderRadius:7,border:'none',cursor:'pointer',background:'#F4A422',color:'#78350F',fontWeight:900,fontSize:9,whiteSpace:'nowrap'}}>
-                Claim →
+              <button onClick={()=>navigate('/dashboard?tab=affiliate')}
+                style={{flexShrink:0,padding:'10px 16px',borderRadius:10,border:'none',cursor:'pointer',background:'#F4A422',color:'#78350F',fontWeight:900,fontSize:11,whiteSpace:'nowrap',boxShadow:'0 3px 12px rgba(244,164,34,0.4)'}}>
+                Get Link <ArrowRight size={12} style={{display:'inline',marginLeft:3,verticalAlign:'-2px'}}/>
               </button>
             </div>
-            <div style={{display:'flex',alignItems:'center',gap:4}}>
-              {[
-                {icon:'✅',label:'Register',sub:'$1 locked'},
-                {icon:'⚡',label:'Verify',  sub:'stays safe'},
-                {icon:'₿', label:'1 Trade', sub:'$2 unlocks'},
-              ].map(({icon,label,sub},i,arr)=>(
-                <div key={label} style={{display:'flex',alignItems:'center',gap:4,flex:1}}>
-                  <div style={{flex:1,background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.15)',borderRadius:6,padding:'4px 6px',textAlign:'center'}}>
-                    <div style={{fontSize:11,lineHeight:1}}>{icon}</div>
-                    <div style={{fontSize:9,fontWeight:800,color:'#fff',marginTop:1,lineHeight:1}}>{label}</div>
-                    <div style={{fontSize:7,color:'rgba(255,255,255,0.45)',marginTop:1}}>{sub}</div>
-                  </div>
-                  {i<arr.length-1&&<div style={{fontSize:8,color:'rgba(255,255,255,0.3)',flexShrink:0}}>›</div>}
-                </div>
-              ))}
-            </div>
           </div>
 
-          {/* Top row: label + headline + CTA */}
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'10px 12px 8px'}}>
-            <div style={{minWidth:0}}>
-              <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:3}}>
-                <span style={{fontSize:9,fontWeight:800,color:'#F59E0B',background:'#FEF3C7',border:'1px solid #FDE68A',borderRadius:4,padding:'1px 6px',letterSpacing:0.4,textTransform:'uppercase'}}>₿ Affiliate</span>
-                <span style={{fontSize:9,color:'#94A3B8',fontWeight:500}}>Earn on every referral trade</span>
-              </div>
-              <p style={{margin:0,fontSize:13,fontWeight:800,color:'#1E293B',lineHeight:1.2}}>Invite friends. Earn BTC forever.</p>
-            </div>
-            <button
-              onClick={()=>navigate('/dashboard?tab=affiliate')}
-              style={{flexShrink:0,padding:'7px 12px',borderRadius:8,border:'none',cursor:'pointer',background:'linear-gradient(135deg,#2D6A4F,#40916C)',color:'#fff',fontWeight:800,fontSize:10,whiteSpace:'nowrap',boxShadow:'0 2px 8px rgba(45,106,79,0.25)'}}>
-              Get Link →
-            </button>
-          </div>
-
-          {/* Commission tiers */}
-          <div style={{display:'flex',gap:4,padding:'0 12px 10px',overflowX:'auto'}}>
+          {/* Commission tiers — single amber-family progression, not a rainbow */}
+          <div style={{display:'flex',gap:6,padding:'11px 14px',overflowX:'auto',background:'#fff'}}>
             {[
-              {refs:'0–9',  rate:'0.20%',c:'#059669'},
-              {refs:'10–24',rate:'0.25%',c:'#0D9488'},
-              {refs:'25–49',rate:'0.35%',c:'#F59E0B'},
-              {refs:'50–99',rate:'0.40%',c:'#EA580C'},
-              {refs:'100+', rate:'0.50%',c:'#7C3AED'},
+              {refs:'0–9',   rate:'0.20%', c:'#D9A441'},
+              {refs:'10–24', rate:'0.25%', c:'#D97706'},
+              {refs:'25–49', rate:'0.35%', c:'#B45309'},
+              {refs:'50–99', rate:'0.40%', c:'#92400E'},
+              {refs:'100+',  rate:'0.50%', c:'#78350F'},
             ].map(t=>(
-              <div key={t.refs} style={{flex:'0 0 auto',background:`${t.c}0D`,border:`1px solid ${t.c}30`,borderRadius:6,padding:'4px 8px',textAlign:'center'}}>
-                <div style={{fontSize:11,fontWeight:800,color:t.c,lineHeight:1}}>{t.rate}</div>
-                <div style={{fontSize:8,color:'#94A3B8',fontWeight:500,marginTop:1}}>{t.refs} refs</div>
+              <div key={t.refs} style={{flex:'0 0 auto',background:`${t.c}0D`,border:`1.5px solid ${t.c}30`,borderRadius:9,padding:'7px 10px',textAlign:'center',minWidth:52}}>
+                <div style={{fontSize:13,fontWeight:900,color:t.c,lineHeight:1}}>{t.rate}</div>
+                <div style={{fontSize:8,color:'#94A3B8',fontWeight:600,marginTop:2}}>{t.refs} refs</div>
               </div>
             ))}
           </div>
@@ -1747,19 +1757,24 @@ export default function SellBitcoin({user}) {
           {/* Leaderboard */}
           {affLeaderboard.length>0&&(
             <div style={{borderTop:'1px solid #F1F5F9'}}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'6px 12px',borderBottom:'1px solid #F1F5F9',background:'#F8FAFC'}}>
-                <span style={{fontSize:9,fontWeight:800,color:'#64748B',textTransform:'uppercase',letterSpacing:0.8}}>Top Earners</span>
-                <span style={{fontSize:9,color:'#94A3B8',fontWeight:500}}>All Time</span>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'7px 14px',borderBottom:'1px solid #F1F5F9',background:'#FFFBEB'}}>
+                <div style={{display:'flex',alignItems:'center',gap:5}}>
+                  <Trophy size={11} style={{color:'#D97706'}}/>
+                  <span style={{fontSize:9,fontWeight:900,color:'#78350F',textTransform:'uppercase',letterSpacing:0.6}}>Top Earners</span>
+                </div>
+                <span style={{fontSize:9,color:'#92400E',fontWeight:600}}>All Time</span>
               </div>
               {affLeaderboard.map((u,i)=>{
-                const medals=['🥇','🥈','🥉'];
-                const badgeColors={BEGINNER:'#7C3AED',PRO:'#059669',EXPERT:'#1E40AF',AMBASSADOR:'#0D9488',LEGEND:'#D97706'};
+                const badgeColors={BEGINNER:'#D9A441',PRO:'#D97706',EXPERT:'#B45309',AMBASSADOR:'#92400E',LEGEND:'#78350F'};
                 const bc=badgeColors[u.badge]||'#64748B';
+                const rankBg = i===0?'#F4A422':i===1?'#CBD5E1':'#C08A4E';
                 const earnedUsd=((u.earned_btc||0)*(btcPrice||76000));
                 return(
-                  <div key={u.username} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 12px',borderBottom:i<affLeaderboard.length-1?'1px solid #F8FAFC':'none'}}>
-                    <span style={{fontSize:13,flexShrink:0}}>{medals[i]}</span>
-                    <div style={{width:22,height:22,borderRadius:'50%',flexShrink:0,background:`${bc}18`,border:`1.5px solid ${bc}40`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:900,color:bc}}>
+                  <div key={u.username} style={{display:'flex',alignItems:'center',gap:9,padding:'7px 14px',borderBottom:i<affLeaderboard.length-1?'1px solid #F8FAFC':'none'}}>
+                    <div style={{width:18,height:18,borderRadius:'50%',flexShrink:0,background:rankBg,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                      <span style={{fontSize:9,fontWeight:900,color:'#fff'}}>{i+1}</span>
+                    </div>
+                    <div style={{width:24,height:24,borderRadius:'50%',flexShrink:0,background:`${bc}18`,border:`1.5px solid ${bc}40`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:900,color:bc}}>
                       {(u.username||'?')[0].toUpperCase()}
                     </div>
                     <div style={{flex:1,minWidth:0}}>
@@ -1770,19 +1785,19 @@ export default function SellBitcoin({user}) {
                       <span style={{fontSize:8,color:'#94A3B8',fontWeight:500}}>{u.referrals} refs · {u.affiliate_trades||u.total_trades} trades</span>
                     </div>
                     <div style={{textAlign:'right',flexShrink:0}}>
-                      <div style={{fontSize:10,fontWeight:800,color:'#F59E0B'}}>₿{(()=>{const v=parseFloat(u.earned_btc||0);return v>0&&v<0.0001?v.toFixed(8):v.toFixed(5);})()}</div>
+                      <div style={{fontSize:10,fontWeight:800,color:'#D97706'}}>₿{(()=>{const v=parseFloat(u.earned_btc||0);return v>0&&v<0.0001?v.toFixed(8):v.toFixed(5);})()}</div>
                       <div style={{fontSize:8,color:'#94A3B8',fontWeight:500}}>${earnedUsd>=1000?(earnedUsd/1000).toFixed(1)+'k':earnedUsd>=1?earnedUsd.toFixed(2):earnedUsd<0.01?'<$0.01':earnedUsd.toFixed(2)}</div>
                     </div>
                   </div>
                 );
               })}
-              <div style={{padding:'5px 12px',background:'#FFFBEB',borderTop:'1px solid #FDE68A',textAlign:'center'}}>
-                <span style={{fontSize:9,color:'#92400E',fontWeight:600}}>🏆 Could you be next?</span>
+              <div style={{padding:'6px 14px',background:'#FFFBEB',borderTop:'1px solid #FDE68A',textAlign:'center'}}>
+                <span style={{fontSize:9,color:'#92400E',fontWeight:700}}>Could you be next?</span>
               </div>
             </div>
           )}
 
-          <p style={{margin:0,padding:'6px 12px 10px',textAlign:'center',fontSize:9,color:'#94A3B8',fontWeight:500}}>
+          <p style={{margin:0,padding:'7px 14px 11px',textAlign:'center',fontSize:9,color:'#94A3B8',fontWeight:600}}>
             Free to join · No minimum payout · Lifetime commission
           </p>
         </div>

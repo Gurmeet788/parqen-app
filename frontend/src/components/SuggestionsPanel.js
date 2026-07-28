@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import {
@@ -188,6 +189,8 @@ function StepBar({ step, total, labels }) {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function SuggestionsPanel({ user }) {
+  const location = useLocation();
+  const isTradeChatPage = location.pathname.startsWith('/trade/') || location.pathname.startsWith('/trade-chat/');
   // mode: 'home' | 'topic-selected' | 'ticket-form' | 'ticket-priority'
   //       | 'ticket-attachments' | 'ticket-review' | 'submitting'
   //       | 'ticket-created' | 'chat' | 'suggest'
@@ -834,7 +837,7 @@ export default function SuggestionsPanel({ user }) {
   return (
     <>
       {/* ── Floating button — hidden on mobile when panel is open ── */}
-      {!(open && isMobile) && (
+      {!(open && isMobile) && !isTradeChatPage && (
         <button onClick={openPanel}
           className="fixed flex items-center justify-center shadow-2xl transition-all hover:scale-110 active:scale-95"
           style={{
