@@ -10,7 +10,7 @@ import {
   Filter, Home, Wallet, User, Gift, Shield,
   ChevronDown, ThumbsUp, ThumbsDown, Repeat2,
   Phone, Mail, Ban, ArrowUp, ArrowDown, Trophy, Zap,
-  Flame,
+Flame,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import CountryFlag, { resolveCode } from '../components/CountryFlag';

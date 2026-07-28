@@ -1956,8 +1956,7 @@ export default function BuyBitcoin({user}) {
                 <span style={{fontSize:9,color:C.green,fontWeight:600,background:'#fff',borderRadius:4,padding:'1px 6px'}}>All Time</span>
               </div>
               {affLeaderboard.map((u,i)=>{
-                const badgeColors={BEGINNER:C.mint,PRO:C.green,EXPERT:C.forest,AMBASSADOR:'#B8811A',LEGEND:C.gold};
-                const bc = badgeColors[u.badge]||C.g500;
+                const bc = BADGE_COLORS[u.badge] || '#64748B';
                 const rankBg = i===0?C.gold:i===1?C.g300:'#C08A4E';
                 const earnedUsd = ((u.earned_btc||0)*(btcPrice||76000));
                 return (
@@ -1970,7 +1969,7 @@ export default function BuyBitcoin({user}) {
                     </div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:'flex',alignItems:'center',gap:4}}>
-                        <span style={{fontSize:10,fontWeight:800,color:C.g800,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:80}}>{u.username}</span>
+<span style={{fontSize:10,fontWeight:800,color:'#1E293B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:80}}>{u.username}</span>
                         <BadgeChip user={u} badgeName={u.badge} size="xs" />
                       </div>
                       <span style={{fontSize:8,color:C.g400,fontWeight:500}}>{u.referrals} referral{u.referrals !== 1 ? 's' : ''} · {u.affiliate_trades} ref trade{u.affiliate_trades !== 1 ? 's' : ''}</span>
