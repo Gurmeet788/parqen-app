@@ -5845,12 +5845,24 @@ app.get('/api/listings/:id', async (req, res) => {
       } catch {}
     }
 
-    const btcPriceVal     = parseFloat(listing.bitcoin_price) || 88000;
-    const effectiveMaxUsd = sellerBalanceBtc > 0
-      ? Math.min(sellerBalanceBtc * btcPriceVal, parseFloat(listing.max_limit_usd || 0) || sellerBalanceBtc * btcPriceVal)
-      : parseFloat(listing.max_limit_usd || 0);
+    const btcPriceVal      = parseFloat(listing.bitcoin_price) || 88000;
+    // Only listing types where the seller pays out BTC need their live balance to cap the max —
+    // matches btcRequiredTypes used by the /api/listings list endpoint.
+    const btcRequiredTypes = ['SELL', 'SELL_BITCOIN', 'BUY_GIFT_CARD'];
+    const capsByBalance    = btcRequiredTypes.includes(listing.listing_type);
+    const minLimitUsd      = parseFloat(listing.min_limit_usd || 0);
+    const listingMaxUsd    = parseFloat(listing.max_limit_usd || 0);
+    const balanceUsd       = sellerBalanceBtc * btcPriceVal;
 
-    res.json({ listing: { ...listing, users: enrichedSeller.id ? [enrichedSeller] : [], seller_balance_btc: sellerBalanceBtc, effective_max_usd: effectiveMaxUsd } });
+    const effectiveMaxUsd = capsByBalance && sellerBalanceBtc > 0
+      ? Math.min(balanceUsd, listingMaxUsd || balanceUsd)
+      : listingMaxUsd;
+
+    // If the seller's live balance can't even cover the listing's own minimum, the range
+    // (min > effective max) is impossible to trade — flag it instead of showing a broken range.
+    const sellerCanFulfillMin = !capsByBalance || !minLimitUsd || balanceUsd >= minLimitUsd;
+
+    res.json({ listing: { ...listing, users: enrichedSeller.id ? [enrichedSeller] : [], seller_balance_btc: sellerBalanceBtc, effective_max_usd: effectiveMaxUsd, seller_can_fulfill_min: sellerCanFulfillMin } });
   } catch (error) {
     console.error('[listings/:id] error:', error);
     res.status(500).json({ error: error.message });

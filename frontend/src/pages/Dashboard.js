@@ -11,7 +11,7 @@ import {
   Medal, Crown, Zap, BarChart3, ChevronRight,
   PlusCircle, X, Link, TrendingDown, Award, Flame,
   UserCheck, UserX, Target, Percent, Lock, ThumbsUp, ThumbsDown,
-  Download, Trophy
+  Download, Trophy, Rocket
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { BadgeChip, TRUST_MAP, deriveBadge, getNextBadge, renderBadgeIcon, BADGE_COLORS } from '../lib/badge';
