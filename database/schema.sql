@@ -139,12 +139,13 @@ CREATE TABLE IF NOT EXISTS escrow_locks (
 CREATE TABLE IF NOT EXISTS messages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   trade_id UUID NOT NULL REFERENCES trades(id) ON DELETE CASCADE,
-  sender_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  recipient_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  sender_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  recipient_id UUID REFERENCES users(id) ON DELETE SET NULL,
   message_text TEXT NOT NULL,
   attachment_url VARCHAR(500),
   is_read BOOLEAN DEFAULT false,
   message_type VARCHAR(50) DEFAULT 'CHAT', -- CHAT, SYSTEM, DISPUTE
+  sender_role TEXT DEFAULT 'user', -- user, moderator, system
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
