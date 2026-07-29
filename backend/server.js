@@ -4024,7 +4024,7 @@ app.post('/api/auth/send-action-code', otpLimiter, verifyToken, async (req, res)
 
     const code = actionCodeService.generate(req.userId, action);
 
-    const actionLabels = { release_btc: 'Release Bitcoin', send_btc: 'Send Bitcoin' };
+    const actionLabels = { release_btc: 'Release Bitcoin', send_btc: 'Send Bitcoin', enable_2fa: 'Enable Two-Factor Authentication' };
     const label = actionLabels[action] || action;
 
     await sendVerificationEmail(user.email, code,
@@ -4203,6 +4203,15 @@ app.patch('/api/users/toggle-2fa', verifyToken, async (req, res) => {
         if (!user) return res.status(404).json({ error: 'User not found' });
         const phoneOk = !!(user.phone && (user.is_phone_verified || user.phone_verified));
         if (!phoneOk) return res.status(400).json({ error: 'Verify your phone number first in Settings → Verification' });
+      }
+
+      // For email/sms/whatsapp: require the one-time code sent via /api/auth/send-action-code
+      // (action=enable_2fa) so activation actually proves the user controls that inbox/phone.
+      if (method === 'email' || method === 'sms' || method === 'whatsapp') {
+        const { actionCode } = req.body;
+        if (!actionCode) return res.status(400).json({ error: 'Enter the security code sent to you to activate 2FA.' });
+        const check = actionCodeService.verify(req.userId, 'enable_2fa', actionCode);
+        if (!check.valid) return res.status(400).json({ error: check.error });
       }
 
       // For TOTP: must have a confirmed secret (check via /totp/confirm which sets two_factor_method)

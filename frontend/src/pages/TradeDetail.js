@@ -1493,7 +1493,7 @@ export default function TradeDetail({user}) {
               {/* ── RELEASE BITCOIN button ── */}
               {showRelease&&(
                 <button onClick={handleReleaseClick} disabled={submitting}
-                  className="hidden lg:flex w-full py-4 rounded-xl text-white font-black text-base shadow-lg hover:opacity-90 disabled:opacity-50 items-center justify-center gap-2 transition"
+                  className="flex w-full py-4 rounded-xl text-white font-black text-base shadow-lg hover:opacity-90 disabled:opacity-50 items-center justify-center gap-2 transition"
                   style={{backgroundColor:C.green}}>
                   {submitting
                     ?<><RefreshCw size={16} className="animate-spin"/>Processing…</>
@@ -2470,7 +2470,7 @@ export default function TradeDetail({user}) {
                 style={{borderColor:C.g200,color:C.g600}}>
                 Cancel
               </button>
-              <button onClick={()=>{navigate('/settings');}}
+              <button onClick={()=>{navigate('/settings?tab=security');}}
                 className="flex-1 py-3 rounded-xl text-white font-black text-sm transition hover:opacity-90"
                 style={{backgroundColor:C.green}}>
                 Go to Settings
