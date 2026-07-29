@@ -9,7 +9,8 @@ import {
   Paperclip, Flag, BadgeCheck, FileText, Copy, Globe,
   ChevronDown, ChevronUp, DollarSign, CreditCard,
 Smartphone, Building2, ThumbsUp, ThumbsDown, Gift, Repeat2, Heart,
-  Bell, Camera, Mail, PartyPopper, Rocket, Unlock, Zap,
+  Bell, Camera, Mail, PartyPopper, Rocket, Unlock, Zap, Stamp,
+  Plus, Image as ImageIcon, File as FileIcon,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { copyToClipboard } from '../utils/clipboard';
@@ -848,6 +849,9 @@ export default function TradeDetail({user}) {
   const msgEnd     = useRef(null);
   const chatRef    = useRef(null);
   const fileRef    = useRef(null);
+  const cameraRef  = useRef(null);
+  const docRef     = useRef(null);
+  const attachMenuRef = useRef(null);
   const textareaRef = useRef(null);
   const scrolled        = useRef(false);
   const prevMsgCount    = useRef(0);
@@ -892,6 +896,7 @@ export default function TradeDetail({user}) {
   const [disputeSubmitting, setDisputeSubmitting] = useState(false);
   const [cpTyping,  setCpTyping]  = useState(false);
   const [activeTab, setActiveTab]  = useState('chat');
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
 
   const status = (trade?.status||'').toUpperCase();
   const isBuyer     = user&&trade&&String(user.id)===String(trade.buyer_id);
@@ -912,6 +917,14 @@ export default function TradeDetail({user}) {
     document.documentElement.classList.add('trade-page');
     return () => document.documentElement.classList.remove('trade-page');
   }, []);
+
+  // Close the attach popup on an outside click
+  useEffect(() => {
+    if (!showAttachMenu) return;
+    const onClick = e => { if (attachMenuRef.current && !attachMenuRef.current.contains(e.target)) setShowAttachMenu(false); };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [showAttachMenu]);
 
   const isActive    = !isCompleted&&!isCancelled;
   const cfg         = getS(status);
@@ -1371,7 +1384,7 @@ export default function TradeDetail({user}) {
 
   const showMarkPaid  = isGiftCardTrade ? (isSeller&&isEscrow&&isActive) : (isBuyer&&isEscrow&&isActive);
   const showRelease   = isGiftCardTrade ? (isBuyer&&isPaid&&isActive)    : (isSeller&&isPaid&&isActive);
-  const showDispute   = isPaid&&isActive&&!isDisputed&&(isBuyer||isSeller);
+  const showDispute   = isActive&&!isDisputed&&(isBuyer||isSeller);
   const paidDuration       = paidAt ? now - paidAt : 0;
   const disputeReady       = isPaid && paidAt && paidDuration >= DISPUTE_COOLDOWN_MS;
   const disputeCountdownS  = paidAt ? Math.max(0, Math.ceil((DISPUTE_COOLDOWN_MS - paidDuration) / 1000)) : 0;
@@ -1500,7 +1513,9 @@ export default function TradeDetail({user}) {
                   <Flag size={12}/>
                   {disputeReady
                     ? 'Open Dispute'
-                    : <><Clock size={12}/> Dispute in {Math.floor(disputeCountdownS/60)}:{String(disputeCountdownS%60).padStart(2,'0')}</>}
+                    : !isPaid
+                      ? <><Clock size={12}/> Dispute available after payment is sent</>
+                      : <><Clock size={12}/> Dispute in {Math.floor(disputeCountdownS/60)}:{String(disputeCountdownS%60).padStart(2,'0')}</>}
                 </button>
               )}
               {showCancelBtn && (!isPaid || !disputeReady) && (
@@ -1527,7 +1542,19 @@ export default function TradeDetail({user}) {
                 <div className="py-3 px-5 rounded-xl text-center border" style={{backgroundColor:C.g100,borderColor:C.g200}}>
                   <X size={20} className="mx-auto mb-1" style={{color:C.g500}}/>
                   <p className="font-bold text-sm" style={{color:C.g700}}>Trade Cancelled</p>
-                  <p className="text-xs mt-0.5" style={{color:C.g400}}>Escrow funds returned</p>
+                  <p className="text-xs mt-0.5 mb-3" style={{color:C.g400}}>Escrow funds returned</p>
+                  <div className="flex gap-2 justify-center flex-wrap">
+                    <button onClick={()=>navigate(isSeller?'/sell-bitcoin':'/buy-bitcoin')}
+                      className="px-3 py-1.5 rounded-lg font-black text-xs text-white hover:opacity-90 transition"
+                      style={{backgroundColor:C.green}}>
+                      <><Rocket size={14} style={{display:'inline'}}/> Start New Trade</>
+                    </button>
+                    <button onClick={()=>navigate('/buy-bitcoin')}
+                      className="px-3 py-1.5 rounded-lg font-black text-xs border bg-white hover:bg-gray-50 transition"
+                      style={{borderColor:C.g200,color:C.g700}}>
+                      Marketplace →
+                    </button>
+                  </div>
                 </div>
               )}
               {isDisputed&&(
@@ -1757,8 +1784,19 @@ export default function TradeDetail({user}) {
               </div>
 
               {/* ── Trade Summary Banner ── */}
-              <div className="flex-shrink-0 px-3 py-2.5"
+              <div className="flex-shrink-0 flex items-center gap-2.5 px-3 py-2.5"
                 style={{ backgroundColor: isSeller ? C.danger : C.green }}>
+                <div className="flex-shrink-0 flex items-center justify-center"
+                  style={{
+                    width:26, height:26, borderRadius:'50%',
+                    border:'1.5px solid rgba(255,255,255,0.85)',
+                    backgroundColor:'rgba(255,255,255,0.14)',
+                    transform:'rotate(-8deg)',
+                    boxShadow:'0 0 0 2px rgba(255,255,255,0.18)',
+                  }}
+                  title="Verified escrow trade">
+                  <Stamp size={14} style={{color:'#fff'}}/>
+                </div>
                 <p className="text-xs leading-snug font-black uppercase tracking-wide" style={{color:'#fff'}}>
                   {isBuyer
                     ? `YOU ARE BUYING ${fmtBtc(btcReceived)} BTC FOR ${userPays.toFixed(2)} (${cur}) WITH ${payMethod}`
@@ -1791,6 +1829,25 @@ export default function TradeDetail({user}) {
                     })}
                   </div>
                 )}
+
+                {/* System message — trade opened notice, mirrors the "safe to pay" banner */}
+                {isEscrow && !isPaid && (isBuyer||isSeller) && (()=>{
+                  const openedRaw = trade.created_at;
+                  const openedDate = openedRaw ? new Date(/[Z+]/.test(openedRaw)?openedRaw:openedRaw+'Z') : new Date();
+                  const openedLabel = `${String(openedDate.getDate()).padStart(2,'0')}/${String(openedDate.getMonth()+1).padStart(2,'0')}/${openedDate.getFullYear()} ${String(openedDate.getHours()).padStart(2,'0')}:${String(openedDate.getMinutes()).padStart(2,'0')}`;
+                  const sysText = isBuyer
+                    ? `You are buying ${fmtBtc(btcReceived)} BTC (${sym}${fmt(btcValueInLocal,2)} ${cur}) for ${sym}${fmt(userPays,2)} ${cur} via ${payMethod}. It is now safe for you to pay. You will have ${timeLimit} minutes to make your payment and click on the "PAID" button before the trade expires.`
+                    : `You are selling ${fmtBtc(btcReceived)} BTC (${sym}${fmt(btcValueInLocal,2)} ${cur}) for ${sym}${fmt(userPays,2)} ${cur} via ${payMethod}. Wait for the buyer to send payment via ${payMethod}, then confirm it before releasing the Bitcoin. The buyer has ${timeLimit} minutes to pay before the trade expires.`;
+                  return(
+                    <div className="flex justify-center px-1">
+                      <div className="w-full max-w-[95%] rounded-2xl p-4" style={{backgroundColor:'#E9EDEF', border:`1px solid ${C.g200}`}}>
+                        <p className="text-sm font-black mb-1.5" style={{color:'#1E293B'}}>System message</p>
+                        <p className="text-sm leading-relaxed" style={{color:'#334155'}}>{sysText}</p>
+                        <p className="text-xs font-semibold mt-2.5" style={{color:'#64748B'}}>{openedLabel}</p>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Messages */}
                 {messages.length===0?(
@@ -2096,6 +2153,40 @@ export default function TradeDetail({user}) {
                   </div>
                 )}
 
+                {/* ── Trade cancelled banner ── */}
+                {isCancelled&&(
+                  <div className="mx-1 my-2 rounded-xl overflow-hidden shadow-md border"
+                    style={{background:'#fff',borderColor:C.g200}}>
+                    <div className="px-4 py-3 text-center">
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2"
+                        style={{backgroundColor:'#FEE2E2'}}>
+                        <X size={20} style={{color:C.danger}}/>
+                      </div>
+                      <p className="font-black text-sm" style={{color:C.g800}}>Trade Cancelled</p>
+                      <p className="text-xs font-semibold mt-0.5 mb-2" style={{color:C.g500}}>
+                        This chat is closed — escrow funds were returned to the seller.
+                      </p>
+                      {trade?.cancel_reason&&(
+                        <p className="text-xs mb-3 leading-snug px-3 py-2 rounded-lg" style={{color:C.g600,backgroundColor:C.g50}}>
+                          Reason: {trade.cancel_reason}
+                        </p>
+                      )}
+                      <div className="flex gap-2 justify-center flex-wrap">
+                        <button onClick={()=>navigate(isSeller?'/sell-bitcoin':'/buy-bitcoin')}
+                          className="px-3 py-1.5 rounded-lg font-black text-xs text-white hover:opacity-90 transition"
+                          style={{backgroundColor:C.green}}>
+                          <><Rocket size={14} style={{display:'inline'}}/> Start New Trade</>
+                        </button>
+                        <button onClick={()=>navigate('/buy-bitcoin')}
+                          className="px-3 py-1.5 rounded-lg font-black text-xs border hover:bg-gray-50 transition"
+                          style={{borderColor:C.g200,color:C.g700}}>
+                          Browse Marketplace →
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div ref={msgEnd}/>
               </div>
 
@@ -2138,24 +2229,62 @@ export default function TradeDetail({user}) {
               {isActive?(
                 <div className="flex-shrink-0 px-4 pb-4 pt-2 bg-[#F9FAFB] rounded-b-2xl">
                   <form onSubmit={sendMessage}
-                    className="flex items-center gap-3 p-1.5 pl-3 pr-1.5 bg-white border border-[#E5E7EB] rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
-                    <button type="button" onClick={()=>fileRef.current?.click()} disabled={uploading}
-                      className="w-9 h-9 rounded-full flex items-center justify-center border border-[#E5E7EB] bg-white hover:bg-gray-50 disabled:opacity-40 flex-shrink-0 transition"
-                      style={{outline:'none'}}>
-                      {uploading?<RefreshCw size={15} className="animate-spin" style={{color:C.green}}/>
-                        :<Paperclip size={15} style={{color:C.green}}/>}
-                    </button>
-                    <input ref={fileRef} type="file" accept="image/*" multiple onChange={e=>uploadImage(e.target.files)} className="hidden"/>
+                    className="flex items-center gap-3 p-1.5 pl-3 pr-1.5 bg-white border-2 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition-colors"
+                    style={{borderColor: msg.trim()?`${C.mint}55`:'#E5E7EB'}}>
+
+                    {/* ── Attach button + popup menu ── */}
+                    <div className="relative flex-shrink-0" ref={attachMenuRef}>
+                      <button type="button" onClick={()=>setShowAttachMenu(v=>!v)} disabled={uploading}
+                        className="w-9 h-9 rounded-full flex items-center justify-center disabled:opacity-40 flex-shrink-0 transition-transform"
+                        style={{
+                          background:`linear-gradient(135deg,${C.mint}25,${C.green}20)`,
+                          border:`1px solid ${C.mint}55`,
+                          outline:'none',
+                          transform: showAttachMenu?'rotate(45deg)':'rotate(0deg)',
+                        }}>
+                        {uploading?<RefreshCw size={15} className="animate-spin" style={{color:C.green}}/>
+                          :<Plus size={17} style={{color:C.green}}/>}
+                      </button>
+
+                      {showAttachMenu&&(
+                        <div className="absolute bottom-full left-0 mb-2 w-52 bg-white rounded-2xl shadow-2xl border overflow-hidden z-50"
+                          style={{borderColor:C.g200}}>
+                          {[
+                            {label:'Take a Photo', icon:Camera, bg:`${C.gold}22`, color:C.gold, onClick:()=>cameraRef.current?.click()},
+                            {label:'Upload Image', icon:ImageIcon, bg:`${C.mint}22`, color:C.green, onClick:()=>fileRef.current?.click()},
+                            {label:'File',         icon:FileIcon, bg:'#DBEAFE', color:'#2563EB', onClick:()=>docRef.current?.click()},
+                          ].map(({label,icon:Ic,bg,color,onClick})=>(
+                            <button key={label} type="button"
+                              onClick={()=>{onClick();setShowAttachMenu(false);}}
+                              className="w-full flex items-center gap-3 px-3.5 py-3 hover:bg-gray-50 transition text-left">
+                              <span className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{backgroundColor:bg}}>
+                                <Ic size={16} style={{color}}/>
+                              </span>
+                              <span className="text-sm font-bold" style={{color:C.g700}}>{label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Gallery — normal photo picker */}
+                    <input ref={fileRef} type="file" accept="image/*" multiple onChange={e=>{uploadImage(e.target.files);e.target.value='';}} className="hidden"/>
+                    {/* Camera — opens the device camera directly on mobile */}
+                    <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={e=>{uploadImage(e.target.files);e.target.value='';}} className="hidden"/>
+                    {/* Files — broader picker (still only images are accepted server-side) */}
+                    <input ref={docRef} type="file" multiple onChange={e=>{uploadImage(e.target.files);e.target.value='';}} className="hidden"/>
+
                     <input type="text" value={msg}
                       onChange={e=>{setMsg(e.target.value);sendTypingPing();}}
                       placeholder="Write a message..."
                       className="flex-1 min-w-0 px-2 py-2 font-medium bg-transparent border-0 focus:outline-none focus:ring-0 text-slate-800 placeholder-slate-400"
                       style={{fontSize:15}}/>
                     <button type="submit" disabled={!msg.trim()||sending}
-                      className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition disabled:opacity-100 disabled:cursor-not-allowed shadow-sm"
+                      className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition disabled:cursor-not-allowed"
                       style={{
-                        backgroundColor: !msg.trim()||sending ? '#F1F5F9' : C.green,
-                        color: !msg.trim()||sending ? '#94A3B8' : '#ffffff'
+                        background: !msg.trim()||sending ? '#F1F5F9' : `linear-gradient(135deg,${C.forest},${C.mint})`,
+                        color: !msg.trim()||sending ? '#94A3B8' : '#ffffff',
+                        boxShadow: !msg.trim()||sending ? 'none' : `0 2px 10px ${C.mint}66`,
                       }}>
                       {sending?<RefreshCw size={14} className="animate-spin"/>:<Send size={15}/>}
                     </button>
@@ -2174,21 +2303,19 @@ export default function TradeDetail({user}) {
           {/* Tab Navigation Switcher (mobile only — hidden entirely at md and above) */}
           <div className="flex-shrink-0 bg-white border border-[#E5E7EB] rounded-[24px] shadow-[0_4px_16px_rgba(0,0,0,0.06)] p-2 flex gap-2 max-w-sm mx-auto w-full md:hidden">
             <button type="button" onClick={() => setActiveTab('actions')}
-              className={`flex-1 py-3 px-4 rounded-[16px] font-black text-sm flex items-center justify-center gap-2 transition duration-200 outline-none ${
-                activeTab === 'actions'
-                  ? 'bg-[#6B4A16] text-white shadow-sm'
-                  : 'bg-white text-slate-700 hover:bg-slate-50 border border-transparent'
-              }`}>
+              className="flex-1 py-3 px-4 rounded-[16px] font-black text-sm flex items-center justify-center gap-2 transition duration-200 outline-none border border-transparent hover:opacity-90"
+              style={activeTab === 'actions'
+                ? {background:`linear-gradient(135deg,${C.forest},${C.mint})`,color:'#fff',boxShadow:'0 2px 8px rgba(27,67,50,0.25)'}
+                : {backgroundColor:'#fff',color:C.g700}}>
               <Flag size={16} />
               <span>Actions</span>
             </button>
-            
+
             <button type="button" onClick={() => setActiveTab('chat')}
-              className={`flex-1 py-3 px-4 rounded-[16px] font-black text-sm flex items-center justify-center gap-2 transition duration-200 outline-none ${
-                activeTab === 'chat'
-                  ? 'bg-[#6B4A16] text-white shadow-sm'
-                  : 'bg-white text-slate-700 hover:bg-slate-50 border border-transparent'
-              }`}>
+              className="flex-1 py-3 px-4 rounded-[16px] font-black text-sm flex items-center justify-center gap-2 transition duration-200 outline-none border border-transparent hover:opacity-90"
+              style={activeTab === 'chat'
+                ? {background:`linear-gradient(135deg,${C.forest},${C.mint})`,color:'#fff',boxShadow:'0 2px 8px rgba(27,67,50,0.25)'}
+                : {backgroundColor:'#fff',color:C.g700}}>
               <MessageCircle size={16} />
               <span>Chat</span>
             </button>
