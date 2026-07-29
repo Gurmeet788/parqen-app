@@ -5808,10 +5808,15 @@ app.get('/api/listings', async (req, res) => {
         balMap[w.user_id] = parseFloat(w.balance_btc || 0);
         usdtBalMap[w.user_id] = parseFloat(w.balance_usdt || 0);
       });
-      // 1 USDT ≈ $1 — no external price lookup needed
+      // 1 USDT ≈ $1 — no external price lookup needed.
+      // Uses the LIVE market price, not the listing's own bitcoin_price field — that field
+      // can be stale or bogus (e.g. a leftover value on a 'market' pricing_type listing that
+      // isn't used for rate display at all), which previously let near-empty wallets pass
+      // the $10 minimum check because the inflated price overstated their USD balance.
+      const livePriceUsd = _btcCache || 88000;
       const balanceUsdFor = (l) => (l.asset === 'USDT')
         ? (usdtBalMap[l.seller_id] || 0)
-        : (balMap[l.seller_id] || 0) * (parseFloat(l.bitcoin_price) || 88000);
+        : (balMap[l.seller_id] || 0) * livePriceUsd;
 
       // For SELL offers: cap displayed limits to seller's actual balance
       listings = listings.map(l => {

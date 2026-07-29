@@ -1691,7 +1691,6 @@ export default function TradeDetail({user}) {
             <div className="bg-white rounded-2xl border shadow-sm overflow-clip flex flex-col min-h-0 flex-1"
               style={{borderColor:C.g200}}>
 
- 
             {/* ── Partner Header ── */}
               <div className="flex-shrink-0 px-4 py-3 border-b" style={{borderColor:C.g100}}>
                 <div className="flex items-center justify-between mb-2">
@@ -1704,13 +1703,14 @@ export default function TradeDetail({user}) {
       <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white"
         style={{backgroundColor: (cp?.is_online ?? true) ? '#22C55E' : '#F59E0B'}} />
     )}
+    {(cp?.country || cp?.location) && (
+      <span className="absolute -bottom-0.5 -left-0.5 rounded-sm border-2 border-white overflow-hidden flex-shrink-0" style={{lineHeight:0}}>
+        <CountryFlag countryCode={cp.country || cp.location} className="w-4 h-3 block" />
+      </span>
+    )}
   </div>
   <span className="font-black text-base" style={{color:C.g800}}>{cp?.username || 'User'}</span>
-  {cp?.country || cp?.location ? (
-    <CountryFlag countryCode={cp.country || cp.location} className="w-5 h-3.5 rounded-sm" />
-  ) : (
-    <Globe size={14} style={{color:C.g400}}/>
-  )}
+  {!(cp?.country || cp?.location) && <Globe size={14} style={{color:C.g400}}/>}
 </button>
                   {/* TODO: Confirm positive_feedback/negative_feedback are returned on cp object from /trades/:id — if not, the ?? 0 fallback hides the gap */}
                   <div className="flex items-center gap-2">
@@ -1727,6 +1727,26 @@ export default function TradeDetail({user}) {
                     <span className="w-2.5 h-2.5 rounded-full" style={{background: (cp?.is_online ?? true) ? '#22C55E' : C.g400}}/>
                     {(cp?.is_online ?? true) ? 'Active' : fmtAge(cp?.last_seen_at)}
                   </span>
+                  {isEscrow && isActive && !isDisputed && (
+                    <span
+                      className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-black shadow-sm ${
+                        !isPaid && ((timeLeft !== null && timeLeft <= 0) || urgent) ? 'animate-pulse' : ''
+                      }`}
+                      style={{
+                        color:'#fff',
+                        background: isPaid
+                          ? `linear-gradient(135deg,${C.g400},${C.g300})`
+                          : (timeLeft !== null && timeLeft <= 0)
+                            ? 'linear-gradient(135deg,#B91C1C,#EF4444)'
+                            : urgent
+                              ? 'linear-gradient(135deg,#B45309,#F59E0B)'
+                              : `linear-gradient(135deg,${C.forest},${C.mint})`,
+                        boxShadow: isPaid ? 'none' : '0 2px 8px rgba(0,0,0,0.18)',
+                      }}>
+                      <Timer size={14}/>
+                      {isPaid ? 'Timer stopped' : (timeLeft !== null && timeLeft <= 0) ? '⏰ Expired' : fmtTimer(timeLeft)}
+                    </span>
+                  )}
                  <button
   type="button"
   onClick={()=>{setProfUser(cp);setProfLabel(isBuyer?'Seller':'Buyer');}}
@@ -2189,6 +2209,13 @@ export default function TradeDetail({user}) {
           min-height:calc(100dvh - var(--navbar-h))!important;
           max-height:calc(100dvh - var(--navbar-h))!important;
           height:calc(100dvh - var(--navbar-h))!important;
+        }
+        /* BottomNav is hidden on /trade/ routes (see BottomNav.js), so the global
+           .pb-nav-mobile reserved space below AppShell is dead weight here — it pushed
+           total page height ~60px past the viewport, silently clipped by the overflow:hidden
+           above. Zeroing it makes the trade page's real height match the viewport exactly. */
+        .trade-page .pb-nav-mobile {
+          padding-bottom: 0 !important;
         }
       `}</style>
 
