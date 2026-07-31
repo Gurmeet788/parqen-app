@@ -21,43 +21,6 @@ import WelcomeBonusModal from './components/WelcomeBonusModal';
 import SuggestionsPanel from './components/SuggestionsPanel';
 import { NotificationPrompt, AndroidInstallBanner, IOSInstallGuide } from './components/PushSetup';
 
-// ── ✅ OneSignal Import ──────────────────────────────────────────────────────
-import OneSignal from 'react-onesignal';
-
-// ── ✅ OneSignal Init Function ──────────────────────────────────────────────
-async function initOneSignal(userId) {
-  try {
-    const appId = process.env.REACT_APP_ONESIGNAL_APP_ID;
-    if (!appId) {
-      console.warn('[Push] REACT_APP_ONESIGNAL_APP_ID not set');
-      return;
-    }
-
-    await OneSignal.init({
-      appId: appId,
-      allowLocalhostAsSecureOrigin: true,
-    });
-
-    console.log('[Push] ✅ OneSignal initialized');
-
-    const playerId = await OneSignal.getUserId();
-    if (playerId && userId) {
-      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
-      await fetch(`${API_URL}/user/push-token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ player_id: playerId })
-      });
-      console.log('[Push] ✅ Player ID saved:', playerId);
-    }
-  } catch (error) {
-    console.error('[Push] Init error:', error);
-  }
-}
-
 // ── Monkeypatch react-toastify ──────────────────────────────────────────────
 const customToast = (message, options) => {
   window.dispatchEvent(new CustomEvent('custom-toast', { detail: { message, type: 'default', options } }));
@@ -318,7 +281,6 @@ function App() {
         if (storedUser.id) {
           identifyUser(storedUser.id).catch(() => { });
           initOneSignal(storedUser.id);
-
         }
       }
     };
@@ -400,6 +362,7 @@ function App() {
     axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
     toast.success('Logged in successfully!');
+
     // FIX: Identify user with OneSignal after login
     if (userData?.id) {
       try {
@@ -422,142 +385,139 @@ function App() {
         console.error('[Push] identifyUser after login error:', error);
       }
     }
+  };
 
-    // ── ✅ FIX: Logout function with OneSignal unidentification ──────────────
-    const logout = () => {
-      setUser(null);
-      setToken(null);
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      delete axios.defaults.headers.common['Authorization'];
-      toast.info('Logged out');
+  // ── ✅ FIX: Logout function with OneSignal unidentification ──────────────
+  const logout = () => {
+    setUser(null);
+    setToken(null);
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    delete axios.defaults.headers.common['Authorization'];
+    toast.info('Logged out');
+    window.dispatchEvent(new Event('userUpdated'));
 
-      // ✅ Safe call with optional chaining
-      if (typeof unidentifyUser === 'function') {
-        unidentifyUser().catch(() => { });
+    // ── ✅ FIX: Unlink push subscription from this account on logout ────────
+    unidentifyUser().catch((err) => {
+      console.error('[Push] unidentifyUser error:', err);
+    });
+  };
+
+  // ── ✅ FIX: Test push notification function (for debugging) ──────────────
+  const testPushNotification = async () => {
+    if (!user?.id) {
+      toast.error('Please login first');
+      return;
+    }
+
+    try {
+      const result = await sendTestNotification(user.id, 'new_trade');
+      if (result) {
+        toast.success('Test notification sent! Check your device.');
+      } else {
+        toast.error('Failed to send test notification. Check console for details.');
       }
-      window.dispatchEvent(new Event('userUpdated'));
+    } catch (error) {
+      toast.error('Error sending test notification');
+      console.error('[Push] Test error:', error);
+    }
+  };
 
-      // ── ✅ FIX: Unlink push subscription from this account on logout ────────
-      unidentifyUser().catch((err) => {
-        console.error('[Push] unidentifyUser error:', err);
-      });
-    };
+  // Expose test function to window for debugging
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.__testPush = testPushNotification;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
-    // ── ✅ FIX: Test push notification function (for debugging) ──────────────
-    const testPushNotification = async () => {
-      if (!user?.id) {
-        toast.error('Please login first');
-        return;
-      }
+  if (loading) return <PageLoader />;
 
-      try {
-        const result = await sendTestNotification(user.id, 'new_trade');
-        if (result) {
-          toast.success('Test notification sent! Check your device.');
-        } else {
-          toast.error('Failed to send test notification. Check console for details.');
-        }
-      } catch (error) {
-        toast.error('Error sending test notification');
-        console.error('[Push] Test error:', error);
-      }
-    };
+  return (
+    <HelmetProvider>
+      <RatesProvider>
+        <Router>
+          <CustomToastContainer />
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              {/* ── TEAM PORTAL — completely standalone, no main chrome ── */}
+              <Route path="/team" element={<TeamDashboard user={user} />} />
+              <Route path="/moderator" element={<ModeratorDashboard user={user} />} />
 
-    // Expose test function to window for debugging
-    useEffect(() => {
-      if (typeof window !== 'undefined') {
-        window.__testPush = testPushNotification;
-      }
-    }, [user]);
+              {/* ── ALL OTHER ROUTES — wrapped in main app chrome ── */}
+              <Route path="*" element={
+                <AppShell>
+                  <Navbar user={user} onLogout={logout} />
 
-    if (loading) return <PageLoader />;
+                  {showBonusModal && user && (
+                    <WelcomeBonusModal user={user} onClose={() => {
+                      localStorage.setItem(`prq_bonus_shown_${user.id}`, '1');
+                      setShowBonusModal(false);
+                      if (!localStorage.getItem(`prq_welcomed_${user.id}`)) {
+                        setShowWelcome(true);
+                      }
+                    }} />
+                  )}
 
-    return (
-      <HelmetProvider>
-        <RatesProvider>
-          <Router>
-            <CustomToastContainer />
-            <Suspense fallback={<PageLoader />}>
-              <Routes>
-                {/* ── TEAM PORTAL — completely standalone, no main chrome ── */}
-                <Route path="/team" element={<TeamDashboard user={user} />} />
-                <Route path="/moderator" element={<ModeratorDashboard user={user} />} />
+                  {showWelcome && user && !showBonusModal && (
+                    <WelcomeModal user={user} onClose={() => setShowWelcome(false)} />
+                  )}
 
-                {/* ── ALL OTHER ROUTES — wrapped in main app chrome ── */}
-                <Route path="*" element={
-                  <AppShell>
-                    <Navbar user={user} onLogout={logout} />
+                  {user && <NotificationPrompt userId={user.id} />}
+                  <AndroidInstallBanner />
+                  <IOSInstallGuide />
 
-                    {showBonusModal && user && (
-                      <WelcomeBonusModal user={user} onClose={() => {
-                        localStorage.setItem(`prq_bonus_shown_${user.id}`, '1');
-                        setShowBonusModal(false);
-                        if (!localStorage.getItem(`prq_welcomed_${user.id}`)) {
-                          setShowWelcome(true);
-                        }
-                      }} />
-                    )}
+                  <Routes>
+                    <Route path="/" element={<LandingPage user={user} />} />
+                    <Route path="/listing/:id" element={<ListingDetail user={user} />} />
+                    <Route path="/gift-cards" element={<GiftCardMarketplace user={user} />} />
+                    <Route path="/blog" element={<Blog />} />
+                    <Route path="/blog/:slug" element={<BlogPost />} />
+                    <Route path="/privacy" element={<PrivacyPolicy />} />
+                    <Route path="/terms" element={<TermsOfService />} />
+                    <Route path="/marketplace" element={<Navigate to="/gift-cards" />} />
+                    <Route path="/register" element={!user ? <Register onLogin={login} /> : <Navigate to="/" />} />
+                    <Route path="/signup" element={!user ? <Register onLogin={login} /> : <Navigate to="/" />} />
+                    <Route path="/login" element={!user ? <Login onLogin={login} /> : <Navigate to="/" />} />
+                    <Route path="/forgot-password" element={<ForgotPassword />} />
+                    <Route path="/verify-otp" element={<VerifyOTP onLogin={login} />} />
+                    <Route path="/reset-password" element={<ResetPassword />} />
+                    <Route path="/auth/confirm" element={<EmailConfirmation />} />
+                    <Route path="/verify-email" element={<CheckEmail onLogin={login} />} />
+                    <Route path="/sell-gift-card" element={<SellGiftCardMarketplace user={user} />} />
+                    <Route path="/buy-bitcoin" element={<BuyBitcoin user={user} />} />
+                    <Route path="/sell-bitcoin" element={<SellBitcoin user={user} />} />
+                    <Route path="/buy-usdt" element={<BuyUSDT user={user} />} />
+                    <Route path="/sell-usdt" element={<SellUSDT user={user} />} />
+                    <Route path="/dashboard" element={user ? <Dashboard user={user} /> : <Navigate to="/login" />} />
+                    <Route path="/wallet" element={user ? <WalletPage user={user} /> : <Navigate to="/login" />} />
+                    <Route path="/settings" element={user ? <Settings user={user} setUser={setUser} /> : <Navigate to="/login" />} />
+                    <Route path="/profile/:id" element={<Profile />} />
+                    <Route path="/profile" element={user ? <Profile userId={user.id} /> : <Navigate to="/login" />} />
+                    <Route path="/create-listing" element={user ? <CreateListing user={user} /> : <Navigate to="/login" />} />
+                    <Route path="/create-offer" element={user ? <CreateOffer user={user} /> : <Navigate to="/login" />} />
+                    <Route path="/edit-listing/:id" element={user ? <EditListing user={user} /> : <Navigate to="/login" />} />
+                    <Route path="/my-listings" element={user ? <MyListings user={user} /> : <Navigate to="/login" />} />
+                    <Route path="/my-trades" element={user ? <MyTrades user={user} /> : <Navigate to="/login" />} />
+                    <Route path="/trade/:id" element={user ? <TradeDetail user={user} /> : <Navigate to="/login" />} />
+                    <Route path="/trade-chat/:id" element={user ? <TradeChat user={user} /> : <Navigate to="/login" />} />
+                    <Route path="/feedback/:tradeId/:userId" element={user ? <Feedback user={user} /> : <Navigate to="/login" />} />
+                    <Route path="/admin" element={<AdminDashboard user={user} onLogin={login} />} />
+                    <Route path="/escrow/:id" element={user ? <EscrowVerification user={user} /> : <Navigate to="/login" />} />
+                    <Route path="/ref/:username" element={<RefRedirect />} />
+                    <Route path="*" element={<Navigate to="/" />} />
+                  </Routes>
 
-                    {showWelcome && user && !showBonusModal && (
-                      <WelcomeModal user={user} onClose={() => setShowWelcome(false)} />
-                    )}
-
-                    {user && <NotificationPrompt userId={user.id} />}
-                    <AndroidInstallBanner />
-                    <IOSInstallGuide />
-
-                    <Routes>
-                      <Route path="/" element={<LandingPage user={user} />} />
-                      <Route path="/listing/:id" element={<ListingDetail user={user} />} />
-                      <Route path="/gift-cards" element={<GiftCardMarketplace user={user} />} />
-                      <Route path="/blog" element={<Blog />} />
-                      <Route path="/blog/:slug" element={<BlogPost />} />
-                      <Route path="/privacy" element={<PrivacyPolicy />} />
-                      <Route path="/terms" element={<TermsOfService />} />
-                      <Route path="/marketplace" element={<Navigate to="/gift-cards" />} />
-                      <Route path="/register" element={!user ? <Register onLogin={login} /> : <Navigate to="/" />} />
-                      <Route path="/signup" element={!user ? <Register onLogin={login} /> : <Navigate to="/" />} />
-                      <Route path="/login" element={!user ? <Login onLogin={login} /> : <Navigate to="/" />} />
-                      <Route path="/forgot-password" element={<ForgotPassword />} />
-                      <Route path="/verify-otp" element={<VerifyOTP onLogin={login} />} />
-                      <Route path="/reset-password" element={<ResetPassword />} />
-                      <Route path="/auth/confirm" element={<EmailConfirmation />} />
-                      <Route path="/verify-email" element={<CheckEmail onLogin={login} />} />
-                      <Route path="/sell-gift-card" element={<SellGiftCardMarketplace user={user} />} />
-                      <Route path="/buy-bitcoin" element={<BuyBitcoin user={user} />} />
-                      <Route path="/sell-bitcoin" element={<SellBitcoin user={user} />} />
-                      <Route path="/buy-usdt" element={<BuyUSDT user={user} />} />
-                      <Route path="/sell-usdt" element={<SellUSDT user={user} />} />
-                      <Route path="/dashboard" element={user ? <Dashboard user={user} /> : <Navigate to="/login" />} />
-                      <Route path="/wallet" element={user ? <WalletPage user={user} /> : <Navigate to="/login" />} />
-                      <Route path="/settings" element={user ? <Settings user={user} setUser={setUser} /> : <Navigate to="/login" />} />
-                      <Route path="/profile/:id" element={<Profile />} />
-                      <Route path="/profile" element={user ? <Profile userId={user.id} /> : <Navigate to="/login" />} />
-                      <Route path="/create-listing" element={user ? <CreateListing user={user} /> : <Navigate to="/login" />} />
-                      <Route path="/create-offer" element={user ? <CreateOffer user={user} /> : <Navigate to="/login" />} />
-                      <Route path="/edit-listing/:id" element={user ? <EditListing user={user} /> : <Navigate to="/login" />} />
-                      <Route path="/my-listings" element={user ? <MyListings user={user} /> : <Navigate to="/login" />} />
-                      <Route path="/my-trades" element={user ? <MyTrades user={user} /> : <Navigate to="/login" />} />
-                      <Route path="/trade/:id" element={user ? <TradeDetail user={user} /> : <Navigate to="/login" />} />
-                      <Route path="/trade-chat/:id" element={user ? <TradeChat user={user} /> : <Navigate to="/login" />} />
-                      <Route path="/feedback/:tradeId/:userId" element={user ? <Feedback user={user} /> : <Navigate to="/login" />} />
-                      <Route path="/admin" element={<AdminDashboard user={user} onLogin={login} />} />
-                      <Route path="/escrow/:id" element={user ? <EscrowVerification user={user} /> : <Navigate to="/login" />} />
-                      <Route path="/ref/:username" element={<RefRedirect />} />
-                      <Route path="*" element={<Navigate to="/" />} />
-                    </Routes>
-
-                    <BottomNav user={user} />
-                    <SuggestionsPanel user={user} />
-                  </AppShell>
-                } />
-              </Routes>
-            </Suspense>
-          </Router>
-        </RatesProvider>
-      </HelmetProvider>
-    );
-  }
+                  <BottomNav user={user} />
+                  <SuggestionsPanel user={user} />
+                </AppShell>
+              } />
+            </Routes>
+          </Suspense>
+        </Router>
+      </RatesProvider>
+    </HelmetProvider>
+  );
 }
+
 export default App;
