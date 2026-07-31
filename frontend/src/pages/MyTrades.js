@@ -8,6 +8,7 @@ import {
   Filter, Search, DollarSign, X, Bell, ChevronRight, SlidersHorizontal,
   ArrowUpDown, Calendar, ChevronDown
 } from 'lucide-react';
+import { getStatusStyle } from '../components/Notifications';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
@@ -163,7 +164,7 @@ function ActiveAlert({trade, userId, onDismiss, onExpire}) {
                   {isGift?'🎁 GIFT CARD':isBuyer?'🛒 YOU ARE BUYING':'💰 YOU ARE SELLING'}
                 </span>
                 <span className="text-xs font-black px-2 py-0.5 rounded-full"
-                  style={{backgroundColor:st.bg,color:st.color}}>{st.label}</span>
+                  style={{backgroundColor:getStatusStyle(trade.status).bg,color:getStatusStyle(trade.status).color}}>{st.label}</span>
                 <span className="text-xs font-mono" style={{color:C.g400}}>
                   #{String(trade.id||'').slice(0,8).toUpperCase()}
                 </span>
@@ -261,7 +262,7 @@ function TradeCard({trade, userId}) {
         </span>
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold px-2 py-0.5 rounded-full"
-            style={{backgroundColor:st.bg,color:st.color}}>{st.short}</span>
+            style={{backgroundColor:getStatusStyle(trade.status).bg,color:getStatusStyle(trade.status).color}}>{st.short}</span>
           <span className="text-xs font-mono" style={{color:C.g400}}>
             #{String(trade.id||'').slice(0,8).toUpperCase()}
           </span>
@@ -388,7 +389,7 @@ function ActiveTradeModal({ trades, userId, onClose }) {
                   <div className="flex justify-between text-xs">
                     <span style={{color:C.g500}}>📊 Status</span>
                     <span className="font-bold px-2 py-0.5 rounded-full"
-                      style={{backgroundColor:st.bg,color:st.color}}>{st.label}</span>
+                      style={{backgroundColor:getStatusStyle(trade.status).bg,color:getStatusStyle(trade.status).color}}>{st.label}</span>
                   </div>
                 </div>
 

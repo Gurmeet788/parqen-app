@@ -4,11 +4,11 @@ const { createClient } = require('@supabase/supabase-js');
 
 // ── Supabase Admin Client ──────────────────────────────────────────────────
 const supabaseAdmin = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
 );
 
-const APP_ID  = process.env.ONESIGNAL_APP_ID;
+const APP_ID = process.env.ONESIGNAL_APP_ID;
 const API_KEY = process.env.ONESIGNAL_REST_API_KEY;
 
 function isConfigured() {
@@ -42,7 +42,7 @@ async function send({ userIds, title, message, url }) {
   try {
     const response = await axios.post('https://onesignal.com/api/v1/notifications', body, {
       headers: {
-        Authorization: `Key ${API_KEY}`,
+        Authorization: `Basic ${API_KEY}`,  // ✅ FIXED: 'Key' → 'Basic'
         'Content-Type': 'application/json',
       },
       timeout: 8000,
@@ -57,7 +57,29 @@ async function send({ userIds, title, message, url }) {
     return response.data;
   } catch (e) {
     const detail = e.response?.data || e.message;
-    console.error('[Push] OneSignal API error:', JSON.stringify(detail));
+    console.error('[Push] ❌ OneSignal API error:', JSON.stringify(detail));
+
+    // 🔥 ADDED: Try with User Auth Key if REST API Key fails
+    if (e.response?.status === 401 || e.response?.status === 403) {
+      console.log('[Push] 🔄 Trying with User Auth Key instead...');
+      try {
+        const userAuthKey = process.env.ONESIGNAL_USER_AUTH_KEY;
+        if (userAuthKey && userAuthKey !== 'your-user-auth-key-here') {
+          const retryResponse = await axios.post('https://onesignal.com/api/v1/notifications', body, {
+            headers: {
+              Authorization: `Basic ${userAuthKey}`,
+              'Content-Type': 'application/json',
+            },
+            timeout: 8000,
+          });
+          const { id, recipients } = retryResponse.data || {};
+          console.log(`[Push] ✅ Retry successful — notification id: ${id} | recipients: ${recipients}`);
+          return retryResponse.data;
+        }
+      } catch (retryErr) {
+        console.error('[Push] ❌ Retry also failed:', retryErr.response?.data || retryErr.message);
+      }
+    }
   }
 }
 
@@ -66,10 +88,10 @@ async function getUsername(userId) {
   if (!userId) return null;
   try {
     const { data, error } = await supabaseAdmin
-        .from('users')
-        .select('username')
-        .eq('id', userId)
-        .single();
+      .from('users')
+      .select('username')
+      .eq('id', userId)
+      .single();
     if (error || !data) return null;
     return data.username;
   } catch (e) {
@@ -80,22 +102,22 @@ async function getUsername(userId) {
 // ── Notification titles ──────────────────────────────────────────────────────
 function getTitle(type) {
   switch (type) {
-    case 'new_trade':       return '💰 New Trade Request!';
-    case 'payment_sent':    return '💵 Payment Sent!';
-    case 'btc_released':    return '✅ Bitcoin Released!';
+    case 'new_trade': return '💰 New Trade Request!';
+    case 'payment_sent': return '💵 Payment Sent!';
+    case 'btc_released': return '✅ Bitcoin Released!';
     case 'trade_cancelled': return '❌ Trade Cancelled';
-    case 'dispute_opened':  return '⚠️ Dispute Opened';
-    case 'dispute_resolved':return '🏁 Dispute Resolved';
-    case 'kyc_approved':    return '🪪 KYC Approved!';
-    case 'phone_verified':  return '📱 Phone Verified!';
-    default:                return 'PRAQEN Alert';
+    case 'dispute_opened': return '⚠️ Dispute Opened';
+    case 'dispute_resolved': return '🏁 Dispute Resolved';
+    case 'kyc_approved': return '🪪 KYC Approved!';
+    case 'phone_verified': return '📱 Phone Verified!';
+    default: return 'PRAQEN Alert';
   }
 }
 
 // ── Notification messages ──────────────────────────────────────────────────
 function getMessage(trade, type, actorName) {
-  const ref = trade?.trade_ref ? `#${trade.trade_ref.slice(0,8).toUpperCase()}` : '';
-  const btc  = trade?.amount_btc ? `${parseFloat(trade.amount_btc).toFixed(6)} BTC` : 'BTC';
+  const ref = trade?.trade_ref ? `#${trade.trade_ref.slice(0, 8).toUpperCase()}` : '';
+  const btc = trade?.amount_btc ? `${parseFloat(trade.amount_btc).toFixed(6)} BTC` : 'BTC';
   const name = actorName || 'Someone';
 
   switch (type) {
@@ -178,11 +200,11 @@ async function sendBroadcastPush(title, message, url) {
   }
 
   const body = {
-    app_id:            APP_ID,
-    headings:          { en: title },
-    contents:          { en: message },
+    app_id: APP_ID,
+    headings: { en: title },
+    contents: { en: message },
     included_segments: ['All'],
-    url:               url || 'https://praqen.com',
+    url: url || 'https://praqen.com',
   };
 
   console.log(`[Push] Broadcast to ALL — title: ${title}`);
@@ -190,18 +212,18 @@ async function sendBroadcastPush(title, message, url) {
   try {
     const response = await axios.post('https://onesignal.com/api/v1/notifications', body, {
       headers: {
-        Authorization:  `Key ${API_KEY}`,
+        Authorization: `Basic ${API_KEY}`,  // ✅ FIXED: 'Key' → 'Basic'
         'Content-Type': 'application/json',
       },
       timeout: 10000,
     });
     const { id, recipients, errors } = response.data || {};
-    console.log(`[Push] Broadcast delivered — id: ${id} | recipients: ${recipients}`);
+    console.log(`[Push] ✅ Broadcast delivered – id: ${id} | recipients: ${recipients}`);
     if (errors) console.error('[Push] OneSignal broadcast errors:', JSON.stringify(errors));
     return response.data;
   } catch (e) {
     const detail = e.response?.data || e.message;
-    console.error('[Push] OneSignal broadcast error:', JSON.stringify(detail));
+    console.error('[Push] ❌ OneSignal broadcast error:', JSON.stringify(detail));
   }
 }
 

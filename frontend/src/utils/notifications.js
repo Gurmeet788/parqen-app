@@ -208,9 +208,38 @@ export async function checkExternalId() {
   }
 }
 
-// ── Expose for debugging ──
+// ── Initialize notification system ───────────────────────────────────────────
+export function initNotifications() {
+  console.log('[Push] Initializing notification system...');
+
+  if (Notification.permission === 'granted') {
+    console.log('[Push] ✅ Permission already granted');
+    return true;
+  }
+
+  Notification.requestPermission().then(result => {
+    if (result === 'granted') {
+      console.log('[Push] ✅ Permission granted');
+    } else {
+      console.warn('[Push] ⚠️ Permission denied');
+    }
+  });
+
+  return false;
+}
+
+// ── Expose helpers on window for debugging ──────────────────────────────────
 if (typeof window !== 'undefined') {
-  window.__checkPushId = checkExternalId;
+window.__checkPushId = checkExternalId;
+window.__identifyUser = identifyUser;
+window.__sendTestNotification = sendTestNotification;
+window.__unidentifyUser = unidentifyUser;
+window.__initNotifications = initNotifications;
+
+console.log('[Push] ✅ Debug helpers available:');
+console.log('  window.__identifyUser(userId) - Link user');
+console.log('  window.__sendTestNotification() - Send test notification');
+console.log('  window.__unidentifyUser() - Unlink user');
 }
 
 // ── Unidentify user ──
