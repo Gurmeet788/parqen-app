@@ -9,11 +9,13 @@ import {
   Paperclip, Flag, BadgeCheck, FileText, Copy, Globe,
   ChevronDown, ChevronUp, DollarSign, CreditCard,
 Smartphone, Building2, ThumbsUp, ThumbsDown, Gift, Repeat2, Heart,
+  Bell, Camera, Mail, PartyPopper, Rocket, Unlock, Zap, Stamp,
+  Plus, Image as ImageIcon, File as FileIcon,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { copyToClipboard } from '../utils/clipboard';
 import { deriveBadge } from '../lib/badge';
-import { resolveCode } from '../components/CountryFlag';
+import CountryFlag, { resolveCode } from '../components/CountryFlag';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
@@ -35,10 +37,7 @@ const authH  = ()      => { const t=localStorage.getItem('token'); return t?{Aut
 // USD_RATES is now provided by RatesContext — do NOT define a static object here
 const CUR_SYM   = {GHS:'₵',NGN:'₦',KES:'KSh',ZAR:'R',UGX:'USh',USD:'$',GBP:'£',EUR:'€'};
 
-function isoToFlag(code) {
-  if(!code||code.length!==2)return'🌍';
-  return code.toUpperCase().replace(/./g,c=>String.fromCodePoint(0x1F1E0+c.charCodeAt(0)-65));
-}
+
 
 
 const STATUS_CFG = {
@@ -46,9 +45,9 @@ const STATUS_CFG = {
   FUNDS_LOCKED:{label:'Escrow Active',  color:C.green,   bg:`${C.green}15`,  icon:Lock},
   PAYMENT_SENT:{label:'Payment Sent',   color:C.paid,    bg:`${C.paid}15`,   icon:Clock},
   PAID:        {label:'Payment Sent',   color:C.paid,    bg:`${C.paid}15`,   icon:Clock},
-  COMPLETED:   {label:'Completed ✅',  color:C.success, bg:`${C.success}15`,icon:CheckCircle},
+  COMPLETED:   {label:'Completed',  color:C.success, bg:`${C.success}15`,icon:CheckCircle},
   CANCELLED:   {label:'Cancelled',      color:C.g500,    bg:`${C.g500}15`,   icon:X},
-  DISPUTED:    {label:'Disputed 🚨',    color:'#7C3AED', bg:'#EDE9FE',       icon:AlertTriangle},
+  DISPUTED:    {label:'Disputed',    color:'#7C3AED', bg:'#EDE9FE',       icon:AlertTriangle},
 };
 const getS = s=>STATUS_CFG[s?.toUpperCase()]||STATUS_CFG.CREATED;
 const fmtAge=d=>{if(!d)return'—';const s=(Date.now()-new Date(d))/1000;if(s<300)return'Online';if(s<3600)return`${~~(s/60)}m ago`;if(s<86400)return`${~~(s/3600)}h ago`;return`${~~(s/86400)}d ago`;};
@@ -136,7 +135,7 @@ function FeedbackModal({name,onClose,onSubmit,submitting}) {
           {isPositive!==null&&(
             <p className="text-center text-xs font-bold"
               style={{color:isPositive?'#059669':'#EF4444'}}>
-              {isPositive?'👍 Great experience!':'👎 Bad experience'}
+              {isPositive?'Great experience!':'Bad experience'}
             </p>
           )}
 
@@ -259,13 +258,13 @@ function CancelModal({onClose,onConfirm,submitting}) {
           </div>
           <div>
             <p style={{fontWeight:900,fontSize:16,color:C.danger,margin:0}}>Cancel Trade?</p>
-            <p style={{fontSize:12,color:'#B45309',margin:0,marginTop:2,fontWeight:700}}>🔒 Escrow BTC returns to the seller</p>
+            <p style={{fontSize:12,color:'#B45309',margin:0,marginTop:2,fontWeight:700}}>Escrow BTC returns to the seller</p>
           </div>
         </div>
 
         {/* Body */}
         <div style={{padding:'16px 20px 20px'}}>
-          <p style={{fontSize:12.5,color:'#1E293B',marginBottom:8,fontWeight:800}}>📝 Reason for cancelling <span style={{color:C.danger}}>*</span></p>
+          <p style={{fontSize:12.5,color:'#1E293B',marginBottom:8,fontWeight:800}}>Reason for cancelling <span style={{color:C.danger}}>*</span></p>
           <textarea
             value={reason}
             onChange={e=>setReason(e.target.value)}
@@ -393,7 +392,7 @@ function DisputeModal({onClose,onSubmit,submitting}){
             disabled={!canSubmit||submitting}
             className="flex-1 py-3 rounded-2xl text-xs font-black transition"
             style={{backgroundColor:canSubmit?'#DC2626':'#E2E8F0',color:canSubmit?'#fff':'#94A3B8'}}>
-            {submitting?'Submitting…':'🚨 Submit Report'}
+            {submitting?'Submitting…':'Submit Report'}
           </button>
         </div>
       </div>
@@ -448,17 +447,21 @@ function ProfilePopup({user, label, trade, onClose}) {
   const locCC      = ccCode ? ccCode.toUpperCase() : '';
   const CC_NAME    = {GH:'Ghana',NG:'Nigeria',KE:'Kenya',ZA:'S. Africa',UG:'Uganda',TZ:'Tanzania',RW:'Rwanda',CM:'Cameroon',SN:'Senegal',CI:"Côte d'Ivoire",ZM:'Zambia',ZW:'Zimbabwe',ET:'Ethiopia',EG:'Egypt',MA:'Morocco',US:'USA',GB:'UK',DE:'Germany',FR:'France',IT:'Italy',ES:'Spain',VN:'Vietnam',TH:'Thailand',ID:'Indonesia',PH:'Philippines',MY:'Malaysia',SG:'Singapore',CN:'China',IN:'India',JP:'Japan',KR:'S. Korea',PK:'Pakistan',BD:'Bangladesh',SA:'Saudi Arabia',AE:'UAE',QA:'Qatar',BR:'Brazil',MX:'Mexico',CA:'Canada',AU:'Australia'};
   const countryName= (u.country && u.country.length > 2) ? u.country : (CC_NAME[locCC] || u.location || locCC || '—');
-  const flagEmoji  = isoToFlag(locCC);
+  const flagComponent = locCC ? (
+    <CountryFlag countryCode={locCC} className="w-5 h-3.5 rounded-sm inline-block" />
+  ) : (
+    <Globe size={14} style={{color: 'rgba(255,255,255,0.4)'}}/>
+  );
 
   // Last active
   const rawSeen    = fmtAge(u.last_seen_at || u.last_login || u.updated_at);
   const isOnline   = rawSeen === 'Online';
 
   const TABS = [
-    { id:'overview',  label:'👤 Profile' },
-    { id:'feedback',  label:`💬 Reviews (${total})` },
-    { id:'rules',     label:'📋 Rules' },
-    { id:'trade',     label:'📊 Trade' },
+    { id:'overview',  label:'Profile' },
+    { id:'feedback',  label:`Reviews (${total})` },
+    { id:'rules',     label:'Rules' },
+    { id:'trade',     label:'Trade' },
   ];
 
   // Trade tab helpers
@@ -511,8 +514,8 @@ function ProfilePopup({user, label, trade, onClose}) {
                 {kycOk && <BadgeCheck size={15} style={{color:'#93C5FD', flexShrink:0}}/>}
               </div>
               <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
-                <span className="text-xs">{flagEmoji}</span>
-                <span className="text-white/60 text-xs">{isOnline ? '🟢 Active now' : rawSeen}</span>
+                <span className="text-xs flex items-center">{flagComponent}</span>
+                <span className="text-white/60 text-xs">{isOnline ? 'Active now' : rawSeen}</span>
               </div>
               <span className="inline-flex items-center gap-px px-2 py-0.5 rounded-full border text-xs font-black"
                 style={{background:badge.bg, borderColor:badge.borderColor, boxShadow:badge.glow?`0 0 6px ${badge.glow}`:undefined}}>
@@ -536,7 +539,7 @@ function ProfilePopup({user, label, trade, onClose}) {
             </div>
             <div className="flex items-center gap-2 rounded-xl px-3 py-2.5"
               style={{backgroundColor:'rgba(255,255,255,0.12)'}}>
-              <span className="text-base flex-shrink-0">{flagEmoji}</span>
+              <span className="flex-shrink-0 flex items-center">{flagComponent}</span>
               <div className="min-w-0">
                 <p className="text-white font-black text-xs leading-tight truncate">{countryName}</p>
                 <p className="text-white/50 text-xs leading-tight">Location</p>
@@ -585,7 +588,7 @@ function ProfilePopup({user, label, trade, onClose}) {
               <div className="grid grid-cols-3 gap-2">
                 {[
                   {label:'Trades',     value:fmt(trades),                sub:'completed'},
-                  {label:'Rating',     value:`⭐ ${rating.toFixed(1)}`,  sub:'of 5.0'},
+                  {label:'Rating',     value:`${rating.toFixed(1)}`,  sub:'of 5.0'},
                   {label:'Completion', value:`${compRate.toFixed(0)}%`,  sub:'rate'},
                 ].map(({label:lbl,value,sub}) => (
                   <div key={lbl} className="rounded-xl p-3 text-center"
@@ -621,9 +624,9 @@ function ProfilePopup({user, label, trade, onClose}) {
                 <p className="text-xs font-black px-3 py-2 uppercase tracking-wider"
                   style={{color:C.g500, backgroundColor:C.g50}}>Verification</p>
                 {[
-                  {label:'Phone Number', ok:phoneOk, icon:'📱'},
-                  {label:'Email Address',ok:emailOk, icon:'📧'},
-                  {label:'ID / KYC',     ok:kycOk,   icon:'🪪'},
+                  {label:'Phone Number', ok:phoneOk, icon:<Smartphone size={16} style={{flexShrink:0}}/>},
+                  {label:'Email Address',ok:emailOk, icon:<Mail size={16} style={{flexShrink:0}}/>},
+                  {label:'ID / KYC',     ok:kycOk,   icon:<BadgeCheck size={16} style={{flexShrink:0}}/>},
                 ].map(({label:lbl,ok,icon}) => (
                   <div key={lbl} className="flex items-center justify-between px-3 py-2.5 border-t"
                     style={{borderColor:C.g100}}>
@@ -636,7 +639,7 @@ function ProfilePopup({user, label, trade, onClose}) {
                         backgroundColor: ok ? '#F0FDF4' : '#FEF2F2',
                         color: ok ? '#16A34A' : '#DC2626',
                       }}>
-                      {ok ? '✓ Verified' : '✗ Not verified'}
+                      {ok ? 'Verified' : 'Not verified'}
                     </span>
                   </div>
                 ))}
@@ -678,11 +681,11 @@ function ProfilePopup({user, label, trade, onClose}) {
                 <div className="flex-1 flex items-center gap-3 px-2">
                   <div className="text-center flex-1">
                     <p className="font-black text-sm" style={{color:'#16A34A'}}>{fmt(pos)}</p>
-                    <p className="text-xs" style={{color:C.g400}}>👍 Positive</p>
+                    <p className="text-xs" style={{color:C.g400}}>Positive</p>
                   </div>
                   <div className="text-center flex-1">
                     <p className="font-black text-sm" style={{color:'#DC2626'}}>{fmt(neg)}</p>
-                    <p className="text-xs" style={{color:C.g400}}>👎 Negative</p>
+                    <p className="text-xs" style={{color:C.g400}}>Negative</p>
                   </div>
                   <div className="text-center flex-1">
                     <p className="font-black text-sm" style={{color:C.forest}}>{trust}%</p>
@@ -708,7 +711,9 @@ function ProfilePopup({user, label, trade, onClose}) {
                 </div>
               ) : reviews.length === 0 ? (
                 <div className="text-center py-8">
-                  <p className="text-3xl mb-2">💬</p>
+                  <p className="text-3xl mb-2">
+                    <MessageCircle size={32} style={{color:C.g300}}/>
+                  </p>
                   <p className="font-bold text-sm" style={{color:C.g700}}>No reviews yet</p>
                   <p className="text-xs mt-1" style={{color:C.g400}}>Complete trades to earn reviews</p>
                 </div>
@@ -731,7 +736,7 @@ function ProfilePopup({user, label, trade, onClose}) {
                         <div className="flex items-center gap-2">
                           <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-black text-white flex-shrink-0"
                             style={{backgroundColor: isPos ? '#16A34A' : '#DC2626'}}>
-                            {isPos ? '👍' : '👎'}
+                            {isPos ? <ThumbsUp size={14} /> : <ThumbsDown size={14} />}
                           </div>
                           <span className="text-xs font-black" style={{color: isPos ? '#166534' : '#991B1B'}}>
                             {rv.reviewer?.username || 'Anonymous'}
@@ -844,6 +849,9 @@ export default function TradeDetail({user}) {
   const msgEnd     = useRef(null);
   const chatRef    = useRef(null);
   const fileRef    = useRef(null);
+  const cameraRef  = useRef(null);
+  const docRef     = useRef(null);
+  const attachMenuRef = useRef(null);
   const textareaRef = useRef(null);
   const scrolled        = useRef(false);
   const prevMsgCount    = useRef(0);
@@ -888,6 +896,7 @@ export default function TradeDetail({user}) {
   const [disputeSubmitting, setDisputeSubmitting] = useState(false);
   const [cpTyping,  setCpTyping]  = useState(false);
   const [activeTab, setActiveTab]  = useState('chat');
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
 
   const status = (trade?.status||'').toUpperCase();
   const isBuyer     = user&&trade&&String(user.id)===String(trade.buyer_id);
@@ -901,6 +910,21 @@ export default function TradeDetail({user}) {
   useEffect(() => {
     if (contextBtcUsd > 0) setBtcPrice(contextBtcUsd);
   }, [contextBtcUsd]);
+
+  // Lock document scroll on mobile so the body never scrolls — only the internal
+  // message list scroll container moves. Replaced the broken position:sticky approach.
+  useEffect(() => {
+    document.documentElement.classList.add('trade-page');
+    return () => document.documentElement.classList.remove('trade-page');
+  }, []);
+
+  // Close the attach popup on an outside click
+  useEffect(() => {
+    if (!showAttachMenu) return;
+    const onClick = e => { if (attachMenuRef.current && !attachMenuRef.current.contains(e.target)) setShowAttachMenu(false); };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [showAttachMenu]);
 
   const isActive    = !isCompleted&&!isCancelled;
   const cfg         = getS(status);
@@ -970,9 +994,21 @@ export default function TradeDetail({user}) {
   },[messages]);
 
   // ── Dispute cooldown timer ──────────────────────────────────────────────
-  useEffect(()=>{
-    if(isPaid && !paidAt) setPaidAt(Date.now() - DISPUTE_COOLDOWN_MS);
-  },[isPaid]);
+  // Records when payment was actually made so the 30 min cooldown is accurate.
+  // Uses the server's paid_at (survives page refresh), then updated_at,
+  // then falls back to Date.now() (set by markPaid on first click).
+  // Previously this was Date.now() - DISPUTE_COOLDOWN_MS, which made the
+  // dispute button instantly available — the timer was a no-op.
+  useEffect(() => {
+    if (isPaid) {
+      if (!paidAt) {
+        const ts = trade?.paid_at || trade?.updated_at;
+        setPaidAt(ts ? new Date(ts).getTime() : Date.now());
+      }
+    } else {
+      setPaidAt(null);
+    }
+  }, [isPaid, trade?.paid_at, trade?.updated_at]);
 
   useEffect(()=>{
     if(!isPaid) return;
@@ -1071,20 +1107,59 @@ export default function TradeDetail({user}) {
     finally{setSending(false);}
   };
 
-  const uploadImage=async(file)=>{
-    if(!file||!file.type.startsWith('image/')){toast.error('Select an image');return;}
-    if(file.size>5*1024*1024){toast.error('Max 5MB');return;}
+  const MAX_IMAGES_PER_SEND = 5;
+
+  const uploadSingleImage=async(file)=>{
+    const b64=await new Promise((res,rej)=>{const rd=new FileReader();rd.onload=()=>res(rd.result);rd.onerror=rej;rd.readAsDataURL(file);});
+    await axios.post(`${API_URL}/trades/${id}/upload-image`,{image:b64,type:isBuyer?'payment':'giftcard'},{headers:authH()});
+    // Send as a real chat message so both users see the image inline
+    await axios.post(`${API_URL}/messages`,{tradeId:id,message:b64},{headers:authH()});
+  };
+
+  const uploadImage=async(fileList)=>{
+    const files=Array.from(fileList||[]);
+    if(files.length===0)return;
+
+    if(files.length>MAX_IMAGES_PER_SEND){
+      toast.error(`You can only send up to ${MAX_IMAGES_PER_SEND} images at a time.`);
+      if(fileRef.current)fileRef.current.value='';
+      return;
+    }
+
+    // Validate every file up front — images only, 5MB max each — before uploading any of them
+    for(const f of files){
+      if(!f.type.startsWith('image/')){
+        toast.error('Only images can be sent here.');
+        if(fileRef.current)fileRef.current.value='';
+        return;
+      }
+      if(f.size>5*1024*1024){
+        toast.error(`"${f.name}" is over 5MB — please choose a smaller image.`);
+        if(fileRef.current)fileRef.current.value='';
+        return;
+      }
+    }
+
     setUploading(true);
+    let successCount=0;
     try{
-      const b64=await new Promise((res,rej)=>{const rd=new FileReader();rd.onload=()=>res(rd.result);rd.onerror=rej;rd.readAsDataURL(file);});
-      await axios.post(`${API_URL}/trades/${id}/upload-image`,{image:b64,type:isBuyer?'payment':'giftcard'},{headers:authH()});
-      // Send as a real chat message so both users see the image inline
-      await axios.post(`${API_URL}/messages`,{tradeId:id,message:b64},{headers:authH()});
-      toast.success('Uploaded! Image sent in chat.');
-      await loadImages();await loadMessages();
-      setTimeout(()=>{if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight;},100);
-    }catch{toast.error('Upload failed');}
-    finally{setUploading(false);if(fileRef.current)fileRef.current.value='';}
+      for(const f of files){
+        try{
+          await uploadSingleImage(f);
+          successCount++;
+        }catch{
+          toast.error(`Failed to send "${f.name}"`);
+        }
+      }
+      if(successCount>0){
+        toast.success(successCount===1 ? 'Image sent!' : `${successCount} images sent!`);
+        await loadImages();await loadMessages();
+        setTimeout(()=>{if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight;},100);
+      }
+    }finally{
+      setUploading(false);
+      if(fileRef.current)fileRef.current.value='';
+    }
   };
 
   const markPaid=async()=>{
@@ -1095,6 +1170,7 @@ export default function TradeDetail({user}) {
     autoCancelled.current = true;
     try{
       await axios.post(`${API_URL}/trades/${id}/mark-paid`,{},{headers:authH()});
+      setPaidAt(Date.now()); // Start the 30-minute dispute cooldown immediately
       toast.success(isGiftCardTrade ? 'Code sent! Waiting for buyer to verify.' : 'Payment confirmed!');
       await loadTrade();
     }catch(e){
@@ -1129,8 +1205,8 @@ export default function TradeDetail({user}) {
     try{
       await axios.post(`${API_URL}/trades/${id}/release`,{actionCode:actionCode2FA},{headers:authH()});
       setActionCode2FA('');
-      await postSys('🎉 TRADE COMPLETE! Bitcoin has been released to the buyer. Congratulations to both parties — always come back and trade safely on PRAQEN! 🙌');
-      toast.success('✅ Trade complete! Please leave feedback.');
+      await postSys('TRADE COMPLETE! Bitcoin has been released to the buyer. Congratulations to both parties — always come back and trade safely on PRAQEN!');
+      toast.success('Trade complete! Please leave feedback.');
       setTradeCompleted(true);
       setShowSuccessModal(true);
       await loadTrade();
@@ -1146,7 +1222,7 @@ export default function TradeDetail({user}) {
     setSubmitting(true);
     try{
       await axios.post(`${API_URL}/trades/${id}/cancel`,{reason},{headers:authH()});
-      await postSys(`❌ Trade cancelled. Reason: ${reason}. Escrow funds returned.`);
+      await postSys(`Trade cancelled. Reason: ${reason}. Escrow funds returned.`);
       toast.info('Cancelled');setShowCancel(false);await loadTrade();
     }catch(e){
       console.error('Cancel trade error:', e);
@@ -1169,8 +1245,8 @@ export default function TradeDetail({user}) {
     }catch(_){}
     try{
       await axios.post(`${API_URL}/trades/${id}/auto-cancel`,{reason:'Payment window expired'},{headers:authH()});
-      await postSys('⏰ Payment window closed. Trade cancelled and Bitcoin returned to seller\'s wallet.');
-      toast.warning('⏰ Time expired — Bitcoin returned to seller wallet');
+      await postSys('Payment window closed. Trade cancelled and Bitcoin returned to seller\'s wallet.');
+      toast.warning('Time expired — Bitcoin returned to seller wallet');
       await loadTrade();
     }catch(e){console.error('Auto cancel error:',e);}
   };
@@ -1277,6 +1353,10 @@ export default function TradeDetail({user}) {
   const cpBadge    = deriveBadge(cp);
   const cpSeen     = fmtAge(cp?.last_seen_at || cp?.last_login || cp?.updated_at);
   const cpOnline   = cpSeen==='Online';
+  const cpIsOnline = cp?.is_online === true;
+  const cpLastSeenVal = cp?.last_seen_at || cp?.last_login || cp?.updated_at;
+  const cpLastSeenSecs = cpLastSeenVal ? (Date.now() - new Date(cpLastSeenVal)) / 1000 : Infinity;
+  const cpIsAway   = !cpIsOnline && cpLastSeenSecs <= 1800;
   const cpPos      = parseInt(cp?.positive_feedback||0);
   const cpNeg      = parseInt(cp?.negative_feedback||0);
   const cpFeedbackPct = (cpPos+cpNeg)>0 ? ((cpPos/(cpPos+cpNeg))*100).toFixed(1) : (parseFloat(cp?.completion_rate||100).toFixed(1));
@@ -1304,7 +1384,7 @@ export default function TradeDetail({user}) {
 
   const showMarkPaid  = isGiftCardTrade ? (isSeller&&isEscrow&&isActive) : (isBuyer&&isEscrow&&isActive);
   const showRelease   = isGiftCardTrade ? (isBuyer&&isPaid&&isActive)    : (isSeller&&isPaid&&isActive);
-  const showDispute   = isPaid&&isActive&&!isDisputed&&(isBuyer||isSeller);
+  const showDispute   = isActive&&!isDisputed&&(isBuyer||isSeller);
   const paidDuration       = paidAt ? now - paidAt : 0;
   const disputeReady       = isPaid && paidAt && paidDuration >= DISPUTE_COOLDOWN_MS;
   const disputeCountdownS  = paidAt ? Math.max(0, Math.ceil((DISPUTE_COOLDOWN_MS - paidDuration) / 1000)) : 0;
@@ -1330,13 +1410,13 @@ export default function TradeDetail({user}) {
     .reduce((max,m)=>Math.max(max,new Date(m.created_at).getTime()),0);
 
   return(
-    <div className="min-h-screen flex flex-col" style={{backgroundColor:C.g50,fontFamily:"'DM Sans',sans-serif"}}>
+    <div className="max-h-screen flex flex-col overflow-hidden trade-mobile-root" style={{backgroundColor:C.g50,fontFamily:"'DM Sans',sans-serif"}}>
 
       {/* ── MAIN CONTENT ─────────────────────────────────────────────────── */}
-      <div className="max-w-7xl mx-auto w-full px-3 py-3 pb-4">
+      <div className="max-w-7xl mx-auto w-full px-3 py-3 pb-4 flex-1 min-h-0 flex flex-col overflow-hidden">
 
-        <div className="flex flex-col gap-3 lg:h-[calc(100vh-64px)] md:h-[calc(100vh-64px)] h-[calc(100vh-80px)] max-w-3xl md:max-w-5xl lg:max-w-6xl mx-auto w-full">
-          <div className="flex-1 min-w-0 md:flex md:flex-row md:gap-3 overflow-hidden">
+        <div className="flex flex-col gap-3 lg:h-[calc(100vh-64px)] md:h-[calc(100vh-64px)] flex-1 min-h-0 max-w-3xl md:max-w-5xl lg:max-w-6xl mx-auto w-full">
+          <div className="flex-1 min-w-0 min-h-0 md:flex md:flex-row md:gap-3 overflow-clip">
 
             {/* ── ACTIONS PANEL (desktop: fixed-width left column; mobile: tab-controlled) ── */}
             <div className={`w-full h-full overflow-y-auto pb-4 ${
@@ -1346,7 +1426,7 @@ export default function TradeDetail({user}) {
 
             {/* ── TRADE PROGRESS ───────────────────────────────────────── */}
             <div className="bg-white rounded-2xl border shadow-sm p-4" style={{borderColor:C.g200}}>
-              <p className="text-xs font-black uppercase tracking-wider mb-3" style={{color:C.g400}}>📋 Trade Progress</p>
+              <p className="text-xs font-black uppercase tracking-wider mb-3 flex items-center gap-1" style={{color:C.g400}}><FileText size={13}/> Trade Progress</p>
               <div className="space-y-2.5">
                 {(isGiftCardTrade ? [
                   {label:'Trade opened — Alice\'s BTC locked in escrow',  done:true},
@@ -1381,19 +1461,19 @@ export default function TradeDetail({user}) {
                   style={{backgroundColor:'#FFFBEB',borderColor:'#FDE68A',color:'#92400E'}}>
                   {isGiftCardTrade
                     ? isSeller
-                      ? '🎁 Your turn: Send your gift card code to the buyer in the chat, then click "I SENT THE CODE".'
-                      : '⏳ Waiting for the card seller to send you the gift card code…'
+                      ? <><Gift size={14} style={{flexShrink:0}}/> Your turn: Send your gift card code to the buyer in the chat, then click "I SENT THE CODE".</>
+                      : <><Clock size={14} style={{flexShrink:0}}/> Waiting for the card seller to send you the gift card code&hellip;</>
                     : isBuyer
-                      ? `💳 Your turn: Send ${payMethod} payment now, then click "I HAVE PAID" to notify the seller.`
-                      : '⏳ Waiting for the buyer to send payment…'}
+                      ? <><CreditCard size={14} style={{flexShrink:0}}/> Your turn: Send {payMethod} payment now, then click "I HAVE PAID" to notify the seller.</>
+                      : <><Clock size={14} style={{flexShrink:0}}/> Waiting for the buyer to send payment&hellip;</>}
                 </div>
               )}
               {isActive&&isPaid&&isGiftCardTrade&&(
                 <div className="p-3 rounded-xl text-xs font-semibold border"
                   style={{backgroundColor:'#F0FDF4',borderColor:'#86EFAC',color:'#166534'}}>
                   {isBuyer
-                    ? '✅ Code received! Test it — if it works, click RELEASE BITCOIN to pay the seller.'
-                    : '⏳ Buyer is verifying your gift card code. Bitcoin releases once they confirm.'}
+                    ? <><CheckCircle size={14} style={{flexShrink:0}}/> Code received! Test it — if it works, click RELEASE BITCOIN to pay the seller.</>
+                    : <><Clock size={14} style={{flexShrink:0}}/> Buyer is verifying your gift card code. Bitcoin releases once they confirm.</>}
                 </div>
               )}
 
@@ -1405,19 +1485,19 @@ export default function TradeDetail({user}) {
                   {submitting
                     ?<><RefreshCw size={16} className="animate-spin"/>Processing…</>
                     :isGiftCardTrade
-                      ?<><Check size={18}/>🎁 I SENT THE CODE</>
-                      :<><Check size={18}/>✅ I HAVE PAID</>}
+                      ?<><Check size={18}/><Gift size={16} style={{marginLeft:2}}/> I SENT THE CODE</>
+                      :<><Check size={18}/> I HAVE PAID</>}
                 </button>
               )}
 
               {/* ── RELEASE BITCOIN button ── */}
               {showRelease&&(
                 <button onClick={handleReleaseClick} disabled={submitting}
-                  className="hidden lg:flex w-full py-4 rounded-xl text-white font-black text-base shadow-lg hover:opacity-90 disabled:opacity-50 items-center justify-center gap-2 transition"
+                  className="flex w-full py-4 rounded-xl text-white font-black text-base shadow-lg hover:opacity-90 disabled:opacity-50 items-center justify-center gap-2 transition"
                   style={{backgroundColor:C.green}}>
                   {submitting
                     ?<><RefreshCw size={16} className="animate-spin"/>Processing…</>
-                    :<><Bitcoin size={18}/>🔓 RELEASE BITCOIN</>}
+                    :<><Bitcoin size={18}/><Unlock size={16} style={{marginLeft:2}}/> RELEASE BITCOIN</>}
                 </button>
               )}
               {showDispute&&(
@@ -1433,10 +1513,12 @@ export default function TradeDetail({user}) {
                   <Flag size={12}/>
                   {disputeReady
                     ? 'Open Dispute'
-                    : `⏳ Dispute in ${Math.floor(disputeCountdownS/60)}:${String(disputeCountdownS%60).padStart(2,'0')}`}
+                    : !isPaid
+                      ? <><Clock size={12}/> Dispute available after payment is sent</>
+                      : <><Clock size={12}/> Dispute in {Math.floor(disputeCountdownS/60)}:{String(disputeCountdownS%60).padStart(2,'0')}</>}
                 </button>
               )}
-              {showCancelBtn&&!isPaid&&(
+              {showCancelBtn && (!isPaid || !disputeReady) && (
                 <button onClick={()=>setShowCancel(true)}
                   className="w-full py-2 rounded-xl font-semibold text-xs border hover:bg-gray-50 transition"
                   style={{borderColor:C.g200,color:C.g500}}>
@@ -1447,7 +1529,7 @@ export default function TradeDetail({user}) {
                 <div className="py-4 px-5 rounded-xl text-center text-white shadow"
                   style={{background:`linear-gradient(135deg,${C.forest},${C.mint})`}}>
                   <CheckCircle size={24} className="mx-auto mb-1"/>
-                  <p className="font-black text-sm">Trade Complete 🎉</p>
+                  <p className="font-black text-sm">Trade Complete</p>
                   <p className="text-xs text-white/60 mt-0.5">0.5% fee auto-collected by escrow</p>
                   {!trade?.user_gave_feedback&&!localStorage.getItem('fb_done_'+id)&&(
                     <button onClick={()=>setShowFb(true)} className="mt-2 text-xs underline text-white/80">
@@ -1460,7 +1542,19 @@ export default function TradeDetail({user}) {
                 <div className="py-3 px-5 rounded-xl text-center border" style={{backgroundColor:C.g100,borderColor:C.g200}}>
                   <X size={20} className="mx-auto mb-1" style={{color:C.g500}}/>
                   <p className="font-bold text-sm" style={{color:C.g700}}>Trade Cancelled</p>
-                  <p className="text-xs mt-0.5" style={{color:C.g400}}>Escrow funds returned</p>
+                  <p className="text-xs mt-0.5 mb-3" style={{color:C.g400}}>Escrow funds returned</p>
+                  <div className="flex gap-2 justify-center flex-wrap">
+                    <button onClick={()=>navigate(isSeller?'/sell-bitcoin':'/buy-bitcoin')}
+                      className="px-3 py-1.5 rounded-lg font-black text-xs text-white hover:opacity-90 transition"
+                      style={{backgroundColor:C.green}}>
+                      <><Rocket size={14} style={{display:'inline'}}/> Start New Trade</>
+                    </button>
+                    <button onClick={()=>navigate('/buy-bitcoin')}
+                      className="px-3 py-1.5 rounded-lg font-black text-xs border bg-white hover:bg-gray-50 transition"
+                      style={{borderColor:C.g200,color:C.g700}}>
+                      Marketplace →
+                    </button>
+                  </div>
                 </div>
               )}
               {isDisputed&&(
@@ -1479,26 +1573,26 @@ export default function TradeDetail({user}) {
                   style={{border:'2px solid #2563EB',boxShadow:'0 2px 12px rgba(37,99,235,0.20)'}}>
                   <div className="flex items-center gap-2 px-3 py-2"
                     style={{background:'linear-gradient(135deg,#1E3A8A,#2563EB)'}}>
-                    <span className="text-sm">{isBuyer ? '⏳' : '🔔'}</span>
+                    <span className="text-sm">{isBuyer ? <Clock size={16} style={{color:'#fff'}}/> : <Bell size={16} style={{color:'#fff'}}/>}</span>
                     <span className="text-xs font-black text-white tracking-wide flex-1">
                       {isBuyer
                         ? 'Payment Sent — Awaiting Seller Confirmation'
-                        : '⚡ Action Required — Release Bitcoin'}
+                        : 'Action Required — Release Bitcoin'}
                     </span>
                   </div>
                   <div className="px-3 py-2.5" style={{backgroundColor:'#EFF6FF'}}>
                     {isBuyer ? (
                       <p className="text-xs font-semibold leading-relaxed" style={{color:'#1E40AF'}}>
-                        ✅ Your payment has been sent successfully. The seller has been notified and will check their account now. Once they confirm receipt, your Bitcoin will be released to you automatically.
+                        Your payment has been sent successfully. The seller has been notified and will check their account now. Once they confirm receipt, your Bitcoin will be released to you automatically.
                       </p>
                     ) : (
                       <>
                         <p className="text-xs font-bold leading-relaxed" style={{color:'#1E40AF'}}>
-                          💰 The buyer has confirmed payment. Please check your {payMethod} account right now.
+                          The buyer has confirmed payment. Please check your {payMethod} account right now.
                         </p>
                         <p className="text-xs font-semibold mt-1" style={{color:'#1D4ED8'}}>
-                          ✅ Payment received? → Scroll up and tap <strong>RELEASE BITCOIN</strong> to complete the trade.<br/>
-                          ❌ Not received? → Open a dispute so a moderator can help.
+                          Check your account — if payment received, tap <strong>RELEASE BITCOIN</strong> to complete the trade.<br/>
+                          Payment not received? Open a dispute so a moderator can help.
                         </p>
                       </>
                     )}
@@ -1587,12 +1681,12 @@ export default function TradeDetail({user}) {
                 <span className="text-xs font-black" style={{color:C.forest}}>Escrow Protection</span>
               </div>
               {[
-                '🔒 BTC locked in escrow when trade opens',
-                '💰 Buyer pays via agreed payment method',
-                '✅ Seller confirms → releases BTC to buyer',
-                '💸 0.5% fee auto-deducted to PRAQEN wallet',
-                '🚨 Open dispute if problem — resolved in 24h',
-              ].map(t=><p key={t} className="text-xs" style={{color:C.g600}}>{t}</p>)}
+                <><Lock size={12} style={{flexShrink:0}}/> BTC locked in escrow when trade opens</>,
+                <><DollarSign size={12} style={{flexShrink:0}}/> Buyer pays via agreed payment method</>,
+                <><CheckCircle size={12} style={{flexShrink:0}}/> Seller confirms → releases BTC to buyer</>,
+                <><DollarSign size={12} style={{flexShrink:0}}/> 0.5% fee auto-deducted to PRAQEN wallet</>,
+                <><AlertTriangle size={12} style={{flexShrink:0}}/> Open dispute if problem — resolved in 24h</>,
+              ].map((t,i)=><p key={i} className="text-xs flex items-center gap-1.5" style={{color:C.g600}}>{t}</p>)}
 
               {/* Trade Reference */}
               {(trade?.trade_ref) && (
@@ -1621,20 +1715,29 @@ export default function TradeDetail({user}) {
             <div className={`w-full h-full flex-col ${
               activeTab === 'chat' ? 'flex' : 'hidden'
             } md:flex md:flex-1 md:h-full md:min-w-0 md:overflow-hidden`}>
-            <div className="bg-white rounded-2xl border shadow-sm overflow-hidden flex flex-col min-h-0 flex-1"
+            <div className="bg-white rounded-2xl border shadow-sm overflow-clip flex flex-col min-h-0 flex-1"
               style={{borderColor:C.g200}}>
 
- 
             {/* ── Partner Header ── */}
               <div className="flex-shrink-0 px-4 py-3 border-b" style={{borderColor:C.g100}}>
                 <div className="flex items-center justify-between mb-2">
                  <button
   onClick={()=>{setProfUser(cp);setProfLabel(isBuyer?'Seller':'Buyer');}}
   className="flex items-center gap-2.5 hover:opacity-80 active:opacity-60 transition">
-  <Avatar user={cp} size={44} />
+  <div className="relative flex-shrink-0">
+    <Avatar user={cp} size={44} />
+    {((cp?.is_online ?? true) || cpIsAway) && (
+      <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white"
+        style={{backgroundColor: (cp?.is_online ?? true) ? '#22C55E' : '#F59E0B'}} />
+    )}
+    {(cp?.country || cp?.location) && (
+      <span className="absolute -bottom-0.5 -left-0.5 rounded-sm border-2 border-white overflow-hidden flex-shrink-0" style={{lineHeight:0}}>
+        <CountryFlag countryCode={cp.country || cp.location} className="w-4 h-3 block" />
+      </span>
+    )}
+  </div>
   <span className="font-black text-base" style={{color:C.g800}}>{cp?.username || 'User'}</span>
-  <span style={{fontSize:20}}>{cp?.country ? isoToFlag(resolveCode(cp.country)) : null}</span>
-                  {!cp?.country && <Globe size={14} style={{color:C.g400}}/>}
+  {!(cp?.country || cp?.location) && <Globe size={14} style={{color:C.g400}}/>}
 </button>
                   {/* TODO: Confirm positive_feedback/negative_feedback are returned on cp object from /trades/:id — if not, the ?? 0 fallback hides the gap */}
                   <div className="flex items-center gap-2">
@@ -1651,6 +1754,26 @@ export default function TradeDetail({user}) {
                     <span className="w-2.5 h-2.5 rounded-full" style={{background: (cp?.is_online ?? true) ? '#22C55E' : C.g400}}/>
                     {(cp?.is_online ?? true) ? 'Active' : fmtAge(cp?.last_seen_at)}
                   </span>
+                  {isEscrow && isActive && !isDisputed && (
+                    <span
+                      className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-black shadow-sm ${
+                        !isPaid && ((timeLeft !== null && timeLeft <= 0) || urgent) ? 'animate-pulse' : ''
+                      }`}
+                      style={{
+                        color:'#fff',
+                        background: isPaid
+                          ? `linear-gradient(135deg,${C.g400},${C.g300})`
+                          : (timeLeft !== null && timeLeft <= 0)
+                            ? 'linear-gradient(135deg,#B91C1C,#EF4444)'
+                            : urgent
+                              ? 'linear-gradient(135deg,#B45309,#F59E0B)'
+                              : `linear-gradient(135deg,${C.forest},${C.mint})`,
+                        boxShadow: isPaid ? 'none' : '0 2px 8px rgba(0,0,0,0.18)',
+                      }}>
+                      <Timer size={14}/>
+                      {isPaid ? 'Timer stopped' : (timeLeft !== null && timeLeft <= 0) ? '⏰ Expired' : fmtTimer(timeLeft)}
+                    </span>
+                  )}
                  <button
   type="button"
   onClick={()=>{setProfUser(cp);setProfLabel(isBuyer?'Seller':'Buyer');}}
@@ -1661,8 +1784,19 @@ export default function TradeDetail({user}) {
               </div>
 
               {/* ── Trade Summary Banner ── */}
-              <div className="flex-shrink-0 px-3 py-2.5"
+              <div className="flex-shrink-0 flex items-center gap-2.5 px-3 py-2.5"
                 style={{ backgroundColor: isSeller ? C.danger : C.green }}>
+                <div className="flex-shrink-0 flex items-center justify-center"
+                  style={{
+                    width:26, height:26, borderRadius:'50%',
+                    border:'1.5px solid rgba(255,255,255,0.85)',
+                    backgroundColor:'rgba(255,255,255,0.14)',
+                    transform:'rotate(-8deg)',
+                    boxShadow:'0 0 0 2px rgba(255,255,255,0.18)',
+                  }}
+                  title="Verified escrow trade">
+                  <Stamp size={14} style={{color:'#fff'}}/>
+                </div>
                 <p className="text-xs leading-snug font-black uppercase tracking-wide" style={{color:'#fff'}}>
                   {isBuyer
                     ? `YOU ARE BUYING ${fmtBtc(btcReceived)} BTC FOR ${userPays.toFixed(2)} (${cur}) WITH ${payMethod}`
@@ -1679,7 +1813,7 @@ export default function TradeDetail({user}) {
                 {/* Proof images */}
                 {images.length>0&&(
                   <div className="flex gap-2 flex-wrap">
-                    <span className="text-xs w-full font-bold" style={{color:C.g400}}>📎 Uploaded Proofs:</span>
+                    <span className="text-xs w-full font-bold flex items-center gap-1" style={{color:C.g400}}><Paperclip size={12}/> Uploaded Proofs:</span>
                     {images.map((img,i)=>{
                       const src=img.image_url||img.url;
                       if(!src)return null;
@@ -1695,6 +1829,25 @@ export default function TradeDetail({user}) {
                     })}
                   </div>
                 )}
+
+                {/* System message — trade opened notice, mirrors the "safe to pay" banner */}
+                {isEscrow && !isPaid && (isBuyer||isSeller) && (()=>{
+                  const openedRaw = trade.created_at;
+                  const openedDate = openedRaw ? new Date(/[Z+]/.test(openedRaw)?openedRaw:openedRaw+'Z') : new Date();
+                  const openedLabel = `${String(openedDate.getDate()).padStart(2,'0')}/${String(openedDate.getMonth()+1).padStart(2,'0')}/${openedDate.getFullYear()} ${String(openedDate.getHours()).padStart(2,'0')}:${String(openedDate.getMinutes()).padStart(2,'0')}`;
+                  const sysText = isBuyer
+                    ? `You are buying ${fmtBtc(btcReceived)} BTC (${sym}${fmt(btcValueInLocal,2)} ${cur}) for ${sym}${fmt(userPays,2)} ${cur} via ${payMethod}. It is now safe for you to pay. You will have ${timeLimit} minutes to make your payment and click on the "PAID" button before the trade expires.`
+                    : `You are selling ${fmtBtc(btcReceived)} BTC (${sym}${fmt(btcValueInLocal,2)} ${cur}) for ${sym}${fmt(userPays,2)} ${cur} via ${payMethod}. Wait for the buyer to send payment via ${payMethod}, then confirm it before releasing the Bitcoin. The buyer has ${timeLimit} minutes to pay before the trade expires.`;
+                  return(
+                    <div className="flex justify-center px-1">
+                      <div className="w-full max-w-[95%] rounded-2xl p-4" style={{backgroundColor:'#E9EDEF', border:`1px solid ${C.g200}`}}>
+                        <p className="text-sm font-black mb-1.5" style={{color:'#1E293B'}}>System message</p>
+                        <p className="text-sm leading-relaxed" style={{color:'#334155'}}>{sysText}</p>
+                        <p className="text-xs font-semibold mt-2.5" style={{color:'#64748B'}}>{openedLabel}</p>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Messages */}
                 {messages.length===0?(
@@ -1732,9 +1885,9 @@ export default function TradeDetail({user}) {
                           <div className="flex items-center justify-between px-4 py-2.5"
                             style={{borderBottom:'1px solid rgba(255,255,255,0.15)'}}>
                             <div className="flex items-center gap-2">
-                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-lg flex-shrink-0"
+                              <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
                                 style={{background:'rgba(255,255,255,0.18)',border:'1.5px solid rgba(255,255,255,0.35)'}}>
-                                ⏳
+                                <Clock size={18} style={{color:'#fff'}}/>
                               </div>
                               <span className="font-black text-white text-xs tracking-[0.15em] uppercase">Payment Confirmed</span>
                             </div>
@@ -1752,10 +1905,10 @@ export default function TradeDetail({user}) {
                                 border:'1px solid rgba(37,99,235,0.25)',
                               }}>
                               {isBuyer
-                                ? '✓ You marked payment sent. Awaiting seller confirmation.'
+                                ? 'You marked payment sent. Awaiting seller confirmation.'
                                 : isSeller
-                                  ? '⚡ ACTION REQUIRED — Check your account now, then release Bitcoin.'
-                                  : '💰 Payment step confirmed.'}
+                                  ? <><Zap size={14} style={{display:'inline'}}/> ACTION REQUIRED — Check your account now, then release Bitcoin.</>
+                                  : 'Payment step confirmed.'}
                             </div>
                           </div>
                         </div>
@@ -1768,15 +1921,15 @@ export default function TradeDetail({user}) {
                       <div key={i} className="flex justify-center my-4 px-1">
                         <div className="w-full max-w-[95%] rounded-2xl overflow-hidden"
                           style={{
-                            background:'linear-gradient(145deg,#052e16,#065F46,#059669)',
-                            boxShadow:'0 0 0 2px #6EE7B7, 0 8px 32px rgba(5,150,105,0.55)',
+                            background:'linear-gradient(145deg,#1E3A5F,#1D4ED8,#2563EB)',
+                            boxShadow:'0 0 0 2px #93C5FD, 0 8px 32px rgba(37,99,235,0.55)',
                           }}>
                           <div className="flex items-center justify-between px-4 py-2.5"
                             style={{borderBottom:'1px solid rgba(255,255,255,0.15)'}}>
                             <div className="flex items-center gap-2">
-                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-lg flex-shrink-0"
+                              <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
                                 style={{background:'rgba(255,255,255,0.18)',border:'1.5px solid rgba(255,255,255,0.35)'}}>
-                                🎉
+                                <PartyPopper size={18} style={{color:'#fff'}}/>
                               </div>
                               <span className="font-black text-white text-xs tracking-[0.15em] uppercase">Trade Complete</span>
                             </div>
@@ -1785,8 +1938,8 @@ export default function TradeDetail({user}) {
                           <div className="px-4 py-3">
                             <p className="text-sm font-black text-white leading-snug">{text}</p>
                             <div className="mt-2.5 px-3 py-2 rounded-xl text-xs font-black"
-                              style={{background:'rgba(255,255,255,0.12)',color:'#A7F3D0',border:'1px solid rgba(255,255,255,0.2)'}}>
-                              ✅ Bitcoin has left escrow. Leave feedback to help the community!
+                              style={{background:'rgba(37,99,235,0.15)',color:'#BFDBFE',border:'1px solid rgba(147,197,253,0.3)'}}>
+                              Bitcoin has left escrow. Leave feedback to help the community!
                             </div>
                           </div>
                         </div>
@@ -1795,11 +1948,11 @@ export default function TradeDetail({user}) {
 
                     /* ── other system banners (generic) ─────────────────── */
                     let grad, iconBg, icon, label;
-                    if(isDisp)  {grad='linear-gradient(135deg,#7F1D1D,#DC2626)';iconBg='#FEF2F2';icon='🚨';label='DISPUTE';}
-                    else if(isDanger){grad='linear-gradient(135deg,#450a0a,#991B1B)';iconBg='#FEE2E2';icon='❌';label='CANCELLED';}
-                    else if(isWarn)  {grad='linear-gradient(135deg,#431407,#C2410C)';iconBg='#FED7AA';icon='⚠️';label='ALERT';}
-                    else if(isOpen)  {grad='linear-gradient(135deg,#0c1a10,#1B4332)';iconBg='#D1FAE5';icon='🔒';label='TRADE OPEN';}
-                    else             {grad='linear-gradient(135deg,#1e293b,#334155)';iconBg='#E2E8F0';icon='ℹ️';label='INFO';}
+                    if(isDisp)  {grad='linear-gradient(135deg,#7F1D1D,#DC2626)';iconBg='#FEF2F2';icon=<AlertTriangle size={16}/>;label='DISPUTE';}
+                    else if(isDanger){grad='linear-gradient(135deg,#450a0a,#991B1B)';iconBg='#FEE2E2';icon=<X size={16}/>;label='CANCELLED';}
+                    else if(isWarn)  {grad='linear-gradient(135deg,#431407,#C2410C)';iconBg='#FED7AA';icon=<AlertTriangle size={16}/>;label='ALERT';}
+                    else if(isOpen)  {grad='linear-gradient(135deg,#0c1a10,#1B4332)';iconBg='#D1FAE5';icon=<Lock size={16}/>;label='TRADE OPEN';}
+                    else             {grad='linear-gradient(135deg,#1e293b,#334155)';iconBg='#E2E8F0';icon=<Info size={16}/>;label='INFO';}
 
                     return(
                       <div key={i} className="flex justify-center my-3 px-1">
@@ -1851,9 +2004,14 @@ export default function TradeDetail({user}) {
                       {/* Avatar — left for received */}
                       {!isOwn&&(
                         <button onClick={()=>{setProfUser(cp);setProfLabel(isBuyer?'Seller':'Buyer');}}
-                          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 shadow-sm hover:opacity-80 transition"
-                          style={{backgroundColor:C.green,color:'#fff'}}>
-                          {cp?.username?.charAt(0)?.toUpperCase()||'?'}
+                          className="flex-shrink-0 hover:opacity-80 active:opacity-60 transition">
+                          <div className="relative">
+                            <Avatar user={cp} size={28} radius="rounded-full" />
+                            {((cp?.is_online ?? true) || cpIsAway) && (
+                              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-1.5 border-white"
+                                style={{backgroundColor: (cp?.is_online ?? true) ? '#22C55E' : '#F59E0B'}} />
+                            )}
+                          </div>
                         </button>
                       )}
                       <div className="max-w-[72%] flex flex-col">
@@ -1869,9 +2027,19 @@ export default function TradeDetail({user}) {
                                 </p>
                               </div>
                             )}
-                            <button onClick={()=>setImgSrc(text)} className="block w-full">
-                              <img src={text} alt="Shared" className="w-full h-auto object-cover" style={{maxHeight:280}}
-                                onError={e=>{e.currentTarget.style.display='none';e.currentTarget.parentElement.innerHTML='<span style="padding:8px;font-size:12px;color:#94A3B8">Image unavailable</span>';}}/>
+                            <button type="button" onClick={()=>setImgSrc(text)}
+                              className="block w-full text-left cursor-pointer"
+                              style={{width:260}}>
+                              <div className="flex flex-col items-center justify-center gap-1.5 px-4"
+                                style={{height:130,background:isOwn?'rgba(11,143,217,0.08)':'rgba(229,231,235,0.45)'}}>
+                                <div className="w-9 h-9 rounded-lg flex items-center justify-center"
+                                  style={{background:isOwn?'rgba(11,143,217,0.15)':'rgba(148,163,184,0.18)'}}>
+                                  <Camera size={18} style={{color:'#334155'}} />
+                                </div>
+                                <span className="text-xs font-bold" style={{color:'#334155'}}>
+                                  Image attached — tap to view
+                                </span>
+                              </div>
                             </button>
                             {/* Timestamp inside bubble — bottom */}
                             <div className="px-3 pb-2.5 pt-1"
@@ -1882,7 +2050,7 @@ export default function TradeDetail({user}) {
                             </div>
                           </div>
                         ):(
-                          <div className="rounded-2xl px-4 py-3 shadow-sm"
+                          <div className={`rounded-2xl px-4 shadow-sm ${isOwn ? 'py-3' : 'pt-3 pb-1.5'}`}
                             style={{ background: isOwn ? '#0B8FD9' : '#E5E7EB' }}>
                             {/* ── TOP: sender name + copy icon (received only — own messages don't show name) ── */}
                             {!isOwn && (
@@ -1904,7 +2072,7 @@ export default function TradeDetail({user}) {
                               {text}
                             </p>
                             {/* ── BOTTOM: timestamp + copy icon (right for sent) ── */}
-                            {isOwn ? (
+                            {isOwn && (
                               <div className="flex items-center justify-between">
                                 <p className="text-xs" style={{color:'rgba(255,255,255,0.6)'}}>
                                   {new Date(m.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})} {new Date(m.created_at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',hour12:false})}
@@ -1916,12 +2084,13 @@ export default function TradeDetail({user}) {
                                   <Copy size={13} style={{color:'rgba(255,255,255,0.7)'}}/>
                                 </button>
                               </div>
-                            ) : (
-                              <p className="text-xs" style={{color:'#94A3B8'}}>
-                                {new Date(m.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})} {new Date(m.created_at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',hour12:false})}
-                              </p>
                             )}
                           </div>
+                        )}
+                        {!isOwn && (
+                          <p className="text-xs mt-1" style={{color:'#94A3B8'}}>
+                            {new Date(m.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})} {new Date(m.created_at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',hour12:false})}
+                          </p>
                         )}
                         {/* Read receipts */}
                         <div className={`flex items-center gap-1 mt-0.5 ${isOwn?'justify-end':'justify-start'}`}>
@@ -1961,23 +2130,57 @@ export default function TradeDetail({user}) {
                   <div className="mx-1 my-2 rounded-xl overflow-hidden shadow-md"
                     style={{background:`linear-gradient(135deg,${C.forest},${C.mint})`}}>
                     <div className="px-4 py-3 text-center">
-                      <p className="text-white font-black text-sm">🎉 Congratulations! 🙌</p>
+                      <p className="text-white font-black text-sm"><PartyPopper size={20} style={{display:'inline'}}/> Congratulations!</p>
                       <p className="text-xs font-bold mt-0.5 mb-2" style={{color:'rgba(255,255,255,0.8)'}}>
                         You just {isBuyer?'bought':'sold'} Bitcoin successfully!
                       </p>
                       <p className="text-xs mb-3 leading-snug" style={{color:'rgba(255,255,255,0.7)'}}>
-                        Always come back &amp; trade more — PRAQEN's safe escrow protects every trade. 🔒
+                        Always come back &amp; trade more — PRAQEN's safe escrow protects every trade.
                       </p>
                       <div className="flex gap-2 justify-center">
                         <button onClick={()=>navigate('/buy-bitcoin')}
                           className="px-3 py-1.5 rounded-lg font-black text-xs hover:opacity-90 transition"
                           style={{backgroundColor:C.gold,color:C.forest}}>
-                          Trade Again 🚀
+                          <><Rocket size={14} style={{display:'inline'}}/> Trade Again</>
                         </button>
                         <button onClick={()=>navigate('/dashboard')}
                           className="px-3 py-1.5 rounded-lg font-black text-xs border hover:bg-white/10 transition"
                           style={{borderColor:'rgba(255,255,255,0.35)',color:'#fff'}}>
                           Dashboard →
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Trade cancelled banner ── */}
+                {isCancelled&&(
+                  <div className="mx-1 my-2 rounded-xl overflow-hidden shadow-md border"
+                    style={{background:'#fff',borderColor:C.g200}}>
+                    <div className="px-4 py-3 text-center">
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2"
+                        style={{backgroundColor:'#FEE2E2'}}>
+                        <X size={20} style={{color:C.danger}}/>
+                      </div>
+                      <p className="font-black text-sm" style={{color:C.g800}}>Trade Cancelled</p>
+                      <p className="text-xs font-semibold mt-0.5 mb-2" style={{color:C.g500}}>
+                        This chat is closed — escrow funds were returned to the seller.
+                      </p>
+                      {trade?.cancel_reason&&(
+                        <p className="text-xs mb-3 leading-snug px-3 py-2 rounded-lg" style={{color:C.g600,backgroundColor:C.g50}}>
+                          Reason: {trade.cancel_reason}
+                        </p>
+                      )}
+                      <div className="flex gap-2 justify-center flex-wrap">
+                        <button onClick={()=>navigate(isSeller?'/sell-bitcoin':'/buy-bitcoin')}
+                          className="px-3 py-1.5 rounded-lg font-black text-xs text-white hover:opacity-90 transition"
+                          style={{backgroundColor:C.green}}>
+                          <><Rocket size={14} style={{display:'inline'}}/> Start New Trade</>
+                        </button>
+                        <button onClick={()=>navigate('/buy-bitcoin')}
+                          className="px-3 py-1.5 rounded-lg font-black text-xs border hover:bg-gray-50 transition"
+                          style={{borderColor:C.g200,color:C.g700}}>
+                          Browse Marketplace →
                         </button>
                       </div>
                     </div>
@@ -1994,27 +2197,27 @@ export default function TradeDetail({user}) {
                   {/* header */}
                   <div className="flex items-center gap-2 px-3 py-2"
                     style={{background:'linear-gradient(135deg,#1E3A8A,#2563EB)'}}>
-                    <span className="text-sm">{isBuyer ? '⏳' : '🔔'}</span>
+                    <span className="text-sm">{isBuyer ? <Clock size={16} style={{color:'#fff'}}/> : <Bell size={16} style={{color:'#fff'}}/>}</span>
                     <span className="text-xs font-black text-white tracking-wide flex-1">
                       {isBuyer
                         ? 'Payment Sent — Awaiting Seller Confirmation'
-                        : '⚡ Action Required — Release Bitcoin'}
+                        : 'Action Required — Release Bitcoin'}
                     </span>
                   </div>
                   {/* body */}
                   <div className="px-3 py-2.5" style={{backgroundColor:'#EFF6FF'}}>
                     {isBuyer ? (
                       <p className="text-xs font-semibold leading-relaxed" style={{color:'#1E40AF'}}>
-                        ✅ Your payment has been sent successfully. The seller has been notified and will check their account now. Once they confirm receipt, your Bitcoin will be released to you automatically.
+                        Your payment has been sent successfully. The seller has been notified and will check their account now. Once they confirm receipt, your Bitcoin will be released to you automatically.
                       </p>
                     ) : (
                       <>
                         <p className="text-xs font-bold leading-relaxed" style={{color:'#1E40AF'}}>
-                          💰 The buyer has confirmed payment. Please check your {payMethod} account right now.
+                          The buyer has confirmed payment. Please check your {payMethod} account right now.
                         </p>
                         <p className="text-xs font-semibold mt-1" style={{color:'#1D4ED8'}}>
-                          ✅ Payment received? → Scroll up and tap <strong>RELEASE BITCOIN</strong> to complete the trade.<br/>
-                          ❌ Not received? → Open a dispute so a moderator can help.
+                          Check your account — if payment received, tap <strong>RELEASE BITCOIN</strong> to complete the trade.<br/>
+                          Payment not received? Open a dispute so a moderator can help.
                         </p>
                       </>
                     )}
@@ -2026,24 +2229,62 @@ export default function TradeDetail({user}) {
               {isActive?(
                 <div className="flex-shrink-0 px-4 pb-4 pt-2 bg-[#F9FAFB] rounded-b-2xl">
                   <form onSubmit={sendMessage}
-                    className="flex items-center gap-3 p-1.5 pl-3 pr-1.5 bg-white border border-[#E5E7EB] rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
-                    <button type="button" onClick={()=>fileRef.current?.click()} disabled={uploading}
-                      className="w-9 h-9 rounded-full flex items-center justify-center border border-[#E5E7EB] bg-white hover:bg-gray-50 disabled:opacity-40 flex-shrink-0 transition"
-                      style={{outline:'none'}}>
-                      {uploading?<RefreshCw size={15} className="animate-spin" style={{color:C.green}}/>
-                        :<Paperclip size={15} style={{color:C.green}}/>}
-                    </button>
-                    <input ref={fileRef} type="file" accept="image/*" onChange={e=>uploadImage(e.target.files[0])} className="hidden"/>
+                    className="flex items-center gap-3 p-1.5 pl-3 pr-1.5 bg-white border-2 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition-colors"
+                    style={{borderColor: msg.trim()?`${C.mint}55`:'#E5E7EB'}}>
+
+                    {/* ── Attach button + popup menu ── */}
+                    <div className="relative flex-shrink-0" ref={attachMenuRef}>
+                      <button type="button" onClick={()=>setShowAttachMenu(v=>!v)} disabled={uploading}
+                        className="w-9 h-9 rounded-full flex items-center justify-center disabled:opacity-40 flex-shrink-0 transition-transform"
+                        style={{
+                          background:`linear-gradient(135deg,${C.mint}25,${C.green}20)`,
+                          border:`1px solid ${C.mint}55`,
+                          outline:'none',
+                          transform: showAttachMenu?'rotate(45deg)':'rotate(0deg)',
+                        }}>
+                        {uploading?<RefreshCw size={15} className="animate-spin" style={{color:C.green}}/>
+                          :<Plus size={17} style={{color:C.green}}/>}
+                      </button>
+
+                      {showAttachMenu&&(
+                        <div className="absolute bottom-full left-0 mb-2 w-52 bg-white rounded-2xl shadow-2xl border overflow-hidden z-50"
+                          style={{borderColor:C.g200}}>
+                          {[
+                            {label:'Take a Photo', icon:Camera, bg:`${C.gold}22`, color:C.gold, onClick:()=>cameraRef.current?.click()},
+                            {label:'Upload Image', icon:ImageIcon, bg:`${C.mint}22`, color:C.green, onClick:()=>fileRef.current?.click()},
+                            {label:'File',         icon:FileIcon, bg:'#DBEAFE', color:'#2563EB', onClick:()=>docRef.current?.click()},
+                          ].map(({label,icon:Ic,bg,color,onClick})=>(
+                            <button key={label} type="button"
+                              onClick={()=>{onClick();setShowAttachMenu(false);}}
+                              className="w-full flex items-center gap-3 px-3.5 py-3 hover:bg-gray-50 transition text-left">
+                              <span className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{backgroundColor:bg}}>
+                                <Ic size={16} style={{color}}/>
+                              </span>
+                              <span className="text-sm font-bold" style={{color:C.g700}}>{label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Gallery — normal photo picker */}
+                    <input ref={fileRef} type="file" accept="image/*" multiple onChange={e=>{uploadImage(e.target.files);e.target.value='';}} className="hidden"/>
+                    {/* Camera — opens the device camera directly on mobile */}
+                    <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={e=>{uploadImage(e.target.files);e.target.value='';}} className="hidden"/>
+                    {/* Files — broader picker (still only images are accepted server-side) */}
+                    <input ref={docRef} type="file" multiple onChange={e=>{uploadImage(e.target.files);e.target.value='';}} className="hidden"/>
+
                     <input type="text" value={msg}
                       onChange={e=>{setMsg(e.target.value);sendTypingPing();}}
                       placeholder="Write a message..."
                       className="flex-1 min-w-0 px-2 py-2 font-medium bg-transparent border-0 focus:outline-none focus:ring-0 text-slate-800 placeholder-slate-400"
                       style={{fontSize:15}}/>
                     <button type="submit" disabled={!msg.trim()||sending}
-                      className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition disabled:opacity-100 disabled:cursor-not-allowed shadow-sm"
+                      className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition disabled:cursor-not-allowed"
                       style={{
-                        backgroundColor: !msg.trim()||sending ? '#F1F5F9' : C.green,
-                        color: !msg.trim()||sending ? '#94A3B8' : '#ffffff'
+                        background: !msg.trim()||sending ? '#F1F5F9' : `linear-gradient(135deg,${C.forest},${C.mint})`,
+                        color: !msg.trim()||sending ? '#94A3B8' : '#ffffff',
+                        boxShadow: !msg.trim()||sending ? 'none' : `0 2px 10px ${C.mint}66`,
                       }}>
                       {sending?<RefreshCw size={14} className="animate-spin"/>:<Send size={15}/>}
                     </button>
@@ -2052,7 +2293,7 @@ export default function TradeDetail({user}) {
               ):(
                 <div className="border-t p-3 text-center text-sm font-bold flex-shrink-0"
                   style={{borderColor:C.g100,color:C.g400}}>
-                  Chat closed — trade {isCompleted?'completed successfully ✅':'cancelled ❌'}
+                  Chat closed — trade {isCompleted?'completed successfully':'cancelled'}
                 </div>
               )}
             </div>
@@ -2062,21 +2303,19 @@ export default function TradeDetail({user}) {
           {/* Tab Navigation Switcher (mobile only — hidden entirely at md and above) */}
           <div className="flex-shrink-0 bg-white border border-[#E5E7EB] rounded-[24px] shadow-[0_4px_16px_rgba(0,0,0,0.06)] p-2 flex gap-2 max-w-sm mx-auto w-full md:hidden">
             <button type="button" onClick={() => setActiveTab('actions')}
-              className={`flex-1 py-3 px-4 rounded-[16px] font-black text-sm flex items-center justify-center gap-2 transition duration-200 outline-none ${
-                activeTab === 'actions'
-                  ? 'bg-[#6B4A16] text-white shadow-sm'
-                  : 'bg-white text-slate-700 hover:bg-slate-50 border border-transparent'
-              }`}>
+              className="flex-1 py-3 px-4 rounded-[16px] font-black text-sm flex items-center justify-center gap-2 transition duration-200 outline-none border border-transparent hover:opacity-90"
+              style={activeTab === 'actions'
+                ? {background:`linear-gradient(135deg,${C.forest},${C.mint})`,color:'#fff',boxShadow:'0 2px 8px rgba(27,67,50,0.25)'}
+                : {backgroundColor:'#fff',color:C.g700}}>
               <Flag size={16} />
               <span>Actions</span>
             </button>
-            
+
             <button type="button" onClick={() => setActiveTab('chat')}
-              className={`flex-1 py-3 px-4 rounded-[16px] font-black text-sm flex items-center justify-center gap-2 transition duration-200 outline-none ${
-                activeTab === 'chat'
-                  ? 'bg-[#6B4A16] text-white shadow-sm'
-                  : 'bg-white text-slate-700 hover:bg-slate-50 border border-transparent'
-              }`}>
+              className="flex-1 py-3 px-4 rounded-[16px] font-black text-sm flex items-center justify-center gap-2 transition duration-200 outline-none border border-transparent hover:opacity-90"
+              style={activeTab === 'chat'
+                ? {background:`linear-gradient(135deg,${C.forest},${C.mint})`,color:'#fff',boxShadow:'0 2px 8px rgba(27,67,50,0.25)'}
+                : {backgroundColor:'#fff',color:C.g700}}>
               <MessageCircle size={16} />
               <span>Chat</span>
             </button>
@@ -2085,7 +2324,27 @@ export default function TradeDetail({user}) {
         </div>
       </div>
 
-      {/* MOBILE STICKY ACTION BAR disabled — Actions buttons are now inside the Actions tab directly */}
+      {/* Constrain page height to exactly calc(100dvh - var(--navbar-h)) so the
+          body never overflows or scrolls. The flex column chain then constrains every child
+          properly — partner header stays pinned (flex-shrink-0) and only the message list
+          scrolls inside its own overflow-y:auto region. */}
+      <style>{`
+        html.trade-page, .trade-page body {
+          overflow:hidden!important;
+        }
+        .trade-mobile-root {
+          min-height:calc(100dvh - var(--navbar-h))!important;
+          max-height:calc(100dvh - var(--navbar-h))!important;
+          height:calc(100dvh - var(--navbar-h))!important;
+        }
+        /* BottomNav is hidden on /trade/ routes (see BottomNav.js), so the global
+           .pb-nav-mobile reserved space below AppShell is dead weight here — it pushed
+           total page height ~60px past the viewport, silently clipped by the overflow:hidden
+           above. Zeroing it makes the trade page's real height match the viewport exactly. */
+        .trade-page .pb-nav-mobile {
+          padding-bottom: 0 !important;
+        }
+      `}</style>
 
       {/* ── MODALS ─────────────────────────────────────────────────────────── */}
       {profUser && <ProfilePopup user={profUser} label={profLabel} trade={trade} onClose={()=>setProfUser(null)}/>}
@@ -2102,15 +2361,15 @@ export default function TradeDetail({user}) {
           iconBg={C.gold}
           title={isGiftCardTrade ? 'Confirm Gift Card Sent?' : 'Confirm Payment Sent?'}
           lines={isGiftCardTrade ? [
-            {icon:'🎁', text:'You are confirming you have sent the gift card code to the buyer in the chat.'},
-            {icon:'⚠️', text:'Only confirm if you have already shared the code. This cannot be undone.'},
-            {icon:'🔒', text:'The buyer will verify the code before Bitcoin is released.'},
+            {icon:<Gift size={16}/>, text:'You are confirming you have sent the gift card code to the buyer in the chat.'},
+            {icon:<AlertTriangle size={16} style={{color:C.warn}}/>, text:'Only confirm if you have already shared the code. This cannot be undone.'},
+            {icon:<Lock size={16}/>, text:'The buyer will verify the code before Bitcoin is released.'},
           ] : [
-            {icon:'💳', text:`You are confirming you have sent the full payment via ${payMethod}.`},
-            {icon:'⚠️', text:'Only confirm if you have already completed the transfer. This cannot be undone.'},
-            {icon:'🔒', text:'The seller will verify payment before releasing Bitcoin to you.'},
+            {icon:<CreditCard size={16}/>, text:`You are confirming you have sent the full payment via ${payMethod}.`},
+            {icon:<AlertTriangle size={16} style={{color:C.warn}}/>, text:'Only confirm if you have already completed the transfer. This cannot be undone.'},
+            {icon:<Lock size={16}/>, text:'The seller will verify payment before releasing Bitcoin to you.'},
           ]}
-          confirmLabel={isGiftCardTrade ? '🎁 Yes, I Sent the Code' : '✅ Yes, I Have Paid'}
+          confirmLabel={isGiftCardTrade ? 'Yes, I Sent the Code' : 'Yes, I Have Paid'}
           confirmBg={C.gold}
           confirmColor={C.forest}
           onClose={()=>setShowPayConfirm(false)}
@@ -2126,12 +2385,12 @@ export default function TradeDetail({user}) {
           iconBg={C.green}
           title="Release Bitcoin to Buyer?"
           lines={[
-            {icon:'✅', text:'Only release Bitcoin AFTER you have confirmed the payment in your bank or mobile money account.'},
-            {icon:'⚠️', text:'This action is PERMANENT and cannot be reversed. Bitcoin will leave escrow immediately.'},
-            {icon:'🔒', text:'A 0.5% fee will be automatically deducted by the escrow system.'},
-            {icon:'🔐', text:'A security code will be sent to your email to confirm this action.'},
+            {icon:<CheckCircle size={16}/>, text:'Only release Bitcoin AFTER you have confirmed the payment in your bank or mobile money account.'},
+            {icon:<AlertTriangle size={16} style={{color:C.warn}}/>, text:'This action is PERMANENT and cannot be reversed. Bitcoin will leave escrow immediately.'},
+            {icon:<Lock size={16}/>, text:'A 0.5% fee will be automatically deducted by the escrow system.'},
+            {icon:<Shield size={16}/>, text:'A security code will be sent to your email to confirm this action.'},
           ]}
-          confirmLabel={sending2FA?'Sending code…':'🔐 Send Security Code'}
+          confirmLabel={sending2FA?'Sending code…':'Send Security Code'}
           confirmBg={C.green}
           confirmColor="#fff"
           onClose={()=>setShowRelConfirm(false)}
@@ -2145,7 +2404,7 @@ export default function TradeDetail({user}) {
           <div className="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{backgroundColor:`${C.green}15`}}>
-                <span className="text-xl">🔐</span>
+                <Lock size={24} style={{color:C.green}}/>
               </div>
               <div>
                 <h3 className="font-black text-base" style={{color:C.g800}}>Security Verification</h3>
@@ -2181,7 +2440,7 @@ export default function TradeDetail({user}) {
               <button onClick={releaseBtc} disabled={actionCode2FA.length!==6||submitting}
                 className="flex-1 py-3 rounded-xl text-white font-black text-sm transition hover:opacity-90 disabled:opacity-40"
                 style={{backgroundColor:C.green}}>
-                {submitting?'Releasing…':'🔓 Release Bitcoin'}
+                {submitting?'Releasing…':<><Unlock size={16}/> Release Bitcoin</>}
               </button>
             </div>
           </div>
@@ -2211,7 +2470,7 @@ export default function TradeDetail({user}) {
                 style={{borderColor:C.g200,color:C.g600}}>
                 Cancel
               </button>
-              <button onClick={()=>{navigate('/settings');}}
+              <button onClick={()=>{navigate('/settings?tab=security');}}
                 className="flex-1 py-3 rounded-xl text-white font-black text-sm transition hover:opacity-90"
                 style={{backgroundColor:C.green}}>
                 Go to Settings

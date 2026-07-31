@@ -276,7 +276,7 @@ useEffect(() => { setLocalUser(user?.id ? user : null); }, [user?.id]);
   if (!user) return (
     <nav style={{
       background: '#ffffff',
-      position: 'sticky', top: 0, zIndex: 50,
+      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000,
       borderBottom: `1px solid ${C.g200}`,
       boxShadow: '0 2px 16px rgba(0,0,0,0.07)',
       fontFamily: "'DM Sans', sans-serif",
@@ -320,7 +320,7 @@ useEffect(() => { setLocalUser(user?.id ? user : null); }, [user?.id]);
   return (
     <nav style={{
       background: '#ffffff',
-      position: 'sticky', top: 0, zIndex: 50,
+      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000,
       borderBottom: `1px solid ${C.g200}`,
       boxShadow: '0 2px 16px rgba(0,0,0,0.07)',
       fontFamily: "'DM Sans', sans-serif",

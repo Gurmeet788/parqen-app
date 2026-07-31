@@ -16,12 +16,42 @@ const BTC_REQUIRED_TYPES = ['SELL', 'SELL_BITCOIN', 'BUY_GIFT_CARD'];
 const MIN_USD = 10;
 const BTC_PRICE_APPROX = 88000; // used only when listing has no bitcoin_price set
 
+// The in-memory market cache lives in server.js — wired up once at startup via
+// setCacheBuster() so every call site here (deposits, trades, the 10-min sweep)
+// invalidates it without each caller needing to know about it.
+let _bustCache = () => {};
+function setCacheBuster(fn) { _bustCache = fn; }
+
+// Live BTC price also lives in server.js — wired up the same way. Balance-sufficiency
+// checks must use the real market price, never a listing's own bitcoin_price field: that
+// field can be stale or unrelated to real value (e.g. on 'market' pricing_type listings,
+// where it isn't used for rate display at all), and trusting it let near-empty wallets
+// pass the $10 minimum simply because their listing quoted an inflated price.
+let _getLiveBtcPrice = () => BTC_PRICE_APPROX;
+function setBtcPriceGetter(fn) { _getLiveBtcPrice = fn; }
+
+async function _notifyLowBalancePause(userId, count) {
+  try {
+    await supabaseAdmin.from('notifications').insert([{
+      user_id:    userId,
+      type:       'offer_paused_low_balance',
+      title:      `⏸ Your offer${count > 1 ? 's have' : ' has'} been paused`,
+      message:    `Your ${count > 1 ? count + ' offers were' : 'offer was'} automatically paused because your wallet balance dropped below $10. Load your wallet to reactivate ${count > 1 ? 'them' : 'it'}.`,
+      action:     '/wallet',
+      is_read:    false,
+      created_at: new Date().toISOString(),
+    }]);
+  } catch (err) {
+    console.error('[_notifyLowBalancePause]', err.message);
+  }
+}
+
 /** Called by depositMonitor / tradeEscrowService after a balance change for one user. */
 async function updateOfferStatus(userId) {
   try {
     const { data: wallet } = await supabaseAdmin
       .from('wallets').select('balance_btc, balance_usdt').eq('user_id', userId).maybeSingle();
-    const btcBalUsd  = parseFloat(wallet?.balance_btc || 0) * BTC_PRICE_APPROX;
+    const btcBalUsd  = parseFloat(wallet?.balance_btc || 0) * _getLiveBtcPrice();
     const usdtBalUsd = parseFloat(wallet?.balance_usdt || 0); // 1 USDT ≈ $1
 
     const { data: offers } = await supabaseAdmin
@@ -41,6 +71,7 @@ async function updateOfferStatus(userId) {
         .update({ status: 'PAUSED', updated_at: new Date().toISOString() })
         .in('id', toPause);
       console.log(`[offerStatus] Paused ${toPause.length} offer(s) for user ${userId} (balance $${btcBalUsd.toFixed(2)})`);
+      await _notifyLowBalancePause(userId, toPause.length);
     }
     if (toReactivate.length > 0) {
       await supabaseAdmin.from('listings')
@@ -48,6 +79,7 @@ async function updateOfferStatus(userId) {
         .in('id', toReactivate);
       console.log(`[offerStatus] Reactivated ${toReactivate.length} offer(s) for user ${userId} (balance $${btcBalUsd.toFixed(2)})`);
     }
+    if (toPause.length > 0 || toReactivate.length > 0) _bustCache();
 
     return { paused: toPause.length, reactivated: toReactivate.length };
   } catch (err) {
@@ -90,10 +122,10 @@ async function syncAllOfferStatuses() {
     const toPause      = [];
     const toReactivate = [];
 
+    const livePrice = _getLiveBtcPrice();
     for (const listing of listings) {
       const isUsdt    = listing.asset === 'USDT';
-      const btcPrice  = parseFloat(listing.bitcoin_price) || BTC_PRICE_APPROX;
-      const balUsd    = (balMap[listing.seller_id] || 0) * btcPrice; // default to BTC balance
+      const balUsd    = (balMap[listing.seller_id] || 0) * livePrice; // default to BTC balance
       const minUsd    = parseFloat(listing.min_limit_usd || 0);
 
       // Pause if balance < $10 or can't meet the offer's own minimum
@@ -115,6 +147,16 @@ async function syncAllOfferStatuses() {
         .update({ status: 'PAUSED', updated_at: new Date().toISOString() })
         .in('id', toPause);
       console.log(`[syncAllOfferStatuses] ⏸  Paused ${toPause.length} offer(s) with insufficient balance.`);
+
+      // One notification per affected seller, not per offer.
+      const pausedSet = new Set(toPause);
+      const countBySeller = {};
+      for (const l of listings) {
+        if (pausedSet.has(l.id)) countBySeller[l.seller_id] = (countBySeller[l.seller_id] || 0) + 1;
+      }
+      await Promise.all(
+        Object.entries(countBySeller).map(([sellerId, count]) => _notifyLowBalancePause(sellerId, count))
+      );
     }
     if (toReactivate.length > 0) {
       await supabaseAdmin.from('listings')
@@ -124,6 +166,8 @@ async function syncAllOfferStatuses() {
     }
     if (toPause.length === 0 && toReactivate.length === 0) {
       console.log('[syncAllOfferStatuses] ✅ All offer statuses are already correct.');
+    } else {
+      _bustCache();
     }
   } catch (err) {
     console.error('[syncAllOfferStatuses]', err.message);
@@ -212,4 +256,4 @@ async function deactivateStaleOffers() {
   }
 }
 
-module.exports = { updateOfferStatus, syncAllOfferStatuses, deactivateStaleOffers };
+module.exports = { updateOfferStatus, syncAllOfferStatuses, deactivateStaleOffers, setCacheBuster };

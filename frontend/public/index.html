@@ -78,7 +78,6 @@
     <!-- Google Identity Services -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
 
-
     <!-- ── Schema.org JSON-LD Structured Data ───────────────────────────── -->
     <script type="application/ld+json">
         {
@@ -222,6 +221,20 @@
     <script>
         window.OneSignalDeferred = window.OneSignalDeferred || [];
         OneSignalDeferred.push(async function(OneSignal) {
+            try {
+                await OneSignal.init({
+                    appId: "5fc11b99-516c-4178-8443-b06c08865b99",
+                    notifyButton: { enable: false },
+                    allowLocalhostAsSecureOrigin: true,
+                });
+                // Expose globally so helpers can access it synchronously
+                window.OneSignal = OneSignal;
+                // Signal that init is complete — helpers waiting on this event will unblock
+                window.dispatchEvent(new CustomEvent('onesignal:ready'));
+                console.log('✅ OneSignal initialized! App:', OneSignal);
+            } catch (error) {
+                console.error('❌ OneSignal init error:', error);
+            }
             // ✅ Auto-detect environment - localhost vs production
             const isLocal = window.location.hostname === 'localhost' ||
                 window.location.hostname === '127.0.0.1' ||
