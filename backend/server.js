@@ -385,11 +385,16 @@ async function detectAndSaveCountry(userId, req, phoneNumber) {
       || req.headers['x-real-ip']
       || req.socket?.remoteAddress
       || '';
+    // TEMP DEBUG — print detected IP + whether it would be skipped as private.
+    const _skipPrivate = !ip || ip === '::1' || ip.startsWith('127.') || ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('::ffff:');
+    console.log(`[GeoIP DEBUG] ip="${ip || '(none)'}" skippedAsPrivate=${_skipPrivate}`);
     // Skip loopback / private / empty (avoids looking up server's own IP)
-    if (!ip || ip === '::1' || ip.startsWith('127.') || ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('::ffff:')) return;
+    if (_skipPrivate) return;
 
     const geoRes = await fetch(`https://ipapi.co/${ip}/json/`, { signal: AbortSignal.timeout(4000) });
     const geo = await geoRes.json();
+    // TEMP DEBUG — print raw API response + HTTP status so we can see why the lookup fails
+    console.log(`[GeoIP DEBUG] ipapi.co status=${geoRes.status} raw=${JSON.stringify(geo)}`);
     if (geo?.country_code && geo.country_code.length === 2 && !geo.error) {
       const cc = geo.country_code.toUpperCase();
       const city = geo.city || null;
@@ -409,7 +414,10 @@ async function detectAndSaveCountry(userId, req, phoneNumber) {
 
       console.log(`[GeoIP] user ${String(userId).slice(0, 8)} → ${cc}${city ? ` / ${city}` : ''} (IP: ${ip})`);
     }
-  } catch (_) { /* geo lookup failure never breaks login */ }
+  } catch (err) { /* geo lookup failure never breaks login */
+    // TEMP DEBUG — print any error so we can see what's failing
+    console.error('[GeoIP DEBUG] detectAndSaveCountry error:', err?.message || err);
+  }
 }
 
 // ── Phone rate limiting (anti-abuse for OTP / phone verification) ────────────
