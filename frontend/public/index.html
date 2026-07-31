@@ -216,7 +216,7 @@
         }
     </script>
 
-    <!-- ── OneSignal Web Push ────────────────────────────────────────────── -->
+    <!-- ── ✅ FIXED: OneSignal Web Push - Auto-Detect Environment ─────────── -->
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
     <script>
         window.OneSignalDeferred = window.OneSignalDeferred || [];
@@ -235,6 +235,31 @@
             } catch (error) {
                 console.error('❌ OneSignal init error:', error);
             }
+            // ✅ Auto-detect environment - localhost vs production
+            const isLocal = window.location.hostname === 'localhost' ||
+                window.location.hostname === '127.0.0.1' ||
+                window.location.hostname === '0.0.0.0';
+
+            // ✅ Local Testing App: 6bfba397-b0b1-4718-abde-6ecb375c4f40
+            // ✅ Production App: 5fc11b99-516c-4178-8443-b06c08865b99
+            const appId = isLocal
+                ? "6bfba397-b0b1-4718-abde-6ecb375c4f40"   // Local testing
+                : "5fc11b99-516c-4178-8443-b06c08865b99";  // Production
+
+            console.log(`[OneSignal] Initializing with App ID: ${appId} (${isLocal ? 'LOCAL' : 'PRODUCTION'})`);
+
+            await OneSignal.init({
+                appId: appId,
+                notifyButton: { enable: false },
+                allowLocalhostAsSecureOrigin: true,
+            });
+
+            // Expose globally so helpers can access it synchronously
+            window.OneSignal = OneSignal;
+
+            // Signal that init is complete — helpers waiting on this event will unblock
+            window.dispatchEvent(new CustomEvent('onesignal:ready'));
+            console.log('OneSignal initialized! ✅ App:', appId);
         });
     </script>
 

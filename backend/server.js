@@ -112,7 +112,7 @@ function bustCache() {
   _marketCache.clear();
   // Debounce: wait 1s then warm up the default listings key in the background
   clearTimeout(_cacheRefreshTimer);
-  _cacheRefreshTimer = setTimeout(() => _warmListingsCache(), 1000);
+  _cacheRefreshTimer = setTimeout(_warmListingsCache, 1000);
 }
 
 async function _warmListingsCache() {
@@ -144,7 +144,7 @@ async function _warmListingsCache() {
 
     // Only include listings whose seller data was successfully fetched
     const listings = rawListings
-      .filter(l => userMap[l.seller_id]) // skip any listing with no user data
+      .filter(l => userMap[l.seller_id]) // skip any listing with no user dataxa
       .map(l => {
         const u = userMap[l.seller_id];
         return { ...l, users: { ...u, display_name: computeDisplayName(u), country: u.country || null } };
@@ -385,7 +385,7 @@ async function detectAndSaveCountry(userId, req, phoneNumber) {
       || req.headers['x-real-ip']
       || req.socket?.remoteAddress
       || '';
-    // TEMP DEBUG — print detected IP + whether it would be skipped as private.
+    // TEMP DEBUG - print detected IP + whether it would be skipped as private.
     const _skipPrivate = !ip || ip === '::1' || ip.startsWith('127.') || ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('::ffff:');
     console.log(`[GeoIP DEBUG] ip="${ip || '(none)'}" skippedAsPrivate=${_skipPrivate}`);
     // Skip loopback / private / empty (avoids looking up server's own IP)
@@ -393,12 +393,11 @@ async function detectAndSaveCountry(userId, req, phoneNumber) {
 
     const geoRes = await fetch(`https://ipapi.co/${ip}/json/`, { signal: AbortSignal.timeout(4000) });
     const geo = await geoRes.json();
-    // TEMP DEBUG — print raw API response + HTTP status so we can see why the lookup fails
+    // TEMP DEBUG - print raw API response + HTTP status so we can see why the lookup fails
     console.log(`[GeoIP DEBUG] ipapi.co status=${geoRes.status} raw=${JSON.stringify(geo)}`);
     if (geo?.country_code && geo.country_code.length === 2 && !geo.error) {
       const cc = geo.country_code.toUpperCase();
       const city = geo.city || null;
-      const name = geo.country_name || null;
       const loc = city ? `${name} (${city})` : name;
 
       // Always refresh city/name/location (UI always benefits from fresh geo data)
@@ -3860,7 +3859,7 @@ app.post('/api/auth/send-phone-otp', otpLimiter, async (req, res) => {
   try {
     const { phone, country = 'GH', method } = req.body; // method: 'sms' | 'whatsapp'
     const deliveryMethod = (method === 'whatsapp') ? 'whatsapp' : 'sms';
-    
+
     const valResult = validatePhone(phone, country);
     if (!valResult.valid) {
       return res.status(400).json({ error: valResult.error });
@@ -3978,8 +3977,8 @@ app.post('/api/auth/verify-otp', otpLimiter, async (req, res) => {
       const errMsg = result.reason === 'invalid_code'
         ? 'Incorrect OTP. Please check the 6-digit code sent to your phone and try again.'
         : result.reason === 'no_otp_requested'
-        ? 'No OTP requested for this phone number. Make sure your phone number matches the one used to request the code.'
-        : 'Code expired, already used, or phone number mismatch. Tap "Resend code" to get a new code for this number.';
+          ? 'No OTP requested for this phone number. Make sure your phone number matches the one used to request the code.'
+          : 'Code expired, already used, or phone number mismatch. Tap "Resend code" to get a new code for this number.';
       return res.status(400).json({ error: errMsg });
     }
 
@@ -4234,7 +4233,7 @@ app.patch('/api/users/toggle-2fa', verifyToken, async (req, res) => {
         console.error('[2FA-toggle] DB update failed:', enableError.message);
         return res.status(500).json({ error: 'Failed to enable 2FA. Database error: ' + enableError.message });
       }
-      console.log(`[2FA] Enabled via ${method} for user ${req.userId.slice(0,8)}`);
+      console.log(`[2FA] Enabled via ${method} for user ${req.userId.slice(0, 8)}`);
       return res.json({ success: true, message: `2FA enabled via ${method}!` });
 
     } else if (two_factor_enabled === false) {
@@ -4254,7 +4253,7 @@ app.patch('/api/users/toggle-2fa', verifyToken, async (req, res) => {
         console.error('[2FA-toggle] DB update failed:', disableError.message);
         return res.status(500).json({ error: 'Failed to disable 2FA. Database error: ' + disableError.message });
       }
-      console.log(`[2FA] Disabled for user ${req.userId.slice(0,8)}`);
+      console.log(`[2FA] Disabled for user ${req.userId.slice(0, 8)}`);
       return res.json({ success: true, message: '2FA disabled successfully!' });
 
     } else {
@@ -5834,7 +5833,6 @@ app.get('/api/listings', async (req, res) => {
       const balanceUsdFor = (l) => (l.asset === 'USDT')
         ? (usdtBalMap[l.seller_id] || 0)
         : (balMap[l.seller_id] || 0) * livePriceUsd;
-
       // For SELL offers: cap displayed limits to seller's actual balance
       listings = listings.map(l => {
         if (l.listing_type !== 'SELL' && l.listing_type !== 'SELL_BITCOIN') return l;
@@ -5969,14 +5967,14 @@ app.get('/api/listings/:id', async (req, res) => {
       } catch { }
     }
 
-    const btcPriceVal      = parseFloat(listing.bitcoin_price) || 88000;
+    const btcPriceVal = parseFloat(listing.bitcoin_price) || 88000;
     // Only listing types where the seller pays out BTC need their live balance to cap the max —
     // matches btcRequiredTypes used by the /api/listings list endpoint.
     const btcRequiredTypes = ['SELL', 'SELL_BITCOIN', 'BUY_GIFT_CARD'];
-    const capsByBalance    = btcRequiredTypes.includes(listing.listing_type);
-    const minLimitUsd      = parseFloat(listing.min_limit_usd || 0);
-    const listingMaxUsd    = parseFloat(listing.max_limit_usd || 0);
-    const balanceUsd       = sellerBalanceBtc * btcPriceVal;
+    const capsByBalance = btcRequiredTypes.includes(listing.listing_type);
+    const minLimitUsd = parseFloat(listing.min_limit_usd || 0);
+    const listingMaxUsd = parseFloat(listing.max_limit_usd || 0);
+    const balanceUsd = sellerBalanceBtc * btcPriceVal;
 
     const effectiveMaxUsd = capsByBalance && sellerBalanceBtc > 0
       ? Math.min(balanceUsd, listingMaxUsd || balanceUsd)
@@ -6007,7 +6005,7 @@ app.put('/api/listings/:id', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { margin, min_limit_usd, max_limit_usd, min_limit_local, max_limit_local,
-            payment_method, trade_instructions, listing_terms, time_limit, status } = req.body;
+      payment_method, trade_instructions, listing_terms, time_limit, status } = req.body;
     const { data: listing, error: findError } = await supabaseAdmin.from('listings').select('seller_id, listing_type, asset').eq('id', id).single();
     if (findError || !listing) return res.status(404).json({ error: 'Listing not found' });
     if (listing.seller_id !== req.userId) return res.status(403).json({ error: 'You can only edit your own listings' });
@@ -6116,8 +6114,10 @@ app.patch('/api/listings/:id/status', verifyToken, async (req, res) => {
       .from('listings')
       .select('seller_id, listing_type, asset, min_limit_usd, bitcoin_price')
       .eq('id', id).single();
+
     if (findError || !listing) return res.status(404).json({ error: 'Listing not found' });
     if (listing.seller_id !== req.userId) return res.status(403).json({ error: 'Unauthorized' });
+
 
     // Reactivating a SELL / SELL_BITCOIN / BUY_GIFT_CARD offer still requires >= $10 of the
     // offer's asset — otherwise a user could bypass the wallet-balance requirement just by
@@ -6415,7 +6415,7 @@ app.post('/api/offers', verifyToken, async (req, res) => {
           error: `You need at least $10 worth of ${offerAsset} in your PRAQEN wallet to create this offer. Please top up your wallet first.`,
         });
       }
-      if (max_limit_usd && parseFloat(max_limit_usd) > sellerBalUsd) {
+      if (parseFloat(max_limit_usd) > sellerBalUsd && sellerBalUsd > 0) {
         return res.status(400).json({
           error: `Maximum trade limit ($${parseFloat(max_limit_usd).toFixed(0)}) exceeds your wallet balance ($${sellerBalUsd.toFixed(0)}). Please top up or lower the maximum.`,
         });
@@ -11213,6 +11213,95 @@ app.post('/api/admin/hot-wallet/collect-fees', verifyToken, async (req, res) => 
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ✅ FIX: ONESIGNAL ID ROUTE - OneSignal ID Store Karne Ke Liye
+// ─────────────────────────────────────────────────────────────────────────────
+app.post('/api/users/onesignal-id', verifyToken, async (req, res) => {
+  try {
+    const { onesignal_id } = req.body;
+
+    if (!onesignal_id) {
+      return res.status(400).json({ error: 'OneSignal ID is required' });
+    }
+
+    console.log(`[OneSignal] Saving ID for user ${req.userId.slice(0, 8)}: ${onesignal_id.slice(0, 15)}...`);
+
+    const { data, error } = await supabaseAdmin
+      .from('users')
+      .update({
+        onesignal_id: onesignal_id,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', req.userId)
+      .select('id, onesignal_id');
+
+    if (error) {
+      console.error('[OneSignal] DB error:', error.message);
+      return res.status(500).json({ error: 'Failed to save OneSignal ID: ' + error.message });
+    }
+
+    console.log(`✅ OneSignal ID saved for user ${req.userId.slice(0, 8)}`);
+    res.json({
+      success: true,
+      message: 'OneSignal ID saved successfully',
+      user: data?.[0]
+    });
+  } catch (error) {
+    console.error('[OneSignal] Error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ✅ FIX: TEST PUSH NOTIFICATION ENDPOINT
+// ─────────────────────────────────────────────────────────────────────────────
+app.post('/api/test-push', verifyToken, async (req, res) => {
+  try {
+    const { userId, type = 'new_trade' } = req.body;
+    const targetUserId = userId || req.userId;
+
+    // Check if user has OneSignal ID
+    const { data: user } = await supabaseAdmin
+      .from('users')
+      .select('id, username, onesignal_id')
+      .eq('id', targetUserId)
+      .single();
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (!user.onesignal_id) {
+      return res.status(400).json({
+        error: 'User has no OneSignal ID. Please login again to register for push notifications.',
+        user: { id: user.id, username: user.username }
+      });
+    }
+
+    // Create a test trade object
+    const testTrade = {
+      id: 'test-' + Date.now(),
+      trade_ref: 'TEST' + Date.now().toString().slice(-6),
+      amount_btc: 0.00123456,
+      amount_usd: 100,
+      payment_method: 'Mobile Money'
+    };
+
+    // Send test notification
+    await sendTradeAlert(targetUserId, testTrade, type);
+
+    res.json({
+      success: true,
+      message: `Test push notification sent to ${user.username}`,
+      onesignal_id: user.onesignal_id.slice(0, 15) + '...',
+      type: type
+    });
+  } catch (error) {
+    console.error('[Test Push] Error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // START SERVER
 // ============================================================
 
@@ -11220,6 +11309,8 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`✅ PRAQEN Backend running on http://localhost:${PORT}`);
   console.log('📋 Routes: /api/auth, /api/users, /api/listings, /api/trades, /api/my-trades, /api/wallet, /api/hd-wallet, /api/notifications');
+  console.log('📱 OneSignal: ✅ Configured');
+  console.log('🔔 Push notifications: ✅ Ready');
 
   // Log hot wallet address so admin knows where to fund TRX + USDT
   tronHotWallet.logStartup();
