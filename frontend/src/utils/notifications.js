@@ -230,26 +230,16 @@ export function initNotifications() {
 
 // ── Expose helpers on window for debugging ──────────────────────────────────
 if (typeof window !== 'undefined') {
-  window.__checkPushId = checkExternalId;
-  window.__identifyUser = identifyUser;
-  window.__getOneSignalExternalId = getOneSignalExternalId;
-  window.__sendTestNotification = sendTestNotification;
-  window.__sendCustomNotification = sendCustomNotification;
-  window.__sendTradeNotification = sendTradeNotification;
-  window.__sendNotificationToUser = sendNotificationToUser;
-  window.__forceSendNotification = forceSendNotification;
-  window.__unidentifyUser = unidentifyUser;
-  window.__getCurrentUserId = getCurrentUserId;
-  window.__initNotifications = initNotifications;
+window.__checkPushId = checkExternalId;
+window.__identifyUser = identifyUser;
+window.__sendTestNotification = sendTestNotification;
+window.__unidentifyUser = unidentifyUser;
+window.__initNotifications = initNotifications;
 
-  console.log('[Push] ✅ Debug helpers available:');
-  console.log('  window.__identifyUser(userId) - Link user');
-  console.log('  window.__sendTestNotification() - Send test notification');
-  console.log('  window.__sendTradeNotification(title, body, tradeId) - Send trade notification');
-  console.log('  window.__sendCustomNotification(title, body) - Send custom notification');
-  console.log('  window.__forceSendNotification(title, body, url) - Force notification');
-  console.log('  window.__getCurrentUserId() - Get current user ID');
-  console.log('  window.__unidentifyUser() - Unlink user');
+console.log('[Push] ✅ Debug helpers available:');
+console.log('  window.__identifyUser(userId) - Link user');
+console.log('  window.__sendTestNotification() - Send test notification');
+console.log('  window.__unidentifyUser() - Unlink user');
 }
 
 // ── Unidentify user ──
